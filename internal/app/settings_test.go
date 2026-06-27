@@ -39,11 +39,13 @@ func TestHooksApp_AddAndSave(t *testing.T) {
 	cfg, err := a.GetHooksConfig()
 	require.NoError(t, err)
 	cfg.PreToolUse = []HookEntry{
-		{Command: "echo hi", Type: "shell"},
+		{Matcher: "Bash", Command: "echo hi", Type: "shell"},
 	}
 	require.NoError(t, a.SaveHooksConfig(cfg))
 
 	loaded, _ := a.GetHooksConfig()
 	require.Len(t, loaded.PreToolUse, 1)
 	assert.Equal(t, "echo hi", loaded.PreToolUse[0].Command)
+	assert.Equal(t, "shell", loaded.PreToolUse[0].Type)
+	assert.Equal(t, "Bash", loaded.PreToolUse[0].Matcher)
 }
