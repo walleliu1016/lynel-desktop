@@ -3,8 +3,12 @@
 package app
 
 import (
+	"sync"
+
 	"github.com/akke/ease-ui/internal/auth"
+	"github.com/akke/ease-ui/internal/events"
 	"github.com/akke/ease-ui/internal/hooks"
+	"github.com/akke/ease-ui/internal/session"
 	"github.com/akke/ease-ui/internal/settings"
 )
 
@@ -15,10 +19,14 @@ type Options struct {
 }
 
 type App struct {
-	opts     Options
-	auth     *auth.Auth
-	settings *settings.Config
-	handler  *hooks.Handler
+	opts      Options
+	auth      *auth.Auth
+	settings  *settings.Config
+	handler   *hooks.Handler
+	appMu     sync.RWMutex
+	sessions  map[string]*session.Session
+	bus       *events.Bus
+	claudeBin string
 }
 
 func New(opts Options) (*App, error) {
@@ -42,5 +50,7 @@ func New(opts Options) (*App, error) {
 		auth:     a,
 		settings: cfg,
 		handler:  hooks.NewHandler(cfg.AutoAllowBash),
+		bus:      events.NewBus(),
+		sessions: map[string]*session.Session{},
 	}, nil
 }

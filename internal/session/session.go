@@ -179,5 +179,12 @@ func (s *Session) Close() error {
 	return proc.Close()
 }
 
+// SetProcessForTest attaches a process implementation. Used by the app layer
+// when wrapping a real *process.Process. Marked public to keep package boundaries
+// clean; do not use from other domain packages.
+func (s *Session) SetProcessForTest(p ProcessIface) {
+	s.setProcess(p)
+}
+
 // UnlockIfLocked / Locked helpers used by tests; keep tiny
 func (s *Session) UnlockIfLocked() {}
