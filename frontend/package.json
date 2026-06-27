@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "echo 'lint not configured; skipping'",
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "pinia": "^2.3.1",
