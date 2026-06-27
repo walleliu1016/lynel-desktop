@@ -6,8 +6,9 @@ import (
 )
 
 func (l *Launcher) buildArgs(workDir, cmd string) []string {
-	// Try gnome-terminal, fall back to xterm. Caller runs Start so the rest
-	// of the args is irrelevant for unit tests; the function returns one set.
+	// Try several terminals in order, fall back to xterm if none found.
+	// Caller runs Start so the rest of the args is irrelevant for unit
+	// tests; the function returns one set.
 	for _, term := range []string{"gnome-terminal", "xterm", "x-terminal-emulator"} {
 		if _, err := exec.LookPath(term); err == nil {
 			switch term {

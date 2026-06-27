@@ -2,7 +2,6 @@ package terminal
 
 import (
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -37,5 +36,4 @@ func TestLauncher_RunsWithoutError(t *testing.T) {
 	l := &Launcher{}
 	args := l.buildArgs(t.TempDir(), "true")
 	assert.NotEmpty(t, args)
-	_ = strings.Join
 }
