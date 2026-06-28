@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>Ease UI · Owner 设计稿 (2 态)</title>
+<style>
+:root {
+  --bg-primary: #09090B;
+  --bg-panel: #121214;
+  --bg-input: #1A1A1E;
+  --bg-titlebar: linear-gradient(180deg, #1C1C1F 0%, #18181B 100%);
+
+  --accent: #8B5CF6;
+  --accent-deep: #7C3AED;
+  --accent-light: #C4B5FD;
+
+  --text-primary: #F4F4F5;
+  --text-secondary: #A1A1AA;
+  --text-tertiary: #71717A;
+
+  --status-success: #34D399;
+  --status-warn: #FBBF24;
+  --status-terminal: #A78BFA;
+
+  --border: #27272A;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --shadow-window: 0 12px 40px rgba(0,0,0,0.5);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background: #050507; color: var(--text-primary);
+  font-family: var(--font-ui); font-size: 12px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabs {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; gap: 4px;
+  padding: 12px 16px; background: #111114;
+  border-bottom: 1px solid var(--border); align-items: center;
+}
+.tabs .label { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.6px; margin-right: 8px; }
+.tabs button {
+  padding: 5px 12px; font-size: 11px;
+  background: var(--bg-input); color: var(--text-secondary);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  cursor: pointer; font-family: inherit;
+}
+.tabs button:hover { background: #202024; color: var(--text-primary); }
+.tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tabs .note { margin-left: auto; color: var(--text-tertiary); font-size: 10px; }
+
+.stage {
+  padding: 24px 16px 60px;
+  display: flex; flex-direction: column; align-items: center; gap: 24px;
+}
+.window {
+  width: 1080px; height: 660px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--shadow-window);
+  display: flex; flex-direction: column; overflow: hidden;
+  position: relative;
+}
+.window.hidden { display: none; }
+.window-title {
+  position: absolute; margin-top: -18px; margin-left: 8px;
+  color: var(--text-tertiary); font-size: 11px; font-weight: 500;
+}
+
+.titlebar {
+  display: flex; align-items: center; justify-content: center;
+  height: 30px; background: var(--bg-titlebar);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px; color: var(--text-tertiary);
+  position: relative; flex-shrink: 0;
+}
+.titlebar .lights { position: absolute; left: 12px; display: flex; gap: 6px; }
+.titlebar .lights span { width: 10px; height: 10px; border-radius: 50%; background: #2A2A2E; }
+.titlebar .lights span:nth-child(1) { background: #FF5F57; }
+.titlebar .lights span:nth-child(2) { background: #FEBC2E; }
+.titlebar .lights span:nth-child(3) { background: #28C840; }
+
+.layout { flex: 1; display: flex; min-height: 0; }
+.aside {
+  width: 240px; display: flex; flex-direction: column;
+  background: var(--bg-panel); border-right: 1px solid var(--border);
+  min-height: 0; overflow: hidden;
+}
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+
+.slist { flex: 1; padding: 8px 6px; overflow-y: auto; }
+.new-btn {
+  margin: 4px 8px; padding: 6px 10px;
+  background: transparent; color: var(--text-secondary);
+  border: 1px dashed var(--border); border-radius: var(--radius-md);
+  font-size: 11px; cursor: pointer; text-align: center;
+}
+.new-btn:hover { background: var(--bg-input); color: var(--text-primary); }
+
+.sitem {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 10px; border-radius: var(--radius-md); cursor: pointer;
+}
+.sitem:hover { background: rgba(255,255,255,0.04); }
+.sitem.active { background: rgba(139,92,246,0.15); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; margin-top: 5px; }
+.dot.running { background: var(--status-success); }
+.dot.terminal { background: var(--status-terminal); }
+.sbody { flex: 1; min-width: 0; }
+.srow1 { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.sproj { font-size: 11px; color: var(--accent-light); font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sdur { font-size: 9px; color: var(--text-tertiary); flex-shrink: 0; }
+.srow2 { font-size: 12px; color: var(--text-primary); margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.ubar {
+  padding: 8px 12px; border-top: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 10px; color: var(--text-tertiary);
+}
+.ubar .gear { cursor: pointer; }
+.ubar .gear:hover { color: var(--text-primary); }
+
+.toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12px; border-bottom: 1px solid var(--border);
+  background: var(--bg-panel); flex-shrink: 0; gap: 12px; height: 38px;
+}
+.tb-left { display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; }
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 10px; font-weight: 500; flex-shrink: 0;
+}
+.badge.app { background: rgba(52,211,153,0.12); color: var(--status-success); border: 1px solid rgba(52,211,153,0.25); }
+.badge.app .bdot { background: var(--status-success); box-shadow: 0 0 6px var(--status-success); }
+.badge.terminal { background: rgba(167,139,250,0.12); color: var(--status-terminal); border: 1px solid rgba(167,139,250,0.3); }
+.badge.terminal .bdot { background: var(--status-terminal); box-shadow: 0 0 6px var(--status-terminal); }
+.bdot { width: 6px; height: 6px; border-radius: 50%; }
+.tb-title { font-size: 12px; color: var(--text-primary); font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-sep { color: var(--border); }
+.tb-meta { font-size: 11px; color: var(--text-tertiary); white-space: nowrap; }
+.tb-meta.mono { font-family: var(--font-mono); }
+
+.tb-btn {
+  flex-shrink: 0; padding: 4px 12px;
+  background: var(--accent); color: white;
+  border: none; border-radius: var(--radius-md);
+  font-size: 11px; font-weight: 500; cursor: pointer;
+}
+.tb-btn:hover { background: var(--accent-deep); }
+.tb-btn.terminal { background: var(--status-terminal); }
+.tb-btn.terminal:hover { background: #8B5CF6; }
+
+.messages { flex: 1; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; }
+.bubble { max-width: 78%; }
+.bubble.user { align-self: flex-end; }
+.bubble.assistant { align-self: flex-start; }
+.bubble .who { font-size: 10px; color: var(--text-tertiary); margin-bottom: 2px; }
+.bubble.user .who { text-align: right; }
+.bubble .body {
+  padding: 7px 12px; border-radius: var(--radius-md); font-size: 12px; line-height: 1.55;
+}
+.bubble.user .body { background: var(--accent-deep); color: #fff; }
+.bubble.assistant .body { background: var(--bg-panel); color: var(--text-primary); border: 1px solid var(--border); }
+.bubble .body code { font-family: var(--font-mono); font-size: 11px; background: rgba(0,0,0,0.3); padding: 1px 5px; border-radius: 3px; }
+
+.composer {
+  display: flex; align-items: center; gap: 8px; padding: 0 12px;
+  background: var(--bg-panel); border-top: 1px solid var(--border);
+  flex-shrink: 0; height: 50px;
+}
+.composer .input {
+  flex: 1; resize: none; overflow: hidden;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 6px 10px;
+  color: var(--text-primary); font-size: 12px; font-family: inherit; line-height: 1.5;
+  min-height: 30px; max-height: 120px; outline: none;
+}
+.composer .input.terminal-mode { border-color: var(--status-warn); box-shadow: 0 0 0 1px rgba(251,191,36,0.2); }
+.composer .input::placeholder { color: var(--text-tertiary); }
+.composer .input.terminal-mode::placeholder { color: var(--status-warn); }
+.composer .send {
+  background: var(--accent); color: white;
+  padding: 6px 16px; border: none; border-radius: var(--radius-md);
+  font-size: 11px; font-weight: 500; cursor: pointer; flex-shrink: 0;
+}
+.composer .send.terminal-mode { background: var(--status-warn); color: #000; }
+.composer .send.terminal-mode:hover { background: #F59E0B; }
+</style>
+</head>
+<body>
+
+<div class="tabs">
+  <span class="label">状态:</span>
+  <button data-tab="1" class="active">A · App 控制</button>
+  <button data-tab="2">B · 外部终端中</button>
+  <span class="note">点 tab 切换 · 窗口 1080×660</span>
+</div>
+
+<div class="stage">
+
+<!-- ============== A · App 控制 ============== -->
+<div class="window" data-pane="1">
+  <div class="window-title">A · owner=App, mode=stream-json（App 持 stdin · 写权限在 Ease UI）</div>
+  <div class="titlebar">
+    <div class="lights"><span></span><span></span><span></span></div>
+    Ease
+  </div>
+  <div class="layout">
+    <aside class="aside">
+      <div class="slist">
+        <div class="new-btn">+ 新建会话</div>
+        <div class="sitem"><div class="dot"></div><div class="sbody"><div class="srow1"><span class="sproj">projectA</span><span class="sdur">2m 前</span></div><div class="srow2">修复登录 bug</div></div></div>
+        <div class="sitem active"><div class="dot running"></div><div class="sbody"><div class="srow1"><span class="sproj">ease-ui</span><span class="sdur">刚刚</span></div><div class="srow2">帮我写一个 HTTP server</div></div></div>
+        <div class="sitem"><div class="dot"></div><div class="sbody"><div class="srow1"><span class="sproj">docs</span><span class="sdur">1h 前</span></div><div class="srow2">总结 README</div></div></div>
+      </div>
+      <div class="ubar"><span>akke · 0.1.0</span><span class="gear">⚙ 设置</span></div>
+    </aside>
+    <div class="main">
+      <div class="toolbar">
+        <div class="tb-left">
+          <span class="badge app"><span class="bdot"></span>App 控制</span>
+          <span class="tb-title">帮我写一个 HTTP server</span>
+          <span class="tb-sep">·</span>
+          <span class="tb-meta mono">ease-ui</span>
+          <span class="tb-sep">·</span>
+          <span class="tb-meta">12 条消息</span>
+        </div>
+        <button class="tb-btn">在终端中打开</button>
+      </div>
+      <div class="messages">
+        <div class="bubble user"><div class="who">你</div><div class="body">帮我写一个 HTTP server</div></div>
+        <div class="bubble assistant"><div class="who">Claude</div><div class="body">好的，我用 Go <code>net/http</code> 写一个最小版本。</div></div>
+        <div class="bubble user"><div class="who">你</div><div class="body">监听 8080，提供 /healthz 和 /echo 两个端点</div></div>
+        <div class="bubble assistant"><div class="who">Claude</div><div class="body">好的，我建一个 <code>server/main.go</code>。<br><br>主要点：<br>• <code>http.HandleFunc</code> 注册两个端点<br>• <code>log.Printf</code> 记每次请求<br>• 优雅关闭靠 <code>signal.NotifyContext</code> 监听 SIGINT/SIGTERM</div></div>
+      </div>
+      <div class="composer">
+        <textarea class="input" placeholder="输入消息…" rows="1"></textarea>
+        <button class="send">发送</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============== B · 外部终端中 ============== -->
+<div class="window hidden" data-pane="2">
+  <div class="window-title">B · owner=Terminal, mode=resume（外部 claude -r 在终端跑 · App 只读 jsonl）</div>
+  <div class="titlebar">
+    <div class="lights"><span></span><span></span><span></span></div>
+    Ease
+  </div>
+  <div class="layout">
+    <aside class="aside">
+      <div class="slist">
+        <div class="new-btn">+ 新建会话</div>
+        <div class="sitem"><div class="dot"></div><div class="sbody"><div class="srow1"><span class="sproj">projectA</span><span class="sdur">2m 前</span></div><div class="srow2">修复登录 bug</div></div></div>
+        <div class="sitem active"><div class="dot terminal"></div><div class="sbody"><div class="srow1"><span class="sproj">ease-ui</span><span class="sdur">刚刚</span></div><div class="srow2">帮我写一个 HTTP server</div></div></div>
+        <div class="sitem"><div class="dot"></div><div class="sbody"><div class="srow1"><span class="sproj">docs</span><span class="sdur">1h 前</span></div><div class="srow2">总结 README</div></div></div>
+      </div>
+      <div class="ubar"><span>akke · 0.1.0</span><span class="gear">⚙ 设置</span></div>
+    </aside>
+    <div class="main">
+      <div class="toolbar">
+        <div class="tb-left">
+          <span class="badge terminal"><span class="bdot"></span>外部终端中</span>
+          <span class="tb-title">帮我写一个 HTTP server</span>
+          <span class="tb-sep">·</span>
+          <span class="tb-meta mono">ease-ui</span>
+          <span class="tb-sep">·</span>
+          <span class="tb-meta">15 条消息</span>
+        </div>
+        <button class="tb-btn terminal">切回 App 控制</button>
+      </div>
+      <div class="messages">
+        <div class="bubble user"><div class="who">你</div><div class="body">帮我写一个 HTTP server</div></div>
+        <div class="bubble assistant"><div class="who">Claude</div><div class="body">好的，我用 Go <code>net/http</code> 写一个最小版本。</div></div>
+        <div class="bubble user"><div class="who">你</div><div class="body">监听 8080，提供 /healthz 和 /echo 两个端点</div></div>
+        <div class="bubble assistant"><div class="who">Claude</div><div class="body">好的，我建一个 <code>server/main.go</code>。<br><br>主要点：<br>• <code>http.HandleFunc</code> 注册两个端点<br>• <code>log.Printf</code> 记每次请求<br>• 优雅关闭靠 <code>signal.NotifyContext</code> 监听 SIGINT/SIGTERM</div></div>
+        <div class="bubble user"><div class="who">你 <span style="color:var(--text-tertiary); font-size:9px; margin-left:4px;">↳ 在外部 iTerm2 输入</span></div><div class="body">加一个 /version 端点，返回 git short hash</div></div>
+        <div class="bubble assistant"><div class="who">Claude</div><div class="body">好的，我加一个 <code>/version</code>，用 <code>git rev-parse --short HEAD</code> 拿 hash，启动时缓存到变量。</div></div>
+      </div>
+      <div class="composer">
+        <textarea class="input terminal-mode" placeholder="外部终端中 · 输入会切回 App 控制" rows="1"></textarea>
+        <button class="send terminal-mode">切回并发送</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+const tabs = document.querySelectorAll('.tabs button')
+const panes = document.querySelectorAll('.window')
+tabs.forEach(b => b.addEventListener('click', () => {
+  tabs.forEach(t => t.classList.remove('active'))
+  b.classList.add('active')
+  const id = b.dataset.tab
+  panes.forEach(p => p.classList.toggle('hidden', p.dataset.pane !== id))
+}))
+document.querySelectorAll('.composer .input').forEach(el => {
+  el.addEventListener('input', () => {
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+  })
+})
+</script>
+</body>
+</html>
