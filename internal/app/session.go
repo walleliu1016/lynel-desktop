@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -71,6 +72,21 @@ func (a *App) RespondPermission(sessionID, reqID string, allow bool) error {
 		return errSessionNotFound
 	}
 	return s.RespondPermission(reqID, allow)
+}
+
+// GetSessionMessages reads the jsonl history for a session and returns
+// all messages. Used when switching to a session that has no active process.
+func (a *App) GetSessionMessages(sessionID, workDir string) ([]jsonl.Message, error) {
+	root := jsonl.Root()
+	encodedDir := encodeProjectDirName(workDir)
+	path := filepath.Join(root, encodedDir, sessionID+".jsonl")
+	return jsonl.ParseFile(path)
+}
+
+// encodeProjectDirName converts "/Users/akke/foo" to "-Users-akke-foo"
+func encodeProjectDirName(dir string) string {
+	// "/Users/akke" → "-Users-akke"（ReplaceAll 会把首个 / 也替换成 -）
+	return strings.ReplaceAll(dir, "/", "-")
 }
 
 func (a *App) CloseSession(sessionID string) error {

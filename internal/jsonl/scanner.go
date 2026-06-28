@@ -1,6 +1,8 @@
 package jsonl
 
 import (
+	"bufio"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,11 +72,14 @@ func ScanAll() ([]SessionMeta, error) {
 				continue
 			}
 			id := strings.TrimSuffix(f.Name(), ".jsonl")
+			fp, mc := scanFileMeta(filepath.Join(projDir, f.Name()))
 			metas = append(metas, SessionMeta{
-				ID:      id,
-				WorkDir: workDir,
-				MTime:   info.ModTime().Unix(),
-				Size:    info.Size(),
+				ID:          id,
+				WorkDir:     workDir,
+				MTime:       info.ModTime().Unix(),
+				MsgCount:    mc,
+				FirstPrompt: fp,
+				Size:        info.Size(),
 			})
 		}
 	}
@@ -92,6 +97,49 @@ func decodeProjectDirName(name string) string {
 		parts = parts[1:]
 	}
 	return "/" + strings.Join(parts, "/")
+}
+
+// scanFileMeta reads a jsonl file and returns its first user prompt
+// and total line count. Returns empty strings / zero on any error.
+func scanFileMeta(path string) (firstPrompt string, msgCount int) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", 0
+	}
+	defer f.Close()
+
+	type rawLine struct {
+		Type    string          `json:"type"`
+		Message json.RawMessage `json:"message"`
+	}
+	type msg struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+
+	var count int
+	var found bool
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024)
+	for scanner.Scan() {
+		count++
+		if found {
+			continue
+		}
+		var rl rawLine
+		if json.Unmarshal(scanner.Bytes(), &rl) != nil {
+			continue
+		}
+		var m msg
+		if json.Unmarshal(rl.Message, &m) != nil {
+			continue
+		}
+		if m.Role == "user" && m.Content != "" {
+			firstPrompt = m.Content
+			found = true
+		}
+	}
+	return firstPrompt, count
 }
 
 // Watch creates a fsnotify watcher for the given session jsonl.

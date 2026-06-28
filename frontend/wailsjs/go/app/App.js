@@ -18,6 +18,10 @@ export function GetHooksConfig() {
   return window['go']['app']['App']['GetHooksConfig']();
 }
 
+export function GetSessionMessages(arg1, arg2) {
+  return window['go']['app']['App']['GetSessionMessages'](arg1, arg2);
+}
+
 export function GetSettings() {
   return window['go']['app']['App']['GetSettings']();
 }

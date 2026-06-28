@@ -2,8 +2,8 @@
   <div class="general-tab">
     <div class="row">
       <label class="k">主题</label>
-      <select class="v" v-model="cfg.theme" disabled>
-        <option value="dark-pro">深色专业（v1 唯一）</option>
+      <select class="v" v-model="cfg.theme" @change="markDirty">
+        <option value="dark-pro">深色专业</option>
       </select>
     </div>
 

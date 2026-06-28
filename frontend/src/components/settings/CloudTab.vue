@@ -1,10 +1,5 @@
 <template>
   <div class="cloud-tab">
-    <div class="notice">
-      <span class="badge">v1 占位</span>
-      <span class="msg">云服务在 v1 暂未启用，配置项可保存但不会实际连接。</span>
-    </div>
-
     <div class="row toggle">
       <label class="k">启用</label>
       <div class="v">
@@ -29,7 +24,7 @@
       <label class="k">连接状态</label>
       <div class="v status">
         <span class="dot" />
-        <span>未连接（v1 暂未启用）</span>
+        <span>{{ cfg.cloud_service_enabled ? '未连接' : '未启用' }}</span>
       </div>
     </div>
 
@@ -69,7 +64,7 @@ async function onSave() {
 }
 
 function onTest() {
-  alert('v1 暂不支持测试连接')
+  // 云服务连接测试暂未开放
 }
 </script>
 

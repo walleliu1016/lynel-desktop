@@ -8,7 +8,7 @@
       <form @submit.prevent="onSubmit" class="form">
         <div class="form-group">
           <label class="form-label">工作目录</label>
-          <input class="form-input" v-model="workdir" placeholder="/Users/akke/project" />
+          <input class="form-input" v-model="workdir" placeholder="输入工作目录路径" />
         </div>
         <div class="form-group">
           <label class="form-label">提示词</label>

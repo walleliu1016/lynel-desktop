@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { SessionMeta, ChatMessage, SessionState } from '../types/session'
-import { ListSessions, CreateSession, SendMessage } from '../composables/useWails'
+import { ListSessions, CreateSession, SendMessage, GetSessionMessages } from '../composables/useWails'
 
 export interface PendingPerm {
   tool: string
@@ -33,21 +33,41 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   function select(id: string) {
     activeId.value = id
-  }
-
-  async function send(id: string, prompt: string) {
-    if (!messages.value[id]) messages.value[id] = []
-    messages.value[id].push({ id: crypto.randomUUID(), role: 'user', content: prompt, ts: Date.now() })
-    streaming.value[id] = true
-    state.value[id] = 'running'
-    try {
-      await SendMessage(id, prompt)
-    } finally {
-      streaming.value[id] = false
+    const meta = list.value.find((s) => s.id === id)
+    if (meta && !messages.value[id]) {
+      loadHistory(id, meta.workdir)
     }
   }
 
-  // 处理来自 Go 端 EventsEmit 的 session 事件
+  async function loadHistory(sid: string, workdir: string) {
+    try {
+      const raw = await GetSessionMessages(sid, workdir)
+      messages.value = {
+        ...messages.value,
+        [sid]: (raw || []).map((m: any, i: number) => ({
+          id: `${sid}-${i}`,
+          role: m.role || m.Role || 'assistant',
+          content: m.content || m.Content || '',
+          ts: Date.now() - ((raw || []).length - i) * 1000,
+        })),
+      }
+    } catch (e: any) {
+      console.error('[sessions] loadHistory failed:', e?.message || e)
+    }
+  }
+
+  async function send(id: string, prompt: string) {
+    const prev = messages.value[id] || []
+    messages.value = { ...messages.value, [id]: [...prev, { id: crypto.randomUUID(), role: 'user', content: prompt, ts: Date.now() }] }
+    streaming.value = { ...streaming.value, [id]: true }
+    state.value = { ...state.value, [id]: 'running' }
+    try {
+      await SendMessage(id, prompt)
+    } finally {
+      streaming.value = { ...streaming.value, [id]: false }
+    }
+  }
+
   function handleEvent(sid: string, line: string) {
     let evt: any
     try { evt = JSON.parse(line) } catch { return }
@@ -55,34 +75,34 @@ export const useSessionsStore = defineStore('sessions', () => {
     switch (evt.type) {
       case 'message': {
         const d = evt.data || evt
-        if (!messages.value[sid]) messages.value[sid] = []
-        messages.value[sid].push({
+        const prev = messages.value[sid] || []
+        messages.value = { ...messages.value, [sid]: [...prev, {
           id: crypto.randomUUID(),
           role: d.role,
           content: d.content || '',
           ts: Date.now(),
-        })
+        }] }
         break
       }
       case 'tool_use': {
         const d = evt.data || evt
-        if (!toolBlocks.value[sid]) toolBlocks.value[sid] = []
-        toolBlocks.value[sid].push({ name: d.name, args: d.args })
+        const prev = toolBlocks.value[sid] || []
+        toolBlocks.value = { ...toolBlocks.value, [sid]: [...prev, { name: d.name, args: d.args }] }
         break
       }
       case 'permission_request': {
         const d = evt.data || evt
-        pending.value[sid] = { tool: d.tool, args: d.args, reqId: d.request_id }
-        state.value[sid] = 'awaiting_permission'
+        pending.value = { ...pending.value, [sid]: { tool: d.tool, args: d.args, reqId: d.request_id } }
+        state.value = { ...state.value, [sid]: 'awaiting_permission' }
         break
       }
       case 'result':
-        streaming.value[sid] = false
-        state.value[sid] = 'idle'
+        streaming.value = { ...streaming.value, [sid]: false }
+        state.value = { ...state.value, [sid]: 'idle' }
         break
       case 'done':
-        streaming.value[sid] = false
-        state.value[sid] = 'idle'
+        streaming.value = { ...streaming.value, [sid]: false }
+        state.value = { ...state.value, [sid]: 'idle' }
         break
     }
   }

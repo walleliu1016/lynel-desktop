@@ -59,6 +59,22 @@ export namespace app {
 
 export namespace jsonl {
 	
+	export class Message {
+	    role: string;
+	    content: string;
+	    type: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Message(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.role = source["role"];
+	        this.content = source["content"];
+	        this.type = source["type"];
+	    }
+	}
 	export class SessionMeta {
 	    id: string;
 	    workdir: string;
