@@ -194,9 +194,34 @@ export const useSessionsStore = defineStore('sessions', () => {
     await loadHistory(id, meta.workdir, nextStart, loaded - nextStart, false)
   }
 
+  // 从 jsonl 重新加载当前 session 的消息。jsonl 是唯一数据源，
+  // 新消息（用户输入和 assistant 回复）都从 jsonl 读取后直接替换 messages[sid]。
+  async function reloadFromJsonl(sid: string) {
+    try {
+      await refresh()
+      const meta = list.value.find((s) => s.id === sid)
+      if (!meta) return
+      const total = meta.msg_count
+      if (total === 0) return
+      const offset = Math.max(0, total - PAGE_SIZE)
+      const raw = await GetSessionMessages(sid, meta.workdir, offset, PAGE_SIZE)
+      const msgs = (raw || []).map((m: any, i: number) => ({
+        id: `${sid}-${offset + i}`,
+        role: m.role || m.Role || 'assistant',
+        content: formatContent(m.content || m.Content || ''),
+        ts: Date.now() - ((raw?.length || 0) - i) * 1000,
+      }))
+      historyOffset.value = { ...historyOffset.value, [sid]: offset + (raw?.length || 0) }
+      hasMore.value = { ...hasMore.value, [sid]: offset > 0 }
+      messages.value = { ...messages.value, [sid]: msgs }
+    } catch (e: any) {
+      console.error('[sessions] reloadFromJsonl failed:', e?.message || e)
+    }
+  }
+
+  // send 只负责将 prompt 写入 claude stdin，不修改 messages。
+  // 消息展示完全由 jsonl 驱动：claude 写入 jsonl → fsnotify → reloadFromJsonl → UI 更新。
   async function send(id: string, prompt: string) {
-    const prev = messages.value[id] || []
-    messages.value = { ...messages.value, [id]: [...prev, { id: crypto.randomUUID(), role: 'user', content: prompt, ts: Date.now() }] }
     streaming.value = { ...streaming.value, [id]: true }
     state.value = { ...state.value, [id]: 'running' }
     try {
@@ -207,19 +232,23 @@ export const useSessionsStore = defineStore('sessions', () => {
         owner.value = { ...owner.value, [id]: 'app' }
         mode.value  = { ...mode.value,  [id]: 'stream' }
       } else {
-        // App 模式：先确保 session 已在 a.sessions map 注册（lazy adopt），
-        // 历史 session（jsonl 里有但 Ease UI 启动时没注册）走 AdoptSession
-        // 拉起 stream-json 进程；CreateSession 出来的已 adopt 走幂等 noop。
-        if (!adopted.value[id]) {
-          const meta = list.value.find((s) => s.id === id)
-          if (!meta) throw new Error('session not found in list')
-          await AdoptSession(id, meta.workdir)
-          adopted.value = { ...adopted.value, [id]: true }
-          owner.value = { ...owner.value, [id]: 'app' }
-          mode.value  = { ...mode.value,  [id]: 'stream' }
-        }
+        // App 模式：每次 send 都调 AdoptSession。Go 端会在 session 已注册 +
+        // proc 还活着时走幂等 noop；session 已注册但 proc=nil 时自动重新拉
+        // （之前我手动 kill 进程后会卡住的情况）。前端 adopted 状态由 Go 端
+        // 决定，不再前端缓存。
+        const meta = list.value.find((s) => s.id === id)
+        if (!meta) throw new Error('session not found in list')
+        await AdoptSession(id, meta.workdir)
+        owner.value = { ...owner.value, [id]: 'app' }
+        mode.value  = { ...mode.value,  [id]: 'stream' }
         // 直写（Send 走 v1 裸文本兼容路径，Claude 接受）
-        await SendMessage(id, prompt)
+        try {
+          await SendMessage(id, prompt)
+        } catch (e: any) {
+          // 后端 SendMessage 失败时让 Go 端处理 proc 状态重置；前端不再缓存
+          // adopted，避免 proc=nil 时的死循环。
+          throw e
+        }
       }
     } finally {
       streaming.value = { ...streaming.value, [id]: false }
@@ -231,13 +260,23 @@ export const useSessionsStore = defineStore('sessions', () => {
     try { evt = JSON.parse(line) } catch { return }
 
     switch (evt.type) {
-      case 'message': {
-        const d = evt.data || evt
+      // Claude CLI stream-json 实际输出的类型是 "assistant" / "user"，
+      // 消息体在 evt.message 中，content 可能是字符串或 content block 数组。
+      // 之前只处理 "message" 类型（protocol 包的定义），跟 Claude 实际输出
+      // 不匹配，导致所有实时事件被静默丢弃。
+      case 'assistant':
+      case 'user': {
+        const msg = evt.message
+        if (!msg) break
         const prev = messages.value[sid] || []
+        // 用消息 id 去重：同一轮 assistant 可能通过 stream_event 多次推送
+        const msgId = msg.id
+        if (msgId && prev.some(m => (m as any).msgId === msgId)) break
         messages.value = { ...messages.value, [sid]: [...prev, {
           id: crypto.randomUUID(),
-          role: d.role,
-          content: d.content || '',
+          msgId,
+          role: msg.role || 'assistant',
+          content: formatContent(msg.content),
           ts: Date.now(),
         }] }
         break
@@ -261,6 +300,11 @@ export const useSessionsStore = defineStore('sessions', () => {
       case 'done':
         streaming.value = { ...streaming.value, [sid]: false }
         state.value = { ...state.value, [sid]: 'idle' }
+        adopted.value = { ...adopted.value, [sid]: false }
+        // stream-json 进程退出时，如果 stdout 管道没有数据（或数据不完整），
+        // 从 jsonl 重新加载最新消息。这对于 claude 在 .app bundle 里 stdout
+        // 不产出但 jsonl 正常写入的情况至关重要。
+        reloadFromJsonl(sid)
         break
     }
   }
@@ -292,5 +336,6 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   return { list, activeId, active, messages, streaming, state, pending, toolBlocks,
-    hasMore, owner, mode, adopted, refresh, create, select, send, handleEvent, handleHookEvent, loadMore }
+    hasMore, owner, mode, adopted, refresh, create, select, send, reloadFromJsonl,
+    handleEvent, handleHookEvent, loadMore }
 })

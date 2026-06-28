@@ -82,5 +82,17 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	if s.onEvent != nil {
 		s.onEvent(evt)
 	}
-	w.WriteHeader(http.StatusOK)
+
+	// Claude CLI HTTP hook 要求返回 {"continue":true} 才继续执行。
+	// SessionStart hook 加 suppressOutput 避免 Claude 输出恢复提示。
+	type hookResponse struct {
+		Continue       bool `json:"continue"`
+		SuppressOutput bool `json:"suppressOutput,omitempty"`
+	}
+	resp := hookResponse{Continue: true}
+	if evt.Type == "SessionStart" {
+		resp.SuppressOutput = true
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }

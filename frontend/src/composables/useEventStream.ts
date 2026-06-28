@@ -16,9 +16,13 @@ export function useEventStream() {
       console.error('[fatal]', msg)
     }))
 
-    // 后端 fsnotify 监听 jsonl 变化后推送；触发列表刷新
+    // 后端 fsnotify 监听 jsonl 变化后推送 → 刷新列表 + 重载当前 session 消息。
+    // jsonl 是唯一数据源，不依赖乐观更新，无论 App/Terminal 模式都走这条路径。
     cleanups.push(EventsOn('sessions:list:changed', () => {
       void sessions.refresh()
+      if (sessions.activeId) {
+        void sessions.reloadFromJsonl(sessions.activeId)
+      }
     }))
 
     watch(

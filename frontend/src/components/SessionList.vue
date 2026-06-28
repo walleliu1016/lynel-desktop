@@ -55,7 +55,7 @@ const filteredList = computed(() => {
     const st = sessions.state[s.id] || 'idle'
     switch (filter.value) {
       case 'running': return st === 'running' || st === 'awaiting_permission'
-      case 'ended': return st === 'done'
+      case 'ended': return st === 'done' || st === 'ended'
       default: return st === 'idle'
     }
   })

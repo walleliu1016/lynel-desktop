@@ -14,14 +14,15 @@ import (
 // EnsureHookServer 启动本地 hook HTTP server 并配置 settings.json。
 func (a *App) EnsureHookServer() {
 	a.hookMu.Lock()
-	defer a.hookMu.Unlock()
 	if a.hookSrv != nil {
+		a.hookMu.Unlock()
 		return
 	}
 	a.hookSrv = hookserver.New()
 	port, err := a.hookSrv.Start()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ease-ui: hook server failed to start: %v\n", err)
+		a.hookMu.Unlock()
 		return
 	}
 	a.hookPort = port
@@ -63,10 +64,16 @@ func (a *App) EnsureHookServer() {
 		}
 	}()
 
+	// 释放 hookMu 再调 CheckAndFixHooks —— 它内部要 RLock 这把锁
+	// 取 port，未释放就 RLock 会自死锁。
+	a.hookMu.Unlock()
+
 	// 自动修复 settings.json 的 hooks 配置
-	needsFix, fixed, _ := a.CheckAndFixHooks()
+	needsFix, fixed, fixErr := a.CheckAndFixHooks()
 	if needsFix && fixed {
 		fmt.Fprintf(os.Stderr, "ease-ui: hooks configured for http://localhost:%d/hook\n", port)
+	} else if fixErr != nil {
+		fmt.Fprintf(os.Stderr, "ease-ui: hooks fix failed: %v (url=:%d)\n", fixErr, port)
 	}
 }
 

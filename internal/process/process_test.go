@@ -10,7 +10,7 @@ import (
 )
 
 func TestStart_FailsOnMissingBinary(t *testing.T) {
-	p, err := Start(t.TempDir(), "sid-1", "/nonexistent/binary")
+	p, err := Start(t.TempDir(), "sid-1", "/nonexistent/binary", ModeNew)
 	assert.Error(t, err)
 	assert.Nil(t, p)
 }
@@ -21,7 +21,7 @@ func TestStart_EchoBinaryStreamsEvents(t *testing.T) {
 	}
 	// Use /bin/cat: it reads stdin and echoes to stdout, so we can
 	// verify the write->events round-trip end-to-end.
-	p, err := Start(t.TempDir(), "sid", "/bin/cat")
+	p, err := Start(t.TempDir(), "sid", "/bin/cat", ModeNew)
 	require.NoError(t, err)
 	defer p.Close()
 
@@ -40,7 +40,7 @@ func TestProcess_CloseTerminates(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix shell only")
 	}
-	p, err := Start(t.TempDir(), "sid", "/bin/cat")
+	p, err := Start(t.TempDir(), "sid", "/bin/cat", ModeNew)
 	require.NoError(t, err)
 
 	require.NoError(t, p.Close())

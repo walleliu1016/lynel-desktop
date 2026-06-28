@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,25 +41,47 @@ func (a *App) ListSessions() ([]jsonl.SessionMeta, error) {
 }
 
 // GetSessionStates 返回持久化的会话状态（用于启动时恢复）。
+//
+// 顺序：
+//  1. instance.Store 有持久化状态（如上次关闭前是 running/done/awaiting_permission）
+//     → 优先用它。Ease UI 控制过的 session 最权威。
+//  2. instance.Store 没记录（jsonl 里存在但 Ease UI 从未 adopt 过的历史 session）→
+//     扫 jsonl 末尾的 /exit / /quit 标记，是则返回 "ended"，UI 立即显示该
+//     session 已结束、禁用 send。
 func (a *App) GetSessionStates() map[string]string {
 	out := map[string]string{}
 	list, _ := a.ListSessions()
 	for _, m := range list {
-		s := a.inst.Get(m.ID)
-		if s.State != "" {
+		if s := a.inst.Get(m.ID); s.State != "" {
 			out[m.ID] = s.State
+			continue
+		}
+		// jsonl-only sessions: 通过尾部 /exit 标记检测 ended
+		if ended, err := jsonlSessionEnded(m.ID, m.WorkDir); err == nil && ended {
+			out[m.ID] = "ended"
 		}
 	}
 	return out
 }
 
 // CreateSession launches a new claude subprocess for the given workdir + prompt.
-func (a *App) CreateSession(workDir, _prompt string) (string, error) {
+// 修复：之前 _prompt 被忽略，导致用户新建 session 时输入的第一条消息丢失。
+// 现在 startStreamSession 后立即通过 envelope 写入 prompt，保证 Claude 收到。
+func (a *App) CreateSession(workDir, prompt string) (string, error) {
 	id, err := newID()
 	if err != nil {
 		return "", err
 	}
-	return id, a.startStreamSession(id, workDir)
+	if err := a.startStreamSession(id, workDir); err != nil {
+		return "", err
+	}
+	if prompt != "" {
+		s, ok := a.lookupSession(id)
+		if ok {
+			_ = s.Send(prompt)
+		}
+	}
+	return id, nil
 }
 
 // AdoptSession 把 Ease UI 启动前已经存在的历史 session（jsonl 里有但
@@ -69,19 +92,66 @@ func (a *App) CreateSession(workDir, _prompt string) (string, error) {
 // 再 SendMessage 写 prompt。已在 a.sessions 里的 sid 走幂等 noop。
 //
 // 跟 CreateSession 的差别：sid 是调用方给的（不是新生成）；不写 prompt。
+//
+// Resume 模式：如果 jsonl 末尾有 /exit 或 /quit 标记，说明用户之前已经
+// 主动结束了该 session。这种情况下用 `--resume <sid>` 启动 stream-json
+// （claude 会从 jsonl 读历史 + 接受新 envelope），而不是 `--session-id`
+// （已 ended 的 session 用 --session-id 启动会立即退出）。
+// AdoptSession 把 Ease UI 启动前已经存在的历史 session（jsonl 里有但
+// a.sessions map 没注册）拉进 App 控制。
+//
+// 用途：前端 ListSessions 拿全量 jsonl，用户切到一条历史 session + 第一次
+// 发消息时 → 先 AdoptSession 起 stream-json 进程接管 + 注册到 a.sessions，
+// 再 SendMessage 写 prompt。已在 a.sessions 里的 sid 走幂等 noop。
+//
+// 跟 CreateSession 的差别：sid 是调用方给的（不是新生成）；不写 prompt。
+//
+// 模式：因为 sid 必然对应一个**已存在**的 jsonl 文件（不论 ended 还是
+// live），一律走 `--resume` 启动。`--session-id` 用在已存在的 sid 上
+// 会让 claude 立即 DEAD —— 这就是历史 session 发送被静默吞掉的根因。
+// `CreateSession` 走 newID() 生成全新 sid + 对应 jsonl 不存在，
+// `--session-id` 才正确。
 func (a *App) AdoptSession(sessionID, workDir string) error {
-	if _, ok := a.lookupSession(sessionID); ok {
-		return nil // 已经在 App 控制中，幂等 noop
+	if s, ok := a.lookupSession(sessionID); ok {
+		// 已经在 App 控制中，但要校验 proc 还活着。
+		// 之前用 "幂等 noop" 在 proc 死了之后会让 SendMessage 永远报
+		// "no process"。重新拉进程 + 注册到 a.sessions。
+		if proc := s.GetProcessForTest(); proc != nil {
+			return nil
+		}
+		fmt.Fprintf(os.Stderr, "[DBG] AdoptSession: sid=%s found but proc=nil, re-spawning\n", sessionID)
 	}
 	if sessionID == "" || workDir == "" {
 		return &appError{code: "E_BAD_ARG", msg: "AdoptSession: sessionID and workDir required"}
 	}
-	return a.startStreamSession(sessionID, workDir)
+	// 懒策略：只创建 session + 注册到 a.sessions，不启动进程。
+	// 进程在 SendMessage 时延迟启动，确保 claude 一起来就能收到 envelope，
+	// 避免 claude -p 模式 3 秒无 stdin 超时退出。
+	s := session.New(sessionID, workDir)
+	a.registerSession(s)
+	a.inst.Put(sessionID, "idle")
+	fmt.Fprintf(os.Stderr, "[DBG] AdoptSession: sid=%s lazy-registered (no proc)\n", sessionID)
+	return nil
+}
+
+// jsonlSessionEnded wraps the jsonl path resolution + IsSessionEnded call.
+// Returns (false, nil) when the jsonl file does not exist (fresh session).
+func jsonlSessionEnded(sessionID, workDir string) (bool, error) {
+	root := jsonl.Root()
+	path := filepath.Join(root, encodeProjectDirName(workDir), sessionID+".jsonl")
+	return jsonl.IsSessionEnded(path)
 }
 
 // startStreamSession 启 stream-json 进程 + 注册 a.sessions + pumpEvents。
 // CreateSession 和 AdoptSession 共用。失败时回滚注册 + 关进程。
 func (a *App) startStreamSession(sessionID, workDir string) error {
+	return a.startStreamSessionWithMode(sessionID, workDir, process.ModeNew)
+}
+
+// startStreamSessionWithMode is the mode-aware variant. AdoptSession uses
+// ModeResume when the jsonl tail indicates a user-driven /exit / /quit,
+// so claude picks up the existing history instead of starting from scratch.
+func (a *App) startStreamSessionWithMode(sessionID, workDir string, mode process.Mode) error {
 	a.mu().RLock()
 	bin := a.claudeBin
 	if bin == "" {
@@ -91,11 +161,14 @@ func (a *App) startStreamSession(sessionID, workDir string) error {
 	if bin == "" {
 		bin = "claude"
 	}
+	fmt.Fprintf(os.Stderr, "[DBG] startStream: sid=%s workdir=%s bin=%s mode=%v\n", sessionID, workDir, bin, mode)
 
-	proc, err := process.Start(workDir, sessionID, bin)
+	proc, err := process.Start(workDir, sessionID, bin, mode)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "[DBG] startStream: process.Start failed: %v\n", err)
 		return err
 	}
+	fmt.Fprintf(os.Stderr, "[DBG] startStream: pid=%d OK\n", proc.PidForTest())
 
 	s := session.New(sessionID, workDir)
 	s.SetProcessForTest(proc)
@@ -108,8 +181,33 @@ func (a *App) startStreamSession(sessionID, workDir string) error {
 func (a *App) SendMessage(sessionID, prompt string) error {
 	s, ok := a.lookupSession(sessionID)
 	if !ok {
+		fmt.Fprintf(os.Stderr, "[DBG] SendMessage: sid=%s NOT in a.sessions\n", sessionID)
 		return errSessionNotFound
 	}
+	fmt.Fprintf(os.Stderr, "[DBG] SendMessage: sid=%s prompt=%q\n", sessionID, prompt)
+
+	// 懒启动 stream-json 进程：AdoptSession 已经注册了 session 但没有
+	// 起进程（避免 claude -p 模式 3s 无 stdin 超时退出）。SendMessage
+	// 收到第一个 prompt 时立即起进程 + 写 envelope，保证 stdin 在起动
+	// 瞬间就有数据。
+	if proc := s.GetProcessForTest(); proc == nil {
+		a.mu().RLock()
+		bin := a.claudeBin
+		if bin == "" {
+			bin = a.settings.ClaudePath
+		}
+		a.mu().RUnlock()
+		if bin == "" {
+			bin = "claude"
+		}
+		newProc, err := process.Start(s.WorkDir, sessionID, bin, process.ModeResume)
+		if err != nil {
+			return err
+		}
+		s.SetProcessForTest(newProc)
+		go a.pumpEvents(s, newProc)
+	}
+
 	return s.Send(prompt)
 }
 
@@ -186,7 +284,13 @@ func (a *App) lookupSession(id string) (*session.Session, bool) {
 
 func (a *App) pumpEvents(s *session.Session, p *process.Process) {
 	topic := "session:" + s.ID
+	fmt.Fprintf(os.Stderr, "[DBG] pumpEvents start: sid=%s pid=%d\n", s.ID, p.PidForTest())
+	n := 0
 	for line := range p.Events() {
+		n++
+		if n <= 3 || n%10 == 0 {
+			fmt.Fprintf(os.Stderr, "[DBG] pumpEvents: sid=%s n=%d line=%q\n", s.ID, n, string(line))
+		}
 		// 广播原始行给前端，同时也发布到内部 bus
 		a.bus.Publish(topic, line)
 		if a.ctx != nil {
@@ -209,6 +313,7 @@ func (a *App) pumpEvents(s *session.Session, p *process.Process) {
 		}
 	}
 	// 子进程退出：清理状态
+	fmt.Fprintf(os.Stderr, "[DBG] pumpEvents done: sid=%s n=%d\n", s.ID, n)
 	s.SetIdle()
 	if a.ctx != nil {
 		wailsruntime.EventsEmit(a.ctx, topic, `{"type":"done"}`)
@@ -278,7 +383,7 @@ func (a *App) switchToApp(s *session.Session, prompt string) error {
 	workdir := s.WorkDir
 	a.appMu.RUnlock()
 
-	proc, err := process.Start(workdir, s.ID, bin)
+	proc, err := process.Start(workdir, s.ID, bin, process.ModeResume)
 	if err != nil {
 		return &appError{code: "E_START_STREAM", msg: "start stream-json: " + err.Error()}
 	}

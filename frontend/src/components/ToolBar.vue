@@ -41,7 +41,7 @@ const props = defineProps<{
   path: string
   sessionId: string
   msgCount: number
-  state: 'idle' | 'running' | 'awaiting_permission' | 'done'
+  state: 'idle' | 'running' | 'awaiting_permission' | 'done' | 'ended'
   // 'app' = Ease UI 持 stdin，可写；'terminal' = 外部 claude -r 持 stdin，App 只读
   owner: 'app' | 'terminal'
 }>()
@@ -69,6 +69,7 @@ const projectName = computed(() => {
 .status.running { background: var(--status-success); }
 .status.awaiting_permission { background: var(--status-warn); }
 .status.done { background: var(--text-tertiary); }
+.status.ended { background: var(--text-tertiary); opacity: 0.5; }
 .title {
   font-size: 12px; color: var(--text-primary); font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

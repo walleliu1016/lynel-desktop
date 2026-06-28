@@ -97,7 +97,12 @@ watch(toolBlocks, () => { nextTick(() => scrollToBottom()) })
 
 async function onSend(text: string) {
   if (!sessions.activeId) return
-  await sessions.send(sessions.activeId, text)
+  try {
+    await sessions.send(sessions.activeId, text)
+  } catch (e: any) {
+    alert('发送失败：' + (e?.message ?? e))
+    return
+  }
   await nextTick()
   scrollToBottom()
 }

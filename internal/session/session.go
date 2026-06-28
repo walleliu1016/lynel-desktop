@@ -4,6 +4,8 @@ package session
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"strings"
 	"sync"
 )
 
@@ -200,6 +202,13 @@ func (s *Session) Send(prompt string) error {
 			s.version++
 		}
 		s.mu.Unlock()
+		// Process write failed (likely dead/killed) — clear stale proc so the
+		// next SendMessage triggers a fresh AdoptSession instead of reusing
+		// the broken reference. Frontend uses session.Send errors to alert
+		// the user, but the next attempt needs a clean slate.
+		if errors.Is(err, os.ErrClosed) || strings.Contains(err.Error(), "file already closed") || strings.Contains(err.Error(), "broken pipe") {
+			s.Close()
+		}
 		return err
 	}
 	return nil

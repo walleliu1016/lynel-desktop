@@ -180,6 +180,67 @@ type rawLine struct {
 	Message json.RawMessage `json:"message"`
 }
 
+// IsSessionEnded reports whether the given jsonl file represents a session
+// that has already been terminated by the user (via /exit, /quit, or a normal
+// shutdown). Returns (false, nil) for empty/missing files. The detection
+// looks at the last few lines for explicit end markers Claude CLI writes
+// after a user-driven exit:
+//
+//	{"type":"user","message":{"role":"user","content":"<local-command-caveat>..."}}
+//	{"type":"user","message":{"role":"user","content":"<command-name>/exit</command-name>..."}}
+//	{"type":"user","message":{"role":"user","content":"<local-command-stdout>Bye!</local-command-stdout>"}}
+//
+// Why: when Ease UI tries to AdoptSession on an ended session, claude
+// stream-json process immediately exits (DEAD within seconds) and the user
+// message is silently dropped. Detect this before spawning the process and
+// surface a clear error to the frontend instead of a silent failure.
+//
+// Caveats:
+//   - "ended" only covers user-driven /exit or /quit. A process crash or
+//     SIGKILL is detected differently (subprocess exits, hook fires
+//     SessionEnd, frontend sees state=done) and is NOT this function's job.
+//   - We don't try to handle every possible farewell string; checking for
+//     the `/exit` / `/quit` <command-name> tag is the canonical signal
+//     Claude CLI itself writes.
+func IsSessionEnded(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil // fresh session without a jsonl yet
+		}
+		return false, err
+	}
+	defer f.Close()
+
+	// Buffer the last 4KB — enough to cover a few end-marker lines without
+	// loading multi-MB session logs into memory.
+	const tail = 4096
+	st, err := f.Stat()
+	if err != nil {
+		return false, err
+	}
+	size := st.Size()
+	start := int64(0)
+	if size > tail {
+		start = size - tail
+	}
+	if _, err := f.Seek(start, 0); err != nil {
+		return false, err
+	}
+	buf := make([]byte, size-start)
+	if _, err := f.Read(buf); err != nil {
+		return false, err
+	}
+	content := string(buf)
+	// End markers: <command-name>/exit</command-name> or
+	// <command-name>/quit</command-name>. Scan for either occurrence.
+	// We intentionally don't match <local-command-stdout>Bye!</...> alone
+	// because the <command-name> tag is the canonical trigger Claude CLI
+	// writes, and it's also the marker other tools (happy-cli) match on.
+	return strings.Contains(content, "<command-name>/exit</command-name>") ||
+		strings.Contains(content, "<command-name>/quit</command-name>"), nil
+}
+
 func ParseFile(path string) ([]Message, error) {
 	return ParseFileRange(path, 0, 0)
 }

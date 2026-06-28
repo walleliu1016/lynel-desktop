@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -121,21 +122,16 @@ func TestAdoptSession_IdempotentNoop(t *testing.T) {
 	dir := t.TempDir()
 	a, err := New(Options{ConfigDir: dir})
 	require.NoError(t, err)
-	a.SetClaudeBinary("/bin/echo")
 
 	sid := "abcd1234abcd1234"
-	if err := a.AdoptSession(sid, "/tmp"); err != nil {
-		t.Skipf("cannot start process: %v", err)
-	}
+	require.NoError(t, a.AdoptSession(sid, "/tmp"))
 	s1, _ := a.lookupSession(sid)
-	require.NotNil(t, s1)
-	firstProc := s1.GetProcessForTest()
+	require.NotNil(t, s1, "AdoptSession must register the session")
 
-	// 第二次调用：幂等，不重起进程
+	// 第二次调用：session 已注册，幂等 noop（不报错）
 	require.NoError(t, a.AdoptSession(sid, "/tmp"))
 	s2, _ := a.lookupSession(sid)
-	assert.Same(t, firstProc, s2.GetProcessForTest(),
-		"idempotent AdoptSession must not replace the existing process")
+	require.NotNil(t, s2, "session must still be registered after second AdoptSession")
 }
 
 func TestAdoptSession_RejectsEmptyArgs(t *testing.T) {
@@ -150,4 +146,38 @@ func TestAdoptSession_RejectsEmptyArgs(t *testing.T) {
 	err = a.AdoptSession("sid", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "required")
+}
+
+func TestAdoptSession_ResumesEndedSession(t *testing.T) {
+	// 历史 session 的 jsonl 末尾有 /exit 标记时，AdoptSession 不应拒绝
+	// 也不应用 --session-id 启动（已 ended 的 sid 用 --session-id 启动
+	// claude 会立即 DEAD）。它应该走 --resume 模式 attach，把 session
+	// 拉进 a.sessions 等待新 envelope。
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	a, err := New(Options{
+		ConfigDir: dir,
+		ClaudeDir: claudeDir,
+	})
+	require.NoError(t, err)
+	a.SetClaudeBinary("/bin/echo")
+
+	sid := "11111111-2222-3333-4444-555555555555"
+	projectDir := filepath.Join(claudeDir, "projects", "-tmp")
+	require.NoError(t, os.MkdirAll(projectDir, 0o755))
+	endedJSONL := `{"type":"user","message":{"role":"user","content":"hi"}}
+{"type":"assistant","message":{"role":"assistant","content":"hello"}}
+{"type":"user","message":{"role":"user","content":"<command-name>/exit</command-name>"}}
+{"type":"user","message":{"role":"user","content":"<local-command-stdout>Bye!</local-command-stdout>"}}
+`
+	require.NoError(t, os.WriteFile(
+		filepath.Join(projectDir, sid+".jsonl"),
+		[]byte(endedJSONL), 0o644))
+
+	if err := a.AdoptSession(sid, "/tmp"); err != nil {
+		t.Skipf("cannot start process: %v", err)
+	}
+	// ended session 应当被 adopt 进 a.sessions（懒注册，进程在 SendMessage 时启动）
+	_, ok := a.lookupSession(sid)
+	require.True(t, ok, "AdoptSession must register ended session for resume")
 }

@@ -102,6 +102,12 @@ const state = computed(() => sessions.state[props.meta.id] || 'idle')
 .status-dot.running { background: var(--status-success); }
 .status-dot.awaiting_permission { background: var(--status-warn); }
 .status-dot.done { background: var(--text-tertiary); }
+.status-dot.ended {
+  background: var(--text-tertiary);
+  /* 中空圆点 + 灰边框，区别于 done（用户主动 /exit，比 done 更"永久"） */
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--text-tertiary);
+}
 .body { flex: 1; min-width: 0; }
 .row1 {
   display: flex; align-items: center; justify-content: space-between;
