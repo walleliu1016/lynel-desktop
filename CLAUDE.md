@@ -223,6 +223,18 @@ tccutil reset Accessibility
 3. **v1 不支持代理** —— CLI 子进程直连。
 4. **v1 单 session 不并发** —— streaming 时 composer 锁住。
 5. **wails dev hot-reload 受单例锁拖累** —— 见上面"单例锁 + wails dev 的 trade-off"小节。
+6. **v1 历史 session 切换延迟** —— 用户切到一条 Ease UI 启动前已存在的 session，第一次发消息时走 `AdoptSession` 懒启进程 + 写 envelope，可感知的延迟比新建 session 长一点（~300ms）。
+
+---
+
+## v1 已修复的坑（变更前要查 git log / commit message）
+
+- **stream-json 写入必须用 envelope**：`session.Session.Send` / `SwitchOwner` 都走 `envelopeUserMessage` 写 `{"type":"user","message":{"role":"user","content":prompt}}\n`。Claude CLI stream-json 模式只接受 envelope 格式，**裸文本会被解析器直接丢弃**——这是 v1 "Send 写完没反应" 的根因，commit `e097c64` 修了。
+- **Session ID 由 Claude 生成**：`CreateSession` 用 `process.ModeAuto` 启进程（**不带** `--session-id` / `--resume`），阻塞等 SessionStart hook 返回真实 UUID（15s 超时）。Ease UI 不再 `newID()`——之前自己生成的 16-char hex 会被 Claude 拒绝 `Invalid session ID. Must be a valid UUID`。commit `dae650e` 改的。
+- **SessionStart 走 command 脚本**：Claude 不支持 HTTP 类型的 SessionStart hook，必须用 `command` + 脚本（macOS/Linux 写 `~/.ease-app/session-start.sh`、Windows 写 `session-start.ps1`）。其他 12 类 hook（PreToolUse / PostToolUse / SessionEnd 等）走 HTTP POST。commit `06c1179` 改的。
+- **HookEvent 字段名**：Claude command hook 的 JSON 字段是 `hook_event_name`（**不是** HTTP hook 用的 `type`）。`hookserver.HookEvent.HookEventName` 字段 + `EventType()` 方法兼容两种格式，commit `a260653` 改的。
+- **SessionStart 误标记 Ease UI 自己的 session 为外部终端**：`handleHookEvent` 收到 SessionStart 时检查 `owner.value[sid] !== 'app'` 才标记为 terminal；Ease UI `CreateSession` 新建的 session 不会被外部 hook 覆盖 owner。commit `7859f32` 改的。
+- **`--session-id` vs `--resume`**：jsonl 已存在的 sid 必须用 `--resume`（`ModeResume`）；只有全新 sid 才用 `--session-id`（`ModeNew`）。已 ended 的 jsonl 用 `--session-id` 会让 claude 立即 DEAD，导致历史 session 发送被静默吞掉。commit `948898d`（AdoptSession）落地。
 
 详细见 `README.md` 调试技巧 + 已知问题。
 
@@ -240,7 +252,8 @@ tccutil reset Accessibility
 - **Pinia ref<Record<K, V>> 的更新要用 spread 整体替换** —— `state.value = { ...state.value, [id]: v }`，不要 `state.value[id] = v`，否则 Vue 不会触发响应。
 - **前端 `formatContent` 必须和 Go 端 `ContentBlock.ContentText()` 保持同步** —— 改一边要同时改另一边。两者功能等价，前端做展示格式化，Go 做 binding 字段（如果将来要加 `Text` 字段的话）。
 - **Owner 切换（`SwitchOwner`）走 `session.SwitchLock()`，不抢 `Send/RespondPermission` 用的 `mu`** —— 避免切换时阻塞 prompt 写入；切换期间其他 Send 会被 short-block，500ms 内完成。
-- **stream-json 写入必须用 envelope**：`Send` 写 `{"type":"user","message":{"role":"user","content":prompt}}\n`（`session.envelopeUserMessage`）。Claude CLI stream-json 模式只接受 envelope 格式，**裸文本会被解析器直接丢弃**——这是 v1 "Send 写完没反应" 的根因。`SwitchOwner` 起新进程 + `session.Send` 都走同一份 envelope 生成逻辑。
+- **stream-json 写入必须用 envelope**：`Send` / `SwitchOwner` 都走 `envelopeUserMessage` 写 `{"type":"user","message":{"role":"user","content":prompt}}\n`。Claude CLI stream-json 模式只接受 envelope 格式，**裸文本会被解析器直接丢弃**。改 Send 路径要保持 envelope 不变（commit `e097c64` 修过一次）。
+- **SessionStart hook 不能被外部 SessionStart 覆盖 Ease UI 的 owner**：前端 `handleHookEvent` 收到 `SessionStart` 时只标记 `owner=terminal`，前提是 `owner.value[sid] !== 'app'`。Ease UI `CreateSession` 新建的 session 由 Go 端走真实 UUID，`owner` 在 store 里默认是 `'app'`，hook 来了不会被覆盖成 terminal。如果改了 `handleHookEvent` 的 SessionStart 分支，必须保持这个保护，否则 Ease UI 自己创建的 session 会显示成「外部终端中」+ input 切换成 SwitchOwner 模式。
 
 ---
 
