@@ -16,6 +16,7 @@ import (
 	"github.com/akke/ease-ui/internal/jsonl"
 	"github.com/akke/ease-ui/internal/session"
 	"github.com/akke/ease-ui/internal/settings"
+	"github.com/akke/ease-ui/internal/terminal"
 )
 
 type Options struct {
@@ -41,6 +42,9 @@ type App struct {
 	watcher      *fsWatcher
 	debounceMu   sync.Mutex
 	debounceT    *time.Timer
+	// termLauncher 跨 OpenInTerminal/SwitchOwner 调用持久化，保留最近
+	// 一次 Launch 的 pidfile 路径供切回时使用。
+	termLauncher *terminal.Launcher
 }
 
 // fsWatcher wraps the jsonl fsnotify watcher; debouncing is handled
@@ -86,6 +90,7 @@ func New(opts Options) (*App, error) {
 		bus:      events.NewBus(),
 		sessions: map[string]*session.Session{},
 		inst:     inst,
+		termLauncher: terminal.New(),
 	}
 
 	// 启动 jsonl 监听，事件去抖后通过 Wails 推给前端
