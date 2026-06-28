@@ -3,12 +3,13 @@
     <TitleBar @minimize="onMinimize" @maximize="onMaximize" @close="onClose" />
     <div class="layout">
       <nav class="tabs">
+        <button class="back" @click="goBack">← 返回主页</button>
+        <div class="sep" />
         <button v-for="t in tabs" :key="t" class="tab"
                 :class="{ active: active === t }" @click="active = t">
           {{ tabLabel(t) }}
         </button>
         <div class="spacer" />
-        <button class="back" @click="goBack">← 返回主页</button>
       </nav>
       <main class="content">
         <HooksTab v-if="active === 'hooks'" />
@@ -29,8 +30,8 @@ import CloudTab from '../components/settings/CloudTab.vue'
 import { WindowMinimise, WindowToggleMaximise, WindowQuit } from '../composables/useWails'
 
 const router = useRouter()
-type Tab = 'hooks' | 'general' | 'cloud'
-const tabs: Tab[] = ['hooks', 'general', 'cloud']
+type Tab = 'general' | 'hooks' | 'cloud'
+const tabs: Tab[] = ['general', 'hooks', 'cloud']
 const active = ref<Tab>('general')
 
 function tabLabel(t: Tab) {
@@ -57,7 +58,8 @@ function onClose()    { WindowQuit() }
 .tab:hover { background: var(--bg-input); color: var(--text-primary); }
 .tab.active { background: rgba(124,58,237,0.15); color: var(--accent-light); }
 .spacer { flex: 1; }
-.back { padding: 6px 10px; color: var(--text-tertiary); font-size: 11px; text-align: left; border-radius: var(--radius-md); }
+.back { padding: 8px 12px; color: var(--text-secondary); font-size: 12px; text-align: left; border-radius: var(--radius-md); }
 .back:hover { color: var(--text-primary); background: var(--bg-input); }
+.sep { border-top: 1px solid var(--border); margin: 4px 8px; }
 .content { flex: 1; overflow-y: auto; }
 </style>
