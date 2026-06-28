@@ -16,7 +16,9 @@
             :session-id="sessions.active.id"
             :msg-count="sessions.active.msg_count"
             :state="state"
+            :owner="owner"
             @open-terminal="openTerminal"
+            @takeback="takeback"
           />
           <div class="messages" ref="msgContainer" @scroll="onScroll">
             <MessageBubble v-for="m in messages" :key="m.id" :role="m.role" :content="m.content" :ts="m.ts" />
@@ -27,8 +29,8 @@
             </div>
           </div>
           <Composer
-            :disabled="state === 'awaiting_permission' || !!sessions.terminalMode[sessions.activeId || '']"
-            :placeholder="sessions.terminalMode[sessions.activeId || ''] ? '会话已在外部终端中打开' : undefined"
+            :disabled="state === 'awaiting_permission'"
+            :terminal-mode="isTerminalMode"
             @send="onSend"
           />
         </template>
@@ -58,7 +60,7 @@ import PermissionPanel from '../components/PermissionPanel.vue'
 import Composer from '../components/Composer.vue'
 import NewSessionDialog from '../components/NewSessionDialog.vue'
 import { useSessionsStore } from '../stores/sessions'
-import { WindowMinimise, WindowToggleMaximise, WindowQuit, OpenInTerminal, RespondPermission } from '../composables/useWails'
+import { WindowMinimise, WindowToggleMaximise, WindowQuit, OpenInTerminal, RespondPermission, SwitchOwner } from '../composables/useWails'
 import { useEventStream } from '../composables/useEventStream'
 
 const router = useRouter()
@@ -83,6 +85,11 @@ const state = computed(() => sessions.activeId ? (sessions.state[sessions.active
 const pending = computed(() => sessions.activeId ? (sessions.pending[sessions.activeId] || null) : null)
 const toolBlocks = computed(() => sessions.activeId ? (sessions.toolBlocks[sessions.activeId] || []) : [])
 const displayName = computed(() => sessions.active?.first_prompt || '新会话')
+// 'app' 默认；'terminal' 表示外部 claude -r 持 stdin（ToolBar 渲染"切回"按钮）
+const owner = computed<'app' | 'terminal'>(() =>
+  sessions.activeId ? (sessions.owner[sessions.activeId] ?? 'app') : 'app'
+)
+const isTerminalMode = computed(() => owner.value === 'terminal')
 
 // 切换会话或新消息到达时，滚动到底部
 watch(messages, () => { nextTick(() => scrollToBottom()) })
@@ -122,6 +129,16 @@ async function openTerminal() {
     await OpenInTerminal(sessions.active.workdir, sessions.active.id, '')
   } catch (e: any) {
     alert('打开终端失败：' + (e?.message ?? e))
+  }
+}
+
+// 主动切回 App 控制（不发送新 prompt）：kill 外部 claude + 启 stream-json 进程
+async function takeback() {
+  if (!sessions.activeId) return
+  try {
+    await SwitchOwner(sessions.activeId, 'app', '')
+  } catch (e: any) {
+    alert('切回 App 控制失败：' + (e?.message ?? e))
   }
 }
 

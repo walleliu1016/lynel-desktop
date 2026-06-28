@@ -122,16 +122,6 @@ export const useSessionsStore = defineStore('sessions', () => {
   const owner = ref<Record<string, 'app' | 'terminal'>>({})
   const mode  = ref<Record<string, 'stream' | 'resume'>>({})
 
-  // 兼容层：v1 旧组件 (HomeView) 引用 terminalMode，#3 UI 改造后会彻底
-  // 替换为 owner 检查。computed 缓存：owner 变化才重算。
-  const terminalMode = computed<Record<string, boolean>>(() => {
-    const out: Record<string, boolean> = {}
-    for (const k of Object.keys(owner.value)) {
-      out[k] = owner.value[k] === 'terminal'
-    }
-    return out
-  })
-
   const active = computed(() => list.value.find((s) => s.id === activeId.value) ?? null)
 
   async function refresh() {
@@ -282,5 +272,5 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   return { list, activeId, active, messages, streaming, state, pending, toolBlocks,
-    hasMore, owner, mode, terminalMode, refresh, create, select, send, handleEvent, handleHookEvent, loadMore }
+    hasMore, owner, mode, refresh, create, select, send, handleEvent, handleHookEvent, loadMore }
 })

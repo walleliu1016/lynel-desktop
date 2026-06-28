@@ -4,24 +4,41 @@
       ref="inputEl"
       v-model="text"
       class="input"
+      :class="{ 'terminal-mode': terminalMode }"
       :rows="1"
-      :placeholder="placeholder"
+      :placeholder="resolvedPlaceholder"
       :disabled="disabled"
       @input="autoResize"
       @keydown.enter.exact.prevent="onSend"
     />
-    <button class="send" :disabled="!text.trim() || disabled" @click="onSend">发送</button>
+    <button
+      class="send"
+      :class="{ 'terminal-mode': terminalMode }"
+      :disabled="!text.trim() || disabled"
+      @click="onSend"
+    >
+      {{ terminalMode ? '切回并发送' : '发送' }}
+    </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
-const props = defineProps<{ disabled?: boolean; placeholder?: string }>()
+import { ref, nextTick, computed } from 'vue'
+const props = defineProps<{
+  disabled?: boolean
+  placeholder?: string
+  // 兼容层：v1 旧组件 (HomeView) 引用 terminalMode，#3 UI 改造后会彻底
+  // 替换为 owner 检查。
+  terminalMode?: boolean
+}>()
 const emit = defineEmits<{ (e: 'send', text: string): void }>()
 
 const text = ref('')
 const inputEl = ref<HTMLTextAreaElement | null>(null)
-const placeholder = props.placeholder ?? '输入消息…'
+const resolvedPlaceholder = computed(() =>
+  props.placeholder ??
+  (props.terminalMode ? '外部终端中 · 输入会切回 App 控制' : '输入消息…')
+)
 
 function autoResize() {
   nextTick(() => {
@@ -54,14 +71,25 @@ function onSend() {
   color: var(--text-primary); font-size: 12px;
   font-family: inherit; line-height: 1.5;
   min-height: 28px; max-height: 120px;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 .input:focus { outline: none; border-color: var(--accent); }
+/* 外部终端中：边框 + placeholder 染成 warn 色，提示用户输入会切回 App */
+.input.terminal-mode {
+  border-color: var(--status-warn);
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.2);
+}
+.input.terminal-mode::placeholder { color: var(--status-warn); }
 .send {
   background: var(--accent); color: white;
   padding: 5px 14px; border-radius: var(--radius-md);
   font-size: 11px; font-weight: 500;
   flex-shrink: 0; height: 26px;
+  transition: background 0.15s;
 }
 .send:hover:not(:disabled) { background: var(--accent-deep); }
 .send:disabled { opacity: 0.4; cursor: not-allowed; }
+/* 切回按钮：warn 色 + 黑字，跟普通发送按钮视觉区分 */
+.send.terminal-mode { background: var(--status-warn); color: #000; }
+.send.terminal-mode:hover:not(:disabled) { background: #F59E0B; }
 </style>
