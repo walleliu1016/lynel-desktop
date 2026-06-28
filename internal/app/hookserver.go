@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -94,6 +95,55 @@ func (a *App) HookServerURL() string {
 	return fmt.Sprintf("http://localhost:%d/hook", a.GetHookServerPort())
 }
 
+// sessionStartScriptUnix 生成 Unix (macOS/Linux) SessionStart 脚本。
+func sessionStartScriptUnix(hookURL string) string {
+	return fmt.Sprintf(`#!/bin/bash
+# Ease UI SessionStart hook — 转发到 hook server
+INPUT=$(cat)
+curl -s -X POST %s -H "Content-Type: application/json" -d "$INPUT" > /dev/null 2>&1
+`, hookURL)
+}
+
+// sessionStartScriptWin 生成 Windows SessionStart PowerShell 脚本。
+func sessionStartScriptWin(hookURL string) string {
+	return fmt.Sprintf(`<#
+.SYNOPSIS Ease UI SessionStart hook — 转发到 hook server
+#>
+$headers = @{ "Content-Type" = "application/json" }
+try {
+	if ([Console]::IsInputRedirected) {
+		$jsonInput = [Console]::In.ReadToEnd()
+	} else {
+		$jsonInput = '{"hook_event_name":"SessionStart"}'
+	}
+	Invoke-RestMethod -Uri "%s" -Method POST -Headers $headers -Body $jsonInput -ErrorAction SilentlyContinue | Out-Null
+} catch { }
+`, hookURL)
+}
+
+// ensureSessionStartScript 创建平台对应的 SessionStart 脚本并设为可执行。
+// 返回 hook command 字符串（settings.json 中使用的值）。
+func ensureSessionStartScript(hookURL string) (command string, err error) {
+	easeDir := filepath.Join(userHome(), ".ease-app")
+	if err := os.MkdirAll(easeDir, 0o755); err != nil {
+		return "", err
+	}
+	if runtime.GOOS == "windows" {
+		scriptPath := filepath.Join(easeDir, "session-start.ps1")
+		if err := os.WriteFile(scriptPath, []byte(sessionStartScriptWin(hookURL)), 0o644); err != nil {
+			return "", err
+		}
+		// Windows: 用 powershell 执行脚本
+		return "powershell -NoProfile -ExecutionPolicy Bypass -Command . $HOME\\.ease-app\\session-start.ps1", nil
+	}
+	// Unix (macOS/Linux)
+	scriptPath := filepath.Join(easeDir, "session-start.sh")
+	if err := os.WriteFile(scriptPath, []byte(sessionStartScriptUnix(hookURL)), 0o755); err != nil {
+		return "", err
+	}
+	return "~/.ease-app/session-start.sh", nil
+}
+
 // CheckAndFixHooks 检查并修复 settings.json 的 hooks 配置。
 func (a *App) CheckAndFixHooks() (needsFix bool, fixed bool, err error) {
 	port := a.GetHookServerPort()
@@ -129,22 +179,26 @@ func (a *App) CheckAndFixHooks() (needsFix bool, fixed bool, err error) {
 
 	hookURL := a.HookServerURL()
 
-	// Claude 新版 hook 格式：每个 hook 类型是一个数组，
-	// 每个元素有 "hooks" 数组，里面是 {"type":"http","url":"...","timeout":N}
+	// SessionStart 专用脚本（Claude 不支持 HTTP 类型的 SessionStart hook）
+	scriptPath, err := ensureSessionStartScript(hookURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ease-ui: session start script failed: %v\n", err)
+	}
+
+	// HTTP 类型的 hook（除 SessionStart 外）
 	hookTypes := map[string]int{
-		"Notification":     120,
+		"Notification":      120,
 		"PermissionRequest": 300,
-		"PreToolUse":        5,
-		"PostToolUse":       5,
+		"PreToolUse":         5,
+		"PostToolUse":        5,
 		"PostToolUseFailure": 5,
-		"PostCompact":       5,
-		"PreCompact":        5,
-		"SessionEnd":        5,
-		"SessionStart":      5,
-		"Stop":              5,
-		"SubagentStart":     5,
-		"SubagentStop":      5,
-		"UserPromptSubmit":  5,
+		"PostCompact":        5,
+		"PreCompact":         5,
+		"SessionEnd":         5,
+		"Stop":               5,
+		"SubagentStart":      5,
+		"SubagentStop":       5,
+		"UserPromptSubmit":   5,
 	}
 
 	changed := false
@@ -154,6 +208,15 @@ func (a *App) CheckAndFixHooks() (needsFix bool, fixed bool, err error) {
 			hookURL, timeout,
 		))
 		hooksObj[name] = expected
+		changed = true
+	}
+
+	// SessionStart 用 command 类型 + 脚本（平台自适应）
+	if scriptPath != "" {
+		hooksObj["SessionStart"] = json.RawMessage(fmt.Sprintf(
+			`[{"hooks":[{"type":"command","command":"%s","timeout":5}]}]`,
+			scriptPath,
+		))
 		changed = true
 	}
 

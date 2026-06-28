@@ -12,6 +12,15 @@
       </div>
       <button class="add" @click="$emit('create')">+ 新建</button>
     </div>
+    <div class="search-bar">
+      <input
+        v-model="search"
+        class="search-input"
+        placeholder="搜索会话…"
+        @keydown.escape="search = ''"
+      />
+      <button v-if="search" class="search-clear" @click="search = ''">×</button>
+    </div>
     <div class="items">
       <SessionItem
         v-for="s in filteredList"
@@ -22,7 +31,7 @@
         @select="$emit('select', s.id)"
       />
       <div v-if="!filteredList.length" class="empty">
-        {{ filter === 'running' ? '暂无运行中的会话' : filter === 'ended' ? '暂无已结束的会话' : '暂无会话' }}
+        {{ search ? '无匹配结果' : filter === 'running' ? '暂无运行中的会话' : filter === 'ended' ? '暂无已结束的会话' : '暂无会话' }}
       </div>
     </div>
   </div>
@@ -44,6 +53,7 @@ const sessions = useSessionsStore()
 
 type TabKey = 'running' | 'idle' | 'ended'
 const filter = ref<TabKey>('idle')
+const search = ref('')
 const tabs: { key: TabKey; label: string }[] = [
   { key: 'running', label: '运行中' },
   { key: 'idle', label: '空闲' },
@@ -51,13 +61,23 @@ const tabs: { key: TabKey; label: string }[] = [
 ]
 
 const filteredList = computed(() => {
+  const q = search.value.trim().toLowerCase()
   return props.list.filter((s) => {
     const st = sessions.state[s.id] || 'idle'
+    // 状态过滤
+    let stateMatch = false
     switch (filter.value) {
-      case 'running': return st === 'running' || st === 'awaiting_permission'
-      case 'ended': return st === 'done' || st === 'ended'
-      default: return st === 'idle'
+      case 'running': stateMatch = st === 'running' || st === 'awaiting_permission'; break
+      case 'ended': stateMatch = st === 'done' || st === 'ended'; break
+      default: stateMatch = st === 'idle'
     }
+    if (!stateMatch) return false
+    // 搜索过滤
+    if (!q) return true
+    const pn = projectName(s).toLowerCase()
+    const title = (s.first_prompt || s.ai_title || '').toLowerCase()
+    const sid = s.id.toLowerCase()
+    return pn.includes(q) || title.includes(q) || sid.includes(q)
   })
 })
 
@@ -98,6 +118,24 @@ function projectName(s: SessionMeta): string {
   font-size: 12px; font-weight: 500; flex-shrink: 0;
 }
 .add:hover { background: var(--accent-deep); }
+.search-bar {
+  position: relative; margin: 6px 6px 0;
+  flex-shrink: 0;
+}
+.search-input {
+  width: 100%; background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 5px 28px 5px 10px;
+  color: var(--text-primary); font-size: 12px; font-family: inherit;
+  outline: none; transition: border-color 0.15s;
+}
+.search-input:focus { border-color: var(--accent); }
+.search-input::placeholder { color: var(--text-tertiary); }
+.search-clear {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+  color: var(--text-tertiary); font-size: 12px; border-radius: 50%;
+}
+.search-clear:hover { background: var(--border); color: var(--text-primary); }
 .items { flex: 1; overflow-y: auto; padding: 6px; min-height: 0; }
 .empty { color: var(--text-tertiary); font-size: 12px; text-align: center; padding: 20px; }
 </style>
