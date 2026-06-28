@@ -23,18 +23,34 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, computed } from 'vue'
+import { ref, nextTick, computed, watch } from 'vue'
+import { useSessionsStore } from '../stores/sessions'
+
 const props = defineProps<{
   disabled?: boolean
   placeholder?: string
-  // 兼容层：v1 旧组件 (HomeView) 引用 terminalMode，#3 UI 改造后会彻底
-  // 替换为 owner 检查。
   terminalMode?: boolean
 }>()
 const emit = defineEmits<{ (e: 'send', text: string): void }>()
 
-const text = ref('')
+const sessions = useSessionsStore()
 const inputEl = ref<HTMLTextAreaElement | null>(null)
+
+// 每个 session 独立的输入草稿
+const text = ref('')
+
+// 切换 session 时：保存旧草稿 → 恢复新草稿
+watch(() => sessions.activeId, (newId, oldId) => {
+  if (oldId) sessions.setDraft(oldId, text.value)
+  text.value = newId ? (sessions.drafts[newId] || '') : ''
+  nextTick(() => autoResize())
+})
+
+// 输入变化 → 实时保存草稿
+watch(text, (v) => {
+  if (sessions.activeId) sessions.setDraft(sessions.activeId, v)
+})
+
 const resolvedPlaceholder = computed(() =>
   props.placeholder ??
   (props.terminalMode ? '外部终端中 · 输入会切回 App 控制' : '输入消息…')
@@ -54,7 +70,7 @@ function onSend() {
   if (!t || props.disabled) return
   emit('send', t)
   text.value = ''
-  autoResize()
+  nextTick(() => autoResize())
 }
 </script>
 
@@ -68,9 +84,9 @@ function onSend() {
   flex: 1; resize: none; overflow: hidden;
   background: var(--bg-input); border: 1px solid var(--border);
   border-radius: var(--radius-md); padding: 5px 10px;
-  color: var(--text-primary); font-size: 12px;
+  color: var(--text-primary); font-size: 14px;
   font-family: inherit; line-height: 1.5;
-  min-height: 28px; max-height: 120px;
+  min-height: 32px; max-height: 120px;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .input:focus { outline: none; border-color: var(--accent); }
@@ -83,8 +99,8 @@ function onSend() {
 .send {
   background: var(--accent); color: white;
   padding: 5px 14px; border-radius: var(--radius-md);
-  font-size: 11px; font-weight: 500;
-  flex-shrink: 0; height: 26px;
+  font-size: 12px; font-weight: 500;
+  flex-shrink: 0; height: 30px;
   transition: background 0.15s;
 }
 .send:hover:not(:disabled) { background: var(--accent-deep); }

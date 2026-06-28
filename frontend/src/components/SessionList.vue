@@ -87,7 +87,7 @@ function projectName(s: SessionMeta): string {
 .tabs { display: flex; gap: 2px; }
 .tab {
   padding: 4px 10px; border-radius: var(--radius-sm);
-  font-size: 11px; color: var(--text-tertiary);
+  font-size: 12px; color: var(--text-tertiary);
   border-bottom: 2px solid transparent;
 }
 .tab:hover { color: var(--text-secondary); }
@@ -95,9 +95,9 @@ function projectName(s: SessionMeta): string {
 .add {
   padding: 3px 10px; border-radius: var(--radius-md);
   background: var(--accent); color: white;
-  font-size: 11px; font-weight: 500; flex-shrink: 0;
+  font-size: 12px; font-weight: 500; flex-shrink: 0;
 }
 .add:hover { background: var(--accent-deep); }
 .items { flex: 1; overflow-y: auto; padding: 6px; min-height: 0; }
-.empty { color: var(--text-tertiary); font-size: 11px; text-align: center; padding: 20px; }
+.empty { color: var(--text-tertiary); font-size: 12px; text-align: center; padding: 20px; }
 </style>

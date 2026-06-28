@@ -125,6 +125,8 @@ export const useSessionsStore = defineStore('sessions', () => {
   // 或 AdoptSession 后置 true）。send() 时按需 AdoptSession 拉起
   // stream-json 进程接管历史 session。
   const adopted = ref<Record<string, boolean>>({})
+  // 每个 session 独立的输入草稿，切换 session 时保留未发送的内容
+  const drafts = ref<Record<string, string>>({})
 
   const active = computed(() => list.value.find((s) => s.id === activeId.value) ?? null)
 
@@ -335,7 +337,11 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
+  function setDraft(sid: string, text: string) {
+    drafts.value = { ...drafts.value, [sid]: text }
+  }
+
   return { list, activeId, active, messages, streaming, state, pending, toolBlocks,
-    hasMore, owner, mode, adopted, refresh, create, select, send, reloadFromJsonl,
-    handleEvent, handleHookEvent, loadMore }
+    hasMore, owner, mode, adopted, drafts, setDraft, refresh, create, select, send,
+    reloadFromJsonl, handleEvent, handleHookEvent, loadMore }
 })

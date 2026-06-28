@@ -130,8 +130,12 @@ async function onCreate(workdir: string, prompt: string) {
 
 async function openTerminal() {
   if (!sessions.active) return
+  const sid = sessions.active.id
   try {
-    await OpenInTerminal(sessions.active.workdir, sessions.active.id, '')
+    await OpenInTerminal(sessions.active.workdir, sid, '')
+    // 乐观更新：Go 端 switchToTerminal 已将 owner 切为 terminal
+    sessions.owner = { ...sessions.owner, [sid]: 'terminal' }
+    sessions.mode  = { ...sessions.mode,  [sid]: 'resume' }
   } catch (e: any) {
     alert('打开终端失败：' + (e?.message ?? e))
   }
@@ -140,8 +144,11 @@ async function openTerminal() {
 // 主动切回 App 控制（不发送新 prompt）：kill 外部 claude + 启 stream-json 进程
 async function takeback() {
   if (!sessions.activeId) return
+  const sid = sessions.activeId
   try {
-    await SwitchOwner(sessions.activeId, 'app', '')
+    await SwitchOwner(sid, 'app', '')
+    sessions.owner = { ...sessions.owner, [sid]: 'app' }
+    sessions.mode  = { ...sessions.mode,  [sid]: 'stream' }
   } catch (e: any) {
     alert('切回 App 控制失败：' + (e?.message ?? e))
   }

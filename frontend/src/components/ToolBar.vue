@@ -62,7 +62,7 @@ const projectName = computed(() => {
 .toolbar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 12px; border-bottom: 1px solid var(--border);
-  background: var(--bg-panel); flex-shrink: 0; gap: 12px; height: 38px;
+  background: var(--bg-panel); flex-shrink: 0; gap: 12px; height: 40px;
 }
 .left { display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; }
 .status { width: 7px; height: 7px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
@@ -71,16 +71,16 @@ const projectName = computed(() => {
 .status.done { background: var(--text-tertiary); }
 .status.ended { background: var(--text-tertiary); opacity: 0.5; }
 .title {
-  font-size: 12px; color: var(--text-primary); font-weight: 500;
+  font-size: 13px; color: var(--text-primary); font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .sep { color: var(--border); flex-shrink: 0; }
-.meta { font-size: 11px; color: var(--text-tertiary); white-space: nowrap; }
+.meta { font-size: 12px; color: var(--text-tertiary); white-space: nowrap; }
 .mono { font-family: var(--font-mono); }
 .owner-badge {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 7px; border-radius: 999px;
-  font-size: 10px; font-weight: 500;
+  font-size: 11px; font-weight: 500;
   white-space: nowrap; flex-shrink: 0;
 }
 .owner-badge .dot { width: 5px; height: 5px; border-radius: 50%; }
@@ -99,7 +99,7 @@ const projectName = computed(() => {
   padding: 4px 12px;
   background: var(--accent); color: white;
   border: none; border-radius: var(--radius-md);
-  font-size: 11px; font-weight: 500; cursor: pointer;
+  font-size: 12px; font-weight: 500; cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s;
 }

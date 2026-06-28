@@ -114,12 +114,12 @@ const state = computed(() => sessions.state[props.meta.id] || 'idle')
   gap: 6px;
 }
 .project {
-  font-size: 11px; color: var(--accent-light); font-weight: 500;
+  font-size: 12px; color: var(--accent-light); font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.duration { font-size: 9px; color: var(--text-tertiary); flex-shrink: 0; }
+.duration { font-size: 10px; color: var(--text-tertiary); flex-shrink: 0; }
 .row2 {
-  font-size: 12px; color: var(--text-primary); margin-top: 1px;
+  font-size: 13px; color: var(--text-primary); margin-top: 1px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 </style>
