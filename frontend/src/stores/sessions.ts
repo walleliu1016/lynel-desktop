@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { SessionMeta, ChatMessage, SessionState } from '../types/session'
-import { ListSessions, CreateSession, SendMessage, GetSessionMessages, GetSessionStates } from '../composables/useWails'
+import { ListSessions, CreateSession, SendMessage, GetSessionMessages, GetSessionStates, SwitchOwner } from '../composables/useWails'
 
 export interface PendingPerm {
   tool: string
@@ -115,7 +115,22 @@ export const useSessionsStore = defineStore('sessions', () => {
   const toolBlocks = ref<Record<string, Array<{ name: string; args: unknown }>>>({})
   const historyOffset = ref<Record<string, number>>({})
   const hasMore = ref<Record<string, boolean>>({})
-  const terminalMode = ref<Record<string, boolean>>({})
+  // owner: 该 session 当前写权限归属。'app' = Ease UI 持 stdin，
+  // 'terminal' = 外部 claude -r 持 stdin（App 只读 jsonl）。
+  // mode:  对应 Go 端 claude 进程启动模式，'stream' = --input-format
+  // stream-json，'resume' = -r <sid>。
+  const owner = ref<Record<string, 'app' | 'terminal'>>({})
+  const mode  = ref<Record<string, 'stream' | 'resume'>>({})
+
+  // 兼容层：v1 旧组件 (HomeView) 引用 terminalMode，#3 UI 改造后会彻底
+  // 替换为 owner 检查。computed 缓存：owner 变化才重算。
+  const terminalMode = computed<Record<string, boolean>>(() => {
+    const out: Record<string, boolean> = {}
+    for (const k of Object.keys(owner.value)) {
+      out[k] = owner.value[k] === 'terminal'
+    }
+    return out
+  })
 
   const active = computed(() => list.value.find((s) => s.id === activeId.value) ?? null)
 
@@ -186,7 +201,16 @@ export const useSessionsStore = defineStore('sessions', () => {
     streaming.value = { ...streaming.value, [id]: true }
     state.value = { ...state.value, [id]: 'running' }
     try {
-      await SendMessage(id, prompt)
+      if (owner.value[id] === 'terminal') {
+        // 外部终端控制中：让 Go 端先 kill 外部 claude + 起新 stream-json
+        // 进程 + 写入 envelope(prompt)。返回后 owner/mode 已经是 app/stream。
+        await SwitchOwner(id, 'app', prompt)
+        owner.value = { ...owner.value, [id]: 'app' }
+        mode.value  = { ...mode.value,  [id]: 'stream' }
+      } else {
+        // App 模式：直写（Send 走 v1 裸文本兼容路径，Claude 接受）
+        await SendMessage(id, prompt)
+      }
     } finally {
       streaming.value = { ...streaming.value, [id]: false }
     }
@@ -238,13 +262,15 @@ export const useSessionsStore = defineStore('sessions', () => {
     switch (evt.type) {
       case 'SessionEnd':
         state.value = { ...state.value, [sid]: 'done' }
-        terminalMode.value = { ...terminalMode.value, [sid]: false }
+        // owner 仍标记为 terminal（外部 claude 退出，但下一次 send 仍会
+        // 走切回 App 流程）。mode 保持 resume 便于 UI 判断。
         break
       case 'PreToolUse':
       case 'PostToolUse':
       case 'UserPromptSubmit':
-        // 外部终端有活动，标记为终端模式
-        terminalMode.value = { ...terminalMode.value, [sid]: true }
+        // 外部终端有活动，标记 owner=terminal（写权限在外部）+ mode=resume
+        owner.value = { ...owner.value, [sid]: 'terminal' }
+        mode.value  = { ...mode.value,  [sid]: 'resume' }
         break
       case 'idle_timeout':
         // 仅当不是 running/awaiting_permission 时才标记 idle
@@ -256,5 +282,5 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   return { list, activeId, active, messages, streaming, state, pending, toolBlocks,
-    hasMore, terminalMode, refresh, create, select, send, handleEvent, handleHookEvent, loadMore }
+    hasMore, owner, mode, terminalMode, refresh, create, select, send, handleEvent, handleHookEvent, loadMore }
 })
