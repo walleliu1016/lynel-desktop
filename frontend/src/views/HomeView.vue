@@ -68,7 +68,7 @@ const msgContainer = ref<HTMLElement | null>(null)
 onMounted(async () => {
   await sessions.refresh()
   try {
-    username.value = await (window as any).go?.app?.OSUsername?.() ?? ''
+    username.value = await (window as any).go?.app?.App?.OSUsername?.() ?? ''
   } catch {}
 })
 

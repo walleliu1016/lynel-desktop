@@ -73,7 +73,7 @@ onMounted(async () => {
   // Detect OS user via window.__OS_USER__? For now, fetch from Wails at startup.
   // We use a simple "akke" placeholder; real impl reads env via a binding.
   try {
-    const u = await (window as any).go?.app?.OSUsername?.()
+    const u = await (window as any).go?.app?.App?.OSUsername?.()
     if (u) username.value = u
   } catch {}
   timer = window.setInterval(() => {

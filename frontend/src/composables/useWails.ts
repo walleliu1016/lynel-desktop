@@ -8,21 +8,23 @@ declare global {
   interface Window {
     go?: {
       app: {
-        IsInitialized: () => Promise<boolean>
-        Verify: (pw: string) => Promise<void>
-        LockoutState: () => Promise<[number, string]>
-        SetPassword: (pw: string) => Promise<void>
-        ClearPassword: () => Promise<void>
-        ListSessions: () => Promise<any[]>
-        CreateSession: (workdir: string, prompt: string) => Promise<string>
-        SendMessage: (id: string, prompt: string) => Promise<void>
-        RespondPermission: (id: string, reqId: string, allow: boolean) => Promise<void>
-        CloseSession: (id: string) => Promise<void>
-        GetSettings: () => Promise<any>
-        UpdateSettings: (cfg: any) => Promise<void>
-        GetHooksConfig: () => Promise<any>
-        SaveHooksConfig: (cfg: any) => Promise<void>
-        OpenInTerminal: (workdir: string, sessionId: string, binPath: string) => Promise<void>
+        App: {
+          IsInitialized: () => Promise<boolean>
+          Verify: (pw: string) => Promise<void>
+          LockoutState: () => Promise<[number, string]>
+          SetPassword: (pw: string) => Promise<void>
+          ClearPassword: () => Promise<void>
+          ListSessions: () => Promise<any[]>
+          CreateSession: (workdir: string, prompt: string) => Promise<string>
+          SendMessage: (id: string, prompt: string) => Promise<void>
+          RespondPermission: (id: string, reqId: string, allow: boolean) => Promise<void>
+          CloseSession: (id: string) => Promise<void>
+          GetSettings: () => Promise<any>
+          UpdateSettings: (cfg: any) => Promise<void>
+          GetHooksConfig: () => Promise<any>
+          SaveHooksConfig: (cfg: any) => Promise<void>
+          OpenInTerminal: (workdir: string, sessionId: string, binPath: string) => Promise<void>
+        }
       }
       main?: any
     }
@@ -39,8 +41,8 @@ declare global {
 const isDev = import.meta.env.DEV
 
 function app() {
-  if (!window.go?.app) throw new Error('Wails bindings not available (need wails dev or build)')
-  return window.go.app
+  if (!window.go?.app?.App) throw new Error('Wails bindings not available (need wails dev or build)')
+  return window.go.app.App
 }
 
 function runtime() {
