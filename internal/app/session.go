@@ -519,7 +519,9 @@ func killByPIDFile(pidfile string) error {
 	// 已退出；Windows 上 FindProcess 会校验存在。统一用 error 表达。
 	switch runtime.GOOS {
 	case "windows":
-		_ = exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F").Run()
+		cmd := exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F")
+		hideCmdWindow(cmd)
+		_ = cmd.Run()
 	default:
 		if err := exec.Command("kill", "-TERM", strconv.Itoa(pid)).Run(); err != nil {
 			// SIGTERM 失败则 SIGKILL 兜底
@@ -540,17 +542,23 @@ func pkillByPattern(sid string) error {
 		ps := fmt.Sprintf(
 			"Get-CimInstance Win32_Process -Filter \"CommandLine LIKE '%%%%--resume %s%%%%'\" | Select-Object -ExpandProperty ProcessId",
 			sid)
-		out, err := exec.Command("powershell", "-NoProfile", "-Command", ps).Output()
+		psCmd := exec.Command("powershell", "-NoProfile", "-Command", ps)
+		hideCmdWindow(psCmd)
+		out, err := psCmd.Output()
 		if err == nil && len(out) > 0 {
 			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 				pid := strings.TrimSpace(line)
 				if pid != "" {
-					_ = exec.Command("taskkill", "/F", "/PID", pid).Run()
+					tk := exec.Command("taskkill", "/F", "/PID", pid)
+					hideCmdWindow(tk)
+					_ = tk.Run()
 				}
 			}
 		}
 		// 兜底：按窗口标题再杀一次
-		_ = exec.Command("taskkill", "/F", "/FI", "WINDOWTITLE eq Claude").Run()
+		tk := exec.Command("taskkill", "/F", "/FI", "WINDOWTITLE eq Claude")
+		hideCmdWindow(tk)
+		_ = tk.Run()
 		return nil
 	default:
 		return exec.Command("pkill", "-f", "claude.*-r.*"+sid).Run()

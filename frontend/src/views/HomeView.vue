@@ -17,6 +17,8 @@
             :msg-count="sessions.active.msg_count"
             :state="state"
             :owner="owner"
+            :terminal-loading="terminalLoading"
+            :switching-to-app="switchingToApp"
             @open-terminal="openTerminal"
             @takeback="takeback"
           />
@@ -103,6 +105,12 @@ const owner = computed<'app' | 'terminal'>(() =>
   sessions.activeId ? (sessions.owner[sessions.activeId] ?? 'app') : 'app'
 )
 const isTerminalMode = computed(() => owner.value === 'terminal')
+const terminalLoading = computed(() =>
+  sessions.activeId ? (sessions.terminalLoading[sessions.activeId] ?? false) : false
+)
+const switchingToApp = computed(() =>
+  sessions.activeId ? (sessions.switchingToApp[sessions.activeId] ?? false) : false
+)
 
 // 切换会话或新消息到达时，滚动到底部
 watch(messages, () => { nextTick(() => scrollToBottom()) })
@@ -143,12 +151,18 @@ async function onCreate(workdir: string, prompt: string) {
 async function openTerminal() {
   if (!sessions.active) return
   const sid = sessions.active.id
+  sessions.terminalLoading = { ...sessions.terminalLoading, [sid]: true }
   try {
     await OpenInTerminal(sessions.active.workdir, sid, '')
-    // 乐观更新：Go 端 switchToTerminal 已将 owner 切为 terminal
-    sessions.owner = { ...sessions.owner, [sid]: 'terminal' }
-    sessions.mode  = { ...sessions.mode,  [sid]: 'resume' }
+    // 不乐观更新 owner；等外部 claude 启动后 SessionStart hook 会把它改成 terminal
+    setTimeout(() => {
+      if (sessions.terminalLoading[sid]) {
+        sessions.terminalLoading = { ...sessions.terminalLoading, [sid]: false }
+        alert('终端启动超时，未收到 SessionStart 事件')
+      }
+    }, 15000)
   } catch (e: any) {
+    sessions.terminalLoading = { ...sessions.terminalLoading, [sid]: false }
     alert('打开终端失败：' + (e?.message ?? e))
   }
 }
@@ -157,12 +171,15 @@ async function openTerminal() {
 async function takeback() {
   if (!sessions.activeId) return
   const sid = sessions.activeId
+  sessions.switchingToApp = { ...sessions.switchingToApp, [sid]: true }
   try {
     await SwitchOwner(sid, 'app', '')
     sessions.owner = { ...sessions.owner, [sid]: 'app' }
     sessions.mode  = { ...sessions.mode,  [sid]: 'stream' }
   } catch (e: any) {
     alert('切回 App 控制失败：' + (e?.message ?? e))
+  } finally {
+    sessions.switchingToApp = { ...sessions.switchingToApp, [sid]: false }
   }
 }
 

@@ -16,18 +16,22 @@
     <button
       v-if="owner === 'terminal'"
       class="term-btn takeback"
+      :disabled="switchingToApp"
       @click="$emit('takeback')"
-      title="结束外部终端进程，切回 App 控制"
+      :title="switchingToApp ? '正在切回 App 控制' : '结束外部终端进程，切回 App 控制'"
     >
-      切回 App 控制
+      <span v-if="switchingToApp" class="spinner" />
+      {{ switchingToApp ? '切回中...' : '切回 App 控制' }}
     </button>
     <button
       v-else
       class="term-btn"
+      :disabled="terminalLoading"
       @click="$emit('open-terminal')"
-      title="在外部终端打开会话（App 只读 jsonl）"
+      :title="terminalLoading ? '正在启动外部终端' : '在外部终端打开会话（App 只读 jsonl）'"
     >
-      在终端中打开
+      <span v-if="terminalLoading" class="spinner" />
+      {{ terminalLoading ? '启动中...' : '在终端中打开' }}
     </button>
   </div>
 </template>
@@ -44,6 +48,8 @@ const props = defineProps<{
   state: 'idle' | 'running' | 'awaiting_permission' | 'done' | 'ended'
   // 'app' = Ease UI 持 stdin，可写；'terminal' = 外部 claude -r 持 stdin，App 只读
   owner: 'app' | 'terminal'
+  terminalLoading?: boolean
+  switchingToApp?: boolean
 }>()
 defineEmits<{
   (e: 'open-terminal'): void
@@ -96,6 +102,7 @@ const projectName = computed(() => {
 .owner-badge.terminal .dot { background: var(--status-warn); }
 .term-btn {
   flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 6px;
   padding: 4px 12px;
   background: var(--accent); color: white;
   border: none; border-radius: var(--radius-md);
@@ -103,9 +110,19 @@ const projectName = computed(() => {
   white-space: nowrap;
   transition: background 0.15s;
 }
-.term-btn:hover { background: var(--accent-deep); }
+.term-btn:hover:not(:disabled) { background: var(--accent-deep); }
+.term-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+.spinner {
+  width: 11px; height: 11px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 .term-btn.takeback {
   background: var(--status-warn); color: #000;
 }
-.term-btn.takeback:hover { background: #F59E0B; }
+.term-btn.takeback:hover:not(:disabled) { background: #F59E0B; }
+.term-btn.takeback:disabled { opacity: 0.7; cursor: not-allowed; }
 </style>

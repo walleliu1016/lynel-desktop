@@ -74,13 +74,22 @@ func newExecCmd(args []string, workDir string) *exec.Cmd {
 			Args: []string{"cmd", "/c", "start"},
 			Dir:  workDir,
 			SysProcAttr: &syscall.SysProcAttr{
-				CmdLine: cmdLine,
+				CmdLine:    cmdLine,
+				HideWindow: true,
 			},
 		}
 	}
 
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = workDir
+	// wt 自己负责创建终端窗口，隐藏它会导致终端看不见；
+	// 其他 launcher（如直接启动的辅助命令）隐藏中间进程窗口避免闪黑框。
+	if args[0] != "wt" {
+		if cmd.SysProcAttr == nil {
+			cmd.SysProcAttr = &syscall.SysProcAttr{}
+		}
+		cmd.SysProcAttr.HideWindow = true
+	}
 	return cmd
 }
 

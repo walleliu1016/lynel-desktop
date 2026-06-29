@@ -85,6 +85,7 @@ func TestNewExecCmd_StartUsesRawCmdLine(t *testing.T) {
 	cmd := newExecCmd(args, `G:\work`)
 
 	require.NotNil(t, cmd.SysProcAttr)
+	assert.True(t, cmd.SysProcAttr.HideWindow, "intermediate cmd window should be hidden")
 	cmdLine := cmd.SysProcAttr.CmdLine
 	require.NotEmpty(t, cmdLine)
 	// title 必须原生带引号，不应被 Go 转义成 \"Claude\"

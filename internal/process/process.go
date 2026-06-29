@@ -78,6 +78,7 @@ func Start(workDir, sessionID, binPath string, mode Mode) (*Process, error) {
 	}
 	cmd = exec.Command(binPath, args...)
 	cmd.Dir = workDir
+	hideWindow(cmd)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

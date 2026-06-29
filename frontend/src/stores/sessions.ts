@@ -117,6 +117,8 @@ export const useSessionsStore = defineStore('sessions', () => {
   const hasMore = ref<Record<string, boolean>>({})
   const owner = ref<Record<string, 'app' | 'terminal'>>({})
   const mode  = ref<Record<string, 'stream' | 'resume'>>({})
+  const terminalLoading = ref<Record<string, boolean>>({})
+  const switchingToApp = ref<Record<string, boolean>>({})
   const adopted = ref<Record<string, boolean>>({})
   const drafts = ref<Record<string, string>>({})
 
@@ -217,8 +219,12 @@ export const useSessionsStore = defineStore('sessions', () => {
   async function send(id: string, prompt: string) {
     streaming.value = { ...streaming.value, [id]: true }
     state.value = { ...state.value, [id]: 'running' }
+    const fromTerminal = owner.value[id] === 'terminal'
+    if (fromTerminal) {
+      switchingToApp.value = { ...switchingToApp.value, [id]: true }
+    }
     try {
-      if (owner.value[id] === 'terminal') {
+      if (fromTerminal) {
         await SwitchOwner(id, 'app', prompt)
         owner.value = { ...owner.value, [id]: 'app' }
         mode.value  = { ...mode.value,  [id]: 'stream' }
@@ -236,6 +242,9 @@ export const useSessionsStore = defineStore('sessions', () => {
       }
     } finally {
       streaming.value = { ...streaming.value, [id]: false }
+      if (fromTerminal) {
+        switchingToApp.value = { ...switchingToApp.value, [id]: false }
+      }
     }
   }
 
@@ -292,16 +301,28 @@ export const useSessionsStore = defineStore('sessions', () => {
         if (owner.value[sid] !== 'app') {
           owner.value = { ...owner.value, [sid]: 'terminal' }
           mode.value  = { ...mode.value,  [sid]: 'resume' }
+          state.value = { ...state.value, [sid]: 'idle' }
+          terminalLoading.value = { ...terminalLoading.value, [sid]: false }
         }
         break
       case 'SessionEnd':
+        // 外部终端退出后回归 App 控制；加载过渡期内旧 stream 进程的 SessionEnd 忽略
+        if (owner.value[sid] === 'terminal' && !terminalLoading.value[sid]) {
+          owner.value = { ...owner.value, [sid]: 'app' }
+          mode.value  = { ...mode.value,  [sid]: 'stream' }
+          switchingToApp.value = { ...switchingToApp.value, [sid]: false }
+        }
         state.value = { ...state.value, [sid]: 'done' }
         break
       case 'PreToolUse':
       case 'PostToolUse':
       case 'UserPromptSubmit':
-        owner.value = { ...owner.value, [sid]: 'terminal' }
-        mode.value  = { ...mode.value,  [sid]: 'resume' }
+        // 这些 hook 只在已确认是外部终端控制时保持 terminal；
+        // App 控制期间自己的 stream 进程也会发这些 hook，不能误切。
+        if (owner.value[sid] === 'terminal' || terminalLoading.value[sid]) {
+          owner.value = { ...owner.value, [sid]: 'terminal' }
+          mode.value  = { ...mode.value,  [sid]: 'resume' }
+        }
         break
       case 'idle_timeout':
         if (state.value[sid] !== 'running' && state.value[sid] !== 'awaiting_permission') {
@@ -316,6 +337,6 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   return { list, activeId, active, messages, streaming, state, pending,
-    hasMore, owner, mode, adopted, drafts, setDraft, refresh, create, select, send,
+    hasMore, owner, mode, terminalLoading, switchingToApp, adopted, drafts, setDraft, refresh, create, select, send,
     reloadFromJsonl, handleEvent, handleHookEvent, loadMore }
 })
