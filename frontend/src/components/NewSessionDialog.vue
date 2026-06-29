@@ -9,17 +9,20 @@
         <div class="form-group">
           <label class="form-label">工作目录</label>
           <div class="dir-row">
-            <input class="form-input" v-model="workdir" placeholder="点击右侧按钮选择目录" readonly @click="onPick" />
-            <button type="button" class="pick-btn" @click="onPick">选择…</button>
+            <input class="form-input" v-model="workdir" placeholder="点击右侧按钮选择目录" readonly :disabled="loading" @click="onPick" />
+            <button type="button" class="pick-btn" :disabled="loading" @click="onPick">选择…</button>
           </div>
         </div>
         <div class="form-group">
           <label class="form-label">提示词</label>
-          <textarea class="form-input area" v-model="prompt" rows="4" placeholder="你想让 Claude 做什么？"></textarea>
+          <textarea class="form-input area" v-model="prompt" rows="4" placeholder="你想让 Claude 做什么？" :disabled="loading"></textarea>
         </div>
         <div class="form-actions">
-          <button type="button" class="cancel" @click="$emit('close')">取消</button>
-          <button type="submit" class="primary" :disabled="!workdir.trim() || !prompt.trim()">创建</button>
+          <button type="button" class="cancel" :disabled="loading" @click="$emit('close')">取消</button>
+          <button type="submit" class="primary" :disabled="!workdir.trim() || !prompt.trim() || loading">
+            <span v-if="loading" class="spinner" />
+            {{ loading ? '创建中...' : '创建' }}
+          </button>
         </div>
       </form>
     </div>
@@ -27,10 +30,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { PickDirectory } from '../composables/useWails'
 
-const props = defineProps<{ open: boolean }>()
+const props = defineProps<{ open: boolean; loading?: boolean }>()
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'create', workdir: string, prompt: string): void
@@ -38,6 +41,13 @@ const emit = defineEmits<{
 
 const workdir = ref('')
 const prompt = ref('')
+
+watch(() => props.open, (isOpen) => {
+  if (isOpen) {
+    workdir.value = ''
+    prompt.value = ''
+  }
+})
 
 async function onPick() {
   try {
@@ -47,11 +57,8 @@ async function onPick() {
 }
 
 function onSubmit() {
-  if (!workdir.value.trim() || !prompt.value.trim()) return
+  if (!workdir.value.trim() || !prompt.value.trim() || props.loading) return
   emit('create', workdir.value.trim(), prompt.value.trim())
-  workdir.value = ''
-  prompt.value = ''
-  emit('close')
 }
 </script>
 
@@ -93,5 +100,16 @@ h2 { font-size: 14px; color: var(--text-primary); }
 .cancel:hover { background: var(--border); }
 .primary { padding: 7px 18px; background: var(--accent); color: white; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; }
 .primary:hover:not(:disabled) { background: var(--accent-deep); }
-.primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.primary:disabled { opacity: 0.7; cursor: not-allowed; display: inline-flex; align-items: center; gap: 6px; }
+.cancel:disabled { opacity: 0.5; cursor: not-allowed; }
+.form-input:disabled { opacity: 0.6; cursor: not-allowed; }
+.pick-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.spinner {
+  width: 11px; height: 11px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>

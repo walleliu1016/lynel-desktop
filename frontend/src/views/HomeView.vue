@@ -38,6 +38,7 @@
           <Composer
             :disabled="state === 'awaiting_permission'"
             :terminal-mode="isTerminalMode"
+            :state="state"
             @send="onSend"
           />
         </template>
@@ -48,6 +49,7 @@
     </div>
     <NewSessionDialog
       :open="showNew"
+      :loading="sessions.creating"
       @close="showNew = false"
       @create="onCreate"
     />
@@ -143,6 +145,7 @@ function onScroll() {
 async function onCreate(workdir: string, prompt: string) {
   try {
     await sessions.create(workdir, prompt)
+    showNew.value = false
   } catch (e: any) {
     alert('创建失败：' + (e?.message ?? e))
   }
@@ -188,7 +191,7 @@ async function respondPermission(allow: boolean) {
   try {
     await RespondPermission(sessions.activeId, pending.value.reqId, allow)
     sessions.pending[sessions.activeId] = null
-    sessions.state[sessions.activeId] = 'running'
+    sessions.state[sessions.activeId] = 'waiting'
   } catch (e: any) {
     alert('响应失败：' + (e?.message ?? e))
   }

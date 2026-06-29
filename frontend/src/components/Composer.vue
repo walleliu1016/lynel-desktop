@@ -30,6 +30,7 @@ const props = defineProps<{
   disabled?: boolean
   placeholder?: string
   terminalMode?: boolean
+  state?: 'idle' | 'waiting' | 'thinking' | 'streaming' | 'running_tool' | 'awaiting_permission' | 'done' | 'ended'
 }>()
 const emit = defineEmits<{ (e: 'send', text: string): void }>()
 
@@ -51,10 +52,18 @@ watch(text, (v) => {
   if (sessions.activeId) sessions.setDraft(sessions.activeId, v)
 })
 
-const resolvedPlaceholder = computed(() =>
-  props.placeholder ??
-  (props.terminalMode ? '外部终端中 · 输入会切回 App 控制' : '输入消息…')
-)
+const resolvedPlaceholder = computed(() => {
+  if (props.placeholder) return props.placeholder
+  if (props.terminalMode) return '外部终端中 · 输入会切回 App 控制'
+  switch (props.state) {
+    case 'waiting': return 'Claude 正在准备响应…'
+    case 'thinking': return 'Claude 思考中…'
+    case 'streaming': return 'Claude 生成中…'
+    case 'running_tool': return '工具执行中，请稍候…'
+    case 'awaiting_permission': return '请先在上方处理权限请求'
+    default: return '输入消息…'
+  }
+})
 
 function autoResize() {
   nextTick(() => {

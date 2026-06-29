@@ -119,6 +119,7 @@ export const useSessionsStore = defineStore('sessions', () => {
   const mode  = ref<Record<string, 'stream' | 'resume'>>({})
   const terminalLoading = ref<Record<string, boolean>>({})
   const switchingToApp = ref<Record<string, boolean>>({})
+  const creating = ref(false)
   const adopted = ref<Record<string, boolean>>({})
   const drafts = ref<Record<string, string>>({})
 
@@ -135,18 +136,23 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   async function create(workdir: string, prompt: string) {
-    const id = await CreateSession(workdir, prompt)
-    adopted.value = { ...adopted.value, [id]: true }
-    owner.value = { ...owner.value, [id]: 'app' }
-    mode.value  = { ...mode.value,  [id]: 'stream' }
-    if (!list.value.find(s => s.id === id)) {
-      list.value = [...list.value, {
-        id, workdir, mtime: Date.now(), msg_count: 0,
-        first_prompt: prompt, ai_title: '', size: 0,
-      }]
+    creating.value = true
+    try {
+      const id = await CreateSession(workdir, prompt)
+      adopted.value = { ...adopted.value, [id]: true }
+      owner.value = { ...owner.value, [id]: 'app' }
+      mode.value  = { ...mode.value,  [id]: 'stream' }
+      if (!list.value.find(s => s.id === id)) {
+        list.value = [...list.value, {
+          id, workdir, mtime: Date.now(), msg_count: 0,
+          first_prompt: prompt, ai_title: '', size: 0,
+        }]
+      }
+      activeId.value = id
+      return id
+    } finally {
+      creating.value = false
     }
-    activeId.value = id
-    return id
   }
 
   function select(id: string) {
@@ -217,15 +223,30 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   async function send(id: string, prompt: string) {
+    const trimmed = prompt.trim()
+    if (!trimmed) return
+
+    // 乐观插入用户消息，立即在对话框回显
+    const optimisticId = crypto.randomUUID()
+    const prev = messages.value[id] || []
+    messages.value = { ...messages.value, [id]: [...prev, {
+      id: optimisticId,
+      role: 'user',
+      blocks: [{ type: 'text', text: trimmed }],
+      ts: Date.now(),
+      optimistic: true,
+    } as ChatMessage] }
+
     streaming.value = { ...streaming.value, [id]: true }
-    state.value = { ...state.value, [id]: 'running' }
+    state.value = { ...state.value, [id]: 'waiting' }
+
     const fromTerminal = owner.value[id] === 'terminal'
     if (fromTerminal) {
       switchingToApp.value = { ...switchingToApp.value, [id]: true }
     }
     try {
       if (fromTerminal) {
-        await SwitchOwner(id, 'app', prompt)
+        await SwitchOwner(id, 'app', trimmed)
         owner.value = { ...owner.value, [id]: 'app' }
         mode.value  = { ...mode.value,  [id]: 'stream' }
       } else {
@@ -234,17 +255,34 @@ export const useSessionsStore = defineStore('sessions', () => {
         await AdoptSession(id, meta.workdir)
         owner.value = { ...owner.value, [id]: 'app' }
         mode.value  = { ...mode.value,  [id]: 'stream' }
-        try {
-          await SendMessage(id, prompt)
-        } catch (e: any) {
-          throw e
-        }
+        await SendMessage(id, trimmed)
       }
-    } finally {
+    } catch (e: any) {
+      // 发送失败：移除乐观消息并恢复状态
+      const list = messages.value[id] || []
+      messages.value = { ...messages.value, [id]: list.filter(m => m.id !== optimisticId) }
+      state.value = { ...state.value, [id]: 'idle' }
       streaming.value = { ...streaming.value, [id]: false }
+      throw e
+    } finally {
       if (fromTerminal) {
         switchingToApp.value = { ...switchingToApp.value, [id]: false }
       }
+    }
+  }
+
+  // 根据消息 blocks 推导活跃状态
+  function updateStateFromBlocks(sid: string, blocks: ContentBlock[]) {
+    const hasToolUse = blocks.some((b) => b.type === 'tool_use')
+    const hasText = blocks.some((b) => b.type === 'text')
+    const hasThinking = blocks.some((b) => b.type === 'thinking')
+
+    if (hasToolUse) {
+      state.value = { ...state.value, [sid]: 'running_tool' }
+    } else if (hasThinking && !hasText) {
+      state.value = { ...state.value, [sid]: 'thinking' }
+    } else if (hasText) {
+      state.value = { ...state.value, [sid]: 'streaming' }
     }
   }
 
@@ -253,10 +291,48 @@ export const useSessionsStore = defineStore('sessions', () => {
     try { evt = JSON.parse(line) } catch { return }
 
     switch (evt.type) {
-      case 'assistant':
       case 'user': {
         const msg = evt.message
         if (!msg) break
+        const blocks = parseBlocks(msg.content)
+        const prev = messages.value[sid] || []
+        const msgId = msg.id
+        if (msgId && prev.some(m => (m as any).msgId === msgId)) break
+
+        // 尝试替换最近的乐观 user 消息（按内容匹配）
+        const text = blocks.find((b) => b.type === 'text')?.text || ''
+        const optimisticIdx = text
+          ? [...prev].reverse().findIndex(
+              (m) => m.role === 'user' && m.optimistic && (m.blocks.find((b) => b.type === 'text') as any)?.text === text
+            )
+          : -1
+
+        if (optimisticIdx >= 0) {
+          const idx = prev.length - 1 - optimisticIdx
+          const replaced = [...prev]
+          replaced[idx] = { ...replaced[idx], msgId, blocks, ts: Date.now(), optimistic: false }
+          messages.value = { ...messages.value, [sid]: replaced }
+        } else {
+          messages.value = { ...messages.value, [sid]: [...prev, {
+            id: crypto.randomUUID(),
+            msgId,
+            role: msg.role || 'user',
+            blocks,
+            ts: Date.now(),
+          } as ChatMessage] }
+        }
+
+        // 若收到的是 tool_result 回复，工具执行结束，回到 streaming
+        const isAllToolResult = blocks.length > 0 && blocks.every((b) => b.type === 'tool_result')
+        if (isAllToolResult && state.value[sid] === 'running_tool') {
+          state.value = { ...state.value, [sid]: 'streaming' }
+        }
+        break
+      }
+      case 'assistant': {
+        const msg = evt.message
+        if (!msg) break
+        const blocks = parseBlocks(msg.content)
         const prev = messages.value[sid] || []
         const msgId = msg.id
         if (msgId && prev.some(m => (m as any).msgId === msgId)) break
@@ -264,19 +340,28 @@ export const useSessionsStore = defineStore('sessions', () => {
           id: crypto.randomUUID(),
           msgId,
           role: msg.role || 'assistant',
-          blocks: parseBlocks(msg.content),
+          blocks,
           ts: Date.now(),
         } as ChatMessage] }
+        updateStateFromBlocks(sid, blocks)
         break
       }
       case 'tool_use': {
-        // 旧 stream-event 类型,blocks 在 assistant/user message 里附带,这里不再追加
+        // 旧 stream-event 类型，blocks 通常已包含在 assistant/user message 里
+        break
+      }
+      case 'tool_result': {
+        // 独立的 tool_result 事件：工具执行结束
+        if (state.value[sid] === 'running_tool') {
+          state.value = { ...state.value, [sid]: 'streaming' }
+        }
         break
       }
       case 'permission_request': {
         const d = evt.data || evt
         pending.value = { ...pending.value, [sid]: { tool: d.tool, args: d.args, reqId: d.request_id } }
         state.value = { ...state.value, [sid]: 'awaiting_permission' }
+        streaming.value = { ...streaming.value, [sid]: false }
         break
       }
       case 'result':
@@ -325,7 +410,8 @@ export const useSessionsStore = defineStore('sessions', () => {
         }
         break
       case 'idle_timeout':
-        if (state.value[sid] !== 'running' && state.value[sid] !== 'awaiting_permission') {
+        // 活跃状态不收 idle_timeout
+        if (state.value[sid] === 'idle' || state.value[sid] === 'done' || state.value[sid] === 'ended') {
           state.value = { ...state.value, [sid]: 'idle' }
         }
         break
@@ -337,6 +423,6 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   return { list, activeId, active, messages, streaming, state, pending,
-    hasMore, owner, mode, terminalLoading, switchingToApp, adopted, drafts, setDraft, refresh, create, select, send,
+    hasMore, owner, mode, terminalLoading, switchingToApp, creating, adopted, drafts, setDraft, refresh, create, select, send,
     reloadFromJsonl, handleEvent, handleHookEvent, loadMore }
 })

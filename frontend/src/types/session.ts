@@ -1,4 +1,12 @@
-export type SessionState = 'idle' | 'running' | 'awaiting_permission' | 'done' | 'ended'
+export type SessionState =
+  | 'idle'
+  | 'waiting'
+  | 'thinking'
+  | 'streaming'
+  | 'running_tool'
+  | 'awaiting_permission'
+  | 'done'
+  | 'ended'
 
 // 是不是用户主动结束的（/exit / /quit，jsonl 末尾有标记，stream-json attach
 // 会被 claude 立即拒绝）。区别于 'done'（claude 进程正常退出/崩溃）。
@@ -25,4 +33,5 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'tool'
   blocks: ContentBlock[] // 结构化 content blocks（见 ./blocks.ts）
   ts: number
+  optimistic?: boolean // 乐观插入的本地消息，等待真实事件替换
 }

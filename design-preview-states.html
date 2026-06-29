@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>Ease UI · 活跃状态预览</title>
+<style>
+:root {
+  --bg-primary: #09090B;
+  --bg-panel: #121214;
+  --bg-input: #1A1A1E;
+  --accent: #8B5CF6;
+  --accent-deep: #7C3AED;
+  --accent-light: #C4B5FD;
+  --text-primary: #F4F4F5;
+  --text-secondary: #A1A1AA;
+  --text-tertiary: #71717A;
+  --status-success: #34D399;
+  --status-warn: #FBBF24;
+  --status-terminal: #A78BFA;
+  --border: #27272A;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background: #050507; color: var(--text-primary);
+  font-family: var(--font-ui); font-size: 12px;
+  -webkit-font-smoothing: antialiased;
+  padding: 24px;
+}
+
+h1 { font-size: 14px; margin-bottom: 20px; color: var(--text-secondary); font-weight: 500; }
+
+.stage { display: flex; flex-direction: column; gap: 16px; max-width: 720px; }
+
+.toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12px; border-bottom: 1px solid var(--border);
+  background: var(--bg-panel); flex-shrink: 0; gap: 12px; height: 40px;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+.left { display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; }
+.status {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0;
+}
+.status.running_tool { background: var(--status-warn); }
+.status.awaiting_permission { background: var(--status-warn); }
+.status.streaming { background: var(--status-success); }
+.status.thinking { background: var(--accent); }
+.status.waiting {
+  background: var(--accent-light);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.status.done { background: var(--text-tertiary); }
+.status.ended { background: var(--text-tertiary); opacity: 0.5; }
+
+@keyframes pulse { 0%, 100% { opacity: 0.3 } 50% { opacity: 1 } }
+
+.state-label {
+  font-size: 11px; color: var(--text-secondary); white-space: nowrap;
+  min-width: 70px;
+}
+.title {
+  font-size: 13px; color: var(--text-primary); font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sep { color: var(--border); flex-shrink: 0; }
+.meta { font-size: 12px; color: var(--text-tertiary); white-space: nowrap; }
+.owner-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 7px; border-radius: 999px;
+  font-size: 11px; font-weight: 500;
+  white-space: nowrap; flex-shrink: 0;
+}
+.owner-badge.app {
+  color: var(--accent-light);
+  background: rgba(139, 92, 246, 0.12);
+}
+.owner-badge .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.term-btn {
+  flex-shrink: 0; padding: 4px 12px;
+  background: var(--accent); color: white;
+  border: none; border-radius: var(--radius-md);
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  white-space: nowrap;
+}
+
+.composer {
+  display: flex; align-items: center; gap: 8px; padding: 0 12px;
+  background: var(--bg-panel); border-top: 1px solid var(--border);
+  flex-shrink: 0; height: 46px;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+.input {
+  flex: 1; resize: none; overflow: hidden;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 5px 10px;
+  color: var(--text-primary); font-size: 14px;
+  font-family: inherit; line-height: 1.5;
+  min-height: 32px;
+}
+.input::placeholder { color: var(--text-tertiary); }
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+
+.label {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 4px;
+}
+</style>
+</head>
+<body>
+
+<h1>Ease UI 活跃状态预览（基于现有样式）</h1>
+
+<div class="stage">
+
+  <div>
+    <div class="label">idle</div>
+    <div class="card">
+      <div class="toolbar">
+        <div class="left">
+          <span class="status idle"></span>
+          <span class="title">实现用户登录功能</span>
+          <span class="sep">·</span>
+          <span class="meta mono">ease-ui</span>
+          <span class="sep">·</span>
+          <span class="meta">5 条消息</span>
+          <span class="sep">·</span>
+          <span class="owner-badge app"><span class="dot"></span>App 控制</span>
+        </div>
+        <button class="term-btn">在终端中打开</button>
+      </div>
+      <div class="composer">
+        <input class="input" placeholder="输入消息…" />
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="label">waiting</div>
+    <div class="card">
+      <div class="toolbar">
+        <div class="left">
+          <span class="status waiting"></span>
+          <span class="state-label">等待中…</span>
+          <span class="title">实现用户登录功能</span>
+          <span class="sep">·</span>
+          <span class="meta mono">ease-ui</span>
+          <span class="sep">·</span>
+          <span class="meta">5 条消息</span>
+          <span class="sep">·</span>
+          <span class="owner-badge app"><span class="dot"></span>App 控制</span>
+        </div>
+        <button class="term-btn">在终端中打开</button>
+      </div>
+      <div class="composer">
+        <input class="input" placeholder="Claude 正在准备响应…" />
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="label">thinking</div>
+    <div class="card">
+      <div class="toolbar">
+        <div class="left">
+          <span class="status thinking"></span>
+          <span class="state-label">思考中…</span>
+          <span class="title">实现用户登录功能</span>
+          <span class="sep">·</span>
+          <span class="meta mono">ease-ui</span>
+          <span class="sep">·</span>
+          <span class="meta">5 条消息</span>
+          <span class="sep">·</span>
+          <span class="owner-badge app"><span class="dot"></span>App 控制</span>
+        </div>
+        <button class="term-btn">在终端中打开</button>
+      </div>
+      <div class="composer">
+        <input class="input" placeholder="Claude 思考中…" />
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="label">streaming</div>
+    <div class="card">
+      <div class="toolbar">
+        <div class="left">
+          <span class="status streaming"></span>
+          <span class="state-label">生成中…</span>
+          <span class="title">实现用户登录功能</span>
+          <span class="sep">·</span>
+          <span class="meta mono">ease-ui</span>
+          <span class="sep">·</span>
+          <span class="meta">5 条消息</span>
+          <span class="sep">·</span>
+          <span class="owner-badge app"><span class="dot"></span>App 控制</span>
+        </div>
+        <button class="term-btn">在终端中打开</button>
+      </div>
+      <div class="composer">
+        <input class="input" placeholder="Claude 生成中…" />
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="label">running_tool</div>
+    <div class="card">
+      <div class="toolbar">
+        <div class="left">
+          <span class="status running_tool"></span>
+          <span class="state-label">执行 Bash 中…</span>
+          <span class="title">实现用户登录功能</span>
+          <span class="sep">·</span>
+          <span class="meta mono">ease-ui</span>
+          <span class="sep">·</span>
+          <span class="meta">5 条消息</span>
+          <span class="sep">·</span>
+          <span class="owner-badge app"><span class="dot"></span>App 控制</span>
+        </div>
+        <button class="term-btn">在终端中打开</button>
+      </div>
+      <div class="composer">
+        <input class="input" placeholder="工具执行中，请稍候…" />
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="label">awaiting_permission</div>
+    <div class="card">
+      <div class="toolbar">
+        <div class="left">
+          <span class="status awaiting_permission"></span>
+          <span class="state-label">等待授权</span>
+          <span class="title">实现用户登录功能</span>
+          <span class="sep">·</span>
+          <span class="meta mono">ease-ui</span>
+          <span class="sep">·</span>
+          <span class="meta">5 条消息</span>
+          <span class="sep">·</span>
+          <span class="owner-badge app"><span class="dot"></span>App 控制</span>
+        </div>
+        <button class="term-btn">在终端中打开</button>
+      </div>
+      <div class="composer">
+        <input class="input" placeholder="请先在上方处理权限请求" />
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="label">done</div>
+    <div class="card">
+      <div class="toolbar">
+        <div class="left">
+          <span class="status done"></span>
+          <span class="title">实现用户登录功能</span>
+          <span class="sep">·</span>
+          <span class="meta mono">ease-ui</span>
+          <span class="sep">·</span>
+          <span class="meta">5 条消息</span>
+          <span class="sep">·</span>
+          <span class="owner-badge app"><span class="dot"></span>App 控制</span>
+        </div>
+        <button class="term-btn">在终端中打开</button>
+      </div>
+      <div class="composer">
+        <input class="input" placeholder="输入消息…" />
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

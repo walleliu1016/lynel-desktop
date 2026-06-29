@@ -67,7 +67,7 @@ const filteredList = computed(() => {
     // 状态过滤
     let stateMatch = false
     switch (filter.value) {
-      case 'running': stateMatch = st === 'running' || st === 'awaiting_permission'; break
+      case 'running': stateMatch = st !== 'idle' && st !== 'done' && st !== 'ended'; break
       case 'ended': stateMatch = st === 'done' || st === 'ended'; break
       default: stateMatch = st === 'idle'
     }

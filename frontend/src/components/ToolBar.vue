@@ -2,6 +2,7 @@
   <div class="toolbar">
     <div class="left">
       <span class="status" :class="state"></span>
+      <span v-if="stateLabel" class="state-label">{{ stateLabel }}</span>
       <span class="title">{{ displayTitle }}</span>
       <span class="sep">·</span>
       <span class="meta mono">{{ projectName }}</span>
@@ -45,7 +46,7 @@ const props = defineProps<{
   path: string
   sessionId: string
   msgCount: number
-  state: 'idle' | 'running' | 'awaiting_permission' | 'done' | 'ended'
+  state: 'idle' | 'waiting' | 'thinking' | 'streaming' | 'running_tool' | 'awaiting_permission' | 'done' | 'ended'
   // 'app' = Ease UI 持 stdin，可写；'terminal' = 外部 claude -r 持 stdin，App 只读
   owner: 'app' | 'terminal'
   terminalLoading?: boolean
@@ -62,6 +63,16 @@ const projectName = computed(() => {
   if (!wd || wd === '/') return wd
   return wd.split('/').filter(Boolean).pop() || wd
 })
+const stateLabel = computed(() => {
+  switch (props.state) {
+    case 'waiting': return '等待中…'
+    case 'thinking': return '思考中…'
+    case 'streaming': return '生成中…'
+    case 'running_tool': return '执行工具中…'
+    case 'awaiting_permission': return '等待授权'
+    default: return ''
+  }
+})
 </script>
 
 <style scoped>
@@ -72,10 +83,20 @@ const projectName = computed(() => {
 }
 .left { display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; }
 .status { width: 7px; height: 7px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
-.status.running { background: var(--status-success); }
+.status.waiting {
+  background: var(--accent-light);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.status.thinking { background: var(--accent); }
+.status.streaming { background: var(--status-success); }
+.status.running_tool { background: var(--status-warn); }
 .status.awaiting_permission { background: var(--status-warn); }
 .status.done { background: var(--text-tertiary); }
 .status.ended { background: var(--text-tertiary); opacity: 0.5; }
+@keyframes pulse { 0%, 100% { opacity: 0.3 } 50% { opacity: 1 } }
+.state-label {
+  font-size: 11px; color: var(--text-secondary); white-space: nowrap; flex-shrink: 0;
+}
 .title {
   font-size: 13px; color: var(--text-primary); font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
