@@ -269,10 +269,18 @@ func (a *App) GetSessionMessages(sessionID, workDir string, offset, limit int) (
 	return jsonl.ParseFileRange(path, offset, limit)
 }
 
-// encodeProjectDirName converts "/Users/akke/foo" to "-Users-akke-foo"
+// encodeProjectDirName converts a workdir into the directory name used by
+// Claude CLI under ~/.claude/projects. Claude replaces path separators ("/",
+// "\"), the drive colon (":") and leading dots/underscores with "-" without
+// collapsing runs. We mirror that so Ease UI resolves the same directory.
 func encodeProjectDirName(dir string) string {
-	// "/Users/akke" → "-Users-akke"（ReplaceAll 会把首个 / 也替换成 -）
-	return strings.ReplaceAll(dir, "/", "-")
+	return strings.NewReplacer(
+		`\`, "-",
+		"/", "-",
+		":", "-",
+		".", "-",
+		"_", "-",
+	).Replace(dir)
 }
 
 func (a *App) CloseSession(sessionID string) error {
@@ -509,9 +517,14 @@ func killByPIDFile(pidfile string) error {
 	}
 	// Unix 上 os.FindProcess 永远返回 success，但 Kill 会失败如果进程
 	// 已退出；Windows 上 FindProcess 会校验存在。统一用 error 表达。
-	if err := exec.Command("kill", "-TERM", strconv.Itoa(pid)).Run(); err != nil {
-		// SIGTERM 失败则 SIGKILL 兜底
-		_ = exec.Command("kill", "-KILL", strconv.Itoa(pid)).Run()
+	switch runtime.GOOS {
+	case "windows":
+		_ = exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F").Run()
+	default:
+		if err := exec.Command("kill", "-TERM", strconv.Itoa(pid)).Run(); err != nil {
+			// SIGTERM 失败则 SIGKILL 兜底
+			_ = exec.Command("kill", "-KILL", strconv.Itoa(pid)).Run()
+		}
 	}
 	_ = os.Remove(pidfile)
 	return nil
@@ -519,11 +532,26 @@ func killByPIDFile(pidfile string) error {
 
 // pkillByPattern 用 pkill/taskkill 按命令行匹配杀 claude -r 进程。
 // macOS/Linux: pkill -f "claude.*-r.*<sid>"
-// Windows:     taskkill /F /FI "WINDOWTITLE eq Claude"
+// Windows:     powershell 按 CommandLine 匹配 sid 后 taskkill /F /PID
 func pkillByPattern(sid string) error {
 	switch runtime.GOOS {
 	case "windows":
-		return exec.Command("taskkill", "/F", "/FI", "WINDOWTITLE eq Claude").Run()
+		// 用 WMI 查找命令行包含 "--resume <sid>" 的 claude.exe 进程并杀掉。
+		ps := fmt.Sprintf(
+			"Get-CimInstance Win32_Process -Filter \"CommandLine LIKE '%%%%--resume %s%%%%'\" | Select-Object -ExpandProperty ProcessId",
+			sid)
+		out, err := exec.Command("powershell", "-NoProfile", "-Command", ps).Output()
+		if err == nil && len(out) > 0 {
+			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+				pid := strings.TrimSpace(line)
+				if pid != "" {
+					_ = exec.Command("taskkill", "/F", "/PID", pid).Run()
+				}
+			}
+		}
+		// 兜底：按窗口标题再杀一次
+		_ = exec.Command("taskkill", "/F", "/FI", "WINDOWTITLE eq Claude").Run()
+		return nil
 	default:
 		return exec.Command("pkill", "-f", "claude.*-r.*"+sid).Run()
 	}

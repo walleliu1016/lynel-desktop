@@ -148,6 +148,16 @@ func TestAdoptSession_RejectsEmptyArgs(t *testing.T) {
 	assert.Contains(t, err.Error(), "required")
 }
 
+func TestEncodeProjectDirName_WindowsPaths(t *testing.T) {
+	assert.Equal(t, "C--Users-bruceliu", encodeProjectDirName(`C:\Users\bruceliu`))
+	assert.Equal(t, "G--work-ease-ui", encodeProjectDirName(`G:\work\ease-ui`))
+	assert.Equal(t, "C--Users-bruceliu-paperclip-instances-default", encodeProjectDirName(`C:\Users\bruceliu\paperclip\instances\default`))
+	assert.Equal(t, "C--Users-bruceliu--paperclip-instances-default-projects-518ec6f4-9886-4264-b7bf-d3b4da2ba88b-cd57ec54-4a70-4e95-b555-31d0d50d29ff--default",
+		encodeProjectDirName(`C:\Users\bruceliu\.paperclip\instances\default\projects\518ec6f4-9886-4264-b7bf-d3b4da2ba88b\cd57ec54-4a70-4e95-b555-31d0d50d29ff\_default`))
+	// Unix paths keep working
+	assert.Equal(t, "-Users-akke-foo", encodeProjectDirName("/Users/akke/foo"))
+}
+
 func TestAdoptSession_ResumesEndedSession(t *testing.T) {
 	// 历史 session 的 jsonl 末尾有 /exit 标记时，AdoptSession 不应拒绝
 	// 也不应用 --session-id 启动（已 ended 的 sid 用 --session-id 启动

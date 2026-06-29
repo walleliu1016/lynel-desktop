@@ -73,7 +73,10 @@ func ScanAll() ([]SessionMeta, error) {
 				continue
 			}
 			id := strings.TrimSuffix(f.Name(), ".jsonl")
-			fp, at, mc := scanFileMeta(filepath.Join(projDir, f.Name()))
+			fp, at, cwd, mc := scanFileMeta(filepath.Join(projDir, f.Name()))
+			if cwd != "" {
+				workDir = cwd
+			}
 			metas = append(metas, SessionMeta{
 				ID:          id,
 				WorkDir:     workDir,
@@ -88,8 +91,17 @@ func ScanAll() ([]SessionMeta, error) {
 	return metas, nil
 }
 
-// decodeProjectDirName converts e.g. "-Users-akke-foo" to "/Users/akke/foo"
+// decodeProjectDirName converts a project directory name back to the
+// original workdir. On Unix "-Users-akke-foo" becomes "/Users/akke/foo"; on
+// Windows "C--Users-akke-foo" becomes "C:\Users\akke\foo".
 func decodeProjectDirName(name string) string {
+	// Windows drive letter: "C--xxx" -> "C:\xxx"
+	if len(name) >= 3 && name[1] == '-' && name[2] == '-' &&
+		name[0] >= 'A' && name[0] <= 'Z' {
+		rest := strings.ReplaceAll(name[3:], "-", `\`)
+		return string(name[0]) + ":\\" + rest
+	}
+
 	parts := strings.Split(name, "-")
 	if len(parts) == 0 {
 		return name
@@ -102,11 +114,11 @@ func decodeProjectDirName(name string) string {
 }
 
 // scanFileMeta reads a jsonl file and returns its first user prompt,
-// ai_title (if any), and total line count.
-func scanFileMeta(path string) (firstPrompt, aiTitle string, msgCount int) {
+// ai_title (if any), working directory (when recorded by Claude), and total line count.
+func scanFileMeta(path string) (firstPrompt, aiTitle, cwd string, msgCount int) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", "", 0
+		return "", "", "", 0
 	}
 	defer f.Close()
 
@@ -114,6 +126,7 @@ func scanFileMeta(path string) (firstPrompt, aiTitle string, msgCount int) {
 		Type    string          `json:"type"`
 		Message json.RawMessage `json:"message"`
 		AITitle string          `json:"ai_title"`
+		Cwd     string          `json:"cwd"`
 	}
 
 	var count int
@@ -123,12 +136,15 @@ func scanFileMeta(path string) (firstPrompt, aiTitle string, msgCount int) {
 	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024)
 	for scanner.Scan() {
 		count++
-		if foundUser && foundTitle {
+		if foundUser && foundTitle && cwd != "" {
 			continue
 		}
 		var rl rawLine
 		if json.Unmarshal(scanner.Bytes(), &rl) != nil {
 			continue
+		}
+		if cwd == "" && rl.Cwd != "" {
+			cwd = rl.Cwd
 		}
 		if !foundTitle && rl.AITitle != "" {
 			aiTitle = rl.AITitle
@@ -148,7 +164,7 @@ func scanFileMeta(path string) (firstPrompt, aiTitle string, msgCount int) {
 			}
 		}
 	}
-	return firstPrompt, aiTitle, count
+	return firstPrompt, aiTitle, cwd, count
 }
 
 // Watch creates a fsnotify watcher for the given session jsonl.

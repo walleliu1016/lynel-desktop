@@ -122,22 +122,25 @@ func sessionStartScriptWin(hookURL string) string {
 .SYNOPSIS
     Ease UI SessionStart hook
 .DESCRIPTION
-    Forwards session start event to Ease UI HTTP server
+    Forwards session start event to Ease UI HTTP server with user account header
 #>
+
 $headers = @{
     "Content-Type" = "application/json"
+    "X-UM-ACCOUNT" = "$env:USERNAME"
 }
 
-# Read stdin JSON, construct fallback if unavailable
+# Read stdin JSON, construct fallback if unavailable.
+# Claude CLI forwards the hook payload via stdin. Do not gate on
+# [Console]::IsInputRedirected: it returns false when PowerShell is invoked
+# via -Command, causing the real session_id to be lost and CreateSession to
+# timeout on Windows.
 $jsonInput = $null
 try {
-    if ([Console]::IsInputRedirected) {
-        $jsonInput = [Console]::In.ReadToEnd()
-    }
+    $jsonInput = [System.Console]::In.ReadToEnd()
 } catch {
     # stdin not available
 }
-
 if (-not $jsonInput) {
     $jsonInput = '{"hook_event_name":"SessionStart"}'
 }
@@ -162,8 +165,8 @@ func ensureSessionStartScript(hookURL string) (command string, err error) {
 		if err := os.WriteFile(scriptPath, []byte(sessionStartScriptWin(hookURL)), 0o644); err != nil {
 			return "", err
 		}
-		// Windows: 用 powershell 执行脚本
-		return "powershell -NoProfile -ExecutionPolicy Bypass -Command . $HOME\\.ease-app\\session-start.ps1", nil
+		// Windows: 用 powershell 执行脚本（PowerShell 支持正斜杠路径，避免反斜杠转义问题）
+		return "powershell -NoProfile -ExecutionPolicy Bypass -Command . $HOME/.ease-app/session-start.ps1", nil
 	}
 	// Unix (macOS/Linux)
 	scriptPath := filepath.Join(easeDir, "session-start.sh")
@@ -183,12 +186,17 @@ func (a *App) CheckAndFixHooks() (needsFix bool, fixed bool, err error) {
 	p := filepath.Join(userHome(), ".claude", "settings.json")
 	raw, err := os.ReadFile(p)
 	if err != nil && !os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "ease-ui: read settings.json failed: %v\n", err)
 		return false, false, err
+	}
+	if len(raw) == 0 {
+		fmt.Fprintf(os.Stderr, "ease-ui: settings.json empty/missing, will create\n")
 	}
 
 	var data map[string]json.RawMessage
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &data); err != nil {
+			fmt.Fprintf(os.Stderr, "ease-ui: parse settings.json failed: %v\n", err)
 			return false, false, fmt.Errorf("parse settings.json: %w", err)
 		}
 	}
@@ -198,11 +206,16 @@ func (a *App) CheckAndFixHooks() (needsFix bool, fixed bool, err error) {
 
 	var hooksObj map[string]json.RawMessage
 	if rawHooks, ok := data["hooks"]; ok {
+		fmt.Fprintf(os.Stderr, "ease-ui: existing hooks raw=%s\n", string(rawHooks))
 		if err := json.Unmarshal(rawHooks, &hooksObj); err != nil {
+			fmt.Fprintf(os.Stderr, "ease-ui: hooks unmarshal failed (%v), resetting\n", err)
 			hooksObj = map[string]json.RawMessage{}
 		}
+	} else {
+		fmt.Fprintf(os.Stderr, "ease-ui: settings.json has no hooks key\n")
 	}
 	if hooksObj == nil {
+		fmt.Fprintf(os.Stderr, "ease-ui: hooks is null, will initialize\n")
 		hooksObj = map[string]json.RawMessage{}
 	}
 
@@ -230,41 +243,56 @@ func (a *App) CheckAndFixHooks() (needsFix bool, fixed bool, err error) {
 		"UserPromptSubmit":   5,
 	}
 
+	urlJSON, _ := json.Marshal(hookURL)
+	cmdJSON, _ := json.Marshal(scriptPath)
+
 	changed := false
 	for name, timeout := range hookTypes {
+		// HTTP hooks 使用最简格式：只保留 timeout/type/url。
 		expected := json.RawMessage(fmt.Sprintf(
-			`[{"hooks":[{"type":"http","url":"%s","timeout":%d}]}]`,
-			hookURL, timeout,
+			`[{"hooks":[{"type":"http","url":%s,"timeout":%d}]}]`,
+			string(urlJSON), timeout,
 		))
 		hooksObj[name] = expected
 		changed = true
 	}
 
-	// SessionStart 用 command 类型 + 脚本（平台自适应）
+	// SessionStart 用 command 类型 + 脚本（平台自适应），保持原有格式不变。
 	if scriptPath != "" {
 		hooksObj["SessionStart"] = json.RawMessage(fmt.Sprintf(
-			`[{"hooks":[{"type":"command","command":"%s","timeout":5}]}]`,
-			scriptPath,
+			`[{"matcher":"","hooks":[{"type":"command","command":%s,"timeout":5}]}]`,
+			string(cmdJSON),
 		))
 		changed = true
 	}
 
 	if changed {
-		newHooks, _ := json.Marshal(hooksObj)
+		newHooks, err := json.Marshal(hooksObj)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ease-ui: marshal hooks failed: %v\n", err)
+			return true, false, err
+		}
 		data["hooks"] = newHooks
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "ease-ui: mkdir settings.json parent failed: %v\n", err)
 			return true, false, err
 		}
 		// 备份旧文件
 		if _, err := os.Stat(p); err == nil {
-			os.Rename(p, p+".ease-ui.bak")
+			if err := os.Rename(p, p+".ease-ui.bak"); err != nil {
+				fmt.Fprintf(os.Stderr, "ease-ui: backup settings.json failed: %v\n", err)
+			}
 		}
 		out, _ := json.MarshalIndent(data, "", "  ")
+		fmt.Fprintf(os.Stderr, "ease-ui: writing settings.json hooks=%s\n", string(newHooks))
 		if err := os.WriteFile(p, out, 0o644); err != nil {
+			fmt.Fprintf(os.Stderr, "ease-ui: write settings.json failed: %v\n", err)
 			return true, false, err
 		}
+		fmt.Fprintf(os.Stderr, "ease-ui: settings.json updated\n")
 		return true, true, nil
 	}
+	fmt.Fprintf(os.Stderr, "ease-ui: settings.json hooks already OK\n")
 	return false, false, nil
 }
 

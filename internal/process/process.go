@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -89,10 +90,13 @@ func Start(workDir, sessionID, binPath string, mode Mode) (*Process, error) {
 
 	// 捕获 claude 子进程 stderr 到一个日志文件，方便诊断"Ease UI 里
 	// 起 claude 产 0 事件但 terminal 裸跑正常"的差异。
-	stderrLog, _ := os.Create(fmt.Sprintf("/tmp/claude-stderr-ease-%d.log", time.Now().UnixNano()))
+	stderrPath := filepath.Join(os.TempDir(), fmt.Sprintf("claude-stderr-ease-%d.log", time.Now().UnixNano()))
+	stderrLog, _ := os.Create(stderrPath)
 	if stderrLog != nil {
 		cmd.Stderr = stderrLog
 	}
+
+	fmt.Fprintf(os.Stderr, "[DBG] process.Start: bin=%s args=%v workDir=%s stderr=%s\n", binPath, args, workDir, stderrPath)
 
 	p := &Process{
 		cmd:    cmd,

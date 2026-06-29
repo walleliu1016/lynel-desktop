@@ -5,6 +5,16 @@ import (
 	"os/exec"
 )
 
+// setNewConsole 在 Windows 上设置 CREATE_NEW_CONSOLE；Linux 不需要。
+func setNewConsole(cmd *exec.Cmd) {}
+
+// newExecCmd 组装 Linux 要启动的命令。
+func newExecCmd(args []string, workDir string) *exec.Cmd {
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Dir = workDir
+	return cmd
+}
+
 func (l *Launcher) buildArgs(workDir, cmd, pidfile string) []string {
 	// 在 shell 前缀注入 `echo $$ > <pidfile>`：exec 把 shell 替换为
 	// claude 进程，pid 不变。SwitchOwner 用 pidfile 找 pid kill 该进程。

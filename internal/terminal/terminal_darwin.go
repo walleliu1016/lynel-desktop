@@ -5,6 +5,16 @@ import (
 	"os/exec"
 )
 
+// setNewConsole 在 Windows 上设置 CREATE_NEW_CONSOLE；macOS 不需要。
+func setNewConsole(cmd *exec.Cmd) {}
+
+// newExecCmd 组装 macOS 要启动的命令。
+func newExecCmd(args []string, workDir string) *exec.Cmd {
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Dir = workDir
+	return cmd
+}
+
 func (l *Launcher) buildArgs(workDir, cmd, pidfile string) []string {
 	// 优先用 iTerm2，其次 Terminal.app，最后用 open 命令
 	termApp := "Terminal"

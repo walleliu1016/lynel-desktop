@@ -1,4 +1,4 @@
-// Package terminal launches the system terminal with a claude -r command.
+// Package terminal launches the system terminal with a claude --resume command.
 package terminal
 
 import (
@@ -9,10 +9,10 @@ import (
 )
 
 func ResumeCommand(sessionID, binPath string) string {
-	if binPath == "" {
-		binPath = "claude"
+	if binPath == "" || binPath == "claude" {
+		binPath = lookupClaudeBin()
 	}
-	return fmt.Sprintf("%s -r %s", binPath, sessionID)
+	return fmt.Sprintf(`"%s" --resume %s`, binPath, sessionID)
 }
 
 // PidfilePath 生成 Ease UI 用于记录外部 claude 进程 pid 的临时文件路径。
@@ -31,6 +31,16 @@ type Launcher struct {
 	lastPIDFile string
 }
 
+// lookupClaudeBin finds the claude binary via PATH, falling back to "claude"
+// so the caller can still attempt execution.
+func lookupClaudeBin() string {
+	p, err := exec.LookPath("claude")
+	if err != nil {
+		return "claude"
+	}
+	return p
+}
+
 func New() *Launcher { return &Launcher{} }
 
 // LastPIDFile 返回最近一次 Launch 写入的 pidfile 路径，没写过则空串。
@@ -41,10 +51,18 @@ func (l *Launcher) LastPIDFile() string { return l.lastPIDFile }
 // App 时精准 kill 该进程；Windows 平台依赖 buildArgs 内部忽略 pidfile
 // 参数，调用方需走 taskkill by pattern 的兜底路径。
 func (l *Launcher) Launch(workDir, sessionID, binPath string) error {
+	if workDir == "" {
+		return fmt.Errorf("terminal.Launch: workDir is required")
+	}
+	if sessionID == "" {
+		return fmt.Errorf("terminal.Launch: sessionID is required")
+	}
 	pidfile := PidfilePath(sessionID)
 	l.lastPIDFile = pidfile
 	cmdStr := ResumeCommand(sessionID, binPath)
 	args := l.buildArgs(workDir, cmdStr, pidfile)
-	cmd := exec.Command(args[0], args[1:]...)
+	fmt.Fprintf(os.Stderr, "[DBG] terminal.Launch: workDir=%s sessionID=%s cmdStr=%q args=%v\n", workDir, sessionID, cmdStr, args)
+	cmd := newExecCmd(args, workDir)
+	setNewConsole(cmd)
 	return cmd.Start()
 }
