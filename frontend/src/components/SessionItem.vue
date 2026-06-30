@@ -58,9 +58,7 @@ function cancelHide() {
 }
 
 const projectName = computed(() => {
-  const wd = props.meta.workdir
-  if (!wd || wd === '/') return wd
-  const name = wd.split('/').filter(Boolean).pop() || wd
+  const name = props.meta.project || props.meta.workdir || '新会话'
   if (props.dup) {
     return name + ' #' + props.meta.id.slice(0, 4)
   }
@@ -92,9 +90,13 @@ const state = computed(() => sessions.state[props.meta.id] || 'idle')
   display: flex; align-items: flex-start; gap: 8px;
   padding: 8px 10px; border-radius: var(--radius-md);
   cursor: pointer; position: relative;
+  background: var(--session-item-bg);
+  border: 1px solid transparent;
+  margin: 5px 0;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
-.session-item:hover { background: rgba(255,255,255,0.04); }
-.session-item.active { background: rgba(124,58,237,0.15); }
+.session-item:hover { background: var(--session-item-hover-bg); }
+.session-item.active { background: var(--session-item-active-bg); border-color: rgba(139, 92, 246, 0.25); }
 .status-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--text-tertiary); flex-shrink: 0; margin-top: 5px;

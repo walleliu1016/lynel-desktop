@@ -42,12 +42,12 @@ export function GetSessionStates() {
   return window['go']['app']['App']['GetSessionStates']();
 }
 
-export function GetToolExecutions(arg1, arg2) {
-  return window['go']['app']['App']['GetToolExecutions'](arg1, arg2);
-}
-
 export function GetSettings() {
   return window['go']['app']['App']['GetSettings']();
+}
+
+export function GetToolExecutions(arg1, arg2) {
+  return window['go']['app']['App']['GetToolExecutions'](arg1, arg2);
 }
 
 export function HookServerURL() {

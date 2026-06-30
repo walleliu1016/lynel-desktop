@@ -16,6 +16,9 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+//go:embed build/windows/trayicon.ico
+var trayIcon []byte
+
 func runApp() error {
 	// 单例锁：阻止同一用户同时跑多个 Ease UI 实例。
 	// 锁由内核在进程退出时自动释放，强杀也不会留下陈旧锁。
@@ -34,12 +37,14 @@ func runApp() error {
 	}
 
 	err = wails.Run(&options.App{
-		Title:     "Ease",
-		Width:     1280,
-		Height:    800,
-		MinWidth:  1024,
-		MinHeight: 680,
-		Frameless: true,
+		Title:             "Lynel Desktop",
+		Width:             1280,
+		Height:            800,
+		MinWidth:          1024,
+		MinHeight:         680,
+		Frameless:         true,
+		HideWindowOnClose:            true,
+		EnableDefaultContextMenu:     true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -47,7 +52,8 @@ func runApp() error {
 		OnStartup: func(ctx context.Context) {
 			a.SetContext(ctx)
 			a.EnsureHookServer()
-			wailsruntime.LogInfo(ctx, "ease-ui starting, version "+version)
+			a.StartTray(trayIcon)
+			wailsruntime.LogInfo(ctx, "lynel-desktop starting, version "+version)
 		},
 		OnShutdown: func(ctx context.Context) {
 			a.Shutdown()

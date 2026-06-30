@@ -1,8 +1,8 @@
 <template>
   <div class="titlebar">
     <div class="titlebar-left">
-      <div class="brand-logo">E</div>
-      <span class="brand-name">Ease</span>
+      <div class="brand-logo">L</div>
+      <span class="brand-name">Lynel Desktop</span>
     </div>
     <div class="titlebar-right">
       <button class="win-btn" @click="$emit('minimize')" title="最小化">─</button>
@@ -13,7 +13,7 @@
       >
         {{ isMaximized ? '▣' : '▢' }}
       </button>
-      <button class="win-btn close" @click="$emit('close')" title="关闭">✕</button>
+      <button class="win-btn close" @click="$emit('close')" title="隐藏到托盘">✕</button>
     </div>
   </div>
 </template>

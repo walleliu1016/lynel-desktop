@@ -54,16 +54,18 @@ const tsLabel = computed(() => {
 
 <style scoped>
 .message-card {
-  margin: 6px 0;
+  margin: 8px 0;
   border-radius: var(--radius-md);
   overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: var(--message-card-shadow);
 }
 .message-card.user {
   background: var(--user-bg);
   border-left: 3px solid var(--user-border);
 }
 .message-card.assistant {
-  background: var(--bg-panel);
+  background: var(--assistant-card-bg);
   border-left: 3px solid var(--border);
 }
 .message-card.tool-reply {

@@ -33,7 +33,7 @@ import TitleBar from '../components/TitleBar.vue'
 import HooksTab from '../components/settings/HooksTab.vue'
 import GeneralTab from '../components/settings/GeneralTab.vue'
 import CloudTab from '../components/settings/CloudTab.vue'
-import { WindowMinimise, WindowToggleMaximise, WindowQuit, GetHookServerPort } from '../composables/useWails'
+import { WindowMinimise, WindowToggleMaximise, WindowHide, GetHookServerPort } from '../composables/useWails'
 
 const router = useRouter()
 type Tab = 'general' | 'hooks' | 'cloud'
@@ -50,7 +50,7 @@ function tabIcon(t: Tab) { return { hooks: '⚡', general: '⚙', cloud: '☁' }
 function goBack() { router.push('/home') }
 function onMinimize() { WindowMinimise() }
 function onMaximize() { WindowToggleMaximise() }
-function onClose()    { WindowQuit() }
+function onClose()    { WindowHide() }
 </script>
 
 <style scoped>

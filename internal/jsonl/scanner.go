@@ -15,6 +15,7 @@ import (
 type SessionMeta struct {
 	ID          string `json:"id"`
 	WorkDir     string `json:"workdir"`
+	Project     string `json:"project"`
 	MTime       int64  `json:"mtime"`
 	MsgCount    int    `json:"msg_count"`
 	FirstPrompt string `json:"first_prompt"`
@@ -81,6 +82,7 @@ func ScanAll() ([]SessionMeta, error) {
 			metas = append(metas, SessionMeta{
 				ID:          id,
 				WorkDir:     workDir,
+				Project:     projectName(workDir),
 				MTime:       info.ModTime().Unix(),
 				MsgCount:    mc,
 				FirstPrompt: fp,
@@ -102,6 +104,21 @@ func ScanAll() ([]SessionMeta, error) {
 // decodeProjectDirName converts a project directory name back to the
 // original workdir. On Unix "-Users-akke-foo" becomes "/Users/akke/foo"; on
 // Windows "C--Users-akke-foo" becomes "C:\Users\akke\foo".
+// projectName returns the last segment of a workdir path, e.g.
+// "/Users/akke/foo" -> "foo", "D:\\work" -> "work", "/" -> "/".
+func projectName(workDir string) string {
+	if workDir == "" || workDir == "/" {
+		return workDir
+	}
+	// Normalize Windows separators before using the cross-platform Base.
+	clean := strings.ReplaceAll(workDir, "\\", "/")
+	base := filepath.Base(clean)
+	if base == "." || base == "/" {
+		return workDir
+	}
+	return base
+}
+
 func decodeProjectDirName(name string) string {
 	// Windows drive letter: "C--xxx" -> "C:\xxx"
 	if len(name) >= 3 && name[1] == '-' && name[2] == '-' &&

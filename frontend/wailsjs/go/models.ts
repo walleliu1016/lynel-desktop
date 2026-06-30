@@ -4,6 +4,7 @@ export namespace jsonl {
 	    role: string;
 	    content: number[];
 	    type: string;
+	    timestamp: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Message(source);
@@ -14,6 +15,7 @@ export namespace jsonl {
 	        this.role = source["role"];
 	        this.content = source["content"];
 	        this.type = source["type"];
+	        this.timestamp = source["timestamp"];
 	    }
 	}
 	export class SessionMeta {
@@ -38,6 +40,36 @@ export namespace jsonl {
 	        this.first_prompt = source["first_prompt"];
 	        this.ai_title = source["ai_title"];
 	        this.size = source["size"];
+	    }
+	}
+	export class ToolExecution {
+	    id: string;
+	    kind: string;
+	    name: string;
+	    startedAt: number;
+	    endedAt: number;
+	    durationMs: number;
+	    status: string;
+	    input: string;
+	    output: string;
+	    exitCode: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ToolExecution(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.kind = source["kind"];
+	        this.name = source["name"];
+	        this.startedAt = source["startedAt"];
+	        this.endedAt = source["endedAt"];
+	        this.durationMs = source["durationMs"];
+	        this.status = source["status"];
+	        this.input = source["input"];
+	        this.output = source["output"];
+	        this.exitCode = source["exitCode"];
 	    }
 	}
 

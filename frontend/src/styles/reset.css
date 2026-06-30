@@ -7,12 +7,12 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  user-select: none;
+  user-select: text;
 }
 input, textarea {
   user-select: text;
   font-family: inherit;
 }
-button { cursor: pointer; border: none; background: none; color: inherit; font: inherit; }
+button { cursor: pointer; border: none; background: none; color: inherit; font: inherit; user-select: none; }
 button:disabled { cursor: not-allowed; }
 code, pre { font-family: var(--font-mono); font-size: var(--font-size-code); }

@@ -87,7 +87,9 @@ function onSend() {
 .composer {
   display: flex; align-items: center; gap: 8px; padding: 0 12px;
   background: var(--bg-panel); border-top: 1px solid var(--border);
+  box-shadow: var(--composer-shadow);
   flex-shrink: 0; height: 46px;
+  z-index: 1;
 }
 .input {
   flex: 1; resize: none; overflow: hidden;

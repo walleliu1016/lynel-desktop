@@ -240,8 +240,9 @@ export const useSessionsStore = defineStore('sessions', () => {
       state.value = { ...state.value, [id]: 'waiting' }
       if (!list.value.find(s => s.id === id)) {
         // 新建会话按 mtime 倒序应排在最前
+        const project = workdir.split(/[\\/]/).filter(Boolean).pop() || workdir
         list.value = [{
-          id, workdir, mtime: Date.now(), msg_count: 0,
+          id, workdir, project, mtime: Date.now(), msg_count: 0,
           first_prompt: prompt, ai_title: '', size: 0,
         }, ...list.value]
       }

@@ -3,9 +3,9 @@
     <TitleBar @minimize="onMinimize" @maximize="onMaximize" @close="onClose" />
     <div class="login-body">
       <div class="login-head">
-        <div class="login-logo">E</div>
+        <div class="login-logo">L</div>
         <div class="login-title-row">
-          <span class="login-title">登录 Ease</span>
+          <span class="login-title">登录 Lynel Desktop</span>
           <button class="settings-btn" title="设置" @click="goSettings">
             <span class="settings-icon">⚙</span>
             <span class="settings-label">设置</span>
@@ -48,7 +48,7 @@
         <button class="login-btn" type="submit" :disabled="locked || !canSubmit">
           登录
         </button>
-        <div class="login-footer">Ease v{{ version }}</div>
+        <div class="login-footer">Lynel Desktop v{{ version }}</div>
       </form>
     </div>
     <SettingsDialog v-if="showSettings" @close="closeSettings" />
@@ -61,7 +61,7 @@ import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import SettingsDialog from '../components/SettingsDialog.vue'
 import { useAuthStore } from '../stores/auth'
-import { WindowMinimise, WindowToggleMaximise, WindowQuit, ResetAndResizeWindow } from '../composables/useWails'
+import { WindowMinimise, WindowToggleMaximise, WindowHide, ResetAndResizeWindow } from '../composables/useWails'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -130,7 +130,7 @@ async function onSubmit() {
 
 function onMinimize() { WindowMinimise() }
 function onMaximize() { WindowToggleMaximise() }
-function onClose()    { WindowQuit() }
+function onClose()    { WindowHide() }
 async function goSettings() {
   showSettings.value = true
   // 弹窗需要更大空间，临时放大窗口

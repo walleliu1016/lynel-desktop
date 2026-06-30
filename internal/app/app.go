@@ -14,9 +14,11 @@ import (
 	"github.com/akke/ease-ui/internal/hookserver"
 	"github.com/akke/ease-ui/internal/instance"
 	"github.com/akke/ease-ui/internal/jsonl"
+	"github.com/akke/ease-ui/internal/notify"
 	"github.com/akke/ease-ui/internal/session"
 	"github.com/akke/ease-ui/internal/settings"
 	"github.com/akke/ease-ui/internal/terminal"
+	"github.com/akke/ease-ui/internal/tray"
 )
 
 type Options struct {
@@ -49,6 +51,9 @@ type App struct {
 	permMu      sync.Mutex
 	permPending map[string]*permWaiter
 	permCounter uint64
+
+	// tray 是系统托盘管理器，窗口关闭后仍保持应用在任务栏/菜单栏可见。
+	tray *tray.Manager
 }
 
 type permWaiter struct {
@@ -101,6 +106,7 @@ func New(opts Options) (*App, error) {
 		inst:     inst,
 		termLauncher: terminal.New(),
 		permPending: map[string]*permWaiter{},
+		tray:     tray.New(),
 	}
 
 	// 启动 jsonl 监听，事件去抖后通过 Wails 推给前端
@@ -142,6 +148,14 @@ func (a *App) emitSessionsChanged() {
 	wailsruntime.EventsEmit(ctx, "sessions:list:changed")
 }
 
+// StartTray 在 Wails 上下文可用后启动系统托盘图标。
+func (a *App) StartTray(icon []byte) {
+	if a.tray == nil {
+		return
+	}
+	a.tray.Start(a.ctx, icon)
+}
+
 // Shutdown stops background goroutines and releases file watchers.
 func (a *App) Shutdown() {
 	if a.watcher != nil && a.watcher.close != nil {
@@ -152,4 +166,13 @@ func (a *App) Shutdown() {
 		a.debounceT.Stop()
 	}
 	a.debounceMu.Unlock()
+	if a.tray != nil {
+		a.tray.Quit()
+	}
+}
+
+// AlertPermission 通过系统通知 + 任务栏闪烁提醒用户处理权限请求，
+// 但不会自动弹出主窗口，避免打断用户当前工作。
+func (a *App) AlertPermission(title, body string) error {
+	return notify.Alert(a.ctx, title, body)
 }

@@ -24,6 +24,14 @@ func TestScanAll_FindsJsonlFiles(t *testing.T) {
 	assert.Len(t, metas, 2)
 }
 
+func TestProjectName(t *testing.T) {
+	assert.Equal(t, "foo", projectName("/Users/akke/foo"))
+	assert.Equal(t, "work", projectName(`D:\work`))
+	assert.Equal(t, "ease-ui", projectName(`G:\work\ease-ui`))
+	assert.Equal(t, "/", projectName("/"))
+	assert.Equal(t, "", projectName(""))
+}
+
 func TestDecodeProjectDirName_WindowsAndUnix(t *testing.T) {
 	// Unix paths decode cleanly.
 	assert.Equal(t, `/Users/akke/foo`, decodeProjectDirName("-Users-akke-foo"))
@@ -50,6 +58,7 @@ func TestScanAll_UsesCwdFromJsonl(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, metas, 1)
 	assert.Equal(t, `G:\work\ease-ui`, metas[0].WorkDir)
+	assert.Equal(t, "ease-ui", metas[0].Project)
 	assert.Equal(t, "hello", metas[0].FirstPrompt)
 }
 

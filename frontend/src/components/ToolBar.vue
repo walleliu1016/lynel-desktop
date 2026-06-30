@@ -5,7 +5,7 @@
       <span v-if="stateLabel" class="state-label">{{ stateLabel }}</span>
       <span class="title">{{ displayTitle }}</span>
       <span class="sep">·</span>
-      <span class="meta mono">{{ projectName }}</span>
+      <span class="meta mono">{{ project }}</span>
       <span class="sep">·</span>
       <span class="meta">{{ msgCount }} 条消息</span>
       <span class="sep">·</span>
@@ -43,7 +43,7 @@ import { computed } from 'vue'
 const props = defineProps<{
   title: string
   aiTitle?: string
-  path: string
+  project: string
   sessionId: string
   msgCount: number
   state: 'idle' | 'waiting' | 'thinking' | 'streaming' | 'running_tool' | 'awaiting_permission' | 'done' | 'ended'
@@ -58,11 +58,6 @@ defineEmits<{
 }>()
 
 const displayTitle = computed(() => (props as any).aiTitle || props.title || '新会话')
-const projectName = computed(() => {
-  const wd = props.path
-  if (!wd || wd === '/') return wd
-  return wd.split('/').filter(Boolean).pop() || wd
-})
 const stateLabel = computed(() => {
   switch (props.state) {
     case 'waiting': return '等待中…'

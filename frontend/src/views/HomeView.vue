@@ -18,7 +18,7 @@
           <ToolBar
             :title="displayName"
             :ai-title="sessions.active?.ai_title"
-            :path="sessions.active.workdir"
+            :project="sessions.active.project"
             :session-id="sessions.active.id"
             :msg-count="sessions.active.msg_count"
             :state="state"
@@ -94,7 +94,7 @@ import { useSessionsStore } from '../stores/sessions'
 import type { HookPermissionRequest } from '../stores/sessions'
 import type { ChatMessage } from '../types/session'
 import type { ContentBlock } from '../types/blocks'
-import { WindowMinimise, WindowToggleMaximise, WindowIsMaximised, ResetAndResizeWindow, WindowQuit, OpenInTerminal, RespondHookPermission, SwitchOwner, EventsOn } from '../composables/useWails'
+import { WindowMinimise, WindowToggleMaximise, WindowIsMaximised, ResetAndResizeWindow, WindowHide, OpenInTerminal, RespondHookPermission, SwitchOwner, EventsOn } from '../composables/useWails'
 import { useEventStream } from '../composables/useEventStream'
 
 const router = useRouter()
@@ -309,19 +309,21 @@ async function toggleMaximize() {
   await new Promise(r => setTimeout(r, 80))
   try { isMaximized.value = await WindowIsMaximised() } catch {}
 }
-function onClose()     { WindowQuit() }
+function onClose()     { WindowHide() }
 </script>
 
 <style scoped>
 .home { display: flex; flex-direction: column; height: 100vh; }
-.layout { flex: 1; display: flex; min-height: 0; }
+.layout { flex: 1; display: flex; min-height: 0; gap: 1px; background: var(--border); }
 .left {
   width: 280px; display: flex; flex-direction: column;
-  background: var(--bg-panel); border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-panel);
   min-height: 0; overflow: hidden;
+  z-index: 1;
 }
-.right { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
-.messages { flex: 1; overflow-y: auto; padding: 12px 16px; }
+.right { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-primary); }
+.messages { flex: 1; overflow-y: auto; padding: 12px 16px; background: var(--bg-primary); }
 .messages::-webkit-scrollbar { width: 8px; }
 .messages::-webkit-scrollbar-track { background: transparent; }
 .messages::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }

@@ -112,12 +112,13 @@ onMounted(() => {
 .timeline {
   width: 260px;
   background: var(--bg-panel);
-  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-panel);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   min-height: 0;
   transition: width 0.2s ease;
+  z-index: 1;
 }
 .timeline.collapsed {
   width: 36px;
@@ -199,7 +200,7 @@ onMounted(() => {
 .timeline-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 8px 6px;
   min-height: 0;
 }
 .timeline-list::-webkit-scrollbar {

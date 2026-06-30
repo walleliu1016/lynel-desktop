@@ -324,6 +324,11 @@ func (a *App) handlePermissionRequest(evt hookserver.HookEvent) (any, error) {
 	})
 	if a.ctx != nil {
 		wailsruntime.EventsEmit(a.ctx, "permission:request", string(payload))
+		// 不自动弹出主窗口，仅通过通知 + 任务栏闪烁提醒用户。
+		_ = a.AlertPermission(
+			"Lynel Desktop · 权限请求",
+			"Claude 请求使用 "+toolName+"，点击处理",
+		)
 	}
 
 	select {

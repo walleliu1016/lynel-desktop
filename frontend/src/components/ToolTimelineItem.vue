@@ -157,6 +157,8 @@ function formatDateTime(ts: number): string {
 .timeline-item {
   position: relative;
   padding: 7px 10px 7px 26px;
+  margin: 4px 0;
+  border-radius: var(--radius-md);
   font-size: 11px;
   cursor: pointer;
   transition: background 0.15s;
@@ -164,7 +166,7 @@ function formatDateTime(ts: number): string {
 }
 .timeline-item:hover,
 .timeline-item:focus {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--timeline-item-hover-bg);
 }
 .timeline-item.error {
   background: rgba(251, 113, 133, 0.16);
@@ -202,7 +204,7 @@ function formatDateTime(ts: number): string {
   position: absolute;
   left: 12px;
   top: 18px;
-  bottom: -4px;
+  bottom: -8px;
   width: 1px;
   background: var(--border);
 }

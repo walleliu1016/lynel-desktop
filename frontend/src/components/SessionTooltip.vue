@@ -5,6 +5,10 @@
       <div class="mono-value">{{ meta.id }}</div>
     </div>
     <div class="section">
+      <div class="label">Project</div>
+      <div class="value">{{ meta.project || meta.workdir }}</div>
+    </div>
+    <div class="section">
       <div class="label">工作目录</div>
       <div class="value">{{ meta.workdir }}</div>
     </div>

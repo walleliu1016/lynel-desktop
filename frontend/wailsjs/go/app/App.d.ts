@@ -27,6 +27,8 @@ export function GetSessionStates():Promise<Record<string, string>>;
 
 export function GetSettings():Promise<settings.Config>;
 
+export function GetToolExecutions(arg1:string,arg2:string):Promise<Array<jsonl.ToolExecution>>;
+
 export function HookServerURL():Promise<string>;
 
 export function IsInitialized():Promise<boolean>;
@@ -40,6 +42,8 @@ export function OSUsername():Promise<string>;
 export function OpenInTerminal(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function PickDirectory():Promise<string>;
+
+export function RespondHookPermission(arg1:string,arg2:Record<string, any>):Promise<void>;
 
 export function RespondPermission(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 

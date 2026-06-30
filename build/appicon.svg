@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C3AED"/>
+      <stop offset="55%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#06B6D4"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="28" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- 渐变背景 -->
+  <rect width="1024" height="1024" rx="225" fill="url(#brand)"/>
+
+  <!-- 顶部高光 -->
+  <rect x="180" y="130" width="664" height="36" rx="18" fill="#FFFFFF" opacity="0.15"/>
+
+  <!-- 主图形：白色 L + 气泡 -->
+  <g filter="url(#glow)">
+    <!-- 字母 L -->
+    <path d="M280 260
+             C280 238 298 220 320 220
+             L400 220
+             C422 220 440 238 440 260
+             L440 620
+             L540 620
+             C562 620 580 638 580 660
+             L580 740
+             C580 762 562 780 540 780
+             L320 780
+             C298 780 280 762 280 740
+             Z"
+          fill="#FFFFFF"/>
+
+    <!-- 上方会话气泡 -->
+    <path d="M640 280
+             H780
+             C802 280 820 298 820 320
+             V400
+             C820 422 802 440 780 440
+             H720
+             L660 480
+             V440
+             H640
+             C618 440 600 422 600 400
+             V320
+             C600 298 618 280 640 280
+             Z"
+          fill="none" stroke="#FFFFFF" stroke-width="28" stroke-linejoin="round"/>
+
+    <!-- 下方会话气泡 -->
+    <path d="M640 540
+             H780
+             C802 540 820 558 820 580
+             V660
+             C820 682 802 700 780 700
+             H720
+             L660 740
+             V700
+             H640
+             C618 700 600 682 600 660
+             V580
+             C600 558 618 540 640 540
+             Z"
+          fill="none" stroke="#FFFFFF" stroke-width="28" stroke-linejoin="round" opacity="0.6"/>
+  </g>
+</svg>

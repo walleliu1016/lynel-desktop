@@ -16,6 +16,7 @@ export const isSessionEnded = (s: SessionState | undefined) => s === 'ended' || 
 export interface SessionMeta {
   id: string
   workdir: string
+  project: string
   mtime: number
   msg_count: number
   first_prompt: string

@@ -40,26 +40,64 @@ func (a *App) ListSessions() ([]jsonl.SessionMeta, error) {
 
 // GetSessionStates 返回持久化的会话状态（用于启动时恢复）。
 //
-// 顺序：
-//  1. instance.Store 有持久化状态（如上次关闭前是 running/done/awaiting_permission）
-//     → 优先用它。Ease UI 控制过的 session 最权威。
-//  2. instance.Store 没记录（jsonl 里存在但 Ease UI 从未 adopt 过的历史 session）→
-//     扫 jsonl 末尾的 /exit / /quit 标记，是则返回 "ended"，UI 立即显示该
-//     session 已结束、禁用 send。
+// 规则：
+//  1. jsonl 本身已 /exit /quit 结束 → "ended"，最权威。
+//  2. instance.Store 里是 done/ended/idle → 直接用。
+//  3. instance.Store 里是 running（或本进程曾写入的 awaiting_permission）：
+//     只有当前 App 确实还控制着该 session（进程存活 或 最近 5min 内有 hook 事件）
+//     才保留 running；否则说明是上次关闭后残留的脏状态，降级为 idle。
+//  4. 没有任何记录 → 不返回，UI 默认按 idle 处理。
 func (a *App) GetSessionStates() map[string]string {
 	out := map[string]string{}
 	list, _ := a.ListSessions()
 	for _, m := range list {
-		if s := a.inst.Get(m.ID); s.State != "" {
-			out[m.ID] = s.State
-			continue
-		}
-		// jsonl-only sessions: 通过尾部 /exit 标记检测 ended
+		// 1) jsonl 自身结束标记优先
 		if ended, err := jsonlSessionEnded(m.ID, m.WorkDir); err == nil && ended {
 			out[m.ID] = "ended"
+			continue
+		}
+
+		// 2) instance store 状态
+		inst := a.inst.Get(m.ID)
+		if inst.State == "" {
+			continue
+		}
+
+		switch inst.State {
+		case "done", "ended", "idle":
+			out[m.ID] = inst.State
+		case "running":
+			if a.sessionIsActive(m.ID) {
+				out[m.ID] = "running"
+			} else {
+				out[m.ID] = "idle"
+			}
+		default:
+			// 未知状态按 idle 处理，避免 UI 显示异常
+			out[m.ID] = "idle"
 		}
 	}
 	return out
+}
+
+// sessionIsActive 判断 session 是否仍由当前 App 持有活跃进程或近期有 hook 事件。
+func (a *App) sessionIsActive(id string) bool {
+	s, ok := a.lookupSession(id)
+	if ok && s.GetProcessForTest() != nil {
+		return true
+	}
+
+	a.hookMu.RLock()
+	srv := a.hookSrv
+	a.hookMu.RUnlock()
+	if srv == nil {
+		return false
+	}
+	last := srv.LastSeen(id)
+	if last.IsZero() {
+		return false
+	}
+	return time.Since(last) <= 5*time.Minute
 }
 
 // CreateSession 新建会话。Claude 自己生成 UUID，阻塞等待 SessionStart hook
@@ -417,6 +455,7 @@ func (a *App) pumpEvents(s *session.Session, p *process.Process) {
 	// 子进程退出：清理状态
 	fmt.Fprintf(os.Stderr, "[DBG] pumpEvents done: sid=%s n=%d\n", s.ID, n)
 	s.SetIdle()
+	a.inst.Put(s.ID, "done")
 	if a.ctx != nil {
 		wailsruntime.EventsEmit(a.ctx, topic, `{"type":"done"}`)
 	}

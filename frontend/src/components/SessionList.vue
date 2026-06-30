@@ -27,7 +27,7 @@
         :key="s.id"
         :meta="s"
         :is-active="s.id === activeId"
-        :dup="dupProjects.has(projectName(s))"
+        :dup="dupProjects.has(s.project)"
         @select="$emit('select', s.id)"
       />
       <div v-if="!filteredList.length" class="empty">
@@ -74,7 +74,7 @@ const filteredList = computed(() => {
     if (!stateMatch) return false
     // 搜索过滤
     if (!q) return true
-    const pn = projectName(s).toLowerCase()
+    const pn = s.project.toLowerCase()
     const title = (s.first_prompt || s.ai_title || '').toLowerCase()
     const sid = s.id.toLowerCase()
     return pn.includes(q) || title.includes(q) || sid.includes(q)
@@ -84,17 +84,10 @@ const filteredList = computed(() => {
 const dupProjects = computed(() => {
   const counts: Record<string, number> = {}
   for (const s of props.list) {
-    const name = projectName(s)
-    counts[name] = (counts[name] || 0) + 1
+    counts[s.project] = (counts[s.project] || 0) + 1
   }
   return new Set(Object.keys(counts).filter((k) => counts[k] > 1))
 })
-
-function projectName(s: SessionMeta): string {
-  const wd = s.workdir
-  if (!wd || wd === '/') return wd
-  return wd.split('/').filter(Boolean).pop() || wd
-}
 </script>
 
 <style scoped>

@@ -37,6 +37,16 @@
 
   --shadow-window: 0 12px 40px rgba(0,0,0,0.5);
   --shadow-accent: 0 4px 12px rgba(139,92,246,0.3);
+  --shadow-panel: none;
+  --shadow-card: none;
+
+  --session-item-bg: transparent;
+  --session-item-hover-bg: rgba(255,255,255,0.04);
+  --session-item-active-bg: rgba(139, 92, 246, 0.12);
+  --assistant-card-bg: var(--bg-panel);
+  --message-card-shadow: none;
+  --timeline-item-hover-bg: rgba(255,255,255,0.04);
+  --composer-shadow: none;
 
   /* === 对话历史渲染专用变量（参考 claude-code-transcripts 配色） === */
   --code-bg: #0E0E10;
@@ -90,67 +100,77 @@
 
 /* === Light Pro === */
 [data-theme="light-pro"] {
-  --bg-primary: #FAFAFA;
+  --bg-primary: #F0F0F5;
   --bg-panel: #FFFFFF;
-  --bg-input: #F4F4F5;
-  --bg-titlebar: linear-gradient(180deg, #F9F9FB 0%, #F1F1F4 100%);
+  --bg-input: #F2F2F7;
+  --bg-titlebar: linear-gradient(180deg, #F9F9FB 0%, #EFEFF3 100%);
 
-  --text-primary: #18181B;
+  --text-primary: #1F1F24;
   --text-secondary: #52525B;
-  --text-tertiary: #A1A1AA;
+  --text-tertiary: #8E8E99;
 
-  --border: #E4E4E7;
+  --border: #C9C9D3;
   --border-focus: var(--accent);
 
-  --shadow-window: 0 8px 32px rgba(0,0,0,0.10);
-  --shadow-accent: 0 4px 14px rgba(139,92,246,0.2);
+  --shadow-window: 0 8px 32px rgba(0,0,0,0.14);
+  --shadow-accent: 0 4px 14px rgba(139,92,246,0.22);
+  --shadow-panel: 0 0 0 1px var(--border), 0 2px 6px rgba(0,0,0,0.06);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.06);
+
+  --session-item-bg: var(--bg-input);
+  --session-item-hover-bg: #FFFFFF;
+  --session-item-active-bg: rgba(139, 92, 246, 0.10);
+  --assistant-card-bg: #FFFFFF;
+  --message-card-shadow: var(--shadow-card);
+  --timeline-item-hover-bg: var(--bg-input);
+  --composer-shadow: 0 -2px 6px rgba(0,0,0,0.04);
 
   /* === 对话历史渲染专用变量 === */
   --code-bg: #263238;
   --code-text: #AED581;
 
-  --user-bg: rgba(139, 92, 246, 0.06);
-  --user-border: var(--accent);
+  --user-bg: rgba(124, 58, 237, 0.06);
+  --user-border: #8B5CF6;
 
-  --thinking-bg: #FFF8E1;
-  --thinking-border: #FFC107;
+  --thinking-bg: #FEF9E7;
+  --thinking-border: #FBC02D;
   --thinking-label: #F57C00;
 
-  --tool-bg: #F3E5F5;
-  --tool-border: #9C27B0;
-  --tool-header: #7B1FA2;
+  --tool-bg: #F5EEFD;
+  --tool-border: #A855F7;
+  --tool-header: #7E22CE;
 
-  --tool-result-bg: #E8F5E9;
+  --tool-result-bg: #EDF7EE;
   --tool-result-border: #66BB6A;
   --tool-error-bg: #FFEBEE;
 
-  --tool-reply-bg: #FFF8E1;
-  --tool-reply-border: #FF9800;
-  --tool-reply-header: #E65100;
+  --tool-reply-bg: #FFF7E6;
+  --tool-reply-border: #F59E0B;
+  --tool-reply-header: #D97706;
 
-  --write-bg: linear-gradient(135deg, #E3F2FD 0%, #E8F5E9 100%);
+  --write-bg: linear-gradient(135deg, #E8F4FD 0%, #EDF7EE 100%);
   --write-border: #4CAF50;
   --write-header: #2E7D32;
 
-  --edit-bg: linear-gradient(135deg, #FFF3E0 0%, #FCE4EC 100%);
-  --edit-border: #FF9800;
-  --edit-header: #E65100;
-  --edit-old-label: #B71C1C;
-  --edit-new-label: #1B5E20;
+  --edit-bg: linear-gradient(135deg, #FFF5EB 0%, #FCE4EC 100%);
+  --edit-border: #F97316;
+  --edit-header: #C2410C;
+  --edit-old-label: #B91C1C;
+  --edit-new-label: #15803D;
 
-  --todo-bg: linear-gradient(135deg, #E8F5E9 0%, #F1F8E9 100%);
+  --todo-bg: linear-gradient(135deg, #EDF7EE 0%, #F4FCE8 100%);
   --todo-border: #81C784;
   --todo-header: #2E7D32;
 
-  --ask-bg: #F3E5F5;
-  --ask-border: #9C27B0;
-  --ask-header: #7B1FA2;
+  --ask-bg: #F5EEFD;
+  --ask-border: #A855F7;
+  --ask-header: #7E22CE;
   --ask-option-bg: #FFFFFF;
 
-  --plan-bg: #F3E5F5;
-  --plan-border: #9C27B0;
-  --plan-header: #7B1FA2;
+  --plan-bg: #F5EEFD;
+  --plan-border: #A855F7;
+  --plan-header: #7E22CE;
 
-  --commit-card-bg: #FFF3E0;
-  --commit-card-border: #FF9800;
+  --commit-card-bg: #FFF5EB;
+  --commit-card-border: #F97316;
 }
