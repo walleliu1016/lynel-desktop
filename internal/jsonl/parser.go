@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -16,10 +17,25 @@ type Message struct {
 	Timestamp int64           `json:"timestamp"`
 }
 
+// ToolExecution 表示一次工具调用或 LLM 推理的时间线记录。
+type ToolExecution struct {
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`   // "tool" | "llm"
+	Name       string `json:"name"`   // 工具名或 "LLM"
+	StartedAt  int64  `json:"startedAt"`
+	EndedAt    int64  `json:"endedAt"`
+	DurationMs int64  `json:"durationMs"`
+	Status     string `json:"status"` // "running" | "success" | "error"
+	Input      string `json:"input"`  // 工具关键参数 / LLM 输入摘要
+	Output     string `json:"output"` // stdout/stderr / LLM 输出摘要
+	ExitCode   int    `json:"exitCode"`
+}
+
 // contentBlock 覆盖 Claude API 已知的所有 content 类型。
 // 未知字段（text/thinking/input/content/is_error）保留以便排错。
 type contentBlock struct {
 	Type     string          `json:"type"`
+	ID       string          `json:"id"`
 	Text     string          `json:"text"`
 	Thinking string          `json:"thinking"`
 	Name     string          `json:"name"`
@@ -294,4 +310,291 @@ func ParseFileRange(path string, start, limit int) ([]Message, error) {
 		out = append(out, m)
 	}
 	return out, scanner.Err()
+}
+
+// ParseToolExecutions scans a jsonl file and returns a timeline of tool
+// executions and LLM calls, sorted by start time ascending.
+func ParseToolExecutions(path string) ([]ToolExecution, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	type attachment struct {
+		Type      string `json:"type"`
+		HookName  string `json:"hookName"`
+		HookEvent string `json:"hookEvent"`
+		ToolUseID string `json:"toolUseID"`
+		Stdout    string `json:"stdout"`
+		Stderr    string `json:"stderr"`
+		ExitCode  int    `json:"exitCode"`
+	}
+	type rawLine struct {
+		Type       string          `json:"type"`
+		Message    json.RawMessage `json:"message"`
+		Timestamp  string          `json:"timestamp"`
+		Attachment attachment      `json:"attachment"`
+	}
+
+	execs := map[string]*ToolExecution{}
+	var msgs []Message
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 50*1024*1024)
+
+	for scanner.Scan() {
+		var rl rawLine
+		if err := json.Unmarshal(scanner.Bytes(), &rl); err != nil {
+			continue
+		}
+		var ts int64
+		if rl.Timestamp != "" {
+			if t, err := time.Parse(time.RFC3339Nano, rl.Timestamp); err == nil {
+				ts = t.UnixMilli()
+			}
+		}
+
+		switch rl.Type {
+		case "user", "assistant":
+			var m Message
+			if err := json.Unmarshal(rl.Message, &m); err != nil {
+				continue
+			}
+			m.Type = rl.Type
+			m.Timestamp = ts
+			msgs = append(msgs, m)
+
+			// 从 assistant 消息里的 tool_use block 提取输入
+			if m.Role == "assistant" {
+				var blocks []contentBlock
+				if json.Unmarshal(m.Content, &blocks) == nil {
+					for _, b := range blocks {
+						if b.Type != "tool_use" || b.Name == "" {
+							continue
+						}
+						id := b.ID
+						if id == "" {
+							id = b.Name
+						}
+						if execs[id] == nil {
+							execs[id] = &ToolExecution{ID: id, Kind: "tool", Name: b.Name}
+						}
+						execs[id].Input = toolInputSummary(b.Name, b.Input)
+					}
+				}
+			}
+
+		case "attachment":
+			att := rl.Attachment
+			if att.HookEvent != "PreToolUse" && att.HookEvent != "PostToolUse" && att.HookEvent != "PostToolUseFailure" {
+				continue
+			}
+			id := att.ToolUseID
+			if id == "" {
+				continue
+			}
+			if execs[id] == nil {
+				execs[id] = &ToolExecution{ID: id, Kind: "tool"}
+			}
+			e := execs[id]
+			if att.HookName != "" {
+				// hookName 形如 "PreToolUse:Read"，提取工具名
+				parts := strings.SplitN(att.HookName, ":", 2)
+				if len(parts) == 2 {
+					e.Name = parts[1]
+				} else {
+					e.Name = att.HookName
+				}
+			}
+			switch att.HookEvent {
+			case "PreToolUse":
+				e.StartedAt = ts
+				e.Status = "running"
+			case "PostToolUse":
+				e.EndedAt = ts
+				e.DurationMs = e.EndedAt - e.StartedAt
+				e.Status = "success"
+				e.Output = att.Stdout
+				e.ExitCode = att.ExitCode
+			case "PostToolUseFailure":
+				e.EndedAt = ts
+				e.DurationMs = e.EndedAt - e.StartedAt
+				e.Status = "error"
+				e.Output = att.Stderr
+				e.ExitCode = att.ExitCode
+			}
+		}
+	}
+
+	// 从 user 消息的 tool_result 补 output（如果 PostToolUse 没返回 stdout）
+	for _, m := range msgs {
+		if m.Role != "user" {
+			continue
+		}
+		var blocks []contentBlock
+		if json.Unmarshal(m.Content, &blocks) != nil {
+			continue
+		}
+		for _, b := range blocks {
+			if b.Type != "tool_result" || b.ToolUseID == "" {
+				continue
+			}
+			e := execs[b.ToolUseID]
+			if e == nil || e.Output != "" {
+				continue
+			}
+			if s, err := toolResultSummary(b.Result); err == nil {
+				e.Output = s
+			}
+		}
+	}
+
+	// 生成 LLM 调用记录：每条带 text/thinking 的 assistant 消息视为一次 LLM 调用
+	var llmExecs []ToolExecution
+	for i, m := range msgs {
+		if m.Role != "assistant" {
+			continue
+		}
+		var blocks []contentBlock
+		if json.Unmarshal(m.Content, &blocks) != nil {
+			continue
+		}
+		hasText := false
+		for _, b := range blocks {
+			if b.Type == "text" || b.Type == "thinking" {
+				hasText = true
+				break
+			}
+		}
+		if !hasText {
+			continue
+		}
+		end := m.Timestamp
+		if i+1 < len(msgs) {
+			end = msgs[i+1].Timestamp
+		}
+		llmExecs = append(llmExecs, ToolExecution{
+			ID:         fmt.Sprintf("llm-%d", i),
+			Kind:       "llm",
+			Name:       "LLM",
+			StartedAt:  m.Timestamp,
+			EndedAt:    end,
+			DurationMs: end - m.Timestamp,
+			Status:     "success",
+			Output:     llmOutputSummary(blocks),
+		})
+	}
+
+	// 收集结果并排序
+	out := make([]ToolExecution, 0, len(execs)+len(llmExecs))
+	for _, e := range execs {
+		if e.StartedAt == 0 {
+			e.StartedAt = e.EndedAt
+		}
+		if e.EndedAt == 0 {
+			e.Status = "running"
+		}
+		if e.DurationMs == 0 && e.EndedAt > e.StartedAt {
+			e.DurationMs = e.EndedAt - e.StartedAt
+		}
+		out = append(out, *e)
+	}
+	out = append(out, llmExecs...)
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].StartedAt != out[j].StartedAt {
+			return out[i].StartedAt < out[j].StartedAt
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out, scanner.Err()
+}
+
+// llmOutputSummary extracts a short summary from assistant text/thinking blocks.
+func llmOutputSummary(blocks []contentBlock) string {
+	var parts []string
+	for _, b := range blocks {
+		switch b.Type {
+		case "text":
+			if b.Text != "" {
+				parts = append(parts, b.Text)
+			}
+		case "thinking":
+			if b.Thinking != "" {
+				parts = append(parts, b.Thinking)
+			}
+		}
+	}
+	return truncate(strings.Join(parts, " "), 200)
+}
+
+// toolInputSummary extracts a short summary from a tool_use input block.
+func toolInputSummary(name string, input json.RawMessage) string {
+	if len(input) == 0 {
+		return ""
+	}
+	var args map[string]any
+	if json.Unmarshal(input, &args) != nil {
+		return truncate(string(input), 120)
+	}
+	switch name {
+	case "Bash":
+		if v, ok := args["command"].(string); ok {
+			return truncate(v, 120)
+		}
+	case "Read", "Write", "Edit", "MultiEdit":
+		if v, ok := args["file_path"].(string); ok {
+			return v
+		}
+	case "Glob":
+		if v, ok := args["pattern"].(string); ok {
+			return truncate(v, 120)
+		}
+	case "Grep":
+		pat, _ := args["pattern"].(string)
+		path, _ := args["path"].(string)
+		if pat != "" {
+			if path != "" {
+				return fmt.Sprintf("%s in %s", truncate(pat, 60), path)
+			}
+			return truncate(pat, 120)
+		}
+	case "WebFetch":
+		if v, ok := args["url"].(string); ok {
+			return truncate(v, 120)
+		}
+	case "WebSearch":
+		if v, ok := args["query"].(string); ok {
+			return truncate(v, 120)
+		}
+	}
+	// fallback: 取第一个字符串值
+	for _, v := range args {
+		if s, ok := v.(string); ok && s != "" {
+			return truncate(s, 120)
+		}
+	}
+	return truncate(string(input), 120)
+}
+
+// toolResultSummary extracts a short text summary from a tool_result content.
+func toolResultSummary(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 {
+		return "", nil
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return strings.TrimRight(s, "\n"), nil
+	}
+	var blocks []contentBlock
+	if json.Unmarshal(raw, &blocks) == nil {
+		var parts []string
+		for _, b := range blocks {
+			if b.Type == "text" && b.Text != "" {
+				parts = append(parts, b.Text)
+			}
+		}
+		return strings.TrimRight(strings.Join(parts, "\n"), "\n"), nil
+	}
+	return strings.TrimRight(string(raw), "\n"), nil
 }

@@ -42,6 +42,10 @@ export function GetSessionStates() {
   return window['go']['app']['App']['GetSessionStates']();
 }
 
+export function GetToolExecutions(arg1, arg2) {
+  return window['go']['app']['App']['GetToolExecutions'](arg1, arg2);
+}
+
 export function GetSettings() {
   return window['go']['app']['App']['GetSettings']();
 }
@@ -72,6 +76,10 @@ export function OpenInTerminal(arg1, arg2, arg3) {
 
 export function PickDirectory() {
   return window['go']['app']['App']['PickDirectory']();
+}
+
+export function RespondHookPermission(arg1, arg2) {
+  return window['go']['app']['App']['RespondHookPermission'](arg1, arg2);
 }
 
 export function RespondPermission(arg1, arg2, arg3) {

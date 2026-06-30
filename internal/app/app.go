@@ -45,6 +45,15 @@ type App struct {
 	// termLauncher 跨 OpenInTerminal/SwitchOwner 调用持久化，保留最近
 	// 一次 Launch 的 pidfile 路径供切回时使用。
 	termLauncher *terminal.Launcher
+	// hookPermission 存储阻塞中的 PermissionRequest 决策通道。
+	permMu      sync.Mutex
+	permPending map[string]*permWaiter
+	permCounter uint64
+}
+
+type permWaiter struct {
+	ch        chan map[string]any
+	sessionID string
 }
 
 // fsWatcher wraps the jsonl fsnotify watcher; debouncing is handled
@@ -91,6 +100,7 @@ func New(opts Options) (*App, error) {
 		sessions: map[string]*session.Session{},
 		inst:     inst,
 		termLauncher: terminal.New(),
+		permPending: map[string]*permWaiter{},
 	}
 
 	// 启动 jsonl 监听，事件去抖后通过 Wails 推给前端

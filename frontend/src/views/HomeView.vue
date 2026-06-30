@@ -36,7 +36,12 @@
               :blocks="m.blocks"
               :ts="m.ts"
             />
-            <PermissionPanel v-if="pending" :tool="pending.tool" :args="pending.args" @respond="respondPermission" />
+            <PermissionRequestModal
+              v-if="hookPermission"
+              :request="hookPermission"
+              @decision="respondHookPermission"
+              @close="clearHookPermission"
+            />
             <div v-if="isStreaming" class="streaming">
               <span class="dot" /><span class="dot" /><span class="dot" />
             </div>
@@ -52,12 +57,22 @@
           <div class="empty-text">选择左侧会话，或点击 + 创建新会话</div>
         </div>
       </main>
+      <ToolTimeline
+        v-model:collapsed="timelineCollapsed"
+        :executions="sessions.executions"
+        :active-id="sessions.activeId"
+      />
     </div>
     <NewSessionDialog
       :open="showNew"
       :loading="sessions.creating"
       @close="showNew = false"
       @create="onCreate"
+    />
+    <PermissionToast
+      :requests="sessions.hookPermissions"
+      @switch="switchToSession"
+      @decision="respondHookPermissionFromToast"
     />
   </div>
 </template>
@@ -70,11 +85,16 @@ import SessionList from '../components/SessionList.vue'
 import UserBar from '../components/UserBar.vue'
 import ToolBar from '../components/ToolBar.vue'
 import MessageCard from '../components/MessageCard.vue'
-import PermissionPanel from '../components/PermissionPanel.vue'
+import PermissionRequestModal from '../components/PermissionRequestModal.vue'
 import Composer from '../components/Composer.vue'
 import NewSessionDialog from '../components/NewSessionDialog.vue'
+import ToolTimeline from '../components/ToolTimeline.vue'
+import PermissionToast from '../components/PermissionToast.vue'
 import { useSessionsStore } from '../stores/sessions'
-import { WindowMinimise, WindowToggleMaximise, WindowIsMaximised, ResetAndResizeWindow, WindowQuit, OpenInTerminal, RespondPermission, SwitchOwner, EventsOn } from '../composables/useWails'
+import type { HookPermissionRequest } from '../stores/sessions'
+import type { ChatMessage } from '../types/session'
+import type { ContentBlock } from '../types/blocks'
+import { WindowMinimise, WindowToggleMaximise, WindowIsMaximised, ResetAndResizeWindow, WindowQuit, OpenInTerminal, RespondHookPermission, SwitchOwner, EventsOn } from '../composables/useWails'
 import { useEventStream } from '../composables/useEventStream'
 
 const router = useRouter()
@@ -86,6 +106,7 @@ const username = ref('')
 const version = ref('0.1.0')
 const msgContainer = ref<HTMLElement | null>(null)
 const isMaximized = ref(false)
+const timelineCollapsed = ref(false)
 
 let maximizePollTimer: number | null = null
 
@@ -114,8 +135,8 @@ onBeforeUnmount(() => {
 const messages = computed(() => sessions.activeId ? sessions.messages[sessions.activeId] ?? [] : [])
 // tool-reply 角色检测：user 消息里只有 tool_result block 时，UI 渲染为「工具回复」卡（黄底）
 // 与参考实现保持一致。
-const displayMessages = computed(() => messages.value.map((m) => {
-  const isAllToolResult = m.blocks.length > 0 && m.blocks.every((b) => b.type === 'tool_result')
+const displayMessages = computed(() => messages.value.map((m: ChatMessage) => {
+  const isAllToolResult = m.blocks.length > 0 && m.blocks.every((b: ContentBlock) => b.type === 'tool_result')
   let displayRole: 'user' | 'assistant' | 'tool-reply'
   if (m.role === 'user' && isAllToolResult) displayRole = 'tool-reply'
   else if (m.role === 'user' || m.role === 'assistant') displayRole = m.role
@@ -124,7 +145,7 @@ const displayMessages = computed(() => messages.value.map((m) => {
 }))
 const isStreaming = computed(() => sessions.activeId ? sessions.streaming[sessions.activeId] : false)
 const state = computed(() => sessions.activeId ? (sessions.state[sessions.activeId] || 'idle') : 'idle')
-const pending = computed(() => sessions.activeId ? (sessions.pending[sessions.activeId] || null) : null)
+const hookPermission = computed(() => sessions.activeId ? (sessions.hookPermissions[sessions.activeId] || null) : null)
 const displayName = computed(() => sessions.active?.first_prompt || '新会话')
 // 'app' 默认；'terminal' 表示外部 claude -r 持 stdin（ToolBar 渲染"切回"按钮）
 const owner = computed<'app' | 'terminal'>(() =>
@@ -140,21 +161,30 @@ const switchingToApp = computed(() =>
 
 // 切换会话后需要一次性滚动到底部，让用户看到最新消息。
 const pendingScrollFor = ref<string | null>(null)
+// 用户是否主动上翻查看历史；为 true 时新消息不自动滚底，避免打断阅读。
+const userScrolledUp = ref(false)
 watch(() => sessions.activeId, (id) => {
-  if (id) pendingScrollFor.value = id
+  if (id) {
+    pendingScrollFor.value = id
+    userScrolledUp.value = false
+  }
 })
 
-// 切换会话或新消息到达时：只在用户已经靠近底部时自动滚动，否则静默更新，
-// 避免用户翻看历史记录时被不断跳回底部。
+// 切换会话或新消息/jsonl 更新时：若用户未主动上翻，则自动滚底；
+// 若用户正在翻看历史，则保持当前滚动位置。
 watch(displayMessages, () => {
   nextTick(() => {
     const sid = sessions.activeId
     if (sid && pendingScrollFor.value === sid && displayMessages.value.length > 0) {
       scrollToBottom()
       pendingScrollFor.value = null
+      userScrolledUp.value = false
       return
     }
-    if (isNearBottom()) scrollToBottom()
+    if (!userScrolledUp.value || isNearBottom()) {
+      scrollToBottom()
+      userScrolledUp.value = false
+    }
   })
 })
 
@@ -167,6 +197,7 @@ async function onSend(text: string) {
     return
   }
   await nextTick()
+  userScrolledUp.value = false
   scrollToBottom()
 }
 
@@ -184,6 +215,7 @@ function scrollToBottom() {
 function onScroll() {
   const el = msgContainer.value
   if (!el) return
+  userScrolledUp.value = !isNearBottom()
   // 滚动到顶部时加载更多
   if (el.scrollTop <= 10 && sessions.hasMore[sessions.activeId || '']) {
     sessions.loadMore()
@@ -234,15 +266,38 @@ async function takeback() {
   }
 }
 
-async function respondPermission(allow: boolean) {
-  if (!pending.value || !sessions.activeId) return
+async function respondHookPermission(decision: { behavior: string; updatedInput?: any; message?: string }) {
+  if (!hookPermission.value) return
   try {
-    await RespondPermission(sessions.activeId, pending.value.reqId, allow)
-    sessions.pending[sessions.activeId] = null
-    sessions.state[sessions.activeId] = 'waiting'
+    await RespondHookPermission(hookPermission.value.requestId, decision)
+    sessions.setHookPermission(hookPermission.value.sessionId, null)
   } catch (e: any) {
     alert('响应失败：' + (e?.message ?? e))
   }
+}
+
+function clearHookPermission() {
+  if (!hookPermission.value) return
+  sessions.setHookPermission(hookPermission.value.sessionId, null)
+}
+
+async function respondHookPermissionFromToast(requestId: string, decision: { behavior: string; updatedInput?: any; message?: string }) {
+  try {
+    await RespondHookPermission(requestId, decision)
+    // 找到对应 session 并清除
+    for (const [sid, req] of Object.entries(sessions.hookPermissions as Record<string, HookPermissionRequest | null>)) {
+      if (req?.requestId === requestId) {
+        sessions.setHookPermission(sid, null)
+        break
+      }
+    }
+  } catch (e: any) {
+    alert('响应失败：' + (e?.message ?? e))
+  }
+}
+
+function switchToSession(sessionId: string) {
+  sessions.select(sessionId)
 }
 
 function goSettings() { router.push('/settings') }
@@ -267,6 +322,10 @@ function onClose()     { WindowQuit() }
 }
 .right { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 .messages { flex: 1; overflow-y: auto; padding: 12px 16px; }
+.messages::-webkit-scrollbar { width: 8px; }
+.messages::-webkit-scrollbar-track { background: transparent; }
+.messages::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+.messages::-webkit-scrollbar-thumb:hover { background: #52525b; }
 .empty { flex: 1; display: flex; align-items: center; justify-content: center; }
 .empty-text { color: var(--text-tertiary); font-size: 12px; }
 .streaming { display: flex; gap: 4px; padding: 8px 0; }

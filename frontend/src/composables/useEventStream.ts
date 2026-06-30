@@ -1,5 +1,5 @@
 import { onMounted, onBeforeUnmount, watch } from 'vue'
-import { EventsOn } from './useWails'
+import { EventsOn, WindowShow, WindowUnminimise, WindowSetAlwaysOnTop, WindowIsMinimised } from './useWails'
 import { useSessionsStore } from '../stores/sessions'
 
 export function useEventStream() {
@@ -25,6 +25,15 @@ export function useEventStream() {
       if (sessions.activeId) {
         void sessions.reloadFromJsonl(sessions.activeId)
       }
+    }))
+
+    cleanups.push(EventsOn('permission:request', (payload: string) => {
+      let req: any
+      try { req = JSON.parse(payload) } catch { return }
+      if (!req?.sessionId || !req?.requestId) return
+      sessions.setHookPermission(req.sessionId, req)
+      // 如果窗口不在前台或最小化，给出提示并尝试唤起窗口
+      void bringWindowToFront()
     }))
 
     watch(
@@ -56,4 +65,19 @@ export function useEventStream() {
   })
 
   return { sessions }
+}
+
+async function bringWindowToFront() {
+  try {
+    const minimised = await WindowIsMinimised().catch(() => false)
+    if (!minimised) return
+    WindowUnminimise()
+    WindowShow()
+    WindowSetAlwaysOnTop(true)
+    setTimeout(() => {
+      try { WindowSetAlwaysOnTop(false) } catch {}
+    }, 200)
+  } catch {
+    // runtime 不可用（如浏览器 dev）时静默忽略
+  }
 }

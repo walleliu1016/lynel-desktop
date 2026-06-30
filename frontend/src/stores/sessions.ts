@@ -1,13 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { SessionMeta, ChatMessage, SessionState } from '../types/session'
+import type { SessionMeta, ChatMessage, SessionState, ToolExecution } from '../types/session'
 import type { ContentBlock, ToolResultBlock, RawContent } from '../types/blocks'
-import { ListSessions, CreateSession, SendMessage, GetSessionMessages, GetSessionStates, SwitchOwner, AdoptSession } from '../composables/useWails'
+import { ListSessions, CreateSession, SendMessage, GetSessionMessages, GetToolExecutions, GetSessionStates, SwitchOwner, AdoptSession } from '../composables/useWails'
 
-export interface PendingPerm {
-  tool: string
-  args: unknown
-  reqId: string
+export interface HookPermissionRequest {
+  requestId: string
+  sessionId: string
+  toolName: string
+  toolInput: any
 }
 
 // parseBlocks 把 Wails 序列化后的 m.content 归一化成 ContentBlock[]。
@@ -112,7 +113,6 @@ export const useSessionsStore = defineStore('sessions', () => {
   const messages = ref<Record<string, ChatMessage[]>>({})
   const streaming = ref<Record<string, boolean>>({})
   const state = ref<Record<string, SessionState>>({})
-  const pending = ref<Record<string, PendingPerm | null>>({})
   const historyOffset = ref<Record<string, number>>({})
   const hasMore = ref<Record<string, boolean>>({})
   const owner = ref<Record<string, 'app' | 'terminal'>>({})
@@ -122,8 +122,59 @@ export const useSessionsStore = defineStore('sessions', () => {
   const creating = ref(false)
   const adopted = ref<Record<string, boolean>>({})
   const drafts = ref<Record<string, string>>({})
+  const executions = ref<Record<string, ToolExecution[]>>({})
+  const hookPermissions = ref<Record<string, HookPermissionRequest | null>>({})
 
   const active = computed(() => list.value.find((s) => s.id === activeId.value) ?? null)
+
+  function toolInputSummary(name: string, input: Record<string, unknown>): string {
+    if (!input || typeof input !== 'object') return ''
+    switch (name) {
+      case 'Bash':
+        return truncate(String(input.command || ''), 120)
+      case 'Read':
+      case 'Write':
+      case 'Edit':
+      case 'MultiEdit':
+        return truncate(String(input.file_path || ''), 120)
+      case 'Glob':
+        return truncate(String(input.pattern || ''), 120)
+      case 'Grep': {
+        const pat = String(input.pattern || '')
+        const path = String(input.path || '')
+        if (!pat) return ''
+        return path ? `${truncate(pat, 60)} in ${path}` : truncate(pat, 120)
+      }
+      case 'WebFetch':
+        return truncate(String(input.url || ''), 120)
+      case 'WebSearch':
+        return truncate(String(input.query || ''), 120)
+      case 'Skill':
+        return truncate(String(input.skill || ''), 120)
+    }
+    for (const v of Object.values(input)) {
+      if (typeof v === 'string' && v) return truncate(v, 120)
+    }
+    return ''
+  }
+
+  function llmOutputSummary(blocks: ContentBlock[]): string {
+    const parts: string[] = []
+    for (const b of blocks) {
+      if (b.type === 'text' && (b as any).text) {
+        parts.push((b as any).text)
+      } else if (b.type === 'thinking' && (b as any).text) {
+        parts.push((b as any).text)
+      }
+    }
+    return truncate(parts.join(' '), 200)
+  }
+
+  function truncate(s: string, max: number): string {
+    if (!s) return ''
+    if (s.length <= max) return s
+    return s.slice(0, max) + '…'
+  }
 
   async function refresh(options?: { sort?: boolean }) {
     const backend = await ListSessions()
@@ -195,19 +246,46 @@ export const useSessionsStore = defineStore('sessions', () => {
         }, ...list.value]
       }
       activeId.value = id
-      select(id)
+      await select(id)
       return id
     } finally {
       creating.value = false
     }
   }
 
-  function select(id: string) {
+  async function select(id: string) {
     activeId.value = id
     const meta = list.value.find((s) => s.id === id)
-    if (meta && !messages.value[id]) {
+    if (!meta) return
+    if (!messages.value[id]) {
       const total = meta.msg_count
-      loadHistory(id, meta.workdir, Math.max(0, total - PAGE_SIZE), PAGE_SIZE, true)
+      await loadHistory(id, meta.workdir, Math.max(0, total - PAGE_SIZE), PAGE_SIZE, true)
+    }
+    await loadExecutions(id, meta.workdir)
+  }
+
+  async function loadExecutions(sid: string, workdir: string) {
+    try {
+      const raw = await GetToolExecutions(sid, workdir)
+      const list = (raw || []).map(normalizeExecution)
+      executions.value = { ...executions.value, [sid]: list }
+    } catch (e: any) {
+      console.error('[sessions] loadExecutions failed:', e?.message || e)
+    }
+  }
+
+  function normalizeExecution(m: any): ToolExecution {
+    return {
+      id: m.id || m.ID || '',
+      kind: (m.kind || m.Kind || 'tool') as 'tool' | 'llm',
+      name: m.name || m.Name || '',
+      startedAt: m.startedAt || m.StartedAt || 0,
+      endedAt: m.endedAt || m.EndedAt || 0,
+      durationMs: m.durationMs || m.DurationMs || 0,
+      status: (m.status || m.Status || 'running') as 'running' | 'success' | 'error',
+      input: m.input || m.Input || '',
+      output: m.output || m.Output || '',
+      exitCode: m.exitCode || m.ExitCode || 0,
     }
   }
 
@@ -264,6 +342,7 @@ export const useSessionsStore = defineStore('sessions', () => {
       historyOffset.value = { ...historyOffset.value, [sid]: offset + (raw?.length || 0) }
       hasMore.value = { ...hasMore.value, [sid]: offset > 0 }
       messages.value = { ...messages.value, [sid]: msgs }
+      await loadExecutions(sid, meta.workdir)
     } catch (e: any) {
       console.error('[sessions] reloadFromJsonl failed:', e?.message || e)
     }
@@ -391,6 +470,62 @@ export const useSessionsStore = defineStore('sessions', () => {
           ts: Date.now(),
         } as ChatMessage] }
         updateStateFromBlocks(sid, blocks)
+
+        // 从 assistant 消息里的 tool_use block 补全工具执行 input
+        for (const b of blocks) {
+          if (b.type !== 'tool_use') continue
+          const toolId = b.id || crypto.randomUUID()
+          const toolName = b.name || 'Unknown'
+          const exList = executions.value[sid] || []
+          const idx = exList.findIndex((e) => e.id === toolId)
+          const input = toolInputSummary(toolName, b.input)
+          if (idx >= 0) {
+            const next = [...exList]
+            next[idx] = { ...next[idx], name: toolName, input }
+            executions.value = { ...executions.value, [sid]: next }
+          } else {
+            executions.value = { ...executions.value, [sid]: [...exList, {
+              id: toolId,
+              kind: 'tool',
+              name: toolName,
+              startedAt: Date.now(),
+              endedAt: 0,
+              durationMs: 0,
+              status: 'running',
+              input,
+              output: '',
+              exitCode: 0,
+            }] }
+          }
+        }
+
+        // 非纯 tool_use 的 assistant 消息视为 LLM 调用；output 记录本次生成的内容摘要
+        const hasText = blocks.some((b) => b.type === 'text' || b.type === 'thinking')
+        if (hasText) {
+          const exList = executions.value[sid] || []
+          const runningIdx = exList.findLastIndex((e) => e.kind === 'llm' && e.status === 'running')
+          const summary = llmOutputSummary(blocks)
+          if (runningIdx < 0) {
+            executions.value = { ...executions.value, [sid]: [...exList, {
+              id: crypto.randomUUID(),
+              kind: 'llm',
+              name: 'LLM',
+              startedAt: Date.now(),
+              endedAt: 0,
+              durationMs: 0,
+              status: 'running',
+              input: '',
+              output: summary,
+              exitCode: 0,
+            }] }
+          } else {
+            const prev = exList[runningIdx]
+            const nextOutput = prev.output ? `${prev.output} ${summary}` : summary
+            const next = [...exList]
+            next[runningIdx] = { ...prev, output: truncate(nextOutput, 200) }
+            executions.value = { ...executions.value, [sid]: next }
+          }
+        }
         break
       }
       case 'tool_use': {
@@ -405,21 +540,16 @@ export const useSessionsStore = defineStore('sessions', () => {
         }
         break
       }
-      case 'permission_request': {
-        const d = evt.data || evt
-        pending.value = { ...pending.value, [sid]: { tool: d.tool, args: d.args, reqId: d.request_id } }
-        state.value = { ...state.value, [sid]: 'awaiting_permission' }
-        streaming.value = { ...streaming.value, [sid]: false }
-        break
-      }
       case 'result':
         streaming.value = { ...streaming.value, [sid]: false }
         state.value = { ...state.value, [sid]: 'idle' }
+        endRunningLlm(sid)
         break
       case 'done':
         streaming.value = { ...streaming.value, [sid]: false }
         state.value = { ...state.value, [sid]: 'idle' }
         adopted.value = { ...adopted.value, [sid]: false }
+        endRunningLlm(sid)
         reloadFromJsonl(sid)
         break
     }
@@ -449,6 +579,18 @@ export const useSessionsStore = defineStore('sessions', () => {
         break
       case 'PreToolUse':
       case 'PostToolUse':
+      case 'PostToolUseFailure': {
+        // 这些 hook 只在已确认是外部终端控制时保持 terminal；
+        // App 控制期间自己的 stream 进程也会发这些 hook，不能误切。
+        if (owner.value[sid] === 'terminal' || terminalLoading.value[sid]) {
+          owner.value = { ...owner.value, [sid]: 'terminal' }
+          mode.value  = { ...mode.value,  [sid]: 'resume' }
+        }
+        const toolUseID = evt.tool_use_id || evt.toolUseID
+        if (!toolUseID) break
+        updateExecutionFromHook(sid, tp, evt)
+        break
+      }
       case 'UserPromptSubmit':
         // 这些 hook 只在已确认是外部终端控制时保持 terminal；
         // App 控制期间自己的 stream 进程也会发这些 hook，不能误切。
@@ -466,11 +608,101 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
+  function endRunningLlm(sid: string) {
+    const list = executions.value[sid] || []
+    const idx = list.findLastIndex((e) => e.kind === 'llm' && e.status === 'running')
+    if (idx < 0) return
+    const now = Date.now()
+    const prev = list[idx]
+    const duration = now - (prev.startedAt || now)
+    const next = [...list]
+    next[idx] = { ...prev, endedAt: now, durationMs: duration, status: 'success' }
+    executions.value = { ...executions.value, [sid]: next }
+  }
+
+  function updateExecutionFromHook(sid: string, tp: string, evt: any) {
+    const list = executions.value[sid] || []
+    const toolUseID = evt.tool_use_id || evt.toolUseID
+    const hookName = evt.hook_name || evt.hookName || ''
+    const name = hookName.split(':').pop() || toolUseID
+    const idx = list.findIndex((e) => e.id === toolUseID)
+    const now = Date.now()
+
+    if (tp === 'PreToolUse') {
+      if (idx >= 0) {
+        const updated = { ...list[idx], startedAt: now, status: 'running' as const }
+        const next = [...list]
+        next[idx] = updated
+        executions.value = { ...executions.value, [sid]: next }
+      } else {
+        executions.value = { ...executions.value, [sid]: [...list, {
+          id: toolUseID,
+          kind: 'tool',
+          name,
+          startedAt: now,
+          endedAt: 0,
+          durationMs: 0,
+          status: 'running',
+          input: '',
+          output: '',
+          exitCode: 0,
+        }] }
+      }
+      return
+    }
+
+    const exitCode = evt.exit_code ?? evt.exitCode ?? 0
+    const output = evt.stdout || evt.stderr || ''
+    const status = tp === 'PostToolUseFailure' ? 'error' : 'success'
+    const endedAt = now
+    if (idx >= 0) {
+      const prev = list[idx]
+      const duration = endedAt - (prev.startedAt || endedAt)
+      const updated: ToolExecution = { ...prev, endedAt, durationMs: duration, status, output, exitCode }
+      if (prev.name === toolUseID && name) updated.name = name
+      const next = [...list]
+      next[idx] = updated
+      executions.value = { ...executions.value, [sid]: next }
+    } else {
+      executions.value = { ...executions.value, [sid]: [...list, {
+        id: toolUseID,
+        kind: 'tool',
+        name,
+        startedAt: endedAt,
+        endedAt,
+        durationMs: 0,
+        status,
+        input: '',
+        output,
+        exitCode,
+      }] }
+    }
+  }
+
   function setDraft(sid: string, text: string) {
     drafts.value = { ...drafts.value, [sid]: text }
   }
 
-  return { list, activeId, active, messages, streaming, state, pending,
-    hasMore, owner, mode, terminalLoading, switchingToApp, creating, adopted, drafts, setDraft, refresh, create, select, send,
+  function setHookPermission(sid: string, req: HookPermissionRequest | null) {
+    if (req) {
+      // 兼容 toolInput 是 JSON 字符串的情况
+      let input = req.toolInput
+      if (typeof input === 'string' && input) {
+        try { input = JSON.parse(input) } catch {}
+      }
+      req = { ...req, toolInput: input }
+      console.log('[permission] request', sid, req.toolName, input)
+    }
+    hookPermissions.value = { ...hookPermissions.value, [sid]: req }
+    if (req) {
+      state.value = { ...state.value, [sid]: 'awaiting_permission' }
+    } else if (state.value[sid] === 'awaiting_permission') {
+      state.value = { ...state.value, [sid]: 'waiting' }
+    }
+  }
+
+  return { list, activeId, active, messages, streaming, state,
+    hasMore, owner, mode, terminalLoading, switchingToApp, creating, adopted, drafts, executions, hookPermissions,
+    setDraft, refresh, create, select, send, setHookPermission,
     reloadFromJsonl, handleEvent, handleHookEvent, loadMore }
 })

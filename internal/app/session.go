@@ -260,6 +260,28 @@ func (a *App) RespondPermission(sessionID, reqID string, allow bool) error {
 	return s.RespondPermission(reqID, allow)
 }
 
+// RespondHookPermission 响应阻塞型 PermissionRequest hook。
+// decision 为 decision 对象（behavior + 可选 updatedInput/message），
+// 由前端弹窗根据工具类型或 AskUserQuestion 答案组装。
+func (a *App) RespondHookPermission(reqID string, decision map[string]any) error {
+	a.permMu.Lock()
+	w, ok := a.permPending[reqID]
+	if !ok {
+		a.permMu.Unlock()
+		return fmt.Errorf("permission request %s not found or timed out", reqID)
+	}
+	delete(a.permPending, reqID)
+	a.permMu.Unlock()
+
+	select {
+	case w.ch <- decision:
+		close(w.ch)
+	default:
+		// 已经超时或被其他 goroutine 处理
+	}
+	return nil
+}
+
 // GetSessionMessages reads the jsonl history for a session and returns
 // all messages. Used when switching to a session that has no active process.
 func (a *App) GetSessionMessages(sessionID, workDir string, offset, limit int) ([]jsonl.Message, error) {
@@ -267,6 +289,15 @@ func (a *App) GetSessionMessages(sessionID, workDir string, offset, limit int) (
 	encodedDir := encodeProjectDirName(workDir)
 	path := filepath.Join(root, encodedDir, sessionID+".jsonl")
 	return jsonl.ParseFileRange(path, offset, limit)
+}
+
+// GetToolExecutions scans the jsonl history for tool executions and LLM calls,
+// returning a timeline sorted by start time.
+func (a *App) GetToolExecutions(sessionID, workDir string) ([]jsonl.ToolExecution, error) {
+	root := jsonl.Root()
+	encodedDir := encodeProjectDirName(workDir)
+	path := filepath.Join(root, encodedDir, sessionID+".jsonl")
+	return jsonl.ParseToolExecutions(path)
 }
 
 // encodeProjectDirName converts a workdir into the directory name used by
@@ -379,11 +410,6 @@ func (a *App) pumpEvents(s *session.Session, p *process.Process) {
 			continue
 		}
 		switch evt.Type {
-		case protocol.EvtPermissionReq:
-			var req protocol.PermissionRequest
-			if json.Unmarshal(evt.Data, &req) == nil {
-				s.RegisterPermission(req.RequestID)
-			}
 		case protocol.EvtResult:
 			s.SetIdle()
 		}

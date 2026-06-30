@@ -54,6 +54,9 @@ func (a *App) EnsureHookServer() {
 		}
 	})
 
+	// PermissionRequest 阻塞型 hook：推给前端弹窗，等待用户决策。
+	a.hookSrv.OnPermissionRequest(a.handlePermissionRequest)
+
 	// 空闲检测：每分钟检查，超 5 分钟无事件 → idle + 持久化
 	go func() {
 		tick := time.NewTicker(1 * time.Minute)
@@ -299,4 +302,50 @@ func (a *App) CheckAndFixHooks() (needsFix bool, fixed bool, err error) {
 func userHome() string {
 	h, _ := os.UserHomeDir()
 	return h
+}
+
+// handlePermissionRequest 处理阻塞型 PermissionRequest hook。
+// 它向前端发送 permission:request 事件并阻塞等待用户决策，超时后默认拒绝。
+func (a *App) handlePermissionRequest(evt hookserver.HookEvent) (any, error) {
+	a.permMu.Lock()
+	a.permCounter++
+	reqID := fmt.Sprintf("perm-%d-%d", time.Now().UnixNano(), a.permCounter)
+	ch := make(chan map[string]any, 1)
+	a.permPending[reqID] = &permWaiter{ch: ch, sessionID: evt.SessionID}
+	a.permMu.Unlock()
+
+	toolName := evt.EffectiveToolName()
+	toolInput := evt.EffectiveToolInput()
+	payload, _ := json.Marshal(map[string]any{
+		"requestId": reqID,
+		"sessionId": evt.SessionID,
+		"toolName":  toolName,
+		"toolInput": toolInput,
+	})
+	if a.ctx != nil {
+		wailsruntime.EventsEmit(a.ctx, "permission:request", string(payload))
+	}
+
+	select {
+	case decision := <-ch:
+		return map[string]any{
+			"hookSpecificOutput": map[string]any{
+				"hookEventName": "PermissionRequest",
+				"decision":      decision,
+			},
+		}, nil
+	case <-time.After(5 * time.Minute):
+		a.permMu.Lock()
+		delete(a.permPending, reqID)
+		a.permMu.Unlock()
+		return map[string]any{
+			"hookSpecificOutput": map[string]any{
+				"hookEventName": "PermissionRequest",
+				"decision": map[string]any{
+					"behavior": "deny",
+					"message":  "timeout",
+				},
+			},
+		}, nil
+	}
 }

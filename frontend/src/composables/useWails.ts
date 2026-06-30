@@ -17,7 +17,7 @@ declare global {
           ListSessions: () => Promise<any[]>
           CreateSession: (workdir: string, prompt: string) => Promise<string>
           SendMessage: (id: string, prompt: string) => Promise<void>
-          RespondPermission: (id: string, reqId: string, allow: boolean) => Promise<void>
+          RespondHookPermission: (reqId: string, decision: any) => Promise<void>
           CloseSession: (id: string) => Promise<void>
           GetSettings: () => Promise<any>
           UpdateSettings: (cfg: any) => Promise<void>
@@ -25,6 +25,7 @@ declare global {
           SaveHooksConfig: (cfg: any) => Promise<void>
           OpenInTerminal: (workdir: string, sessionId: string, binPath: string) => Promise<void>
           GetSessionMessages: (id: string, workdir: string, offset: number, limit: number) => Promise<Array<{Role: string; Content: string; Type: string; Timestamp: number}>>
+          GetToolExecutions: (id: string, workdir: string) => Promise<Array<{ id: string; kind: string; name: string; startedAt: number; endedAt: number; durationMs: number; status: string; input: string; output: string; exitCode: number }>>
           PickDirectory: () => Promise<string>
           GetHookServerPort: () => Promise<number>
           CheckAndFixHooks: () => Promise<boolean>
@@ -41,11 +42,16 @@ declare global {
       WindowMinimise: () => void
       WindowMaximise: () => void
       WindowUnmaximise: () => void
+      WindowUnminimise: () => void
       WindowToggleMaximise: () => void
       WindowIsMaximised: () => Promise<boolean>
+      WindowIsMinimised: () => Promise<boolean>
+      WindowShow: () => void
+      WindowHide: () => void
       WindowSetSize: (width: number, height: number) => void
       WindowSetMinSize: (width: number, height: number) => void
       WindowSetMaxSize: (width: number, height: number) => void
+      WindowSetAlwaysOnTop: (b: boolean) => void
       WindowCenter: () => void
       Quit: () => void
     }
@@ -103,7 +109,7 @@ export const ClearPassword    = () => app().ClearPassword()
 export const ListSessions     = () => app().ListSessions()
 export const CreateSession    = (workdir: string, prompt: string) => app().CreateSession(workdir, prompt)
 export const SendMessage      = (id: string, prompt: string) => app().SendMessage(id, prompt)
-export const RespondPermission = (id: string, reqId: string, allow: boolean) => app().RespondPermission(id, reqId, allow)
+export const RespondHookPermission = (reqId: string, decision: any) => app().RespondHookPermission(reqId, decision)
 export const CloseSession     = (id: string) => app().CloseSession(id)
 export const GetSettings      = () => app().GetSettings()
 export const UpdateSettings   = (cfg: any) => app().UpdateSettings(cfg)
@@ -111,7 +117,8 @@ export const GetHooksConfig   = () => app().GetHooksConfig()
 export const SaveHooksConfig  = (cfg: any) => app().SaveHooksConfig(cfg)
 export const OpenInTerminal   = (workdir: string, sessionId: string, binPath: string) => app().OpenInTerminal(workdir, sessionId, binPath)
 export const GetSessionMessages = (id: string, workdir: string, offset: number, limit: number) => app().GetSessionMessages(id, workdir, offset, limit)
-export const PickDirectory     = () => app().PickDirectory()
+export const GetToolExecutions  = (id: string, workdir: string) => app().GetToolExecutions(id, workdir)
+export const PickDirectory      = () => app().PickDirectory()
 export const GetHookServerPort  = () => app().GetHookServerPort()
 export const CheckAndFixHooks   = () => app().CheckAndFixHooks()
 export const GetSessionStates  = () => app().GetSessionStates()
@@ -123,11 +130,16 @@ export const EventsOn           = (event: string, cb: (...args: any[]) => void) 
 export const WindowMinimise     = () => runtime().WindowMinimise()
 export const WindowMaximise     = () => runtime().WindowMaximise()
 export const WindowUnmaximise   = () => runtime().WindowUnmaximise()
+export const WindowUnminimise   = () => runtime().WindowUnminimise()
 export const WindowToggleMaximise = () => runtime().WindowToggleMaximise()
 export const WindowIsMaximised  = () => runtime().WindowIsMaximised()
+export const WindowIsMinimised  = () => runtime().WindowIsMinimised()
+export const WindowShow         = () => runtime().WindowShow()
+export const WindowHide         = () => runtime().WindowHide()
 export const WindowSetSize      = (width: number, height: number) => runtime().WindowSetSize(width, height)
 export const WindowSetMinSize   = (width: number, height: number) => runtime().WindowSetMinSize(width, height)
 export const WindowSetMaxSize   = (width: number, height: number) => runtime().WindowSetMaxSize(width, height)
+export const WindowSetAlwaysOnTop = (b: boolean) => runtime().WindowSetAlwaysOnTop(b)
 export const WindowCenter       = () => runtime().WindowCenter()
 export const WindowQuit         = () => runtime().Quit()
 
