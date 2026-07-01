@@ -34,6 +34,14 @@ export function GetHooksConfig() {
   return window['go']['app']['App']['GetHooksConfig']();
 }
 
+export function GetProvidersConfig() {
+  return window['go']['app']['App']['GetProvidersConfig']();
+}
+
+export function ApplyActiveProvider() {
+  return window['go']['app']['App']['ApplyActiveProvider']();
+}
+
 export function GetSessionMessages(arg1, arg2, arg3, arg4) {
   return window['go']['app']['App']['GetSessionMessages'](arg1, arg2, arg3, arg4);
 }
@@ -88,6 +96,10 @@ export function RespondPermission(arg1, arg2, arg3) {
 
 export function SaveHooksConfig(arg1) {
   return window['go']['app']['App']['SaveHooksConfig'](arg1);
+}
+
+export function SaveProvidersConfig(arg1) {
+  return window['go']['app']['App']['SaveProvidersConfig'](arg1);
 }
 
 export function SendMessage(arg1, arg2) {

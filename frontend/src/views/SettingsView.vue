@@ -21,6 +21,7 @@
         <HooksTab v-if="active === 'hooks'" />
         <GeneralTab v-else-if="active === 'general'" />
         <CloudTab v-else-if="active === 'cloud'" />
+        <ProviderTab v-else-if="active === 'provider'" />
       </main>
     </div>
   </div>
@@ -33,11 +34,12 @@ import TitleBar from '../components/TitleBar.vue'
 import HooksTab from '../components/settings/HooksTab.vue'
 import GeneralTab from '../components/settings/GeneralTab.vue'
 import CloudTab from '../components/settings/CloudTab.vue'
+import ProviderTab from '../components/settings/ProviderTab.vue'
 import { WindowMinimise, WindowToggleMaximise, WindowHide, GetHookServerPort } from '../composables/useWails'
 
 const router = useRouter()
-type Tab = 'general' | 'hooks' | 'cloud'
-const tabs: Tab[] = ['general', 'hooks', 'cloud']
+type Tab = 'general' | 'hooks' | 'cloud' | 'provider'
+const tabs: Tab[] = ['general', 'hooks', 'cloud', 'provider']
 const active = ref<Tab>('general')
 const hookPort = ref(0)
 
@@ -45,8 +47,8 @@ onMounted(async () => {
   try { hookPort.value = await GetHookServerPort() } catch {}
 })
 
-function tabLabel(t: Tab) { return { hooks: 'Hooks', general: '通用', cloud: '云服务' }[t] }
-function tabIcon(t: Tab) { return { hooks: '⚡', general: '⚙', cloud: '☁' }[t] }
+function tabLabel(t: Tab) { return { hooks: 'Hooks', general: '通用', cloud: '云服务', provider: '模型供应商' }[t] }
+function tabIcon(t: Tab) { return { hooks: '⚡', general: '⚙', cloud: '☁', provider: '🤖' }[t] }
 function goBack() { router.push('/home') }
 function onMinimize() { WindowMinimise() }
 function onMaximize() { WindowToggleMaximise() }
