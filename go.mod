@@ -4,6 +4,7 @@ go 1.26.3
 
 require (
 	fyne.io/systray v1.12.2
+	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/stretchr/testify v1.11.1
 	github.com/wailsapp/wails/v2 v2.12.0
@@ -13,7 +14,6 @@ require (
 
 require (
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
-	github.com/aymanbagabas/go-pty v0.2.3 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
