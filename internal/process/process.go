@@ -1,3 +1,6 @@
+// Deprecated: process.go 的 stream-json 模式已被 internal/pty 替代。
+// 当前 xterm.js PTY 方案不再使用此包。保留文件以便未来恢复 stream-json 模式。
+//
 // Package process wraps the Claude CLI as a managed subprocess.
 package process
 
