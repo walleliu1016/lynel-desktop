@@ -40,9 +40,8 @@ func TestSession_SendRequiresRunningOrIdle(t *testing.T) {
 
 	require.NoError(t, s.Send("hi"))
 	assert.Equal(t, StateRunning, s.State())
-	// Send 现在包成 stream-json envelope（嵌套 map 按 Go 编码顺序：type 在外层最后），
-	// 替代之前的裸文本。Claude CLI 只接受 envelope 格式。
-	assert.Equal(t, []string{`{"message":{"content":"hi","role":"user"},"type":"user"}` + "\n"}, fp.written)
+	// PTY 模式：直接写裸文本 + 换行，不需要 stream-json envelope。
+	assert.Equal(t, []string{"hi\n"}, fp.written)
 }
 
 func TestSession_RespondPermission(t *testing.T) {
@@ -110,47 +109,4 @@ func TestSession_NewInitializesState(t *testing.T) {
 	assert.NotPanics(t, func() {
 		delete(s.pending, "anything")
 	})
-}
-
-func TestSession_OwnerModeDefaultsToAppStream(t *testing.T) {
-	s := New("s1", "/tmp")
-	assert.Equal(t, OwnerApp, s.Owner(), "new session must default to owner=App")
-	assert.Equal(t, ModeStream, s.Mode(), "new session must default to mode=Stream")
-	assert.True(t, s.switchMu.TryLock(), "switchMu must be unlocked initially")
-	s.switchMu.Unlock()
-}
-
-func TestSession_OwnerModeExtPIDRoundTrip(t *testing.T) {
-	s := New("s1", "/tmp")
-
-	s.SetOwner(OwnerTerminal)
-	s.SetMode(ModeResume)
-	s.SetExtPID(12345, "/tmp/ease-ui-s1.pid")
-
-	assert.Equal(t, OwnerTerminal, s.Owner())
-	assert.Equal(t, ModeResume, s.Mode())
-	pid, pidFile := s.ExtPID()
-	assert.Equal(t, 12345, pid)
-	assert.Equal(t, "/tmp/ease-ui-s1.pid", pidFile)
-
-	s.SetOwner(OwnerApp)
-	s.SetMode(ModeStream)
-	s.SetExtPID(0, "")
-	assert.Equal(t, OwnerApp, s.Owner())
-	assert.Equal(t, ModeStream, s.Mode())
-	pid, pidFile = s.ExtPID()
-	assert.Equal(t, 0, pid)
-	assert.Empty(t, pidFile)
-}
-
-func TestSession_OwnerModeConcurrentAccess(t *testing.T) {
-	// 验证 setter/getter 在并发下不 race (go test -race 能跑过即可)。
-	s := New("s1", "/tmp")
-	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
-		wg.Add(2)
-		go func() { defer wg.Done(); s.SetOwner(OwnerApp) }()
-		go func() { defer wg.Done(); _ = s.Owner() }()
-	}
-	wg.Wait()
 }
