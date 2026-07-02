@@ -173,7 +173,6 @@ func (s *Session) RespondPermission(reqID string, allow bool) error {
 
 // SetIdle moves to Idle (called on result event).
 func (s *Session) SetIdle() {
-	s.UnlockIfLocked()
 	s.setState(StateIdle)
 }
 
@@ -205,5 +204,3 @@ func (s *Session) GetProcessForTest() ProcessIface {
 	return s.proc
 }
 
-// UnlockIfLocked / Locked helpers used by tests; keep tiny
-func (s *Session) UnlockIfLocked() {}
