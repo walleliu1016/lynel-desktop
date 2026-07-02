@@ -1,14 +1,11 @@
 package app
 
 import (
-	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/akke/ease-ui/internal/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,73 +46,22 @@ func TestRespondPermission_UnknownIDReturnsError(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestSwitchOwner_UnknownSessionReturnsError(t *testing.T) {
-	dir := t.TempDir()
-	a, err := New(Options{ConfigDir: dir})
-	require.NoError(t, err)
-
-	err = a.SwitchOwner("nope", "app", "")
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, errSessionNotFound),
-		"expected errSessionNotFound, got %v", err)
-}
-
-func TestSwitchOwner_InvalidTargetReturnsError(t *testing.T) {
-	dir := t.TempDir()
-	a, err := New(Options{ConfigDir: dir})
-	require.NoError(t, err)
-	a.registerSession(session.New("s1", "/tmp"))
-
-	err = a.SwitchOwner("s1", "phone", "")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "target must be")
-}
-
-func TestSwitchOwner_AppToAppNoPromptIsNoop(t *testing.T) {
-	// App-owned session + target=app + 空 prompt → noop，不报错也不动状态
-	dir := t.TempDir()
-	a, err := New(Options{ConfigDir: dir})
-	require.NoError(t, err)
-	s := session.New("s1", "/tmp")
-	a.registerSession(s)
-	require.Equal(t, session.OwnerApp, s.Owner())
-
-	require.NoError(t, a.SwitchOwner("s1", "app", ""))
-	// 状态保持
-	assert.Equal(t, session.OwnerApp, s.Owner())
-	assert.Equal(t, session.ModeStream, s.Mode())
-}
-
-func TestEnvelopeUserMessage_Format(t *testing.T) {
-	env := envelopeUserMessage("hello")
-	var parsed map[string]any
-	require.NoError(t, json.Unmarshal([]byte(strings.TrimRight(env, "\n")), &parsed),
-		"envelope must be valid JSON line, got %q", env)
-	assert.Equal(t, "user", parsed["type"])
-	msg, ok := parsed["message"].(map[string]any)
-	require.True(t, ok, "envelope.message must be an object")
-	assert.Equal(t, "user", msg["role"])
-	assert.Equal(t, "hello", msg["content"])
-	assert.True(t, strings.HasSuffix(env, "\n"),
-		"envelope must be newline-terminated for stream-json framing")
-}
-
 func TestAdoptSession_RegistersAndStarts(t *testing.T) {
 	dir := t.TempDir()
 	a, err := New(Options{ConfigDir: dir})
 	require.NoError(t, err)
-	a.SetClaudeBinary("/bin/echo") // 测试用 echo 模拟 claude（实际 stream-json 不可用但能起进程）
 
-	// 假定 sid 来自 jsonl（Ease UI 启动前已存在）
+	// AdoptSession 只注册 session 到 a.sessions，不启动进程。
+	// 进程在 SendMessage 时懒启动。
 	sid := "abcd1234abcd1234"
 	if err := a.AdoptSession(sid, "/tmp"); err != nil {
-		t.Skipf("cannot start process: %v", err)
+		t.Fatalf("AdoptSession failed: %v", err)
 	}
 
 	s, ok := a.lookupSession(sid)
 	require.True(t, ok, "AdoptSession should register the session in a.sessions")
-	assert.Equal(t, session.OwnerApp, s.Owner())
-	assert.Equal(t, session.ModeStream, s.Mode())
+	assert.Equal(t, sid, s.ID)
+	assert.Equal(t, "/tmp", s.WorkDir)
 }
 
 func TestAdoptSession_IdempotentNoop(t *testing.T) {
@@ -159,10 +105,8 @@ func TestEncodeProjectDirName_WindowsPaths(t *testing.T) {
 }
 
 func TestAdoptSession_ResumesEndedSession(t *testing.T) {
-	// 历史 session 的 jsonl 末尾有 /exit 标记时，AdoptSession 不应拒绝
-	// 也不应用 --session-id 启动（已 ended 的 sid 用 --session-id 启动
-	// claude 会立即 DEAD）。它应该走 --resume 模式 attach，把 session
-	// 拉进 a.sessions 等待新 envelope。
+	// 历史 session 的 jsonl 末尾有 /exit 标记时，AdoptSession 不应拒绝。
+	// PTY 模式下走懒注册，进程在 SendMessage 时启动。
 	dir := t.TempDir()
 	claudeDir := filepath.Join(dir, ".claude")
 	a, err := New(Options{
@@ -170,7 +114,6 @@ func TestAdoptSession_ResumesEndedSession(t *testing.T) {
 		ClaudeDir: claudeDir,
 	})
 	require.NoError(t, err)
-	a.SetClaudeBinary("/bin/echo")
 
 	sid := "11111111-2222-3333-4444-555555555555"
 	projectDir := filepath.Join(claudeDir, "projects", "-tmp")
@@ -185,9 +128,61 @@ func TestAdoptSession_ResumesEndedSession(t *testing.T) {
 		[]byte(endedJSONL), 0o644))
 
 	if err := a.AdoptSession(sid, "/tmp"); err != nil {
-		t.Skipf("cannot start process: %v", err)
+		t.Fatalf("AdoptSession failed: %v", err)
 	}
 	// ended session 应当被 adopt 进 a.sessions（懒注册，进程在 SendMessage 时启动）
 	_, ok := a.lookupSession(sid)
 	require.True(t, ok, "AdoptSession must register ended session for resume")
 }
+
+func TestWriteTerminalInput_LazyStart(t *testing.T) {
+	dir := t.TempDir()
+	a, err := New(Options{ConfigDir: dir})
+	require.NoError(t, err)
+	a.SetClaudeBinary("/bin/echo")
+
+	sid := "abcd1234abcd1234"
+	require.NoError(t, a.AdoptSession(sid, "/tmp"))
+
+	// WriteTerminalInput 应该懒启动 PTY 进程并写入数据
+	err = a.WriteTerminalInput(sid, "hello\n")
+	if err != nil {
+		t.Skipf("cannot start process: %v", err)
+	}
+	// 进程已启动
+	s, ok := a.lookupSession(sid)
+	require.True(t, ok)
+	assert.NotNil(t, s.GetProcessForTest())
+}
+
+func TestResizeTerminal_NoProcIsNoop(t *testing.T) {
+	dir := t.TempDir()
+	a, err := New(Options{ConfigDir: dir})
+	require.NoError(t, err)
+
+	sid := "abcd1234abcd1234"
+	require.NoError(t, a.AdoptSession(sid, "/tmp"))
+
+	// 没有进程时 ResizeTerminal 应不报错
+	err = a.ResizeTerminal(sid, 80, 24)
+	assert.NoError(t, err)
+}
+
+func TestAdoptSession_EmptyID(t *testing.T) {
+	dir := t.TempDir()
+	a, err := New(Options{ConfigDir: dir})
+	require.NoError(t, err)
+	err = a.AdoptSession("", "/tmp")
+	require.Error(t, err)
+}
+
+func TestAdoptSession_EmptyWorkDir(t *testing.T) {
+	dir := t.TempDir()
+	a, err := New(Options{ConfigDir: dir})
+	require.NoError(t, err)
+	err = a.AdoptSession("sid", "")
+	require.Error(t, err)
+}
+
+// keep strings import used by TestEncodeProjectDirName_WindowsPaths
+var _ = strings.TrimSpace
