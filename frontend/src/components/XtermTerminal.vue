@@ -81,20 +81,37 @@ onMounted(async () => {
   const topic = `session:${props.sessionId}`
   cleanupEvents = EventsOn(topic, (line: string) => {
     if (line === '{"type":"done"}') return
-    loading.value = false
-    emit('ready')
-    term?.write(line)
+    writeAndReveal(line)
   })
 
   try {
     emit('starting')
     await OpenSessionTerminalSized(props.sessionId, props.workdir, term.cols, term.rows)
   } catch (e: any) {
-    loading.value = false
-    emit('ready')
+    revealTerminal()
     term?.writeln(`\r\n启动 Claude 失败：${e?.message || e}`)
   }
 })
+
+function writeAndReveal(line: string) {
+  if (line === '') return
+  term?.write(line)
+  if (hasVisibleContent(line)) {
+    revealTerminal()
+  }
+}
+
+function hasVisibleContent(line: string): boolean {
+  // 去掉 ANSI escape 序列和空白后，仍有可打印字符才算内容
+  const stripped = line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\s/g, '')
+  return stripped.length > 0
+}
+
+function revealTerminal() {
+  if (!loading.value) return
+  loading.value = false
+  emit('ready')
+}
 
 function fitAndResize() {
   if (!term || !terminalEl.value || !props.visible) return

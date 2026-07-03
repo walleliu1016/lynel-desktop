@@ -20,17 +20,30 @@ vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => window.setT
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: vi.fn(function Terminal() {
+    let written = ''
+    const bufferLine = {
+      translateToString: (trim?: boolean) => {
+        if (trim) return written.trim()
+        return written
+      },
+    }
     return {
       cols: 120,
       rows: 30,
       loadAddon: vi.fn(),
       open: vi.fn(),
       onData: vi.fn(),
-      write: vi.fn(),
+      write: (line: string) => { written += line },
       writeln: vi.fn(),
       resize: vi.fn(),
       focus: vi.fn(),
       dispose: vi.fn(),
+      buffer: {
+        active: {
+          length: 1,
+          getLine: () => bufferLine,
+        },
+      },
     }
   }),
 }))
@@ -67,7 +80,7 @@ describe('XtermTerminal', () => {
     vi.clearAllMocks()
   })
 
-  it('shows startup spinner above terminal until terminal output arrives', async () => {
+  it('hides loading only after xterm buffer contains visible content', async () => {
     const wrapper = mount(XtermTerminal, {
       props: {
         sessionId: 'sid-1',
@@ -78,14 +91,16 @@ describe('XtermTerminal', () => {
 
     const loading = wrapper.find('[data-testid="terminal-loading"]')
     expect(loading.exists()).toBe(true)
-    expect(loading.classes()).toContain('terminal-loading')
 
     await wrapper.vm.$nextTick()
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    eventHandlers.get('session:sid-1')?.('hello')
+    eventHandlers.get('session:sid-1')?.('\x1b[2J\x1b[H')
     await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-testid="terminal-loading"]').exists()).toBe(true)
 
+    eventHandlers.get('session:sid-1')?.('hello world')
+    await wrapper.vm.$nextTick()
     expect(wrapper.find('[data-testid="terminal-loading"]').exists()).toBe(false)
   })
 
