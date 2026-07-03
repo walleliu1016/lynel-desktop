@@ -1,12 +1,6 @@
 <template>
   <div class="home">
-    <TitleBar
-      :is-maximized="isMaximized"
-      @minimize="onMinimize"
-      @maximize="onMaximize"
-      @restore="onRestore"
-      @close="onClose"
-    />
+    <TitleBar />
     <div class="layout">
       <aside class="left">
         <SessionList :list="sessions.list" :active-id="sessions.activeId"
@@ -69,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, computed, watch } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import SessionList from '../components/SessionList.vue'
@@ -81,7 +75,6 @@ import ToolTimeline from '../components/ToolTimeline.vue'
 import PermissionToast from '../components/PermissionToast.vue'
 import { useSessionsStore } from '../stores/sessions'
 import { WriteTerminalInput } from '../composables/useWails'
-import { WindowMinimise, WindowToggleMaximise, WindowIsMaximised, ResetAndResizeWindow, WindowHide } from '../composables/useWails'
 import { useEventStream } from '../composables/useEventStream'
 
 const router = useRouter()
@@ -91,7 +84,6 @@ useEventStream()
 const showNew = ref(false)
 const username = ref('')
 const version = ref('0.1.0')
-const isMaximized = ref(false)
 const timelineCollapsed = ref(false)
 type OpenedTerminal = { id: string; workdir: string }
 const openedTerminals = ref<OpenedTerminal[]>([])
@@ -109,25 +101,11 @@ watch(() => [sessions.activeId, sessions.list.length], () => {
   }
 }, { immediate: true })
 
-let maximizePollTimer: number | null = null
-
 onMounted(async () => {
   await sessions.refresh()
   try {
     username.value = await (window as any).go?.app?.App?.OSUsername?.() ?? ''
   } catch {}
-  try {
-    await ResetAndResizeWindow(1280, 800, 1024, 680)
-  } catch {}
-  const syncMax = async () => {
-    try { isMaximized.value = await WindowIsMaximised() } catch {}
-  }
-  void syncMax()
-  maximizePollTimer = window.setInterval(syncMax, 500)
-})
-
-onBeforeUnmount(() => {
-  if (maximizePollTimer) clearInterval(maximizePollTimer)
 })
 
 const state = computed(() => sessions.activeId ? (sessions.state[sessions.activeId] || 'idle') : 'idle')
@@ -177,15 +155,6 @@ function navigateToSession(sessionId: string) {
 }
 
 function goSettings() { router.push('/settings') }
-function onMinimize()  { WindowMinimise() }
-async function onMaximize()  { await toggleMaximize() }
-async function onRestore()   { await toggleMaximize() }
-async function toggleMaximize() {
-  WindowToggleMaximise()
-  await new Promise(r => setTimeout(r, 80))
-  try { isMaximized.value = await WindowIsMaximised() } catch {}
-}
-function onClose()     { WindowHide() }
 </script>
 
 <style scoped>

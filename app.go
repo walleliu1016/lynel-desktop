@@ -43,6 +43,7 @@ func runApp() error {
 		MinWidth:          1024,
 		MinHeight:         680,
 		Frameless:         true,
+		StartHidden:       true,
 		HideWindowOnClose:            true,
 		EnableDefaultContextMenu:     true,
 		AssetServer: &assetserver.Options{

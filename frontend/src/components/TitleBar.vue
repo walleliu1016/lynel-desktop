@@ -5,7 +5,7 @@
       <span class="brand-name">Lynel Desktop</span>
     </div>
     <div class="titlebar-right">
-      <button class="win-btn" @click="$emit('minimize')" title="最小化">─</button>
+      <button class="win-btn" @click="minimize" title="最小化">─</button>
       <button
         class="win-btn"
         :title="isMaximized ? '还原' : '最大化'"
@@ -13,26 +13,15 @@
       >
         {{ isMaximized ? '▣' : '▢' }}
       </button>
-      <button class="win-btn close" @click="$emit('close')" title="隐藏到托盘">✕</button>
+      <button class="win-btn close" @click="hide" title="隐藏到托盘">✕</button>
     </div>
   </div>
 </template>
 
-<script setup lang="ts">const props = defineProps<{ isMaximized?: boolean }>()
-const emit = defineEmits<{
-  (e: 'minimize'): void
-  (e: 'maximize'): void
-  (e: 'restore'): void
-  (e: 'close'): void
-}>()
+<script setup lang="ts">
+import { useWindowState } from '../composables/useWindowState'
 
-function toggleMaximize() {
-  if (props.isMaximized) {
-    emit('restore')
-  } else {
-    emit('maximize')
-  }
-}
+const { isMaximized, minimize, toggleMaximize, hide } = useWindowState()
 </script>
 
 <style scoped>

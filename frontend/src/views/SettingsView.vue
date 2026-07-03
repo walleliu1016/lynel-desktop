@@ -1,6 +1,6 @@
 <template>
   <div class="settings">
-    <TitleBar @minimize="onMinimize" @maximize="onMaximize" @close="onClose" />
+    <TitleBar />
     <div class="layout">
       <nav class="sidebar">
         <button class="back" @click="goBack">← 返回</button>
@@ -35,7 +35,7 @@ import HooksTab from '../components/settings/HooksTab.vue'
 import GeneralTab from '../components/settings/GeneralTab.vue'
 import CloudTab from '../components/settings/CloudTab.vue'
 import ProviderTab from '../components/settings/ProviderTab.vue'
-import { WindowMinimise, WindowToggleMaximise, WindowHide, GetHookServerPort } from '../composables/useWails'
+import { GetHookServerPort } from '../composables/useWails'
 
 const router = useRouter()
 type Tab = 'general' | 'hooks' | 'cloud' | 'provider'
@@ -50,9 +50,6 @@ onMounted(async () => {
 function tabLabel(t: Tab) { return { hooks: 'Hooks', general: '通用', cloud: '云服务', provider: '模型供应商' }[t] }
 function tabIcon(t: Tab) { return { hooks: '⚡', general: '⚙', cloud: '☁', provider: '🤖' }[t] }
 function goBack() { router.push('/home') }
-function onMinimize() { WindowMinimise() }
-function onMaximize() { WindowToggleMaximise() }
-function onClose()    { WindowHide() }
 </script>
 
 <style scoped>

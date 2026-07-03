@@ -1,6 +1,6 @@
 <template>
   <div class="login">
-    <TitleBar @minimize="onMinimize" @maximize="onMaximize" @close="onClose" />
+    <TitleBar />
     <div class="login-body">
       <div class="login-head">
         <div class="login-logo">L</div>
@@ -61,10 +61,11 @@ import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import SettingsDialog from '../components/SettingsDialog.vue'
 import { useAuthStore } from '../stores/auth'
-import { WindowMinimise, WindowToggleMaximise, WindowHide, ResetAndResizeWindow } from '../composables/useWails'
+import { useWindowState } from '../composables/useWindowState'
 
 const router = useRouter()
 const auth = useAuthStore()
+const win = useWindowState()
 
 const username = ref('')
 const password = ref('')
@@ -91,9 +92,6 @@ onMounted(async () => {
   try {
     const u = await (window as any).go?.app?.App?.OSUsername?.()
     if (u) username.value = u
-  } catch {}
-  try {
-    await ResetAndResizeWindow(320, 400, 320, 400)
   } catch {}
 
   timer = window.setInterval(() => {
@@ -125,21 +123,20 @@ async function onSubmit() {
     errorField.value = 'password'
     return
   }
+  // 进入主页前先把窗口切到主布局，避免 HomeView 挂载后闪现小窗口再变大
+  try { await win.applyHomeLayout() } catch {}
   router.push('/home')
 }
 
-function onMinimize() { WindowMinimise() }
-function onMaximize() { WindowToggleMaximise() }
-function onClose()    { WindowHide() }
 async function goSettings() {
   showSettings.value = true
   // 弹窗需要更大空间，临时放大窗口
-  try { await ResetAndResizeWindow(700, 520, 700, 520) } catch {}
+  try { await win.applySettingsLayout() } catch {}
 }
 async function closeSettings() {
   showSettings.value = false
   // 关闭弹窗后恢复登录小窗口
-  try { await ResetAndResizeWindow(320, 400, 320, 400) } catch {}
+  try { await win.applyLoginLayout() } catch {}
 }
 </script>
 

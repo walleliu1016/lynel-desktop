@@ -77,12 +77,10 @@ function runtime() {
 function delay(ms: number) { return new Promise<void>(r => setTimeout(r, ms)) }
 
 /**
- * 安全地重置窗口尺寸约束并居中。
+ * 调整窗口尺寸与最小/最大约束，避免明显的分阶段抖动。
  *
- * Wails runtime 的同步调用在内部是异步提交到主线程的；如果连续调用
- * SetMinSize / SetMaxSize / SetSize / Center，后一个调用可能基于旧的
- * 约束/尺寸计算，导致窗口先被旧 minSize 限制、再被新 minSize 撑大，
- * 出现分阶段放大或居中不准。这里用显式延迟把调用阶段隔开。
+ * 先把最小/最大约束清零，再设置目标尺寸，下一帧再恢复约束。
+ * 不再无条件居中，避免覆盖用户拖拽后的窗口位置。
  */
 export async function ResetAndResizeWindow(
   width: number,
@@ -95,13 +93,11 @@ export async function ResetAndResizeWindow(
   const rt = runtime()
   rt.WindowSetMinSize(0, 0)
   rt.WindowSetMaxSize(0, 0)
-  await delay(60)
+  await delay(0)
   rt.WindowSetSize(width, height)
-  await delay(80)
+  await delay(0)
   if (minWidth > 0 && minHeight > 0) rt.WindowSetMinSize(minWidth, minHeight)
   if (maxWidth > 0 && maxHeight > 0) rt.WindowSetMaxSize(maxWidth, maxHeight)
-  await delay(60)
-  rt.WindowCenter()
 }
 
 // Re-exported bindings
