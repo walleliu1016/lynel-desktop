@@ -78,26 +78,25 @@ export PATH=$PATH:~/go/bin
 - 前端 `frontend/src/composables/useWails.ts` 是类型化的 IPC 转发层。
 - 修改 `internal/app/*.go` 增加或删除 binding 方法后，必须跑 `wails generate` 或 `wails dev/build`，让 `frontend/wailsjs/go/app/App.js` 重新生成。**不要手改这个文件**。
 
-### 2. Session 生命周期与 Owner
+### 2. Session 生命周期与 PTY
 - `internal/app/session.go` 是核心 orchestrator：
-  - `CreateSession`：用 `process.ModeAuto` 启动 Claude（不带 session flag），阻塞等待 `SessionStart` hook 返回真实 UUID（15s 超时）。
-  - `AdoptSession`：对 Ease UI 启动前已存在的历史 session 做懒加载，第一次发消息时才起进程。
-  - `SendMessage`：写 stream-json envelope。
-  - `SwitchOwner`：在 `app` 与 `terminal` 之间切换写权限。
-- `internal/session.Session` 维护 owner（`app` / `terminal`）和 `SwitchLock()`，切换 owner 时使用，不要与 `Send/RespondPermission` 的 `mu` 混淆。
-- `process.Start` 三种 mode：
+  - `CreateSession`：用 `pty.ModeAuto` 启动交互式 Claude（不带 session flag），阻塞等待 `SessionStart` hook 返回真实 UUID（15s 超时）。
+  - `AdoptSession`：对 Ease UI 启动前已存在的历史 session 做注册，不启动进程。
+  - `OpenSessionTerminal`：点击已有 session 时启动或复用 PTY；未启动时必须用 `claude --resume <sid>`。
+  - `SendMessage`：向 PTY 写裸文本 prompt；写入前必须确保末尾有回车，`session.Send` 会自动补 `\r`。
+  - `WriteTerminalInput`：xterm.js 逐键输入直通 PTY，不自动补回车。
+- xterm.js 是唯一终端入口；不要恢复 `SwitchOwner` / `OpenInTerminal` / 外部终端切换 UI。
+- `pty.Start` 三种 mode：
   - `ModeAuto`：Claude 自己生成 UUID（新建 session）。
-  - `ModeNew`：`--session-id <sid>`，只用于全新 jsonl 不存在的情况。
-  - `ModeResume`：`--resume <sid>`，jsonl 已存在时必须用它，否则 Claude 会 DEAD。
+  - `ModeNew`：`--session-id <sid>`，保留兼容性，正常新建不用它。
+  - `ModeResume`：`--resume <sid>`，jsonl 已存在的 sid 必须用它，否则 Claude 会 DEAD。
 
-### 3. stream-json 与 envelope（关键）
-- 向 Claude CLI 写用户消息必须包装成 envelope：
-  ```json
-  {"type":"user","message":{"role":"user","content":"..."}}\n
-  ```
-- 裸文本会被 stream-json 解析器直接丢弃。
-- `SendMessage` 和 `SwitchOwner` 切回 app 后都写 envelope。
-- `internal/protocol` 按行解析 stdout 事件；`internal/jsonl` 读历史并 watch 变化。
+### 3. PTY 输入与 xterm.js 渲染（关键）
+- 当前 xterm.js 方案不再使用 `claude -p --input-format stream-json --output-format stream-json`。
+- 向交互式 Claude PTY 发送用户消息必须是裸文本，并以回车结束；没有回车 Claude 不会执行。
+- `session.Send(prompt)` 会做最小规范化：如果 `prompt` 没有以 `\n`/`\r` 结尾，则自动补 `\r`；已有回车不会重复追加。
+- `WriteTerminalInput` 是终端逐键输入通道，必须保持原始字节语义，不要在这里自动追加回车。
+- Go 端 `pumpPtyEvents` 转发 PTY 原始 ANSI 字节；前端 `XtermTerminal.vue` 直接写入 xterm.js。
 
 ### 4. Hooks
 - `internal/hookserver` 内置 HTTP server，监听 `127.0.0.1:<port>`，端点 `/hook` 和 `/api/send`。

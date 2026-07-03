@@ -40,7 +40,16 @@ func TestSession_SendRequiresRunningOrIdle(t *testing.T) {
 
 	require.NoError(t, s.Send("hi"))
 	assert.Equal(t, StateRunning, s.State())
-	// PTY 模式：直接写裸文本 + 换行，不需要 stream-json envelope。
+	// PTY 模式：直接写裸文本 + 回车，不需要 stream-json envelope。
+	assert.Equal(t, []string{"hi\r"}, fp.written)
+}
+
+func TestSession_SendKeepsExistingTrailingNewline(t *testing.T) {
+	s := New("s1", "/tmp")
+	fp := &fakeProcess{}
+	s.setProcess(fp)
+
+	require.NoError(t, s.Send("hi\n"))
 	assert.Equal(t, []string{"hi\n"}, fp.written)
 }
 

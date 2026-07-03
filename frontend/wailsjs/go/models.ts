@@ -21,6 +21,7 @@ export namespace jsonl {
 	export class SessionMeta {
 	    id: string;
 	    workdir: string;
+	    project: string;
 	    mtime: number;
 	    msg_count: number;
 	    first_prompt: string;
@@ -35,6 +36,7 @@ export namespace jsonl {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.workdir = source["workdir"];
+	        this.project = source["project"];
 	        this.mtime = source["mtime"];
 	        this.msg_count = source["msg_count"];
 	        this.first_prompt = source["first_prompt"];
@@ -71,6 +73,71 @@ export namespace jsonl {
 	        this.output = source["output"];
 	        this.exitCode = source["exitCode"];
 	    }
+	}
+
+}
+
+export namespace providers {
+	
+	export class Provider {
+	    id: string;
+	    name: string;
+	    base_url: string;
+	    auth_token: string;
+	    default_model: string;
+	    default_haiku_model: string;
+	    default_sonnet_model: string;
+	    default_opus_model: string;
+	    reasoning_model: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Provider(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.base_url = source["base_url"];
+	        this.auth_token = source["auth_token"];
+	        this.default_model = source["default_model"];
+	        this.default_haiku_model = source["default_haiku_model"];
+	        this.default_sonnet_model = source["default_sonnet_model"];
+	        this.default_opus_model = source["default_opus_model"];
+	        this.reasoning_model = source["reasoning_model"];
+	    }
+	}
+	export class Config {
+	    active_provider_id: string;
+	    providers: Provider[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Config(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.active_provider_id = source["active_provider_id"];
+	        this.providers = this.convertValues(source["providers"], Provider);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

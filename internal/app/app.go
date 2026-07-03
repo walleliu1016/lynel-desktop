@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/akke/ease-ui/internal/auth"
 	"github.com/akke/ease-ui/internal/hooks"
 	"github.com/akke/ease-ui/internal/hookserver"
@@ -17,6 +16,7 @@ import (
 	"github.com/akke/ease-ui/internal/session"
 	"github.com/akke/ease-ui/internal/settings"
 	"github.com/akke/ease-ui/internal/tray"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type Options struct {
@@ -26,21 +26,21 @@ type Options struct {
 }
 
 type App struct {
-	opts      Options
-	auth      *auth.Auth
-	settings  *settings.Config
-	handler   *hooks.Handler
-	appMu     sync.RWMutex
-	sessions  map[string]*session.Session
-	claudeBin string
-	ctx       context.Context
-	hookSrv   *hookserver.Server
-	hookMu    sync.RWMutex
-	hookPort  int
-	inst         *instance.Store
-	watcher      *fsWatcher
-	debounceMu   sync.Mutex
-	debounceT    *time.Timer
+	opts       Options
+	auth       *auth.Auth
+	settings   *settings.Config
+	handler    *hooks.Handler
+	appMu      sync.RWMutex
+	sessions   map[string]*session.Session
+	claudeBin  string
+	ctx        context.Context
+	hookSrv    *hookserver.Server
+	hookMu     sync.RWMutex
+	hookPort   int
+	inst       *instance.Store
+	watcher    *fsWatcher
+	debounceMu sync.Mutex
+	debounceT  *time.Timer
 	// hookPermission 存储阻塞中的 PermissionRequest 决策通道。
 	permMu      sync.Mutex
 	permPending map[string]*permWaiter
@@ -91,14 +91,14 @@ func New(opts Options) (*App, error) {
 	inst, _ := instance.Load()
 
 	app := &App{
-		opts:     opts,
-		auth:     a,
-		settings: cfg,
-		handler:  hooks.NewHandler(cfg.AutoAllowBash),
-		sessions: map[string]*session.Session{},
-		inst:     inst,
+		opts:        opts,
+		auth:        a,
+		settings:    cfg,
+		handler:     hooks.NewHandler(cfg.AutoAllowBash),
+		sessions:    map[string]*session.Session{},
+		inst:        inst,
 		permPending: map[string]*permWaiter{},
-		tray:     tray.New(),
+		tray:        tray.New(),
 	}
 
 	// 启动 jsonl 监听，事件去抖后通过 Wails 推给前端
@@ -150,6 +150,7 @@ func (a *App) StartTray(icon []byte) {
 
 // Shutdown stops background goroutines and releases file watchers.
 func (a *App) Shutdown() {
+	a.closeAllSessions()
 	if a.watcher != nil && a.watcher.close != nil {
 		_ = a.watcher.close()
 	}
@@ -158,7 +159,7 @@ func (a *App) Shutdown() {
 		a.debounceT.Stop()
 	}
 	a.debounceMu.Unlock()
-	if a.tray != nil {
+	if a.tray != nil && a.ctx != nil {
 		a.tray.Quit()
 	}
 }

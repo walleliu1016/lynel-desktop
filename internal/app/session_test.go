@@ -6,9 +6,25 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/akke/ease-ui/internal/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type fakeAppProcess struct {
+	written []string
+	closed  bool
+}
+
+func (f *fakeAppProcess) Write(s string) error {
+	f.written = append(f.written, s)
+	return nil
+}
+
+func (f *fakeAppProcess) Close() error {
+	f.closed = true
+	return nil
+}
 
 func TestListSessions_EmptyWhenNoFiles(t *testing.T) {
 	dir := t.TempDir()
@@ -46,7 +62,38 @@ func TestRespondPermission_UnknownIDReturnsError(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestAdoptSession_RegistersAndStarts(t *testing.T) {
+func TestOpenSessionTerminal_StartsResumePTY(t *testing.T) {
+	dir := t.TempDir()
+	a, err := New(Options{ConfigDir: dir})
+	require.NoError(t, err)
+	a.SetClaudeBinary("/bin/echo")
+
+	sid := "abcd1234abcd1234"
+	err = a.OpenSessionTerminal(sid, "/tmp")
+	if err != nil {
+		t.Skipf("cannot start process: %v", err)
+	}
+	s, ok := a.lookupSession(sid)
+	require.True(t, ok)
+	assert.NotNil(t, s.GetProcessForTest())
+}
+
+func TestShutdownClosesRegisteredSessionProcesses(t *testing.T) {
+	dir := t.TempDir()
+	a, err := New(Options{ConfigDir: dir})
+	require.NoError(t, err)
+
+	fp := &fakeAppProcess{}
+	s := session.New("sid-1", "/tmp")
+	s.SetProcessForTest(fp)
+	a.registerSession(s)
+
+	a.Shutdown()
+
+	assert.True(t, fp.closed)
+}
+
+func TestAdoptSession_RegistersOnly(t *testing.T) {
 	dir := t.TempDir()
 	a, err := New(Options{ConfigDir: dir})
 	require.NoError(t, err)

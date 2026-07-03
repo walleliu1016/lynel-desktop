@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"time"
 
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/akke/ease-ui/internal/hookserver"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // EnsureHookServer 启动本地 hook HTTP server 并配置 settings.json。
@@ -29,9 +29,7 @@ func (a *App) EnsureHookServer() {
 	a.hookPort = port
 
 	// POST /api/send → 写入对应 session 的 claude stdin
-	a.hookSrv.OnSend(func(req hookserver.SendRequest) error {
-		return a.SendMessage(req.SessionID, req.Prompt)
-	})
+	a.hookSrv.OnSend(a.SendMessageFromHTTP)
 
 	// 收到 hook 事件 → 通知前端 + 持久化到 instance.json
 	a.hookSrv.OnEvent(func(evt hookserver.HookEvent) {
@@ -232,8 +230,8 @@ func (a *App) CheckAndFixHooks() (needsFix bool, fixed bool, err error) {
 
 	// HTTP 类型的 hook（除 SessionStart 外）
 	hookTypes := map[string]int{
-		"Notification":      120,
-		"PermissionRequest": 300,
+		"Notification":       120,
+		"PermissionRequest":  300,
 		"PreToolUse":         5,
 		"PostToolUse":        5,
 		"PostToolUseFailure": 5,

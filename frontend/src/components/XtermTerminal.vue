@@ -1,5 +1,9 @@
 <template>
-  <div ref="terminalEl" class="xterm-container" @click="focusTerminal" />
+  <div
+    ref="terminalEl"
+    class="xterm-container"
+    @click="focusTerminal"
+  />
 </template>
 
 <script setup lang="ts">
@@ -8,10 +12,12 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
-import { EventsOn, ResizeTerminal } from '../composables/useWails'
+import { EventsOn, ResizeTerminal, OpenSessionTerminal } from '../composables/useWails'
 
 const props = defineProps<{
   sessionId: string
+  workdir: string
+  visible: boolean
 }>()
 
 const emit = defineEmits<{
@@ -36,11 +42,11 @@ function calcRows(height: number): number {
   return Math.max(10, Math.floor((height - 8) / 17))
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (!terminalEl.value) return
 
   term = new Terminal({
-    cursorBlink: true,
+    cursorBlink: false,
     fontSize: 14,
     fontFamily: 'Consolas, "Courier New", monospace',
     theme: { background: '#1e1e1e', foreground: '#d4d4d4' },
@@ -73,6 +79,12 @@ onMounted(() => {
     if (line === '{"type":"done"}') return
     term?.write(line)
   })
+
+  try {
+    await OpenSessionTerminal(props.sessionId, props.workdir)
+  } catch (e: any) {
+    term?.writeln(`\r\n启动 Claude 失败：${e?.message || e}`)
+  }
 })
 
 function emitResize() {
@@ -82,6 +94,15 @@ function emitResize() {
   term.resize(cols, rows)
   ResizeTerminal(props.sessionId, cols, rows).catch(() => {})
 }
+
+watch(() => props.visible, (visible) => {
+  if (!visible) return
+  nextTick(() => {
+    fitAddon?.fit()
+    emitResize()
+    term?.focus()
+  })
+})
 
 watch(() => props.sessionId, () => {
   cleanupEvents?.()
@@ -100,5 +121,10 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   min-height: 0;
+}
+
+.xterm-container :deep(.xterm-cursor),
+.xterm-container :deep(.xterm-cursor-layer) {
+  display: none !important;
 }
 </style>

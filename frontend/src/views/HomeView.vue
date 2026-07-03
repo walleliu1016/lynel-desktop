@@ -25,10 +25,13 @@
           />
           <div class="terminal-area">
             <XtermTerminal
-              v-if="sessions.activeId"
-              :key="sessions.activeId"
-              :session-id="sessions.activeId"
-              @data="onTerminalData"
+              v-for="session in openedTerminals"
+              v-show="session.id === sessions.activeId"
+              :key="session.id"
+              :session-id="session.id"
+              :workdir="session.workdir"
+              :visible="session.id === sessions.activeId"
+              @data="onTerminalData(session.id, $event)"
             />
           </div>
         </template>
@@ -57,7 +60,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, computed } from 'vue'
+import { onMounted, onBeforeUnmount, ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import SessionList from '../components/SessionList.vue'
@@ -81,6 +84,16 @@ const username = ref('')
 const version = ref('0.1.0')
 const isMaximized = ref(false)
 const timelineCollapsed = ref(false)
+type OpenedTerminal = { id: string; workdir: string }
+const openedTerminals = ref<OpenedTerminal[]>([])
+
+watch(() => [sessions.activeId, sessions.list.length], () => {
+  const id = sessions.activeId
+  const meta = sessions.list.find((s) => s.id === id)
+  if (meta && !openedTerminals.value.some((s) => s.id === id)) {
+    openedTerminals.value = [...openedTerminals.value, { id: meta.id, workdir: meta.workdir }]
+  }
+}, { immediate: true })
 
 let maximizePollTimer: number | null = null
 
@@ -112,10 +125,9 @@ const permissionToastName = computed(() => {
   return req?.toolName || ''
 })
 
-async function onTerminalData(data: string) {
-  if (!sessions.activeId) return
+async function onTerminalData(sessionId: string, data: string) {
   try {
-    await WriteTerminalInput(sessions.activeId, data)
+    await WriteTerminalInput(sessionId, data)
   } catch (e: any) {
     console.error('[terminal] write failed:', e?.message)
   }

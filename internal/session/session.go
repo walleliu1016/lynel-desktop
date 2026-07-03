@@ -92,7 +92,7 @@ func (s *Session) Send(prompt string) error {
 	s.version++
 	s.mu.Unlock()
 
-	if err := proc.Write(prompt + "\n"); err != nil {
+	if err := proc.Write(ensureTrailingEnter(prompt)); err != nil {
 		s.mu.Lock()
 		if s.version == prevVersion+1 {
 			// No concurrent mutation observed; safe to roll back.
@@ -110,6 +110,13 @@ func (s *Session) Send(prompt string) error {
 		return err
 	}
 	return nil
+}
+
+func ensureTrailingEnter(prompt string) string {
+	if strings.HasSuffix(prompt, "\n") || strings.HasSuffix(prompt, "\r") {
+		return prompt
+	}
+	return prompt + "\r"
 }
 
 // RegisterPermission moves session to AwaitingPermission and records the request.
@@ -203,4 +210,3 @@ func (s *Session) GetProcessForTest() ProcessIface {
 	defer s.mu.Unlock()
 	return s.proc
 }
-

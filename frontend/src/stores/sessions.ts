@@ -238,6 +238,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     activeId.value = id
     const meta = list.value.find((s) => s.id === id)
     if (!meta) return
+    await AdoptSession(id, meta.workdir)
     if (!messages.value[id]) {
       const total = meta.msg_count
       await loadHistory(id, meta.workdir, Math.max(0, total - PAGE_SIZE), PAGE_SIZE, true)

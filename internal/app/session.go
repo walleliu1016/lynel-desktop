@@ -8,10 +8,11 @@ import (
 	"sync"
 	"time"
 
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/akke/ease-ui/internal/hookserver"
 	"github.com/akke/ease-ui/internal/jsonl"
 	"github.com/akke/ease-ui/internal/pty"
 	"github.com/akke/ease-ui/internal/session"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) SetClaudeBinary(p string) {
@@ -154,28 +155,48 @@ func getBin(a *App) string {
 // AdoptSession 把 Ease UI 启动前已经存在的历史 session（jsonl 里有但
 // a.sessions map 没注册）拉进 App 控制。
 //
-// 用途：前端 ListSessions 拿全量 jsonl，用户切到一条历史 session + 第一次
-// 发消息时 → 先 AdoptSession 注册到 a.sessions，再 SendMessage 起 PTY + 写 prompt。
+// 用途：前端 ListSessions 拿全量 jsonl，用户切到一条历史 session 时，先
+// AdoptSession 注册到 a.sessions；真正进入终端由 OpenSessionTerminal 启动 PTY。
 // 已在 a.sessions 里的 sid 走幂等 noop。
 //
 // 跟 CreateSession 的差别：sid 是调用方给的（不是新生成）；不写 prompt。
 func (a *App) AdoptSession(sessionID, workDir string) error {
 	if s, ok := a.lookupSession(sessionID); ok {
-		// 已经在 App 控制中，但要校验 proc 还活着。
 		if proc := s.GetProcessForTest(); proc != nil {
 			return nil
 		}
-		fmt.Fprintf(os.Stderr, "[DBG] AdoptSession: sid=%s found but proc=nil, re-spawning\n", sessionID)
 	}
 	if sessionID == "" || workDir == "" {
 		return &appError{msg: "AdoptSession: sessionID and workDir required"}
 	}
-	// 懒策略：只创建 session + 注册到 a.sessions，不启动进程。
-	// 进程在 SendMessage 时延迟启动，确保 claude 一起来就能收到输入。
 	s := session.New(sessionID, workDir)
 	a.registerSession(s)
 	a.inst.Put(sessionID, "idle")
-	fmt.Fprintf(os.Stderr, "[DBG] AdoptSession: sid=%s lazy-registered (no proc)\n", sessionID)
+	fmt.Fprintf(os.Stderr, "[DBG] AdoptSession: sid=%s registered (no proc)\n", sessionID)
+	return nil
+}
+
+// OpenSessionTerminal 确保已有 session 的交互式 Claude PTY 已启动。
+// 已有进程时不重复启动；未启动时使用 claude --resume <sessionID> 进入历史会话。
+func (a *App) OpenSessionTerminal(sessionID, workDir string) error {
+	if err := a.AdoptSession(sessionID, workDir); err != nil {
+		return err
+	}
+	s, ok := a.lookupSession(sessionID)
+	if !ok {
+		return errSessionNotFound
+	}
+	if proc := s.GetProcessForTest(); proc != nil {
+		return nil
+	}
+	bin := getBin(a)
+	newProc, err := pty.Start(s.WorkDir, sessionID, bin, pty.ModeResume)
+	if err != nil {
+		return err
+	}
+	s.SetProcessForTest(newProc)
+	a.inst.Put(sessionID, "running")
+	go a.pumpPtyEvents(s, newProc)
 	return nil
 }
 
@@ -208,6 +229,29 @@ func (a *App) SendMessage(sessionID, prompt string) error {
 	}
 
 	return s.Send(prompt)
+}
+
+func (a *App) SendMessageFromHTTP(req hookserver.SendRequest) error {
+	if _, ok := a.lookupSession(req.SessionID); !ok {
+		list, err := a.ListSessions()
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, m := range list {
+			if m.ID == req.SessionID {
+				found = true
+				if err := a.OpenSessionTerminal(req.SessionID, m.WorkDir); err != nil {
+					return err
+				}
+				break
+			}
+		}
+		if !found {
+			return errSessionNotFound
+		}
+	}
+	return a.SendMessage(req.SessionID, req.Prompt)
 }
 
 func (a *App) RespondPermission(sessionID, reqID string, allow bool) error {
@@ -351,6 +395,20 @@ func (a *App) lookupSession(id string) (*session.Session, bool) {
 	defer a.appMu.RUnlock()
 	s, ok := a.sessions[id]
 	return s, ok
+}
+
+func (a *App) closeAllSessions() {
+	a.appMu.RLock()
+	sessions := make([]*session.Session, 0, len(a.sessions))
+	for _, s := range a.sessions {
+		sessions = append(sessions, s)
+	}
+	a.appMu.RUnlock()
+
+	for _, s := range sessions {
+		_ = s.Close()
+		a.inst.Put(s.ID, "done")
+	}
 }
 
 // pending 通道：CreateSession 等待 SessionStart hook 返回真实 session ID

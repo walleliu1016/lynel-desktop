@@ -6,6 +6,14 @@ export function AdoptSession(arg1, arg2) {
   return window['go']['app']['App']['AdoptSession'](arg1, arg2);
 }
 
+export function AlertPermission(arg1, arg2) {
+  return window['go']['app']['App']['AlertPermission'](arg1, arg2);
+}
+
+export function ApplyActiveProvider() {
+  return window['go']['app']['App']['ApplyActiveProvider']();
+}
+
 export function CheckAndFixHooks() {
   return window['go']['app']['App']['CheckAndFixHooks']();
 }
@@ -36,10 +44,6 @@ export function GetHooksConfig() {
 
 export function GetProvidersConfig() {
   return window['go']['app']['App']['GetProvidersConfig']();
-}
-
-export function ApplyActiveProvider() {
-  return window['go']['app']['App']['ApplyActiveProvider']();
 }
 
 export function GetSessionMessages(arg1, arg2, arg3, arg4) {
@@ -78,12 +82,16 @@ export function OSUsername() {
   return window['go']['app']['App']['OSUsername']();
 }
 
-export function OpenInTerminal(arg1, arg2, arg3) {
-  return window['go']['app']['App']['OpenInTerminal'](arg1, arg2, arg3);
+export function OpenSessionTerminal(arg1, arg2) {
+  return window['go']['app']['App']['OpenSessionTerminal'](arg1, arg2);
 }
 
 export function PickDirectory() {
   return window['go']['app']['App']['PickDirectory']();
+}
+
+export function ResizeTerminal(arg1, arg2, arg3) {
+  return window['go']['app']['App']['ResizeTerminal'](arg1, arg2, arg3);
 }
 
 export function RespondHookPermission(arg1, arg2) {
@@ -122,8 +130,8 @@ export function Shutdown() {
   return window['go']['app']['App']['Shutdown']();
 }
 
-export function SwitchOwner(arg1, arg2, arg3) {
-  return window['go']['app']['App']['SwitchOwner'](arg1, arg2, arg3);
+export function StartTray(arg1) {
+  return window['go']['app']['App']['StartTray'](arg1);
 }
 
 export function UpdateSettings(arg1) {
@@ -132,4 +140,8 @@ export function UpdateSettings(arg1) {
 
 export function Verify(arg1) {
   return window['go']['app']['App']['Verify'](arg1);
+}
+
+export function WriteTerminalInput(arg1, arg2) {
+  return window['go']['app']['App']['WriteTerminalInput'](arg1, arg2);
 }
