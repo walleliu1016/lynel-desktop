@@ -10,13 +10,13 @@ import (
 	gopty "github.com/aymanbagabas/go-pty"
 )
 
-func startTTY(cmd *exec.Cmd) (TTY, error) {
+func startTTY(cmd *exec.Cmd, size Size) (TTY, error) {
 	tty, err := gopty.New()
 	if err != nil {
 		return nil, fmt.Errorf("unix pty: %w", err)
 	}
 
-	if err := tty.Resize(120, 40); err != nil {
+	if err := tty.Resize(size.Cols, size.Rows); err != nil {
 		tty.Close()
 		return nil, fmt.Errorf("resize: %w", err)
 	}

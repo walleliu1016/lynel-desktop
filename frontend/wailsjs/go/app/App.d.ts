@@ -48,6 +48,8 @@ export function OSUsername():Promise<string>;
 
 export function OpenSessionTerminal(arg1:string,arg2:string):Promise<void>;
 
+export function OpenSessionTerminalSized(arg1:string,arg2:string,arg3:number,arg4:number):Promise<void>;
+
 export function PickDirectory():Promise<string>;
 
 export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;

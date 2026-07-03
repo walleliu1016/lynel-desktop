@@ -10,7 +10,7 @@
     <div class="layout">
       <aside class="left">
         <SessionList :list="sessions.list" :active-id="sessions.activeId"
-                     @create="showNew = true" @select="sessions.select" />
+                     @create="showNew = true" @select="selectSession" />
         <UserBar :username="username" :version="version" @settings="goSettings" />
       </aside>
       <main class="right">
@@ -24,6 +24,13 @@
             :state="state"
           />
           <div class="terminal-area">
+            <div
+              v-if="activeTerminalLoading"
+              class="terminal-area-loading"
+            >
+              <div class="spinner" />
+              <div class="loading-text">正在启动 Claude 会话…</div>
+            </div>
             <XtermTerminal
               v-for="session in openedTerminals"
               v-show="session.id === sessions.activeId"
@@ -31,6 +38,8 @@
               :session-id="session.id"
               :workdir="session.workdir"
               :visible="session.id === sessions.activeId"
+              @starting="onTerminalStarting(session.id)"
+              @ready="onTerminalReady(session.id)"
               @data="onTerminalData(session.id, $event)"
             />
           </div>
@@ -86,6 +95,11 @@ const isMaximized = ref(false)
 const timelineCollapsed = ref(false)
 type OpenedTerminal = { id: string; workdir: string }
 const openedTerminals = ref<OpenedTerminal[]>([])
+const terminalLoading = ref<Record<string, boolean>>({})
+const activeTerminalLoading = computed(() => {
+  const id = sessions.activeId
+  return !!id && !!terminalLoading.value[id]
+})
 
 watch(() => [sessions.activeId, sessions.list.length], () => {
   const id = sessions.activeId
@@ -125,6 +139,21 @@ const permissionToastName = computed(() => {
   return req?.toolName || ''
 })
 
+async function selectSession(id: string) {
+  if (!openedTerminals.value.some((s) => s.id === id)) {
+    terminalLoading.value = { ...terminalLoading.value, [id]: true }
+  }
+  await sessions.select(id)
+}
+
+function onTerminalStarting(sessionId: string) {
+  terminalLoading.value = { ...terminalLoading.value, [sessionId]: true }
+}
+
+function onTerminalReady(sessionId: string) {
+  terminalLoading.value = { ...terminalLoading.value, [sessionId]: false }
+}
+
 async function onTerminalData(sessionId: string, data: string) {
   try {
     await WriteTerminalInput(sessionId, data)
@@ -135,7 +164,8 @@ async function onTerminalData(sessionId: string, data: string) {
 
 async function onCreate(workdir: string, prompt: string) {
   try {
-    await sessions.create(workdir, prompt)
+    const id = await sessions.create(workdir, prompt)
+    terminalLoading.value = { ...terminalLoading.value, [id]: true }
     showNew.value = false
   } catch (e: any) {
     alert('创建失败：' + (e?.message ?? e))
@@ -143,7 +173,7 @@ async function onCreate(workdir: string, prompt: string) {
 }
 
 function navigateToSession(sessionId: string) {
-  sessions.select(sessionId)
+  void selectSession(sessionId)
 }
 
 function goSettings() { router.push('/settings') }
@@ -169,7 +199,30 @@ function onClose()     { WindowHide() }
   z-index: 1;
 }
 .right { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-primary); }
-.terminal-area { flex: 1; min-height: 0; overflow: hidden; background: #1e1e1e; }
+.terminal-area { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #1e1e1e; }
+.terminal-area-loading {
+  position: absolute;
+  z-index: 30;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  background: #1e1e1e;
+  pointer-events: none;
+}
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255, 255, 255, 0.18);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.loading-text { font-size: 12px; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .empty { flex: 1; display: flex; align-items: center; justify-content: center; }
 .empty-text { color: var(--text-tertiary); font-size: 12px; }
 </style>

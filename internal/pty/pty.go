@@ -16,6 +16,11 @@ const (
 	ModeResume             // --resume <sid>
 )
 
+type Size struct {
+	Cols int
+	Rows int
+}
+
 // Proc wraps a PTY-attached command.
 type Proc struct {
 	cmd *exec.Cmd
@@ -33,6 +38,10 @@ type TTY interface {
 // Start launches claude in a PTY with the given workdir and session mode.
 // binPath should be "claude" or an absolute path to the claude binary.
 func Start(workDir, sessionID, binPath string, mode Mode) (*Proc, error) {
+	return StartWithSize(workDir, sessionID, binPath, mode, Size{})
+}
+
+func StartWithSize(workDir, sessionID, binPath string, mode Mode, size Size) (*Proc, error) {
 	if binPath == "" || binPath == "claude" {
 		binPath = lookupClaudeBin()
 	}
@@ -42,12 +51,22 @@ func Start(workDir, sessionID, binPath string, mode Mode) (*Proc, error) {
 	cmd := exec.Command(binPath, args...)
 	cmd.Dir = workDir
 
-	tty, err := startTTY(cmd)
+	tty, err := startTTY(cmd, normalizeSize(size))
 	if err != nil {
 		return nil, fmt.Errorf("pty start: %w", err)
 	}
 
 	return &Proc{cmd: cmd, tty: tty}, nil
+}
+
+func normalizeSize(size Size) Size {
+	if size.Cols <= 0 {
+		size.Cols = 120
+	}
+	if size.Rows <= 0 {
+		size.Rows = 40
+	}
+	return size
 }
 
 func (p *Proc) Read(b []byte) (int, error) { return p.tty.Read(b) }

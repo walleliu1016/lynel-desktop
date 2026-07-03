@@ -30,6 +30,7 @@ declare global {
           GetSessionStates: () => Promise<Record<string, string>>
           AdoptSession: (id: string, workDir: string) => Promise<void>
           OpenSessionTerminal: (id: string, workDir: string) => Promise<void>
+          OpenSessionTerminalSized: (id: string, workDir: string, cols: number, rows: number) => Promise<void>
           WriteTerminalInput: (id: string, data: string) => Promise<void>
           ResizeTerminal: (id: string, cols: number, rows: number) => Promise<void>
           GetProvidersConfig: () => Promise<import('../types/providers').ProvidersConfig>
@@ -125,6 +126,7 @@ export const CheckAndFixHooks   = () => app().CheckAndFixHooks()
 export const GetSessionStates  = () => app().GetSessionStates()
 export const AdoptSession      = (id: string, workDir: string) => app().AdoptSession(id, workDir)
 export const OpenSessionTerminal = (id: string, workDir: string) => app().OpenSessionTerminal(id, workDir)
+export const OpenSessionTerminalSized = (id: string, workDir: string, cols: number, rows: number) => app().OpenSessionTerminalSized(id, workDir, cols, rows)
 export const WriteTerminalInput = (id: string, data: string) => app().WriteTerminalInput(id, data)
 export const ResizeTerminal     = (id: string, cols: number, rows: number) => app().ResizeTerminal(id, cols, rows)
 export const GetProvidersConfig = () => app().GetProvidersConfig()

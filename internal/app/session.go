@@ -179,6 +179,15 @@ func (a *App) AdoptSession(sessionID, workDir string) error {
 // OpenSessionTerminal 确保已有 session 的交互式 Claude PTY 已启动。
 // 已有进程时不重复启动；未启动时使用 claude --resume <sessionID> 进入历史会话。
 func (a *App) OpenSessionTerminal(sessionID, workDir string) error {
+	return a.openSessionTerminal(sessionID, workDir, pty.Size{})
+}
+
+// OpenSessionTerminalSized 在启动 PTY 前应用前端当前 xterm cols/rows，避免首屏按默认窄宽度渲染。
+func (a *App) OpenSessionTerminalSized(sessionID, workDir string, cols, rows int) error {
+	return a.openSessionTerminal(sessionID, workDir, pty.Size{Cols: cols, Rows: rows})
+}
+
+func (a *App) openSessionTerminal(sessionID, workDir string, size pty.Size) error {
 	if err := a.AdoptSession(sessionID, workDir); err != nil {
 		return err
 	}
@@ -190,7 +199,7 @@ func (a *App) OpenSessionTerminal(sessionID, workDir string) error {
 		return nil
 	}
 	bin := getBin(a)
-	newProc, err := pty.Start(s.WorkDir, sessionID, bin, pty.ModeResume)
+	newProc, err := pty.StartWithSize(s.WorkDir, sessionID, bin, pty.ModeResume, size)
 	if err != nil {
 		return err
 	}
@@ -220,7 +229,7 @@ func (a *App) SendMessage(sessionID, prompt string) error {
 	// SendMessage 收到第一个 prompt 时立即起进程 + 写输入。
 	if proc := s.GetProcessForTest(); proc == nil {
 		bin := getBin(a)
-		newProc, err := pty.Start(s.WorkDir, sessionID, bin, pty.ModeResume)
+		newProc, err := pty.StartWithSize(s.WorkDir, sessionID, bin, pty.ModeResume, pty.Size{})
 		if err != nil {
 			return err
 		}
@@ -341,7 +350,7 @@ func (a *App) WriteTerminalInput(sessionID, data string) error {
 	proc := s.GetProcessForTest()
 	if proc == nil {
 		bin := getBin(a)
-		newProc, err := pty.Start(s.WorkDir, sessionID, bin, pty.ModeResume)
+		newProc, err := pty.StartWithSize(s.WorkDir, sessionID, bin, pty.ModeResume, pty.Size{})
 		if err != nil {
 			return err
 		}

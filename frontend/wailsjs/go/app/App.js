@@ -86,6 +86,10 @@ export function OpenSessionTerminal(arg1, arg2) {
   return window['go']['app']['App']['OpenSessionTerminal'](arg1, arg2);
 }
 
+export function OpenSessionTerminalSized(arg1, arg2, arg3, arg4) {
+  return window['go']['app']['App']['OpenSessionTerminalSized'](arg1, arg2, arg3, arg4);
+}
+
 export function PickDirectory() {
   return window['go']['app']['App']['PickDirectory']();
 }

@@ -1,9 +1,19 @@
 <template>
-  <div
-    ref="terminalEl"
-    class="xterm-container"
-    @click="focusTerminal"
-  />
+  <div class="terminal-shell">
+    <div
+      ref="terminalEl"
+      class="xterm-container"
+      @click="focusTerminal"
+    />
+    <div
+      v-if="loading"
+      data-testid="terminal-loading"
+      class="terminal-loading"
+    >
+      <div class="spinner" />
+      <div class="loading-text">正在启动 Claude 会话…</div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -12,7 +22,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
-import { EventsOn, ResizeTerminal, OpenSessionTerminal } from '../composables/useWails'
+import { EventsOn, ResizeTerminal, OpenSessionTerminalSized } from '../composables/useWails'
 
 const props = defineProps<{
   sessionId: string
@@ -22,9 +32,12 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'data', data: string): void
+  (e: 'starting'): void
+  (e: 'ready'): void
 }>()
 
 const terminalEl = ref<HTMLElement | null>(null)
+const loading = ref(true)
 
 let term: Terminal | null = null
 let fitAddon: FitAddon | null = null
@@ -33,13 +46,6 @@ let resizeObserver: ResizeObserver | null = null
 
 function focusTerminal() {
   term?.focus()
-}
-
-function calcCols(width: number): number {
-  return Math.max(40, Math.floor((width - 16) / 8.4))
-}
-function calcRows(height: number): number {
-  return Math.max(10, Math.floor((height - 8) / 17))
 }
 
 onMounted(async () => {
@@ -59,14 +65,12 @@ onMounted(async () => {
 
   term.open(terminalEl.value)
 
-  nextTick(() => {
-    fitAddon?.fit()
-    emitResize()
-  })
+  await nextTick()
+  fitAndResize()
+  requestAnimationFrame(() => fitAndResize())
 
   resizeObserver = new ResizeObserver(() => {
-    fitAddon?.fit()
-    emitResize()
+    fitAndResize()
   })
   resizeObserver.observe(terminalEl.value)
 
@@ -77,29 +81,39 @@ onMounted(async () => {
   const topic = `session:${props.sessionId}`
   cleanupEvents = EventsOn(topic, (line: string) => {
     if (line === '{"type":"done"}') return
+    loading.value = false
+    emit('ready')
     term?.write(line)
   })
 
   try {
-    await OpenSessionTerminal(props.sessionId, props.workdir)
+    emit('starting')
+    await OpenSessionTerminalSized(props.sessionId, props.workdir, term.cols, term.rows)
   } catch (e: any) {
+    loading.value = false
+    emit('ready')
     term?.writeln(`\r\n启动 Claude 失败：${e?.message || e}`)
   }
 })
 
+function fitAndResize() {
+  if (!term || !terminalEl.value || !props.visible) return
+  const width = terminalEl.value.clientWidth
+  const height = terminalEl.value.clientHeight
+  if (width <= 0 || height <= 0) return
+  fitAddon?.fit()
+  ResizeTerminal(props.sessionId, term.cols, term.rows).catch(() => {})
+}
+
 function emitResize() {
-  if (!term || !terminalEl.value) return
-  const cols = calcCols(terminalEl.value.clientWidth)
-  const rows = calcRows(terminalEl.value.clientHeight)
-  term.resize(cols, rows)
-  ResizeTerminal(props.sessionId, cols, rows).catch(() => {})
+  fitAndResize()
 }
 
 watch(() => props.visible, (visible) => {
   if (!visible) return
   nextTick(() => {
-    fitAddon?.fit()
-    emitResize()
+    fitAndResize()
+    requestAnimationFrame(() => fitAndResize())
     term?.focus()
   })
 })
@@ -117,10 +131,48 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.terminal-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
 .xterm-container {
   width: 100%;
   height: 100%;
   min-height: 0;
+}
+
+.terminal-loading {
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  background: #1e1e1e;
+  pointer-events: none;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255, 255, 255, 0.18);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loading-text {
+  font-size: 12px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .xterm-container :deep(.xterm-cursor),
