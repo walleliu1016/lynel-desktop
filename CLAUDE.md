@@ -83,6 +83,7 @@ export PATH=$PATH:~/go/bin
   - `CreateSession`：用 `pty.ModeAuto` 启动交互式 Claude（不带 session flag），阻塞等待 `SessionStart` hook 返回真实 UUID（15s 超时）。
   - `AdoptSession`：对 Ease UI 启动前已存在的历史 session 做注册，不启动进程。
   - `OpenSessionTerminal`：点击已有 session 时启动或复用 PTY；未启动时必须用 `claude --resume <sid>`。
+  - `OpenSessionTerminalSized(sessionID, workDir, cols, rows)`：启动 PTY 前先把终端尺寸设成前端 xterm 当前尺寸，避免 Claude 首屏按默认窄宽度渲染。
   - `SendMessage`：向 PTY 写裸文本 prompt；写入前必须确保末尾有回车，`session.Send` 会自动补 `\r`。
   - `WriteTerminalInput`：xterm.js 逐键输入直通 PTY，不自动补回车。
 - xterm.js 是唯一终端入口；不要恢复 `SwitchOwner` / `OpenInTerminal` / 外部终端切换 UI。
@@ -97,6 +98,7 @@ export PATH=$PATH:~/go/bin
 - `session.Send(prompt)` 会做最小规范化：如果 `prompt` 没有以 `\n`/`\r` 结尾，则自动补 `\r`；已有回车不会重复追加。
 - `WriteTerminalInput` 是终端逐键输入通道，必须保持原始字节语义，不要在这里自动追加回车。
 - Go 端 `pumpPtyEvents` 转发 PTY 原始 ANSI 字节；前端 `XtermTerminal.vue` 直接写入 xterm.js。
+- `XtermTerminal.vue` 启动时显示 loading 菊花，直到 xterm 真正写入可见字符（去掉 ANSI escape 和空白后仍有字符）才隐藏。
 
 ### 4. Hooks
 - `internal/hookserver` 内置 HTTP server，监听 `127.0.0.1:<port>`，端点 `/hook` 和 `/api/send`。
