@@ -34,7 +34,9 @@
     <div v-else class="form-view">
       <div v-for="ev in hookTypes" :key="ev.name" class="hook-section">
         <div class="hook-section-head" @click="toggleExpand(ev.name)">
-          <span class="expand-icon">{{ expanded[ev.name] ? '▾' : '▸' }}</span>
+          <span class="expand-icon">
+            <Icon :name="expanded[ev.name] ? 'chevron-down' : 'chevron-right'" :size="12" />
+          </span>
           <span class="hook-name">{{ ev.name }}</span>
           <span class="hook-timeout">{{ ev.timeout }}s 超时</span>
           <span class="hook-count">{{ hookCount(ev.name) }} 条</span>
@@ -49,7 +51,9 @@
                 placeholder="matcher（留空匹配所有）"
                 @input="markDirty"
               />
-              <button class="btn-icon del" @click="removeMatcher(ev.name, mi)" title="删除">×</button>
+              <button class="btn-icon del" @click="removeMatcher(ev.name, mi)" title="删除">
+                <Icon name="trash" :size="12" />
+              </button>
             </div>
             <div v-for="(hook, hi) in matcher.hooks" :key="hi" class="hook-item">
               <select v-model="hook.type" class="hook-type" @change="markDirty">
@@ -63,11 +67,17 @@
                 <input v-model="hook.url" class="hook-value mono" placeholder="http://..." @input="markDirty" />
               </template>
               <input v-model.number="hook.timeout" class="hook-timeout-input" type="number" min="1" max="600" @input="markDirty" title="超时秒数" />
-              <button class="btn-icon del" @click="removeHook(ev.name, mi, hi)" title="删除">×</button>
+              <button class="btn-icon del" @click="removeHook(ev.name, mi, hi)" title="删除">
+                <Icon name="trash" :size="12" />
+              </button>
             </div>
-            <button class="add-hook" @click="addHook(ev.name, mi)">+ 添加 hook</button>
+            <button class="add-hook" @click="addHook(ev.name, mi)">
+              <Icon name="plus" :size="11" /> 添加 hook
+            </button>
           </div>
-          <button class="add-matcher" @click="addMatcher(ev.name)">+ 添加 matcher</button>
+          <button class="add-matcher" @click="addMatcher(ev.name)">
+            <Icon name="plus" :size="11" /> 添加 matcher
+          </button>
         </div>
       </div>
     </div>
@@ -76,6 +86,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import Icon from '../../components/Icon.vue'
 import { GetHooksConfig, SaveHooksConfig } from '../../composables/useWails'
 
 // 完整的 Claude hook 类型列表
@@ -277,10 +288,11 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; }
 .hook-timeout-input { width: 50px; flex-shrink: 0; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 4px; color: var(--text-primary); font-size: 11px; text-align: center; }
 .hook-timeout-input:focus { outline: none; border-color: var(--accent); }
 
-.btn-icon { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-tertiary); border-radius: var(--radius-sm); cursor: pointer; font-size: 14px; flex-shrink: 0; }
+.btn-icon { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-tertiary); border-radius: var(--radius-sm); cursor: pointer; flex-shrink: 0; }
 .btn-icon:hover { background: var(--status-error); color: white; }
 
 .add-hook, .add-matcher {
+  display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer;
   color: var(--text-secondary); background: none; border: 1px dashed var(--border);
 }

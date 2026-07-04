@@ -7,7 +7,7 @@
         <div class="login-title-row">
           <span class="login-title">登录 Lynel Desktop</span>
           <button class="settings-btn" title="设置" @click="goSettings">
-            <span class="settings-icon">⚙</span>
+            <Icon name="settings" :size="11" />
             <span class="settings-label">设置</span>
           </button>
         </div>
@@ -60,6 +60,7 @@ import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import SettingsDialog from '../components/SettingsDialog.vue'
+import Icon from '../components/Icon.vue'
 import { useAuthStore } from '../stores/auth'
 import { useWindowState } from '../composables/useWindowState'
 
@@ -167,7 +168,7 @@ async function closeSettings() {
   cursor: pointer;
 }
 .settings-btn:hover { color: var(--text-primary); background: var(--bg-panel); border-color: var(--accent); }
-.settings-icon { font-size: 11px; }
+.settings-btn > svg { display: inline-block; }
 .form { flex: 1; display: flex; flex-direction: column; }
 .form-group { margin-bottom: 6px; }
 .form-label {
@@ -187,7 +188,7 @@ async function closeSettings() {
 .form-hint { font-size: 10px; color: var(--status-error); margin-top: 3px; min-height: 14px; }
 .login-btn {
   width: 100%;
-  background: linear-gradient(135deg, var(--accent), #6D28D9);
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
   color: white; padding: 7px; border-radius: var(--radius-md);
   font-size: 12px; font-weight: 500;
   box-shadow: var(--shadow-accent);

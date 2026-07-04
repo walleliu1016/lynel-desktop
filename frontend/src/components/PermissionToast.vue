@@ -1,6 +1,6 @@
 <template>
   <div v-if="visible" class="perm-toast" @click="handleClick">
-    <span class="perm-icon">&#9888;</span>
+    <Icon name="warning" :size="16" />
     <span class="perm-text">Claude 请求权限：{{ toolName }}</span>
     <span class="perm-hint">点击查看详情</span>
   </div>
@@ -8,6 +8,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import Icon from './Icon.vue'
 
 const props = defineProps<{
   toolName: string
@@ -38,7 +39,7 @@ function handleClick() {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  background: #f59e0b;
+  background: var(--status-warn);
   color: #000;
   padding: 10px 16px;
   border-radius: 8px;
@@ -52,6 +53,5 @@ function handleClick() {
   animation: slideUp 0.3s ease;
 }
 @keyframes slideUp { from { transform: translateY(20px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
-.perm-icon { font-size: 16px }
 .perm-hint { opacity: 0.7; font-size: 11px }
 </style>

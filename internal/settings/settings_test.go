@@ -11,7 +11,7 @@ import (
 
 func TestConfig_Defaults(t *testing.T) {
 	cfg := Default()
-	assert.Equal(t, "dark-pro", cfg.Theme)
+	assert.Equal(t, "oled-dark", cfg.Theme)
 	assert.Equal(t, false, cfg.AutoAllowBash)
 	assert.Equal(t, 5, cfg.AutoLockMinutes)
 	assert.Equal(t, false, cfg.CloudServiceEnabled)
@@ -38,7 +38,7 @@ func TestLoad_MissingFileReturnsDefaults(t *testing.T) {
 
 	cfg, err := Load()
 	require.NoError(t, err)
-	assert.Equal(t, "dark-pro", cfg.Theme)
+	assert.Equal(t, "oled-dark", cfg.Theme)
 }
 
 func TestLoad_CorruptFileReturnsError(t *testing.T) {

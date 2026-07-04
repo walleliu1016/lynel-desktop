@@ -25,7 +25,7 @@ type Config struct {
 
 func Default() *Config {
 	return &Config{
-		Theme:           "dark-pro",
+		Theme:           "oled-dark",
 		AutoAllowBash:   false,
 		LogEnabled:      false,
 		AutoLockMinutes: 5,

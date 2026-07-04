@@ -1,4 +1,4 @@
-/* === Dark Pro (default) === */
+/* === Dark Pro (legacy purple) === */
 /* 全局滚动条暗色主题 */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -10,10 +10,15 @@
   --bg-panel: #121214;
   --bg-input: #1A1A1E;
   --bg-titlebar: linear-gradient(180deg, #1C1C1F 0%, #18181B 100%);
+  --bg-terminal: #1e1e1e;
+  --bg-terminal-loading: #1e1e1e;
 
   --accent: #8B5CF6;
   --accent-deep: #7C3AED;
   --accent-light: #C4B5FD;
+  --accent-soft-bg: rgba(139, 92, 246, 0.12);
+  --accent-soft-border: rgba(139, 92, 246, 0.35);
+  --accent-glow: rgba(139, 92, 246, 0.3);
 
   --text-primary: #F4F4F5;
   --text-secondary: #A1A1AA;
@@ -23,11 +28,13 @@
   --status-success: #34D399;
   --status-warn: #FBBF24;
   --status-error: #FB7185;
+  --status-warn-bg: rgba(251, 191, 36, 0.12);
+  --status-warn-border: rgba(251, 191, 36, 0.35);
 
   --border: #27272A;
   --border-focus: var(--accent);
 
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
   --font-size-code: 14px;
 
@@ -36,19 +43,20 @@
   --radius-lg: 10px;
 
   --shadow-window: 0 12px 40px rgba(0,0,0,0.5);
-  --shadow-accent: 0 4px 12px rgba(139,92,246,0.3);
+  --shadow-accent: 0 4px 12px var(--accent-glow);
   --shadow-panel: none;
   --shadow-card: none;
 
   --session-item-bg: transparent;
   --session-item-hover-bg: rgba(255,255,255,0.04);
-  --session-item-active-bg: rgba(139, 92, 246, 0.12);
+  --session-item-active-bg: var(--accent-soft-bg);
+
   --assistant-card-bg: var(--bg-panel);
   --message-card-shadow: none;
   --timeline-item-hover-bg: rgba(255,255,255,0.04);
   --composer-shadow: none;
 
-  /* === 对话历史渲染专用变量（参考 claude-code-transcripts 配色） === */
+  /* === 对话历史渲染专用变量 === */
   --code-bg: #0E0E10;
   --code-text: #A7F3D0;
 
@@ -98,28 +106,139 @@
   --commit-card-border: #FB923C;
 }
 
+/* === OLED Dark (default, green accent) === */
+[data-theme="oled-dark"] {
+  --bg-primary: #0F172A;
+  --bg-panel: #1E293B;
+  --bg-input: #334155;
+  --bg-titlebar: linear-gradient(180deg, #1E293B 0%, #0F172A 100%);
+  --bg-terminal: #020617;
+  --bg-terminal-loading: #020617;
+
+  --accent: #22C55E;
+  --accent-deep: #16A34A;
+  --accent-light: #86EFAC;
+  --accent-soft-bg: rgba(34, 197, 94, 0.12);
+  --accent-soft-border: rgba(34, 197, 94, 0.35);
+  --accent-glow: rgba(34, 197, 94, 0.3);
+
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-tertiary: #64748B;
+  --text-inverse: #FFFFFF;
+
+  --status-success: #34D399;
+  --status-warn: #FBBF24;
+  --status-error: #EF4444;
+  --status-warn-bg: rgba(251, 191, 36, 0.12);
+  --status-warn-border: rgba(251, 191, 36, 0.35);
+
+  --border: #475569;
+  --border-focus: var(--accent);
+
+  --shadow-window: 0 12px 40px rgba(0,0,0,0.5);
+  --shadow-accent: 0 4px 12px var(--accent-glow);
+  --shadow-panel: 0 0 0 1px rgba(255,255,255,0.04);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.2);
+
+  --session-item-bg: transparent;
+  --session-item-hover-bg: rgba(255,255,255,0.04);
+  --session-item-active-bg: var(--accent-soft-bg);
+
+  --assistant-card-bg: var(--bg-panel);
+  --message-card-shadow: none;
+  --timeline-item-hover-bg: rgba(255,255,255,0.04);
+  --composer-shadow: none;
+
+  /* === 对话历史渲染专用变量 === */
+  --code-bg: #020617;
+  --code-text: #86EFAC;
+
+  --user-bg: rgba(34, 197, 94, 0.08);
+  --user-border: var(--accent);
+
+  --thinking-bg: rgba(251, 191, 36, 0.08);
+  --thinking-border: rgba(251, 191, 36, 0.35);
+  --thinking-label: #FBBF24;
+
+  --tool-bg: rgba(34, 197, 94, 0.08);
+  --tool-border: rgba(34, 197, 94, 0.35);
+  --tool-header: var(--accent-light);
+
+  --tool-result-bg: rgba(52, 211, 153, 0.08);
+  --tool-result-border: rgba(52, 211, 153, 0.30);
+  --tool-error-bg: rgba(239, 68, 68, 0.10);
+
+  --tool-reply-bg: rgba(251, 191, 36, 0.06);
+  --tool-reply-border: #FBBF24;
+  --tool-reply-header: #F59E0B;
+
+  --write-bg: linear-gradient(135deg, rgba(52,211,153,0.10) 0%, rgba(56,189,248,0.10) 100%);
+  --write-border: rgba(52, 211, 153, 0.45);
+  --write-header: #34D399;
+
+  --edit-bg: linear-gradient(135deg, rgba(251,146,60,0.10) 0%, rgba(244,114,182,0.10) 100%);
+  --edit-border: rgba(251, 146, 60, 0.45);
+  --edit-header: #FB923C;
+  --edit-old-label: #EF4444;
+  --edit-new-label: #34D399;
+
+  --todo-bg: linear-gradient(135deg, rgba(52,211,153,0.10) 0%, rgba(132,204,22,0.10) 100%);
+  --todo-border: rgba(52, 211, 153, 0.40);
+  --todo-header: #34D399;
+
+  --ask-bg: rgba(34, 197, 94, 0.08);
+  --ask-border: rgba(34, 197, 94, 0.40);
+  --ask-header: var(--accent-light);
+  --ask-option-bg: var(--bg-input);
+
+  --plan-bg: rgba(34, 197, 94, 0.08);
+  --plan-border: rgba(34, 197, 94, 0.35);
+  --plan-header: var(--accent-light);
+
+  --commit-card-bg: rgba(251, 146, 60, 0.10);
+  --commit-card-border: #FB923C;
+}
+
 /* === Light Pro === */
 [data-theme="light-pro"] {
   --bg-primary: #F0F0F5;
   --bg-panel: #FFFFFF;
   --bg-input: #F2F2F7;
   --bg-titlebar: linear-gradient(180deg, #F9F9FB 0%, #EFEFF3 100%);
+  --bg-terminal: #FFFFFF;
+  --bg-terminal-loading: #FFFFFF;
+
+  --accent: #8B5CF6;
+  --accent-deep: #7C3AED;
+  --accent-light: #7C3AED;
+  --accent-soft-bg: rgba(139, 92, 246, 0.10);
+  --accent-soft-border: rgba(139, 92, 246, 0.30);
+  --accent-glow: rgba(139, 92, 246, 0.22);
 
   --text-primary: #1F1F24;
   --text-secondary: #52525B;
   --text-tertiary: #8E8E99;
+  --text-inverse: #FFFFFF;
+
+  --status-success: #10B981;
+  --status-warn: #D97706;
+  --status-error: #EF4444;
+  --status-warn-bg: rgba(217, 119, 6, 0.10);
+  --status-warn-border: rgba(217, 119, 6, 0.30);
 
   --border: #C9C9D3;
   --border-focus: var(--accent);
 
   --shadow-window: 0 8px 32px rgba(0,0,0,0.14);
-  --shadow-accent: 0 4px 14px rgba(139,92,246,0.22);
+  --shadow-accent: 0 4px 14px var(--accent-glow);
   --shadow-panel: 0 0 0 1px var(--border), 0 2px 6px rgba(0,0,0,0.06);
   --shadow-card: 0 1px 3px rgba(0,0,0,0.06);
 
   --session-item-bg: var(--bg-input);
   --session-item-hover-bg: #FFFFFF;
-  --session-item-active-bg: rgba(139, 92, 246, 0.10);
+  --session-item-active-bg: var(--accent-soft-bg);
+
   --assistant-card-bg: #FFFFFF;
   --message-card-shadow: var(--shadow-card);
   --timeline-item-hover-bg: var(--bg-input);

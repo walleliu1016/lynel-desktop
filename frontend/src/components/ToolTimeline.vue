@@ -7,7 +7,9 @@
         @click.stop="collapsed = !collapsed"
       >
         <span class="timeline-title" :class="{ collapsed }">Timeline</span>
-        <span class="toggle-icon" :class="{ collapsed }">▶</span>
+        <span class="toggle-icon" :class="{ collapsed }">
+          <Icon name="chevron-right" :size="12" />
+        </span>
       </button>
       <div v-show="!collapsed" class="filter-bar">
         <button
@@ -38,6 +40,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { ToolExecution } from '../types/session'
+import Icon from './Icon.vue'
 import ToolTimelineItem from './ToolTimelineItem.vue'
 
 const props = defineProps<{
@@ -151,9 +154,9 @@ onMounted(() => {
 }
 .filter-btn:hover { color: var(--text-primary); border-color: var(--text-tertiary); }
 .filter-btn.active {
-  background: rgba(139, 92, 246, 0.15);
+  background: var(--accent-soft-bg);
   color: var(--accent-light);
-  border-color: rgba(139, 92, 246, 0.35);
+  border-color: var(--accent-soft-border);
 }
 .timeline-title {
   font-size: 12px;

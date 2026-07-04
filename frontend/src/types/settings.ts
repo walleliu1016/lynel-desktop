@@ -1,5 +1,7 @@
+export type Theme = 'dark-pro' | 'light-pro' | 'oled-dark'
+
 export interface Settings {
-  theme: string
+  theme: Theme
   claude_path: string
   auto_allow_bash: boolean
   log_enabled: boolean

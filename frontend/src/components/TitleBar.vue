@@ -5,21 +5,26 @@
       <span class="brand-name">Lynel Desktop</span>
     </div>
     <div class="titlebar-right">
-      <button class="win-btn" @click="minimize" title="最小化">─</button>
+      <button class="win-btn" @click="minimize" title="最小化">
+        <Icon name="minimize" :size="14" />
+      </button>
       <button
         class="win-btn"
         :title="isMaximized ? '还原' : '最大化'"
         @click="toggleMaximize"
       >
-        {{ isMaximized ? '▣' : '▢' }}
+        <Icon :name="isMaximized ? 'restore' : 'maximize'" :size="14" />
       </button>
-      <button class="win-btn close" @click="hide" title="隐藏到托盘">✕</button>
+      <button class="win-btn close" @click="hide" title="隐藏到托盘">
+        <Icon name="close" :size="14" />
+      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { useWindowState } from '../composables/useWindowState'
+import Icon from './Icon.vue'
 
 const { isMaximized, minimize, toggleMaximize, hide } = useWindowState()
 </script>
@@ -53,7 +58,7 @@ const { isMaximized, minimize, toggleMaximize, hide } = useWindowState()
 .win-btn {
   width: 28px; height: 20px; border-radius: 3px;
   display: flex; align-items: center; justify-content: center;
-  color: var(--text-secondary); font-size: 11px;
+  color: var(--text-secondary);
   background: transparent;
   border: none;
   cursor: pointer;

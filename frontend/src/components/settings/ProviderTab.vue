@@ -3,7 +3,9 @@
     <aside class="provider-list">
       <div class="list-header">
         <span>模型供应商</span>
-        <button class="add-btn" @click="onAdd" title="新增供应商">+</button>
+        <button class="add-btn" @click="onAdd" title="新增供应商">
+          <Icon name="plus" :size="14" />
+        </button>
       </div>
       <div class="list">
         <div
@@ -82,6 +84,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue'
+import Icon from '../../components/Icon.vue'
 import { useProvidersStore } from '../../stores/providers'
 
 const store = useProvidersStore()
@@ -150,7 +153,7 @@ function onTest() {
   width: 24px; height: 24px; border-radius: var(--radius-sm);
   border: 1px solid var(--border); background: var(--bg-input);
   color: var(--text-primary); cursor: pointer; display: flex;
-  align-items: center; justify-content: center; font-size: 16px;
+  align-items: center; justify-content: center;
 }
 .add-btn:hover { border-color: var(--accent); color: var(--accent-light); }
 .list { flex: 1; overflow-y: auto; padding: 8px; }
@@ -161,7 +164,7 @@ function onTest() {
   border: 1px solid transparent;
 }
 .provider-item:hover { background: var(--bg-input); }
-.provider-item.active { background: rgba(139,92,246,0.12); border-color: var(--accent); }
+.provider-item.active { background: var(--accent-soft-bg); border-color: var(--accent-soft-border); }
 .provider-item .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
 .provider-item.current .dot { background: var(--status-success); box-shadow: 0 0 6px var(--status-success); }
 .provider-item .info { flex: 1; min-width: 0; }
@@ -187,8 +190,8 @@ function onTest() {
 .form-group input.v:focus { outline: none; border-color: var(--accent); }
 .form-group input.v[type="password"] { font-family: var(--font-mono); }
 .hint {
-  margin-top: auto; padding: 10px 14px; background: rgba(124,58,237,0.08);
-  border: 1px solid var(--accent); border-radius: var(--radius-md);
+  margin-top: auto; padding: 10px 14px; background: var(--accent-soft-bg);
+  border: 1px solid var(--accent-soft-border); border-radius: var(--radius-md);
   font-size: 12px; color: var(--text-secondary); line-height: 1.5;
 }
 .bottom-actions { display: flex; align-items: center; gap: 8px; margin-top: 16px; }

@@ -3,7 +3,9 @@
     <div class="dialog">
       <div class="head">
         <h2>新建会话</h2>
-        <button class="close" @click="$emit('close')">✕</button>
+        <button class="close" @click="$emit('close')">
+          <Icon name="close" :size="14" />
+        </button>
       </div>
       <form @submit.prevent="onSubmit" class="form">
         <div class="form-group">
@@ -31,6 +33,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import Icon from './Icon.vue'
 import { PickDirectory } from '../composables/useWails'
 
 const props = defineProps<{ open: boolean; loading?: boolean }>()
@@ -76,7 +79,7 @@ function onSubmit() {
 }
 .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 h2 { font-size: 14px; color: var(--text-primary); }
-.close { color: var(--text-secondary); font-size: 14px; padding: 2px 6px; border-radius: var(--radius-sm); }
+.close { color: var(--text-secondary); padding: 2px 6px; border-radius: var(--radius-sm); display: flex; align-items: center; }
 .close:hover { background: var(--bg-input); color: var(--text-primary); }
 .form-group { margin-bottom: 12px; }
 .form-label { display: block; font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
@@ -106,8 +109,8 @@ h2 { font-size: 14px; color: var(--text-primary); }
 .pick-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .spinner {
   width: 11px; height: 11px;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  border-top-color: #fff;
+  border: 2px solid var(--border);
+  border-top-color: var(--text-inverse);
   border-radius: 50%;
   animation: spin 0.75s linear infinite;
 }

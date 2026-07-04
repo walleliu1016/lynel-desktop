@@ -96,7 +96,7 @@ const state = computed(() => sessions.state[props.meta.id] || 'idle')
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 .session-item:hover { background: var(--session-item-hover-bg); }
-.session-item.active { background: var(--session-item-active-bg); border-color: rgba(139, 92, 246, 0.25); }
+.session-item.active { background: var(--session-item-active-bg); border-color: var(--accent-soft-border); }
 .status-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--text-tertiary); flex-shrink: 0; margin-top: 5px;

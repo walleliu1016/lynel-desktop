@@ -168,7 +168,7 @@ function goSettings() { router.push('/settings') }
   z-index: 1;
 }
 .right { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-primary); }
-.terminal-area { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #1e1e1e; }
+.terminal-area { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg-terminal); }
 .terminal-area-loading {
   position: absolute;
   z-index: 30;
@@ -179,13 +179,13 @@ function goSettings() { router.push('/settings') }
   justify-content: center;
   gap: 12px;
   color: var(--text-secondary);
-  background: #1e1e1e;
+  background: var(--bg-terminal-loading);
   pointer-events: none;
 }
 .spinner {
   width: 28px;
   height: 28px;
-  border: 3px solid rgba(255, 255, 255, 0.18);
+  border: 3px solid var(--border);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;

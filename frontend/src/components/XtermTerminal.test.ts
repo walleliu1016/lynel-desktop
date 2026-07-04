@@ -8,6 +8,7 @@ import {
 } from '../composables/useWails'
 
 const eventHandlers = new Map<string, (line: string) => void>()
+const renderHandlers: Array<() => void> = []
 const fitMocks: Array<() => void> = []
 
 class ResizeObserverStub {
@@ -23,16 +24,22 @@ vi.mock('@xterm/xterm', () => ({
     let written = ''
     const bufferLine = {
       translateToString: (trim?: boolean) => {
-        if (trim) return written.trim()
-        return written
+        const stripped = written.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\s/g, '')
+        if (trim) return stripped
+        return stripped
       },
     }
     return {
       cols: 120,
       rows: 30,
+      options: {},
       loadAddon: vi.fn(),
       open: vi.fn(),
       onData: vi.fn(),
+      onRender: (cb: () => void) => {
+        renderHandlers.push(cb)
+        return { dispose: vi.fn() }
+      },
       write: (line: string) => { written += line },
       writeln: vi.fn(),
       resize: vi.fn(),
@@ -76,6 +83,7 @@ vi.mock('../composables/useWails', () => ({
 describe('XtermTerminal', () => {
   afterEach(() => {
     eventHandlers.clear()
+    renderHandlers.length = 0
     fitMocks.length = 0
     vi.clearAllMocks()
   })
@@ -96,10 +104,12 @@ describe('XtermTerminal', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     eventHandlers.get('session:sid-1')?.('\x1b[2J\x1b[H')
+    renderHandlers.forEach((cb) => cb())
     await wrapper.vm.$nextTick()
     expect(wrapper.find('[data-testid="terminal-loading"]').exists()).toBe(true)
 
     eventHandlers.get('session:sid-1')?.('hello world')
+    renderHandlers.forEach((cb) => cb())
     await wrapper.vm.$nextTick()
     expect(wrapper.find('[data-testid="terminal-loading"]').exists()).toBe(false)
   })

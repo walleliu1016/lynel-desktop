@@ -5,6 +5,7 @@
     <div class="form-group">
       <label class="form-label">主题</label>
       <select class="form-select" v-model="cfg.theme" @change="onThemeChange">
+        <option value="oled-dark">OLED 暗色</option>
         <option value="dark-pro">深色专业</option>
         <option value="light-pro">浅色专业</option>
       </select>
@@ -33,31 +34,19 @@
       <div class="switch-list">
         <label class="switch-row">
           <span class="switch-label">自动允许 Bash 执行</span>
-          <span class="switch-control">
-            <input type="checkbox" v-model="cfg.auto_allow_bash" @change="markDirty" />
-            <span class="slider" />
-          </span>
+          <Switch v-model="cfg.auto_allow_bash" @change="markDirty" />
         </label>
         <label class="switch-row">
           <span class="switch-label">启用日志</span>
-          <span class="switch-control">
-            <input type="checkbox" v-model="cfg.log_enabled" @change="markDirty" />
-            <span class="slider" />
-          </span>
+          <Switch v-model="cfg.log_enabled" @change="markDirty" />
         </label>
         <label class="switch-row">
           <span class="switch-label">启动时自启</span>
-          <span class="switch-control">
-            <input type="checkbox" v-model="cfg.auto_start" @change="markDirty" />
-            <span class="slider" />
-          </span>
+          <Switch v-model="cfg.auto_start" @change="markDirty" />
         </label>
         <label class="switch-row">
           <span class="switch-label">启动时最小化</span>
-          <span class="switch-control">
-            <input type="checkbox" v-model="cfg.minimize_on_start" @change="markDirty" />
-            <span class="slider" />
-          </span>
+          <Switch v-model="cfg.minimize_on_start" @change="markDirty" />
         </label>
       </div>
     </div>
@@ -73,12 +62,13 @@
 
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
+import Switch from '../../components/Switch.vue'
 import { useSettingsStore } from '../../stores/settings'
 import { ClearPassword } from '../../composables/useWails'
 
 const settings = useSettingsStore()
 const cfg = computed(() => settings.cfg ?? (settings.cfg = {
-  theme: 'dark-pro',
+  theme: 'oled-dark',
   claude_path: '',
   auto_allow_bash: false,
   log_enabled: false,
@@ -136,12 +126,6 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 }
 .switch-row:hover { background: var(--bg-input); }
 .switch-label { font-size: 13px; color: var(--text-primary); }
-.switch-control { position: relative; display: inline-block; width: 38px; height: 22px; flex-shrink: 0; }
-.switch-control input { opacity: 0; width: 0; height: 0; }
-.slider { position: absolute; cursor: pointer; inset: 0; background: var(--border); border-radius: 11px; transition: 0.2s; }
-.slider::before { position: absolute; content: ''; height: 16px; width: 16px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: 0.2s; }
-.switch-control input:checked + .slider { background: var(--accent); }
-.switch-control input:checked + .slider::before { transform: translateX(16px); }
 
 .actions { display: flex; align-items: center; gap: 8px; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); }
 .btn-danger { padding: 7px 14px; background: none; border: 1px solid var(--status-error); color: var(--status-error); border-radius: var(--radius-md); font-size: 12px; cursor: pointer; }

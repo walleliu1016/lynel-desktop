@@ -3,10 +3,7 @@
     <div class="row toggle">
       <label class="k">启用</label>
       <div class="v">
-        <label class="switch">
-          <input type="checkbox" v-model="cfg.cloud_service_enabled" @change="markDirty" />
-          <span class="slider" />
-        </label>
+        <Switch v-model="cfg.cloud_service_enabled" @change="markDirty" />
       </div>
     </div>
 
@@ -39,6 +36,7 @@
 
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
+import Switch from '../../components/Switch.vue'
 import { useSettingsStore } from '../../stores/settings'
 
 const settings = useSettingsStore()
@@ -72,8 +70,8 @@ function onTest() {
 .cloud-tab { padding: 20px 24px; max-width: 600px; }
 .notice {
   display: flex; gap: 10px; align-items: center;
-  padding: 10px 14px; background: rgba(124,58,237,0.08);
-  border: 1px solid var(--accent); border-radius: var(--radius-md);
+  padding: 10px 14px; background: var(--accent-soft-bg);
+  border: 1px solid var(--accent-soft-border); border-radius: var(--radius-md);
   margin-bottom: 20px; font-size: 12px;
 }
 .badge {
@@ -93,12 +91,6 @@ function onTest() {
 .status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-tertiary); padding: 6px 0; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); }
 .toggle .v { display: flex; }
-.switch { position: relative; display: inline-block; width: 36px; height: 20px; }
-.switch input { opacity: 0; width: 0; height: 0; }
-.slider { position: absolute; cursor: pointer; inset: 0; background: var(--border); border-radius: 10px; }
-.slider::before { position: absolute; content: ''; height: 14px; width: 14px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: 0.2s; }
-.switch input:checked + .slider { background: var(--accent); }
-.switch input:checked + .slider::before { transform: translateX(16px); }
 .actions { display: flex; align-items: center; gap: 8px; margin-top: 24px; }
 .test { padding: 6px 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 11px; }
 .test:hover:not(:disabled) { background: var(--border); }

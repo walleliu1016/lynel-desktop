@@ -58,9 +58,9 @@ const stateLabel = computed(() => {
   font-size: 11px; color: var(--text-secondary); white-space: nowrap;
   padding: 2px 7px; border-radius: 999px;
 }
-.state.waiting { color: var(--accent-light); background: rgba(139, 92, 246, 0.12); }
-.state.thinking { color: var(--accent); background: rgba(139, 92, 246, 0.12); }
-.state.streaming { color: var(--status-success); background: rgba(34, 197, 94, 0.12); }
-.state.running_tool { color: var(--status-warn); background: rgba(251, 191, 36, 0.12); }
-.state.awaiting_permission { color: var(--status-warn); background: rgba(251, 191, 36, 0.12); }
+.state.waiting { color: var(--accent-light); background: var(--accent-soft-bg); }
+.state.thinking { color: var(--accent); background: var(--accent-soft-bg); }
+.state.streaming { color: var(--status-success); background: rgba(52, 211, 153, 0.12); }
+.state.running_tool { color: var(--status-warn); background: var(--status-warn-bg); }
+.state.awaiting_permission { color: var(--status-warn); background: var(--status-warn-bg); }
 </style>

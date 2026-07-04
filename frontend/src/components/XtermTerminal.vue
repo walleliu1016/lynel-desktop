@@ -24,6 +24,20 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { EventsOn, ResizeTerminal, OpenSessionTerminalSized } from '../composables/useWails'
 
+function cssVar(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#000'
+}
+
+function syncXtermTheme(t: Terminal) {
+  t.options.theme = {
+    background: cssVar('--bg-terminal'),
+    foreground: cssVar('--text-primary'),
+    cursor: cssVar('--accent'),
+    selectionBackground: cssVar('--accent-soft-bg'),
+    selectionForeground: cssVar('--text-primary'),
+  }
+}
+
 const props = defineProps<{
   sessionId: string
   workdir: string
@@ -43,6 +57,12 @@ let term: Terminal | null = null
 let fitAddon: FitAddon | null = null
 let cleanupEvents: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
+let themeObserver: MutationObserver | null = null
+let renderDisposer: { dispose: () => void } | null = null
+let resizeTimer: ReturnType<typeof setTimeout> | null = null
+let fallbackTimer: ReturnType<typeof setTimeout> | null = null
+let lastCols = 0
+let lastRows = 0
 
 function focusTerminal() {
   term?.focus()
@@ -55,9 +75,10 @@ onMounted(async () => {
     cursorBlink: false,
     fontSize: 14,
     fontFamily: 'Consolas, "Courier New", monospace',
-    theme: { background: '#1e1e1e', foreground: '#d4d4d4' },
     allowProposedApi: true,
+    minimumContrastRatio: 4.5,
   })
+  syncXtermTheme(term)
 
   fitAddon = new FitAddon()
   term.loadAddon(fitAddon)
@@ -65,12 +86,19 @@ onMounted(async () => {
 
   term.open(terminalEl.value)
 
+  // 等 xterm 真正画出可见内容再隐藏 loading，避免 spinner 提前消失后留白
+  renderDisposer = term.onRender(() => {
+    if (!loading.value) return
+    if (bufferHasVisibleContent()) revealTerminal()
+  })
+
   await nextTick()
   fitAndResize()
   requestAnimationFrame(() => fitAndResize())
 
   resizeObserver = new ResizeObserver(() => {
-    fitAndResize()
+    if (resizeTimer) clearTimeout(resizeTimer)
+    resizeTimer = setTimeout(() => fitAndResize(), 150)
   })
   resizeObserver.observe(terminalEl.value)
 
@@ -78,11 +106,19 @@ onMounted(async () => {
     emit('data', data)
   })
 
+  themeObserver = new MutationObserver(() => {
+    if (term) syncXtermTheme(term)
+  })
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+
   const topic = `session:${props.sessionId}`
   cleanupEvents = EventsOn(topic, (line: string) => {
     if (line === '{"type":"done"}') return
-    writeAndReveal(line)
+    term?.write(line)
   })
+
+  // 兜底：即使没有任何渲染事件，10s 后也不再卡住 loading
+  fallbackTimer = setTimeout(() => revealTerminal(), 10000)
 
   try {
     emit('starting')
@@ -93,23 +129,25 @@ onMounted(async () => {
   }
 })
 
-function writeAndReveal(line: string) {
-  if (line === '') return
-  term?.write(line)
-  if (hasVisibleContent(line)) {
-    revealTerminal()
+function bufferHasVisibleContent(): boolean {
+  if (!term) return false
+  const buffer = term.buffer.active
+  for (let i = 0; i < buffer.length; i++) {
+    const line = buffer.getLine(i)
+    if (line && line.translateToString(true).length > 0) {
+      return true
+    }
   }
-}
-
-function hasVisibleContent(line: string): boolean {
-  // 去掉 ANSI escape 序列和空白后，仍有可打印字符才算内容
-  const stripped = line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\s/g, '')
-  return stripped.length > 0
+  return false
 }
 
 function revealTerminal() {
   if (!loading.value) return
   loading.value = false
+  if (fallbackTimer) {
+    clearTimeout(fallbackTimer)
+    fallbackTimer = null
+  }
   emit('ready')
 }
 
@@ -119,11 +157,10 @@ function fitAndResize() {
   const height = terminalEl.value.clientHeight
   if (width <= 0 || height <= 0) return
   fitAddon?.fit()
+  if (term.cols === lastCols && term.rows === lastRows) return
+  lastCols = term.cols
+  lastRows = term.rows
   ResizeTerminal(props.sessionId, term.cols, term.rows).catch(() => {})
-}
-
-function emitResize() {
-  fitAndResize()
 }
 
 watch(() => props.visible, (visible) => {
@@ -135,15 +172,20 @@ watch(() => props.visible, (visible) => {
   })
 })
 
-watch(() => props.sessionId, () => {
-  cleanupEvents?.()
-  term?.dispose()
-})
-
 onBeforeUnmount(() => {
   cleanupEvents?.()
   resizeObserver?.disconnect()
+  themeObserver?.disconnect()
+  renderDisposer?.dispose()
   term?.dispose()
+  if (resizeTimer) {
+    clearTimeout(resizeTimer)
+    resizeTimer = null
+  }
+  if (fallbackTimer) {
+    clearTimeout(fallbackTimer)
+    fallbackTimer = null
+  }
 })
 </script>
 
@@ -171,14 +213,14 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 12px;
   color: var(--text-secondary);
-  background: #1e1e1e;
+  background: var(--bg-terminal-loading);
   pointer-events: none;
 }
 
 .spinner {
   width: 28px;
   height: 28px;
-  border: 3px solid rgba(255, 255, 255, 0.18);
+  border: 3px solid var(--border);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;

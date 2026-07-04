@@ -10,7 +10,9 @@
           @click="filter = t.key"
         >{{ t.label }}</button>
       </div>
-      <button class="add" @click="$emit('create')">+ 新建</button>
+      <button class="add" @click="$emit('create')">
+        <Icon name="plus" :size="12" /> 新建
+      </button>
     </div>
     <div class="search-bar">
       <input
@@ -19,7 +21,9 @@
         placeholder="搜索会话…"
         @keydown.escape="search = ''"
       />
-      <button v-if="search" class="search-clear" @click="search = ''">×</button>
+      <button v-if="search" class="search-clear" @click="search = ''">
+        <Icon name="close" :size="12" />
+      </button>
     </div>
     <div class="items">
       <SessionItem
@@ -40,6 +44,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import SessionItem from './SessionItem.vue'
+import Icon from './Icon.vue'
 import { useSessionsStore } from '../stores/sessions'
 import type { SessionMeta } from '../types/session'
 
@@ -106,6 +111,7 @@ const dupProjects = computed(() => {
 .tab:hover { color: var(--text-secondary); }
 .tab.active { color: var(--accent-light); border-bottom-color: var(--accent); }
 .add {
+  display: flex; align-items: center; gap: 4px;
   padding: 3px 10px; border-radius: var(--radius-md);
   background: var(--accent); color: white;
   font-size: 12px; font-weight: 500; flex-shrink: 0;
