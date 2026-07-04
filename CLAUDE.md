@@ -67,6 +67,7 @@ export PATH=$PATH:~/go/bin
 - 禁止直接 `window.go.app.App.X(...)`。
 - Pinia 用 setup style；Vue 组件用 `<script setup lang="ts">`；路由用 hash mode。
 - 样式用 `styles/theme.css` 的 CSS 变量，不要硬编码颜色。
+- 图标统一用 `@lucide/vue`，通过 `components/Icon.vue` 引用；禁止在界面里用 emoji / Unicode 符号当图标。
 - `Pinia ref<Record<K, V>>` 更新要用整体 spread：`state.value = { ...state.value, [id]: v }`。
 
 ---
@@ -98,7 +99,8 @@ export PATH=$PATH:~/go/bin
 - `session.Send(prompt)` 会做最小规范化：如果 `prompt` 没有以 `\n`/`\r` 结尾，则自动补 `\r`；已有回车不会重复追加。
 - `WriteTerminalInput` 是终端逐键输入通道，必须保持原始字节语义，不要在这里自动追加回车。
 - Go 端 `pumpPtyEvents` 转发 PTY 原始 ANSI 字节；前端 `XtermTerminal.vue` 直接写入 xterm.js。
-- `XtermTerminal.vue` 启动时显示 loading 菊花，直到 xterm 真正写入可见字符（去掉 ANSI escape 和空白后仍有字符）才隐藏。
+- `XtermTerminal.vue` 启动时显示 loading 菊花，直到 `term.onRender` 触发且 xterm buffer 中真正存在可见行时才隐藏；同时保留 10s 兜底隐藏，避免进程卡死时 spinner 永远不消失。
+- 终端尺寸随容器变化自动调整：`ResizeObserver` 触发后 150ms debounce，再调用 `fitAddon.fit()` 计算新 `cols/rows`；只有尺寸真的改变时才调用 `ResizeTerminal` 通知 PTY。
 
 ### 4. Hooks
 - `internal/hookserver` 内置 HTTP server，监听 `127.0.0.1:<port>`，端点 `/hook` 和 `/api/send`。
@@ -126,6 +128,12 @@ export PATH=$PATH:~/go/bin
 - 黑屏时按日志定位：
   - HB 心跳停掉 = JS event loop 卡死。
   - `auth.initPromise` 之后无响应 = XPC/TCC 权限问题（macOS）。
+
+### 8. 窗口状态
+- `frontend/src/composables/useWindowState.ts` 是唯一的窗口尺寸/最大化状态管理中心。
+- `app.go` 配置 `StartHidden: true`，窗口初始不可见；登录成功后由前端调用 `WindowShow()`，避免登录页/主页尺寸闪烁。
+- 禁止在视图组件里直接调用 `WindowSetSize` / `WindowMaximise`；统一通过 `useWindowState.applyLoginLayout()` / `applyHomeLayout()` / `applySettingsLayout()` 切换。
+- 最大化状态通过 `window.resize` 事件同步，不再轮询。
 
 ---
 
