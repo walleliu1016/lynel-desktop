@@ -1,7 +1,9 @@
+import { createRequire } from 'node:module';
 import { OutputChannel, ProxyStageEvent } from './channel.js';
 
 export interface WeComChannelConfig {
   enabled: boolean;
+  chatId?: string;
   botId?: string;
   secret?: string;
   agent?: {
@@ -9,6 +11,20 @@ export interface WeComChannelConfig {
     corpSecret: string;
     agentId: number;
   };
+}
+
+const require = createRequire(import.meta.url);
+let pluginModule: any;
+
+async function loadPlugin(): Promise<any> {
+  if (pluginModule) return pluginModule;
+  try {
+    const pluginPath = require.resolve('@wecom/wecom-openclaw-plugin');
+    pluginModule = await import(pluginPath);
+  } catch (err) {
+    console.error('[wecom-channel] failed to load plugin:', err);
+  }
+  return pluginModule;
 }
 
 export class WeComChannel implements OutputChannel {
@@ -21,7 +37,7 @@ export class WeComChannel implements OutputChannel {
   }
 
   isEnabled(): boolean {
-    return this.cfg.enabled && (!!this.cfg.botId || !!this.cfg.agent);
+    return this.cfg.enabled && !!this.cfg.chatId && (!!this.cfg.botId || !!this.cfg.agent);
   }
 
   updateConfig(cfg: WeComChannelConfig): void {
@@ -39,8 +55,29 @@ export class WeComChannel implements OutputChannel {
     const content = this.formatMessage(event);
     if (!content) return;
 
-    // Placeholder: actual send via wecom-openclaw-plugin will be wired in Task 5.3
-    console.log('[wecom-channel] would send:', content);
+    const plugin = await loadPlugin();
+    if (!plugin?.wecomPlugin?.outbound?.sendText) {
+      console.warn('[wecom-channel] plugin outbound.sendText not available');
+      return;
+    }
+
+    const cfg = {
+      channels: {
+        wecom: {
+          enabled: true,
+          botId: this.cfg.botId,
+          secret: this.cfg.secret,
+          agent: this.cfg.agent,
+        },
+      },
+    };
+
+    await plugin.wecomPlugin.outbound.sendText({
+      to: this.cfg.chatId,
+      text: content,
+      accountId: 'default',
+      cfg,
+    });
   }
 
   private formatMessage(event: ProxyStageEvent): string {
