@@ -9,7 +9,7 @@
     "dev:frontend": "cd frontend && vite",
     "dev:electron": "tsc -p tsconfig.electron.json --watch",
     "build": "npm run build:frontend && npm run build:electron",
-    "build:frontend": "cd frontend && vue-tsc --noEmit && vite build",
+    "build:frontend": "cd frontend && npx vue-tsc --noEmit && npx vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",

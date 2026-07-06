@@ -10,11 +10,14 @@ files:
   - build/windows/trayicon.ico
 extraMetadata:
   main: dist-electron/electron/main.js
+icon: build/appicon.png
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
 win:
   target:
     - target: nsis
       arch: x64
-  icon: build/windows/trayicon.ico
+  icon: build/windows/icon.ico
 mac:
   target:
     - target: dmg
