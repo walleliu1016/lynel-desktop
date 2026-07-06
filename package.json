@@ -19,6 +19,8 @@
     "test:main": "vitest run tests/main"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.10.0",
     "concurrently": "^9.0.0",
     "electron": "^43.0.0",

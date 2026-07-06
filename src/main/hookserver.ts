@@ -48,12 +48,13 @@ export class HookServer {
 
   start(): Promise<number> {
     return new Promise((resolve, reject) => {
-      this.server = this.app.listen(0, '127.0.0.1', () => {
-        const addr = this.server?.address();
+      const server = this.app.listen(0, '127.0.0.1', () => {
+        const addr = server.address();
         this.port = typeof addr === 'object' && addr ? addr.port : 0;
         resolve(this.port);
       });
-      this.server.once('error', reject);
+      this.server = server;
+      server.once('error', reject);
     });
   }
 
