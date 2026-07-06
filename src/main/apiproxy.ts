@@ -43,7 +43,46 @@ export function startProxy(
         headers: { ...req.headers, host: target.hostname },
       };
 
+      let requestBody = '';
+      req.on('data', (chunk) => { requestBody += chunk; });
+      req.on('end', () => {
+        try {
+          const json = JSON.parse(requestBody);
+          const prompt = json.messages?.[json.messages.length - 1]?.content;
+          if (prompt) {
+            const entry = resolveProxySession(token);
+            emitStage(dispatcher, entry?.sessionId ?? token, workDir, 'prompt', { prompt }, 1);
+          }
+        } catch {
+          // ignore non-json bodies
+        }
+      });
+
       const proxyReq = https.request(options, (proxyRes) => {
+        let responseBody = '';
+        proxyRes.on('data', (chunk: Buffer) => { responseBody += chunk.toString(); });
+        proxyRes.on('end', () => {
+          const lines = responseBody.split('\n').filter((l) => l.startsWith('data: '));
+          for (const line of lines) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+              const entry = resolveProxySession(token);
+              const sid = entry?.sessionId ?? token;
+              const delta = parsed.delta;
+              if (delta?.text) {
+                emitStage(dispatcher, sid, workDir, 'text', { text: delta.text }, 1);
+              }
+              if (parsed.type === 'content_block_start' && parsed.content_block?.type === 'tool_use') {
+                emitStage(dispatcher, sid, workDir, 'tool_use', parsed.content_block, 1);
+              }
+            } catch {
+              // ignore parse errors
+            }
+          }
+        });
+
         res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
         proxyRes.pipe(res);
       });
