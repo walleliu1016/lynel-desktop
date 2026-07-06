@@ -60,7 +60,7 @@ ease-ui/
 
 ```json
 {
-  "name": "ease-ui-electron",
+  "name": "ease-ui",
   "version": "0.0.1",
   "private": true,
   "main": "dist-electron/main.js",
