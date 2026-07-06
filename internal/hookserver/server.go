@@ -9,9 +9,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/akke/ease-ui/internal/apiproxy"
 )
 
 // HookEvent is the payload POSTed by Claude hooks to /hook.
@@ -89,6 +92,7 @@ type Server struct {
 	onEvent             func(HookEvent)
 	onSend              func(SendRequest) error
 	onPermissionRequest func(HookEvent) (any, error)
+	store               *apiproxy.Store
 }
 
 // New creates a new hook server.
@@ -108,6 +112,9 @@ func (s *Server) Start() (int, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/hook", s.handleHook)
 	mux.HandleFunc("/api/send", s.handleSend)
+	mux.HandleFunc("GET /api/sessions/{id}/calls", s.handleListCalls)
+	mux.HandleFunc("GET /api/sessions/{id}/calls/stream", s.handleStreamCalls)
+	mux.HandleFunc("GET /api/calls/{seq}", s.handleGetCall)
 	go http.Serve(l, mux)
 	return s.port, nil
 }
@@ -124,6 +131,9 @@ func (s *Server) OnSend(fn func(SendRequest) error) { s.onSend = fn }
 // OnPermissionRequest registers a callback invoked for blocking PermissionRequest hooks.
 // The callback must return the JSON body to send back to Claude.
 func (s *Server) OnPermissionRequest(fn func(HookEvent) (any, error)) { s.onPermissionRequest = fn }
+
+// SetStore attaches the API proxy store so call phases can be queried/streamed.
+func (s *Server) SetStore(store *apiproxy.Store) { s.store = store }
 
 // LastSeen returns the most recent hook time for a session, or zero.
 func (s *Server) LastSeen(sessionID string) time.Time {
@@ -231,4 +241,94 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+
+func (s *Server) handleListCalls(w http.ResponseWriter, r *http.Request) {
+	if s.store == nil {
+		http.Error(w, "store not configured", http.StatusServiceUnavailable)
+		return
+	}
+	sessionID := r.PathValue("id")
+	workDir := r.URL.Query().Get("workDir")
+	if sessionID == "" || workDir == "" {
+		http.Error(w, "session_id and workDir required", http.StatusBadRequest)
+		return
+	}
+	phases, err := s.store.ListPhases(sessionID, workDir)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, phases)
+}
+
+func (s *Server) handleGetCall(w http.ResponseWriter, r *http.Request) {
+	if s.store == nil {
+		http.Error(w, "store not configured", http.StatusServiceUnavailable)
+		return
+	}
+	seqStr := r.PathValue("seq")
+	seq, err := strconv.ParseInt(seqStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid seq", http.StatusBadRequest)
+		return
+	}
+	phase, err := s.store.GetPhase(seq)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, http.StatusOK, phase)
+}
+
+func (s *Server) handleStreamCalls(w http.ResponseWriter, r *http.Request) {
+	if s.store == nil {
+		http.Error(w, "store not configured", http.StatusServiceUnavailable)
+		return
+	}
+	sessionID := r.PathValue("id")
+	workDir := r.URL.Query().Get("workDir")
+	if sessionID == "" || workDir == "" {
+		http.Error(w, "session_id and workDir required", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return
+	}
+	flush := func() {
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	// 先推送历史阶段。
+	if phases, err := s.store.ListPhases(sessionID, workDir); err == nil {
+		for _, p := range phases {
+			writeSSE(w, p)
+		}
+	}
+	flush()
+
+	ch, cancel := s.store.Subscribe(sessionID)
+	defer cancel()
+	for {
+		select {
+		case p := <-ch:
+			writeSSE(w, p)
+			flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+func writeSSE(w http.ResponseWriter, p apiproxy.Phase) {
+	b, _ := json.Marshal(p)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
 }

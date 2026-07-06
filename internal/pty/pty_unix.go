@@ -10,7 +10,7 @@ import (
 	gopty "github.com/aymanbagabas/go-pty"
 )
 
-func startTTY(cmd *exec.Cmd, size Size) (TTY, error) {
+func startTTY(cmd *exec.Cmd, size Size, env []string) (TTY, error) {
 	tty, err := gopty.New()
 	if err != nil {
 		return nil, fmt.Errorf("unix pty: %w", err)
@@ -25,6 +25,7 @@ func startTTY(cmd *exec.Cmd, size Size) (TTY, error) {
 	c.Args = cmd.Args
 	c.Dir = cmd.Dir
 	c.Env = append(os.Environ(), "TERM=xterm-256color")
+	c.Env = append(c.Env, env...)
 
 	if err := c.Start(); err != nil {
 		tty.Close()

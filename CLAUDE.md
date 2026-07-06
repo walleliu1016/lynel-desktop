@@ -103,7 +103,7 @@ export PATH=$PATH:~/go/bin
 - 终端尺寸随容器变化自动调整：`ResizeObserver` 触发后 150ms debounce，再调用 `fitAddon.fit()` 计算新 `cols/rows`；只有尺寸真的改变时才调用 `ResizeTerminal` 通知 PTY。
 
 ### 4. Hooks
-- `internal/hookserver` 内置 HTTP server，监听 `127.0.0.1:<port>`，端点 `/hook` 和 `/api/send`。
+- `internal/hookserver` 内置 HTTP server，监听 `127.0.0.1:<port>`，端点 `/hook`、`/api/send`、`/api/sessions/{id}/calls`、`/api/sessions/{id}/calls/stream`、`/api/calls/{seq}`。
 - `SessionStart` **必须**用 command 脚本：`~/.ease-app/session-start.sh`（macOS/Linux）或 `session-start.ps1`（Windows）。Claude 不支持 HTTP 类型的 `SessionStart` hook。
 - 其余 12 类 hook 走 HTTP POST；`hookserver` 自动写 `~/.claude/settings.json`。
 - command hook 的 JSON 字段是 `hook_event_name`，不是 HTTP hook 用的 `type`。
@@ -135,6 +135,18 @@ export PATH=$PATH:~/go/bin
 - 禁止在视图组件里直接调用 `WindowSetSize` / `WindowMaximise`；统一通过 `useWindowState.applyLoginLayout()` / `applyHomeLayout()` / `applySettingsLayout()` 切换。
 - 最大化状态通过 `window.resize` 事件同步，不再轮询。
 
+### 9. API 网关代理（apiproxy）
+- `internal/apiproxy` 按 session 启动独立 HTTP 代理，通过注入 `ANTHROPIC_BASE_URL` 拦截 Claude API 流量。
+- 每个 session 一个 `apiproxy.Proxy`，共用同一个 `apiproxy.Store`；`ModeAuto` 新建 session 先用临时 token 启动代理，等 `SessionStart` 返回真实 UUID 后再调用 `Proxy.SetSessionID` 迁移。
+- 代理只解析**显示需要**的字段：`prompt`、tools 名称、`tool_result`、响应 `text` / `thinking` / `tool_use` / `usage` / `stop_reason`，不保留完整 messages 历史。
+- 阶段数据落盘到 `~/.ease-app/projects/<encoded-project>/<sid>-calls.jsonl`，每行一个 JSON，字段见 `internal/apiproxy/types.go`。
+- 关键字段：
+  - `seq`：全局自增，所有 session 共享；store 启动时从已有文件恢复最大值。
+  - `turn`：用户可见交互轮次；纯文本 prompt 进入新 turn，tool_result-only 请求保持当前 turn。
+  - `tool_use_id`：关联 `tool_use` 与 `tool_result`；store 维护 `pendingToolUse` 映射。
+- `hookserver` 通过 `SetStore` 拿到 store 后暴露 REST/SSE；前端消费地址为 `http://localhost:<hookPort>/api/sessions/{id}/calls?workDir=...`。
+- 代理启动失败**不阻塞 PTY**：打日志后继续启动 Claude，只是无网关数据。
+
 ---
 
 ## 提交规范
@@ -154,6 +166,9 @@ export PATH=$PATH:~/go/bin
 - 前端 `formatContent` 必须与 Go 端 `ContentBlock.ContentText()` 保持同步。
 - 所有 `os/exec` 调用尽量带 context：`exec.CommandContext(ctx, ...)`。
 - `//go:embed all:frontend/dist` 的 `all:` 前缀不能去掉，否则隐藏文件缺失会导致某些平台启动失败。
+- 启动 PTY 前必须先确保对应 session 的 `apiproxy.Proxy` 已启动并把 `ANTHROPIC_BASE_URL` 注入 env；`ModeAuto` 用临时 token，等真实 UUID 后再 `SetSessionID`。
+- `apiproxy.Store` 是全局单例，所有 proxy 共享；不要为同一个 session 创建多个 proxy（用 `ensureAPIProxy`）。
+- 网关数据是 PTY+xterm.js 的**补充**，不替代终端渲染；前端消费失败不能影响 Claude 正常运行。
 
 ---
 

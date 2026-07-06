@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/akke/ease-ui/internal/apiproxy"
 	"github.com/akke/ease-ui/internal/hookserver"
 	"github.com/akke/ease-ui/internal/jsonl"
 	"github.com/akke/ease-ui/internal/pty"
@@ -95,14 +96,29 @@ func (a *App) sessionIsActive(id string) bool {
 // 非真实 claude（如 /bin/echo 测试用）直接用 PID 作为 ID，不等待 hook。
 func (a *App) CreateSession(workDir, prompt string) (string, error) {
 	bin := getBin(a)
-	proc, err := pty.Start(workDir, "", bin, pty.ModeAuto)
+
+	// 先启动 API 网关代理（临时 token），等待真实 session ID 后再迁移。
+	token := apiproxy.NewCallID()
+	proxy, proxyErr := a.startPendingAPIProxy(token, workDir)
+	env := []string(nil)
+	if proxyErr == nil {
+		env = append(env, proxyEnvPair(proxy))
+	} else {
+		fmt.Fprintf(os.Stderr, "ease-ui: apiproxy disabled for new session: %v\n", proxyErr)
+	}
+
+	proc, err := pty.Start(workDir, "", bin, pty.ModeAuto, env)
 	if err != nil {
+		if proxy != nil {
+			a.stopAPIProxy(token)
+		}
 		return "", err
 	}
 
 	// 非真实 claude（测试二进制等）：用 PID 作为 ID，不等待 hook
 	if bin != "claude" && !strings.HasSuffix(bin, "/claude") {
 		id := fmt.Sprintf("test-%d", proc.Pid())
+		a.resolvePendingAPIProxy(token, id)
 		s := session.New(id, workDir)
 		s.SetProcessForTest(proc)
 		a.registerSession(s)
@@ -123,6 +139,7 @@ func (a *App) CreateSession(workDir, prompt string) (string, error) {
 	select {
 	case realID := <-ch:
 		fmt.Fprintf(os.Stderr, "[DBG] CreateSession: GOT real id=%s\n", realID)
+		a.resolvePendingAPIProxy(token, realID)
 		s := session.New(realID, workDir)
 		s.SetProcessForTest(proc)
 		a.registerSession(s)
@@ -135,6 +152,7 @@ func (a *App) CreateSession(workDir, prompt string) (string, error) {
 	case <-time.After(15 * time.Second):
 		fmt.Fprintf(os.Stderr, "[DBG] CreateSession: TIMEOUT after 15s\n")
 		proc.Close()
+		a.stopAPIProxy(token)
 		return "", fmt.Errorf("session start timeout (15s)")
 	}
 }
@@ -199,7 +217,8 @@ func (a *App) openSessionTerminal(sessionID, workDir string, size pty.Size) erro
 		return nil
 	}
 	bin := getBin(a)
-	newProc, err := pty.StartWithSize(s.WorkDir, sessionID, bin, pty.ModeResume, size)
+	env := a.apiProxyEnvOrLog(sessionID, s.WorkDir)
+	newProc, err := pty.StartWithSize(s.WorkDir, sessionID, bin, pty.ModeResume, size, env)
 	if err != nil {
 		return err
 	}
@@ -229,7 +248,8 @@ func (a *App) SendMessage(sessionID, prompt string) error {
 	// SendMessage 收到第一个 prompt 时立即起进程 + 写输入。
 	if proc := s.GetProcessForTest(); proc == nil {
 		bin := getBin(a)
-		newProc, err := pty.StartWithSize(s.WorkDir, sessionID, bin, pty.ModeResume, pty.Size{})
+		env := a.apiProxyEnvOrLog(sessionID, s.WorkDir)
+		newProc, err := pty.StartWithSize(s.WorkDir, sessionID, bin, pty.ModeResume, pty.Size{}, env)
 		if err != nil {
 			return err
 		}
@@ -334,6 +354,7 @@ func (a *App) CloseSession(sessionID string) error {
 	if err == nil {
 		a.inst.Put(sessionID, "done")
 	}
+	a.stopAPIProxy(sessionID)
 	return err
 }
 
@@ -350,7 +371,8 @@ func (a *App) WriteTerminalInput(sessionID, data string) error {
 	proc := s.GetProcessForTest()
 	if proc == nil {
 		bin := getBin(a)
-		newProc, err := pty.StartWithSize(s.WorkDir, sessionID, bin, pty.ModeResume, pty.Size{})
+		env := a.apiProxyEnvOrLog(sessionID, s.WorkDir)
+		newProc, err := pty.StartWithSize(s.WorkDir, sessionID, bin, pty.ModeResume, pty.Size{}, env)
 		if err != nil {
 			return err
 		}
@@ -418,6 +440,7 @@ func (a *App) closeAllSessions() {
 		_ = s.Close()
 		a.inst.Put(s.ID, "done")
 	}
+	a.stopAllAPIProxies()
 }
 
 // pending 通道：CreateSession 等待 SessionStart hook 返回真实 session ID
@@ -473,6 +496,7 @@ func (a *App) pumpPtyEvents(s *session.Session, p *pty.Proc) {
 	fmt.Fprintf(os.Stderr, "[DBG] pumpPtyEvents done: sid=%s\n", s.ID)
 	s.SetIdle()
 	a.inst.Put(s.ID, "done")
+	a.stopAPIProxy(s.ID)
 	if a.ctx != nil {
 		wailsruntime.EventsEmit(a.ctx, topic, `{"type":"done"}`)
 	}

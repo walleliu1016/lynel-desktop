@@ -4,9 +4,12 @@ package app
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/akke/ease-ui/internal/apiproxy"
 	"github.com/akke/ease-ui/internal/auth"
 	"github.com/akke/ease-ui/internal/hooks"
 	"github.com/akke/ease-ui/internal/hookserver"
@@ -41,6 +44,12 @@ type App struct {
 	watcher    *fsWatcher
 	debounceMu sync.Mutex
 	debounceT  *time.Timer
+	// apiStore 保存 API 网关代理捕获的阶段数据。
+	apiStore *apiproxy.Store
+	// proxies 保存每个 session 对应的 API 代理（按真实 session ID 索引）。
+	proxies map[string]*apiproxy.Proxy
+	// pendingProxies 保存等待 SessionStart hook 返回真实 ID 的代理（按临时 token 索引）。
+	pendingProxies map[string]*apiproxy.Proxy
 	// hookPermission 存储阻塞中的 PermissionRequest 决策通道。
 	permMu      sync.Mutex
 	permPending map[string]*permWaiter
@@ -78,6 +87,15 @@ func New(opts Options) (*App, error) {
 	if opts.ClaudeDir != "" {
 		jsonl.SetRoot(opts.ClaudeDir + "/projects")
 	}
+	apiRoot := opts.ClaudeDir
+	if apiRoot == "" && opts.ConfigDir != "" {
+		apiRoot = opts.ConfigDir
+	}
+	if apiRoot == "" {
+		home, _ := os.UserHomeDir()
+		apiRoot = filepath.Join(home, ".ease-app")
+	}
+
 	a, err := auth.New()
 	if err != nil {
 		return nil, err
@@ -91,14 +109,17 @@ func New(opts Options) (*App, error) {
 	inst, _ := instance.Load()
 
 	app := &App{
-		opts:        opts,
-		auth:        a,
-		settings:    cfg,
-		handler:     hooks.NewHandler(cfg.AutoAllowBash),
-		sessions:    map[string]*session.Session{},
-		inst:        inst,
-		permPending: map[string]*permWaiter{},
-		tray:        tray.New(),
+		opts:           opts,
+		auth:           a,
+		settings:       cfg,
+		handler:        hooks.NewHandler(cfg.AutoAllowBash),
+		sessions:       map[string]*session.Session{},
+		inst:           inst,
+		apiStore:       apiproxy.NewStore(filepath.Join(apiRoot, "projects")),
+		proxies:        map[string]*apiproxy.Proxy{},
+		pendingProxies: map[string]*apiproxy.Proxy{},
+		permPending:    map[string]*permWaiter{},
+		tray:           tray.New(),
 	}
 
 	// 启动 jsonl 监听，事件去抖后通过 Wails 推给前端

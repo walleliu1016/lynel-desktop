@@ -37,11 +37,14 @@ type TTY interface {
 
 // Start launches claude in a PTY with the given workdir and session mode.
 // binPath should be "claude" or an absolute path to the claude binary.
-func Start(workDir, sessionID, binPath string, mode Mode) (*Proc, error) {
-	return StartWithSize(workDir, sessionID, binPath, mode, Size{})
+// env is appended to the process environment.
+func Start(workDir, sessionID, binPath string, mode Mode, env []string) (*Proc, error) {
+	return StartWithSize(workDir, sessionID, binPath, mode, Size{}, env)
 }
 
-func StartWithSize(workDir, sessionID, binPath string, mode Mode, size Size) (*Proc, error) {
+// StartWithSize launches claude in a PTY with an initial terminal size.
+// env is appended to the process environment (later entries override earlier ones).
+func StartWithSize(workDir, sessionID, binPath string, mode Mode, size Size, env []string) (*Proc, error) {
 	if binPath == "" || binPath == "claude" {
 		binPath = lookupClaudeBin()
 	}
@@ -51,7 +54,7 @@ func StartWithSize(workDir, sessionID, binPath string, mode Mode, size Size) (*P
 	cmd := exec.Command(binPath, args...)
 	cmd.Dir = workDir
 
-	tty, err := startTTY(cmd, normalizeSize(size))
+	tty, err := startTTY(cmd, normalizeSize(size), env)
 	if err != nil {
 		return nil, fmt.Errorf("pty start: %w", err)
 	}

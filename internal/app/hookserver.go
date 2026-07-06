@@ -20,6 +20,7 @@ func (a *App) EnsureHookServer() {
 		return
 	}
 	a.hookSrv = hookserver.New()
+	a.hookSrv.SetStore(a.apiStore)
 	port, err := a.hookSrv.Start()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ease-ui: hook server failed to start: %v\n", err)

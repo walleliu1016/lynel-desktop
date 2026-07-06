@@ -11,7 +11,7 @@ import (
 	gopty "github.com/aymanbagabas/go-pty"
 )
 
-func startTTY(cmd *exec.Cmd, size Size) (TTY, error) {
+func startTTY(cmd *exec.Cmd, size Size, env []string) (TTY, error) {
 	tty, err := gopty.New()
 	if err != nil {
 		return nil, fmt.Errorf("windows conpty: %w", err)
@@ -28,6 +28,7 @@ func startTTY(cmd *exec.Cmd, size Size) (TTY, error) {
 	c.Args = cmd.Args
 	c.Dir = cmd.Dir
 	c.Env = append(os.Environ(), "TERM=xterm-256color")
+	c.Env = append(c.Env, env...)
 
 	// 隐藏 Windows 控制台窗口
 	c.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
