@@ -142,12 +142,13 @@ async function closeSettings() {
 </script>
 
 <style scoped>
-.login { display: flex; flex-direction: column; height: 100vh; }
+.login { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .login-body {
   flex: 1;
   background: radial-gradient(ellipse at top, var(--bg-input) 0%, var(--bg-primary) 70%);
   padding: 18px 22px 14px;
   display: flex; flex-direction: column;
+  justify-content: center;
 }
 .login-head { display: flex; flex-direction: column; align-items: center; margin-bottom: 10px; }
 .login-logo {

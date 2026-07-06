@@ -26,17 +26,28 @@
       </button>
     </div>
     <div class="items">
-      <SessionItem
-        v-for="s in filteredList"
-        :key="s.id"
-        :meta="s"
-        :is-active="s.id === activeId"
-        :dup="dupProjects.has(s.project)"
-        @select="$emit('select', s.id)"
-      />
-      <div v-if="!filteredList.length" class="empty">
-        {{ search ? '无匹配结果' : filter === 'running' ? '暂无运行中的会话' : filter === 'ended' ? '暂无已结束的会话' : '暂无会话' }}
-      </div>
+      <template v-if="sessions.loading && !list.length">
+        <div v-for="i in 6" :key="i" class="skeleton-item">
+          <div class="skeleton-dot" />
+          <div class="skeleton-lines">
+            <div class="skeleton-line short" />
+            <div class="skeleton-line" />
+          </div>
+        </div>
+      </template>
+      <template v-else>
+        <SessionItem
+          v-for="s in filteredList"
+          :key="s.id"
+          :meta="s"
+          :is-active="s.id === activeId"
+          :dup="dupProjects.has(s.project)"
+          @select="$emit('select', s.id)"
+        />
+        <div v-if="!filteredList.length" class="empty">
+          {{ search ? '无匹配结果' : filter === 'running' ? '暂无运行中的会话' : filter === 'ended' ? '暂无已结束的会话' : '暂无会话' }}
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -137,4 +148,26 @@ const dupProjects = computed(() => {
 .search-clear:hover { background: var(--border); color: var(--text-primary); }
 .items { flex: 1; overflow-y: auto; padding: 6px; min-height: 0; }
 .empty { color: var(--text-tertiary); font-size: 12px; text-align: center; padding: 20px; }
+
+.skeleton-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: var(--radius-md);
+  margin-bottom: 4px;
+}
+.skeleton-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--border); flex-shrink: 0;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.skeleton-lines { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.skeleton-line {
+  height: 10px; border-radius: var(--radius-sm);
+  background: var(--border);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.skeleton-line.short { width: 40%; }
+@keyframes pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.75; }
+}
 </style>

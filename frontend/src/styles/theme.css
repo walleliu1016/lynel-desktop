@@ -1,10 +1,10 @@
-/* === Dark Pro (legacy purple) === */
-/* 全局滚动条暗色主题 */
+/* 全局滚动条：颜色由当前主题 token 决定 */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #52525b; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track, transparent); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, #3f3f46); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover, #52525b); }
 
+/* === Dark Pro (legacy purple) === */
 :root, [data-theme="dark-pro"] {
   --bg-primary: #09090B;
   --bg-panel: #121214;
@@ -33,6 +33,10 @@
 
   --border: #27272A;
   --border-focus: var(--accent);
+
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #3f3f46;
+  --scrollbar-thumb-hover: #52525b;
 
   --font-ui: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
@@ -136,6 +140,10 @@
   --border: #475569;
   --border-focus: var(--accent);
 
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #475569;
+  --scrollbar-thumb-hover: #64748B;
+
   --shadow-window: 0 12px 40px rgba(0,0,0,0.5);
   --shadow-accent: 0 4px 12px var(--accent-glow);
   --shadow-panel: 0 0 0 1px rgba(255,255,255,0.04);
@@ -229,6 +237,10 @@
 
   --border: #C9C9D3;
   --border-focus: var(--accent);
+
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #C9C9D3;
+  --scrollbar-thumb-hover: #A1A1AA;
 
   --shadow-window: 0 8px 32px rgba(0,0,0,0.14);
   --shadow-accent: 0 4px 14px var(--accent-glow);

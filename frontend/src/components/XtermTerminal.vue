@@ -238,4 +238,17 @@ onBeforeUnmount(() => {
 .xterm-container :deep(.xterm-cursor-layer) {
   display: none !important;
 }
+.xterm-container :deep(.xterm-viewport)::-webkit-scrollbar {
+  width: 8px;
+}
+.xterm-container :deep(.xterm-viewport)::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+.xterm-container :deep(.xterm-viewport)::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+.xterm-container :deep(.xterm-viewport)::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
 </style>

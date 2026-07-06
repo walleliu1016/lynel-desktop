@@ -111,6 +111,7 @@ export const useSessionsStore = defineStore('sessions', () => {
   const drafts = ref<Record<string, string>>({})
   const executions = ref<Record<string, ToolExecution[]>>({})
   const hookPermissions = ref<Record<string, HookPermissionRequest | null>>({})
+  const loading = ref(false)
 
   const active = computed(() => list.value.find((s) => s.id === activeId.value) ?? null)
 
@@ -164,53 +165,58 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   async function refresh(options?: { sort?: boolean }) {
-    const backend = await ListSessions()
+    loading.value = true
     try {
-      const states = await GetSessionStates()
-      for (const [id, st] of Object.entries(states)) {
-        const normalized = st === 'running' ? 'waiting' : st
-        state.value = { ...state.value, [id]: normalized as SessionState }
+      const backend = await ListSessions()
+      try {
+        const states = await GetSessionStates()
+        for (const [id, st] of Object.entries(states)) {
+          const normalized = st === 'running' ? 'waiting' : st
+          state.value = { ...state.value, [id]: normalized as SessionState }
+        }
+      } catch {}
+
+      if (options?.sort !== false) {
+        list.value = backend
+        return
       }
-    } catch {}
 
-    if (options?.sort !== false) {
-      list.value = backend
-      return
-    }
-
-    const existingMap = new Map(list.value.map(s => [s.id, s]))
-    const added: SessionMeta[] = []
-    const changed: SessionMeta[] = []
-    for (const s of backend) {
-      const cur = existingMap.get(s.id)
-      if (!cur) {
-        added.push(s)
-      } else if (
-        cur.workdir !== s.workdir ||
-        cur.mtime !== s.mtime ||
-        cur.msg_count !== s.msg_count ||
-        cur.first_prompt !== s.first_prompt ||
-        cur.ai_title !== s.ai_title ||
-        cur.size !== s.size
-      ) {
-        changed.push(s)
+      const existingMap = new Map(list.value.map(s => [s.id, s]))
+      const added: SessionMeta[] = []
+      const changed: SessionMeta[] = []
+      for (const s of backend) {
+        const cur = existingMap.get(s.id)
+        if (!cur) {
+          added.push(s)
+        } else if (
+          cur.workdir !== s.workdir ||
+          cur.mtime !== s.mtime ||
+          cur.msg_count !== s.msg_count ||
+          cur.first_prompt !== s.first_prompt ||
+          cur.ai_title !== s.ai_title ||
+          cur.size !== s.size
+        ) {
+          changed.push(s)
+        }
       }
-    }
-    const removed = list.value.some(s => !backend.some(b => b.id === s.id))
-    if (added.length === 0 && !removed && changed.length === 0) return
+      const removed = list.value.some(s => !backend.some(b => b.id === s.id))
+      if (added.length === 0 && !removed && changed.length === 0) return
 
-    if (added.length === 0 && !removed) {
-      for (const s of changed) {
-        const idx = list.value.findIndex(x => x.id === s.id)
-        if (idx >= 0) list.value[idx] = s
+      if (added.length === 0 && !removed) {
+        for (const s of changed) {
+          const idx = list.value.findIndex(x => x.id === s.id)
+          if (idx >= 0) list.value[idx] = s
+        }
+        return
       }
-      return
-    }
 
-    const preserved = list.value
-      .filter(s => backend.some(b => b.id === s.id))
-      .map(s => changed.find(b => b.id === s.id) || s)
-    list.value = [...added, ...preserved]
+      const preserved = list.value
+        .filter(s => backend.some(b => b.id === s.id))
+        .map(s => changed.find(b => b.id === s.id) || s)
+      list.value = [...added, ...preserved]
+    } finally {
+      loading.value = false
+    }
   }
 
   async function create(workdir: string, prompt: string) {
@@ -459,7 +465,7 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   return { list, activeId, active, messages, streaming, state,
-    hasMore, creating, adopted, drafts, executions, hookPermissions,
+    hasMore, creating, loading, adopted, drafts, executions, hookPermissions,
     setDraft, refresh, create, select, send, setHookPermission,
     reloadFromJsonl, handleHookEvent, loadMore }
 })
