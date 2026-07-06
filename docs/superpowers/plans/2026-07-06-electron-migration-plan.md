@@ -6,7 +6,7 @@
 
 **Architecture:** Electron 主进程承担原 Go 后端职责（session/pty/hookserver/apiproxy/channels），通过 `contextBridge` 暴露 API；Vue 前端复用现有组件，仅把 `useWails` 替换为 `useElectron`。
 
-**Tech Stack:** Electron 33+, Vue 3, Pinia, node-pty, Express, chokidar, bcryptjs, electron-store, electron-builder, TypeScript 5.3+
+**Tech Stack:** Electron 43+, Vue 3, Pinia, node-pty, Express, chokidar, bcryptjs, electron-store, electron-builder, TypeScript 5.3+, Node 20+
 
 ---
 
@@ -79,11 +79,14 @@ ease-ui/
     "test": "vitest run",
     "test:main": "vitest run tests/main"
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "concurrently": "^9.0.0",
-    "electron": "^33.0.0",
-    "electron-builder": "^25.0.0",
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.0",
     "typescript": "^5.3.3",
     "vitest": "^2.0.0"
   },
