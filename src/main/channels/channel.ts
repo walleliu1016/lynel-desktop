@@ -3,7 +3,7 @@ export interface ProxyStageEvent {
   turn: number;
   sessionId: string;
   workDir: string;
-  kind: 'prompt' | 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'error';
+  kind: 'prompt' | 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'error' | 'PermissionRequest' | 'SessionEnd';
   payload: unknown;
   timestamp: number;
 }

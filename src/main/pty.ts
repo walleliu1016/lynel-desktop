@@ -66,6 +66,12 @@ export function start(
     onExit: (cb) => proc.onExit(({ exitCode }) => cb(exitCode ?? 0)),
     write: (data) => proc.write(data),
     resize: (cols, rows) => proc.resize(cols, rows),
-    kill: (signal) => proc.kill(signal),
+    kill: (signal) => {
+      if (os.platform() === 'win32' && signal) {
+        proc.kill();
+      } else {
+        proc.kill(signal);
+      }
+    },
   };
 }
