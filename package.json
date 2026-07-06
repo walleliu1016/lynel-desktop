@@ -29,6 +29,7 @@
     "vitest": "^2.0.0"
   },
   "dependencies": {
+    "@wecom/wecom-openclaw-plugin": "file:../wecom-openclaw-plugin",
     "bcryptjs": "^2.4.3",
     "chokidar": "^4.0.0",
     "electron-log": "^5.0.0",
