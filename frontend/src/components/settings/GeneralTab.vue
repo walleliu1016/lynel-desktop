@@ -64,7 +64,7 @@
 import { onMounted, computed } from 'vue'
 import Switch from '../../components/Switch.vue'
 import { useSettingsStore } from '../../stores/settings'
-import { ClearPassword } from '../../composables/useWails'
+import { ClearPassword } from '../../composables/useElectron'
 
 const settings = useSettingsStore()
 const cfg = computed(() => settings.cfg ?? (settings.cfg = {

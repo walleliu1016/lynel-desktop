@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { GetHooksConfig, SaveHooksConfig } from '../composables/useWails'
+import { GetHooksConfig, SaveHooksConfig } from '../composables/useElectron'
 
 export const useHooksStore = defineStore('hooks', () => {
   const cfg = ref<Record<string, any> | null>(null)

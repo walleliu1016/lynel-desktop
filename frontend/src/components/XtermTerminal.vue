@@ -22,7 +22,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
-import { EventsOn, ResizeTerminal, OpenSessionTerminalSized } from '../composables/useWails'
+import { EventsOn, ResizeTerminal, OpenSessionTerminalSized } from '../composables/useElectron'
 
 function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#000'

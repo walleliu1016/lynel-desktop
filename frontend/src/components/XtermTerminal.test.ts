@@ -5,7 +5,7 @@ import XtermTerminal from './XtermTerminal.vue'
 import {
   OpenSessionTerminalSized,
   ResizeTerminal,
-} from '../composables/useWails'
+} from '../composables/useElectron'
 
 const eventHandlers = new Map<string, (line: string) => void>()
 const renderHandlers: Array<() => void> = []
@@ -71,7 +71,7 @@ vi.mock('@xterm/addon-web-links', () => ({
 
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
 
-vi.mock('../composables/useWails', () => ({
+vi.mock('../composables/useElectron', () => ({
   EventsOn: vi.fn((topic: string, handler: (line: string) => void) => {
     eventHandlers.set(topic, handler)
     return vi.fn()

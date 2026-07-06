@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { Verify, LockoutState, SetPassword } from '../composables/useWails'
+import { Verify, LockoutState, SetPassword } from '../composables/useElectron'
 
 export const useAuthStore = defineStore('auth', () => {
   const loggedIn = ref(false)

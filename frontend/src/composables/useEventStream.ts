@@ -1,5 +1,5 @@
 import { onMounted, onBeforeUnmount, watch } from 'vue'
-import { EventsOn } from './useWails'
+import { EventsOn } from './useElectron'
 import { useSessionsStore } from '../stores/sessions'
 
 export function useEventStream() {

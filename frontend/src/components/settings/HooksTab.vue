@@ -87,7 +87,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import Icon from '../../components/Icon.vue'
-import { GetHooksConfig, SaveHooksConfig } from '../../composables/useWails'
+import { GetHooksConfig, SaveHooksConfig } from '../../composables/useElectron'
 
 // 完整的 Claude hook 类型列表
 const hookTypes = [

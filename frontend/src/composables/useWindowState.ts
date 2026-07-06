@@ -10,7 +10,7 @@ import {
   WindowShow,
   WindowToggleMaximise,
   WindowUnmaximise,
-} from './useWails'
+} from './useElectron'
 
 const HOME = { width: 1280, height: 800, minWidth: 1024, minHeight: 680 }
 const LOGIN = { width: 320, height: 400, minWidth: 320, minHeight: 400 }
@@ -48,17 +48,18 @@ async function resetAndResize(
   maxWidth: number = 0,
   maxHeight: number = 0,
 ) {
-  const rt = window.runtime
-  if (!rt) return
-
-  rt.WindowSetMinSize(0, 0)
-  rt.WindowSetMaxSize(0, 0)
-  await new Promise<void>((r) => setTimeout(r, 0))
-  rt.WindowSetSize(width, height)
-  await new Promise<void>((r) => setTimeout(r, 0))
-  rt.WindowSetMinSize(minWidth, minHeight)
-  if (maxWidth > 0 && maxHeight > 0) {
-    rt.WindowSetMaxSize(maxWidth, maxHeight)
+  try {
+    WindowSetMinSize(0, 0)
+    WindowSetMaxSize(0, 0)
+    await new Promise<void>((r) => setTimeout(r, 0))
+    WindowSetSize(width, height)
+    await new Promise<void>((r) => setTimeout(r, 0))
+    WindowSetMinSize(minWidth, minHeight)
+    if (maxWidth > 0 && maxHeight > 0) {
+      WindowSetMaxSize(maxWidth, maxHeight)
+    }
+  } catch {
+    // ignore when Electron API unavailable
   }
 }
 

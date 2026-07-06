@@ -194,6 +194,10 @@ export class App {
     ipcMain.on('window:minimise', () => this.window?.minimize());
     ipcMain.on('window:maximise', () => this.window?.maximize());
     ipcMain.on('window:unmaximise', () => this.window?.unmaximize());
+    ipcMain.on('window:unminimise', () => {
+      if (this.window?.isMinimized()) this.window.restore();
+      this.window?.show();
+    });
     ipcMain.on('window:toggleMaximise', () => {
       if (this.window?.isMaximized()) this.window.unmaximize();
       else this.window?.maximize();

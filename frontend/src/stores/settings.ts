@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { Settings } from '../types/settings'
-import { GetSettings, UpdateSettings } from '../composables/useWails'
+import { GetSettings, UpdateSettings } from '../composables/useElectron'
 
 export const useSettingsStore = defineStore('settings', () => {
   const cfg = ref<Settings | null>(null)

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { SessionMeta, ChatMessage, SessionState, ToolExecution } from '../types/session'
 import type { ContentBlock, ToolResultBlock, RawContent } from '../types/blocks'
-import { ListSessions, CreateSession, SendMessage, GetSessionMessages, GetToolExecutions, GetSessionStates, AdoptSession } from '../composables/useWails'
+import { ListSessions, CreateSession, SendMessage, GetSessionMessages, GetToolExecutions, GetSessionStates, AdoptSession } from '../composables/useElectron'
 
 export interface HookPermissionRequest {
   requestId: string
@@ -181,7 +181,7 @@ export const useSessionsStore = defineStore('sessions', () => {
         return
       }
 
-      const existingMap = new Map(list.value.map(s => [s.id, s]))
+      const existingMap = new Map(list.value.map((s: SessionMeta) => [s.id, s]))
       const added: SessionMeta[] = []
       const changed: SessionMeta[] = []
       for (const s of backend) {
@@ -199,20 +199,20 @@ export const useSessionsStore = defineStore('sessions', () => {
           changed.push(s)
         }
       }
-      const removed = list.value.some(s => !backend.some(b => b.id === s.id))
+      const removed = list.value.some((s: SessionMeta) => !backend.some((b: SessionMeta) => b.id === s.id))
       if (added.length === 0 && !removed && changed.length === 0) return
 
       if (added.length === 0 && !removed) {
         for (const s of changed) {
-          const idx = list.value.findIndex(x => x.id === s.id)
+          const idx = list.value.findIndex((x: SessionMeta) => x.id === s.id)
           if (idx >= 0) list.value[idx] = s
         }
         return
       }
 
       const preserved = list.value
-        .filter(s => backend.some(b => b.id === s.id))
-        .map(s => changed.find(b => b.id === s.id) || s)
+        .filter((s: SessionMeta) => backend.some((b: SessionMeta) => b.id === s.id))
+        .map((s: SessionMeta) => changed.find((b: SessionMeta) => b.id === s.id) || s)
       list.value = [...added, ...preserved]
     } finally {
       loading.value = false

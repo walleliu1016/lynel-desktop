@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { Provider, ProvidersConfig } from '../types/providers'
-import { GetProvidersConfig, SaveProvidersConfig } from '../composables/useWails'
+import { GetProvidersConfig, SaveProvidersConfig } from '../composables/useElectron'
 
 function newProvider(): Provider {
   return {

@@ -74,7 +74,7 @@ import NewSessionDialog from '../components/NewSessionDialog.vue'
 import ToolTimeline from '../components/ToolTimeline.vue'
 import PermissionToast from '../components/PermissionToast.vue'
 import { useSessionsStore } from '../stores/sessions'
-import { WriteTerminalInput } from '../composables/useWails'
+import { WriteTerminalInput } from '../composables/useElectron'
 import { useEventStream } from '../composables/useEventStream'
 
 const router = useRouter()

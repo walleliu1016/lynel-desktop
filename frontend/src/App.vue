@@ -5,7 +5,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { EventsOn, WindowShow, WindowUnminimise, WindowCenter } from './composables/useWails'
+import { EventsOn, WindowShow, WindowUnminimise, WindowCenter } from './composables/useElectron'
 import { useWindowState } from './composables/useWindowState'
 
 const router = useRouter()

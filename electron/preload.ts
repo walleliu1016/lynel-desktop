@@ -46,6 +46,7 @@ const api = {
   windowMinimise: () => ipcRenderer.send('window:minimise'),
   windowMaximise: () => ipcRenderer.send('window:maximise'),
   windowUnmaximise: () => ipcRenderer.send('window:unmaximise'),
+  windowUnminimise: () => ipcRenderer.send('window:unminimise'),
   windowToggleMaximise: () => ipcRenderer.send('window:toggleMaximise'),
   windowIsMaximised: () => ipcRenderer.invoke('window:isMaximised'),
   windowShow: () => ipcRenderer.send('window:show'),

@@ -34,7 +34,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import Icon from './Icon.vue'
-import { PickDirectory } from '../composables/useWails'
+import { PickDirectory } from '../composables/useElectron'
 
 const props = defineProps<{ open: boolean; loading?: boolean }>()
 const emit = defineEmits<{

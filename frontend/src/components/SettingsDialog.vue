@@ -30,7 +30,7 @@ import HooksTab from './settings/HooksTab.vue'
 import GeneralTab from './settings/GeneralTab.vue'
 import CloudTab from './settings/CloudTab.vue'
 import ProviderTab from './settings/ProviderTab.vue'
-import { GetHookServerPort } from '../composables/useWails'
+import { GetHookServerPort } from '../composables/useElectron'
 
 defineEmits<{ (e: 'close'): void }>()
 
