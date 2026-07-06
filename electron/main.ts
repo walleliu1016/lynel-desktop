@@ -1,6 +1,7 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, dialog } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { App } from '../src/main/app.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -67,9 +68,17 @@ if (!gotTheLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     createWindow();
     createTray();
+
+    const appInstance = new App();
+    appInstance.setWindow(mainWindow!);
+    try {
+      await appInstance.init();
+    } catch (err) {
+      console.error('[main] app init failed:', err);
+    }
   });
 
   app.on('window-all-closed', () => {
