@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import http from 'node:http';
+import { SSEChannel } from './channels/sse-channel.js';
 
 export interface HookEvent {
   hook_event_name?: string;
@@ -21,11 +22,16 @@ export class HookServer {
   private onEventHandler: EventHandler | null = null;
   private onPermissionHandler: PermissionHandler | null = null;
   private lastSeenMap = new Map<string, number>();
+  private sseChannel?: SSEChannel;
 
-  constructor() {
+  constructor(sseChannel?: SSEChannel) {
+    this.sseChannel = sseChannel;
     this.app.use(express.json());
     this.app.post('/hook', (req, res) => this.handleHook(req, res));
     this.app.post('/api/send', (req, res) => this.handleSend(req, res));
+    this.app.get('/api/sessions/:id/calls/stream', (req, res) => {
+      if (this.sseChannel) this.sseChannel.subscribe(req.params.id, res);
+    });
   }
 
   onSend(handler: SendHandler): void {
