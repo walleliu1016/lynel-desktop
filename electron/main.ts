@@ -1,0 +1,82 @@
+import { app, BrowserWindow, Tray, Menu, nativeImage, dialog } from 'electron';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+
+const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+
+function createWindow(): void {
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    minWidth: 1024,
+    minHeight: 680,
+    frame: false,
+    show: false,
+    backgroundColor: '#0A0A0A',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+
+  if (isDev) {
+    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html'));
+  }
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+function createTray(): void {
+  const iconPath = path.join(__dirname, '../build/windows/trayicon.ico');
+  const icon = nativeImage.createFromPath(iconPath);
+  tray = new Tray(icon.resize({ width: 16, height: 16 }));
+  tray.setToolTip('Ease UI');
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: '显示', click: () => mainWindow?.show() },
+      { label: '退出', click: () => app.quit() },
+    ]),
+  );
+}
+
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+
+  app.whenReady().then(() => {
+    createWindow();
+    createTray();
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+
+  app.on('activate', () => {
+    if (mainWindow === null) createWindow();
+  });
+}
