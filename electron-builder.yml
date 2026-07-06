@@ -1,0 +1,30 @@
+appId: com.akke.ease-ui
+productName: Ease UI
+copyright: Copyright © 2026
+directories:
+  output: dist
+  buildResources: build
+files:
+  - dist-electron/**/*
+  - frontend/dist/**/*
+  - build/windows/trayicon.ico
+extraMetadata:
+  main: dist-electron/electron/main.js
+win:
+  target:
+    - target: nsis
+      arch: x64
+  icon: build/windows/trayicon.ico
+mac:
+  target:
+    - target: dmg
+      arch: x64
+  category: public.app-category.developer-tools
+linux:
+  target:
+    - target: AppImage
+      arch: x64
+  category: Development
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
