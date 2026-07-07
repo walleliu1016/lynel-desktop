@@ -29,7 +29,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: WecomTeam/wecom-openclaw-plugin
-          path: ../wecom-openclaw-plugin
+          path: wecom-openclaw-plugin
+
+      - name: Move wecom-openclaw-plugin to sibling directory
+        shell: bash
+        run: mv wecom-openclaw-plugin ../wecom-openclaw-plugin
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
