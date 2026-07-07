@@ -31,11 +31,15 @@ function createWindow(): void {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html'));
+    mainWindow.loadFile(path.join(__dirname, '../../frontend/dist/index.html'));
   }
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    console.error('[main] did-fail-load', errorCode, errorDescription);
   });
 
   mainWindow.on('closed', () => {
@@ -44,7 +48,7 @@ function createWindow(): void {
 }
 
 function createTray(): void {
-  const iconPath = path.join(__dirname, '../build/windows/trayicon.ico');
+  const iconPath = path.join(__dirname, '../../build/windows/trayicon.ico');
   const icon = nativeImage.createFromPath(iconPath);
   tray = new Tray(icon.resize({ width: 16, height: 16 }));
   tray.setToolTip('Lynel Desktop');
