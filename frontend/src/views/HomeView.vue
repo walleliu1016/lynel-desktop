@@ -168,7 +168,7 @@ function goSettings() { router.push('/settings') }
   z-index: 1;
 }
 .right { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-primary); }
-.terminal-area { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg-terminal); }
+.terminal-area { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg-terminal); padding-left: 8px; }
 .terminal-area-loading {
   position: absolute;
   z-index: 30;

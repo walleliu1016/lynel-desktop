@@ -92,16 +92,6 @@ onMounted(async () => {
     if (bufferHasVisibleContent()) revealTerminal()
   })
 
-  await nextTick()
-  fitAndResize()
-  requestAnimationFrame(() => fitAndResize())
-
-  resizeObserver = new ResizeObserver(() => {
-    if (resizeTimer) clearTimeout(resizeTimer)
-    resizeTimer = setTimeout(() => fitAndResize(), 150)
-  })
-  resizeObserver.observe(terminalEl.value)
-
   term.onData((data: string) => {
     emit('data', data)
   })
@@ -110,6 +100,12 @@ onMounted(async () => {
     if (term) syncXtermTheme(term)
   })
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+
+  resizeObserver = new ResizeObserver(() => {
+    if (resizeTimer) clearTimeout(resizeTimer)
+    resizeTimer = setTimeout(() => fitAndResize(), 150)
+  })
+  resizeObserver.observe(terminalEl.value)
 
   const topic = `session:${props.sessionId}`
   cleanupEvents = EventsOn(topic, (line: string) => {
@@ -122,6 +118,9 @@ onMounted(async () => {
 
   try {
     emit('starting')
+    // 等容器真正在布局中占据空间后再 fit 和启动 PTY，避免 0 尺寸导致终端空白
+    await waitForSize()
+    fitAndResize()
     await OpenSessionTerminalSized(props.sessionId, props.workdir, term.cols, term.rows)
   } catch (e: any) {
     revealTerminal()
@@ -151,21 +150,45 @@ function revealTerminal() {
   emit('ready')
 }
 
-function fitAndResize() {
-  if (!term || !terminalEl.value || !props.visible) return
+function waitForSize(): Promise<void> {
+  return new Promise((resolve) => {
+    const el = terminalEl.value
+    if (!el) return resolve()
+    const rect = el.getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) return resolve()
+
+    const ro = new ResizeObserver((entries) => {
+      const cr = entries[0]?.contentRect
+      if (cr && cr.width > 0 && cr.height > 0) {
+        ro.disconnect()
+        resolve()
+      }
+    })
+    ro.observe(el)
+  })
+}
+
+function fitAndResize(): boolean {
+  if (!term || !terminalEl.value || !props.visible) return false
   const width = terminalEl.value.clientWidth
   const height = terminalEl.value.clientHeight
-  if (width <= 0 || height <= 0) return
+  if (width <= 0 || height <= 0) return false
   fitAddon?.fit()
-  if (term.cols === lastCols && term.rows === lastRows) return
+  if (term.cols === 0 || term.rows === 0) return false
+  term.refresh(0, term.rows - 1)
+  if (term.cols === lastCols && term.rows === lastRows) return true
   lastCols = term.cols
   lastRows = term.rows
   ResizeTerminal(props.sessionId, term.cols, term.rows).catch(() => {})
+  return true
 }
 
 watch(() => props.visible, (visible) => {
   if (!visible) return
   nextTick(() => {
+    // 从 v-show=false 切回时，xterm 需要重新 fit 才能正确渲染
+    lastCols = 0
+    lastRows = 0
     fitAndResize()
     requestAnimationFrame(() => fitAndResize())
     term?.focus()

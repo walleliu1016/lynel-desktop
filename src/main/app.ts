@@ -23,6 +23,7 @@ export class App {
   private sseChannel = new SSEChannel();
   private wecomChannel = new WeComChannel({ enabled: false });
   private pendingSession: { resolve: (id: string) => void; reject: (err: Error) => void; timer: NodeJS.Timeout } | null = null;
+  private ptyCleanups = new Map<string, (() => void) | null>();
 
   constructor() {
     this.dispatcher.register(this.sseChannel);
@@ -53,6 +54,17 @@ export class App {
 
   setWindow(win: BrowserWindow): void {
     this.window = win;
+    const bus = getBus();
+    const originalEmit = bus.emit.bind(bus);
+    bus.emit = (event: string | symbol, ...args: any[]) => {
+      if (typeof event === 'string' && !this.window?.isDestroyed()) {
+        this.window?.webContents.send(event, ...args);
+      }
+      return originalEmit(event, ...args);
+    };
+    win.on('closed', () => {
+      this.window = null;
+    });
   }
 
   private clearLockout(): void {
@@ -158,7 +170,15 @@ export class App {
       session.register(s);
       session.setProcess(tmpId, proc);
 
-      const realId = await this.registerPending();
+      let realId: string;
+      try {
+        realId = await this.registerPending();
+      } catch (err: any) {
+        proc.kill();
+        session.remove(tmpId);
+        getLogger().error(`createSession timeout for ${workDir}: ${err?.message ?? err}`);
+        throw new Error('Claude 未在 15 秒内返回会话 ID，请检查 SessionStart hook 配置');
+      }
       proxy.setSessionID(realId);
       // migrate tmp session to real id
       session.remove(tmpId);
@@ -167,6 +187,7 @@ export class App {
       realSession.state = 'running';
       session.register(realSession);
       this.instanceStore.set(`sessions.${realId}.state`, 'running');
+      this.wirePty(realId, proc);
 
       if (prompt) session.send(realId, prompt);
       return realId;
@@ -281,6 +302,32 @@ export class App {
     ipcMain.on('window:quit', () => process.exit(0));
   }
 
+  private wirePty(id: string, proc: import('./pty.js').PtyProcess): void {
+    this.ptyCleanups.get(id)?.();
+    let exited = false;
+    const onData = (data: string) => {
+      getBus().emit(`session:${id}`, data);
+    };
+    const onExit = (code: number) => {
+      if (exited) return;
+      exited = true;
+      getBus().emit(`session:${id}`, JSON.stringify({ type: 'done' }));
+      this.instanceStore.set(`sessions.${id}.state`, 'done');
+      const s = session.lookup(id);
+      if (s) {
+        s.process = null;
+        s.state = 'done';
+      }
+      this.ptyCleanups.delete(id);
+    };
+    proc.onData(onData);
+    proc.onExit(onExit);
+    this.ptyCleanups.set(id, () => {
+      proc.onData(() => {});
+      proc.onExit(() => {});
+    });
+  }
+
   private openTerminal(id: string, workDir: string, size: PtySize = { cols: 80, rows: 24 }): void {
     if (!session.lookup(id)) session.register(session.newSession(id, workDir));
     const s = session.lookup(id)!;
@@ -291,6 +338,11 @@ export class App {
       const env = { ANTHROPIC_BASE_URL: `http://127.0.0.1:${proxy.port}` };
       const proc = startPty(workDir, id, 'claude', PtyMode.Resume, env, size);
       session.setProcess(id, proc);
+      this.wirePty(id, proc);
+    }).catch((err: any) => {
+      getLogger().error(`openTerminal failed for ${id}: ${err?.message ?? err}`);
+      getBus().emit(`session:${id}`, `\r\n启动终端失败：${err?.message ?? err}\r\n`);
+      this.instanceStore.set(`sessions.${id}.state`, 'done');
     });
   }
 }
