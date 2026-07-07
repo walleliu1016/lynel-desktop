@@ -16,6 +16,8 @@ export class App {
   private window: BrowserWindow | null = null;
   private settingsStore = getStore('settings');
   private instanceStore = getStore('instance');
+  private hooksStore = getStore('hooks');
+  private providersStore = getStore('providers');
   private hookServer: HookServer | null = null;
   private dispatcher = new ChannelDispatcher();
   private sseChannel = new SSEChannel();
@@ -51,6 +53,19 @@ export class App {
 
   setWindow(win: BrowserWindow): void {
     this.window = win;
+  }
+
+  private clearLockout(): void {
+    this.settingsStore.set('lockout.attempts', 0);
+    this.settingsStore.set('lockout.until', 0);
+  }
+
+  private recordFailedAttempt(): void {
+    const attempts = ((this.settingsStore.get('lockout.attempts', 0) as number) ?? 0) + 1;
+    this.settingsStore.set('lockout.attempts', attempts);
+    if (attempts >= 5) {
+      this.settingsStore.set('lockout.until', Date.now() + 5 * 60 * 1000);
+    }
   }
 
   async init(): Promise<void> {
@@ -92,18 +107,32 @@ export class App {
       return auth.isInitialized(hash as string);
     });
 
-    ipcMain.handle('app:verify', (_event, pw: string) => {
+    ipcMain.handle('app:verify', async (_event, pw: string) => {
       const hash = this.settingsStore.get('auth.hash', '') as string;
-      return auth.verifyPassword(hash, pw);
+      const ok = await auth.verifyPassword(hash, pw);
+      if (ok) {
+        this.clearLockout();
+      } else {
+        this.recordFailedAttempt();
+      }
+      return ok;
+    });
+
+    ipcMain.handle('app:lockoutState', () => {
+      const attempts = (this.settingsStore.get('lockout.attempts', 0) as number) ?? 0;
+      const until = (this.settingsStore.get('lockout.until', 0) as number) ?? 0;
+      return [attempts, until > 0 ? until : null];
     });
 
     ipcMain.handle('app:setPassword', (_event, pw: string) => {
+      this.clearLockout();
       return auth.hashPassword(pw).then((hash) => {
         this.settingsStore.set('auth.hash', hash);
       });
     });
 
     ipcMain.handle('app:clearPassword', () => {
+      this.clearLockout();
       this.settingsStore.set('auth.hash', '');
     });
 
@@ -189,6 +218,32 @@ export class App {
     });
 
     ipcMain.handle('app:getHookServerPort', () => this.hookServer?.getPort() ?? 0);
+
+    ipcMain.handle('app:getHooksConfig', () => {
+      return this.hooksStore.get('config', {}) as Record<string, any>;
+    });
+
+    ipcMain.handle('app:saveHooksConfig', (_event, cfg: Record<string, any>) => {
+      this.hooksStore.set('config', cfg);
+    });
+
+    ipcMain.handle('app:getProvidersConfig', () => {
+      return this.providersStore.get('config', {}) as Record<string, any>;
+    });
+
+    ipcMain.handle('app:saveProvidersConfig', (_event, cfg: Record<string, any>) => {
+      this.providersStore.set('config', cfg);
+    });
+
+    ipcMain.handle('app:applyActiveProvider', () => {
+      // TODO: 将当前供应商环境变量写入 Claude 配置
+      return true;
+    });
+
+    ipcMain.handle('app:checkAndFixHooks', () => {
+      // TODO: 校验并修复 ~/.claude/settings.json 中的 hook URL
+      return true;
+    });
 
     // Window controls
     ipcMain.on('window:minimise', () => this.window?.minimize());
