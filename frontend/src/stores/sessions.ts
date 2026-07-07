@@ -228,7 +228,7 @@ export const useSessionsStore = defineStore('sessions', () => {
       if (!list.value.find(s => s.id === id)) {
         const project = workdir.split(/[\\/]/).filter(Boolean).pop() || workdir
         list.value = [{
-          id, workdir, project, mtime: Date.now(), msg_count: 0,
+          id, workdir, project, mtime: Math.floor(Date.now() / 1000), msg_count: 0,
           first_prompt: prompt, ai_title: '', size: 0,
         }, ...list.value]
       }

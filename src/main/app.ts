@@ -138,6 +138,16 @@ export class App {
 
     ipcMain.handle('app:listSessions', () => jsonl.scanAll());
 
+    ipcMain.handle('app:getSessionMessages', (_event, id: string, workDir: string, offset: number, limit: number) => {
+      const filePath = jsonl.getSessionJsonlPath(id, workDir);
+      return jsonl.parseMessages(filePath, offset, limit);
+    });
+
+    ipcMain.handle('app:getToolExecutions', (_event, id: string, workDir: string) => {
+      const filePath = jsonl.getSessionJsonlPath(id, workDir);
+      return jsonl.parseToolExecutions(filePath);
+    });
+
     ipcMain.handle('app:createSession', async (_event, workDir: string, prompt: string) => {
       const token = newCallID();
       const proxy = await startProxy(workDir, token, this.dispatcher);

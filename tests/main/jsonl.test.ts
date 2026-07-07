@@ -35,11 +35,24 @@ describe('jsonl', () => {
     const workDir = '/work_a';
     const p = getSessionJsonlPath('sess-1', workDir);
     await fs.mkdir(path.dirname(p), { recursive: true });
-    await fs.writeFile(p, JSON.stringify({ cwd: workDir }) + '\n');
+    await fs.writeFile(
+      p,
+      JSON.stringify({
+        type: 'user',
+        message: { role: 'user', content: 'hello world' },
+        ai_title: 'test-title',
+        cwd: workDir,
+      }) + '\n',
+    );
     const list = await scanAll();
     expect(list).toHaveLength(1);
     expect(list[0].id).toBe('sess-1');
-    expect(list[0].workDir).toBe(workDir);
+    expect(list[0].workdir).toBe(workDir);
+    expect(list[0].project).toBe('work_a');
+    expect(list[0].msg_count).toBe(1);
+    expect(list[0].first_prompt).toBe('hello world');
+    expect(list[0].ai_title).toBe('test-title');
+    expect(list[0].size).toBeGreaterThan(0);
   });
 
   it('watches for changes', async () => {
