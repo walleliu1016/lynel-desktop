@@ -3,12 +3,28 @@ import { ref } from 'vue'
 import type { Settings } from '../types/settings'
 import { GetSettings, UpdateSettings } from '../composables/useElectron'
 
+function defaultSettings(): Settings {
+  return {
+    theme: 'oled-dark',
+    claude_path: '',
+    auto_allow_bash: false,
+    log_enabled: false,
+    auto_lock_minutes: 5,
+    auto_start: false,
+    minimize_on_start: false,
+    cloud_service_enabled: false,
+    cloud_service_url: '',
+    cloud_service_token: '',
+  }
+}
+
 export const useSettingsStore = defineStore('settings', () => {
   const cfg = ref<Settings | null>(null)
   const dirty = ref(false)
 
   async function load() {
-    cfg.value = await GetSettings()
+    const raw = (await GetSettings()) as Partial<Settings> | null
+    cfg.value = { ...defaultSettings(), ...(raw || {}) }
     dirty.value = false
   }
 
