@@ -65,6 +65,7 @@ import { onMounted, computed } from 'vue'
 import Switch from '../../components/Switch.vue'
 import { useSettingsStore } from '../../stores/settings'
 import { ClearPassword } from '../../composables/useElectron'
+import { showToast } from '../../composables/useToast'
 
 const settings = useSettingsStore()
 const cfg = computed(() => settings.cfg ?? (settings.cfg = {
@@ -93,8 +94,12 @@ function onThemeChange() {
 }
 
 async function onSave() {
-  try { await settings.save() }
-  catch (e: any) { alert('保存失败：' + (e?.message ?? e)) }
+  try {
+    await settings.save()
+    showToast('保存成功')
+  } catch (e: any) {
+    showToast('保存失败：' + (e?.message ?? e), 'error')
+  }
 }
 
 async function onClear() {

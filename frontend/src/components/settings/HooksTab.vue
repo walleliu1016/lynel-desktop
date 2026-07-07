@@ -88,6 +88,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import Icon from '../../components/Icon.vue'
 import { GetHooksConfig, SaveHooksConfig } from '../../composables/useElectron'
+import { showToast } from '../../composables/useToast'
 
 // 完整的 Claude hook 类型列表
 const hookTypes = [
@@ -214,8 +215,10 @@ async function onSave() {
   try {
     await SaveHooksConfig(hooksData as any)
     dirty.value = false
+    showToast('保存成功')
   } catch (e: any) {
     error.value = '保存失败：' + (e?.message ?? e)
+    showToast('保存失败：' + (e?.message ?? e), 'error')
   } finally {
     loading.value = false
   }

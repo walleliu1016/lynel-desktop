@@ -86,6 +86,7 @@
 import { onMounted, ref, computed } from 'vue'
 import Icon from '../../components/Icon.vue'
 import { useProvidersStore } from '../../stores/providers'
+import { showToast } from '../../composables/useToast'
 
 const store = useProvidersStore()
 const selectedId = ref('')
@@ -121,8 +122,12 @@ function onSetActive() {
 }
 
 async function onSave() {
-  try { await store.save() }
-  catch (e: any) { alert('保存失败：' + (e?.message ?? e)) }
+  try {
+    await store.save()
+    showToast('保存成功')
+  } catch (e: any) {
+    showToast('保存失败：' + (e?.message ?? e), 'error')
+  }
 }
 
 async function onCancel() {

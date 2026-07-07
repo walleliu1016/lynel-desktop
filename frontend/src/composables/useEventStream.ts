@@ -1,6 +1,7 @@
 import { onMounted, onBeforeUnmount, watch } from 'vue'
 import { EventsOn } from './useElectron'
 import { useSessionsStore } from '../stores/sessions'
+import { showToast } from './useToast'
 
 export function useEventStream() {
   const sessions = useSessionsStore()
@@ -9,7 +10,7 @@ export function useEventStream() {
 
   onMounted(() => {
     cleanups.push(EventsOn('app:toast', (level: string, message: string) => {
-      console.log('[toast]', level, message)
+      showToast(message, level === 'error' ? 'error' : 'success')
     }))
     cleanups.push(EventsOn('app:fatal', (msg: string) => {
       console.error('[fatal]', msg)
