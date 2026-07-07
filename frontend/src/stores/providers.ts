@@ -42,7 +42,7 @@ export const useProvidersStore = defineStore('providers', () => {
 
   async function load() {
     cfg.value = await GetProvidersConfig()
-    if (!cfg.value || cfg.value.providers.length === 0) {
+    if (!cfg.value || !cfg.value.providers || cfg.value.providers.length === 0) {
       cfg.value = defaultConfig()
       dirty.value = true
     } else {

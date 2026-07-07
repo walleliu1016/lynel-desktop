@@ -238,7 +238,11 @@ export class App {
     });
 
     ipcMain.handle('app:getProvidersConfig', () => {
-      return this.providersStore.get('config', {}) as Record<string, any>;
+      const cfg = (this.providersStore.get('config', {}) as Record<string, any>) || {};
+      if (!Array.isArray(cfg.providers)) {
+        cfg.providers = [];
+      }
+      return cfg;
     });
 
     ipcMain.handle('app:saveProvidersConfig', (_event, cfg: Record<string, any>) => {
