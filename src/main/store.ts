@@ -6,7 +6,7 @@ export type Store = ElectronStore;
 
 export function getStore(name: string = 'default'): Store {
   if (!instances.has(name)) {
-    instances.set(name, new ElectronStore({ name, projectName: 'ease-ui' } as any));
+    instances.set(name, new ElectronStore({ name, projectName: 'lynel-desktop' } as any));
   }
   return instances.get(name)!;
 }

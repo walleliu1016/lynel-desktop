@@ -1,5 +1,5 @@
 {
-  "name": "ease-ui",
+  "name": "lynel-desktop",
   "version": "0.0.1",
   "private": true,
   "main": "dist-electron/electron/main.js",

@@ -1,5 +1,5 @@
-appId: com.akke.ease-ui
-productName: Ease UI
+appId: com.akke.lynel-desktop
+productName: Lynel Desktop
 copyright: Copyright © 2026
 directories:
   output: dist
@@ -28,7 +28,7 @@ linux:
     - target: AppImage
       arch: x64
   category: Development
-artifactName: lynel-dekstop-${version}-${arch}.${ext}
+artifactName: lynel-desktop-${version}-${arch}.${ext}
 
 nsis:
   oneClick: false
