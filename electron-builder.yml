@@ -28,6 +28,8 @@ linux:
     - target: AppImage
       arch: x64
   category: Development
+artifactName: lynel-dekstop-${version}-${arch}.${ext}
+
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
