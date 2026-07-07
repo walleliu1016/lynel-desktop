@@ -30,7 +30,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function save() {
     if (!cfg.value) return
-    await UpdateSettings(cfg.value)
+    // IPC 序列化需要普通对象，避免传入 Vue reactive proxy
+    await UpdateSettings(JSON.parse(JSON.stringify(cfg.value)))
     dirty.value = false
   }
 

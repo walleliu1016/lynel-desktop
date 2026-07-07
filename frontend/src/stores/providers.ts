@@ -52,7 +52,7 @@ export const useProvidersStore = defineStore('providers', () => {
 
   async function save() {
     if (!cfg.value) return
-    await SaveProvidersConfig(cfg.value)
+    await SaveProvidersConfig(JSON.parse(JSON.stringify(cfg.value)))
     dirty.value = false
   }
 

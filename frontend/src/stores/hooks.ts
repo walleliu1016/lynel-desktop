@@ -13,7 +13,7 @@ export const useHooksStore = defineStore('hooks', () => {
 
   async function save() {
     if (!cfg.value) return
-    await SaveHooksConfig(cfg.value)
+    await SaveHooksConfig(JSON.parse(JSON.stringify(cfg.value)))
     dirty.value = false
   }
 
