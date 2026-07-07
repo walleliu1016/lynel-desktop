@@ -88,7 +88,7 @@ function onThemeChange() {
   const theme = cfg.value?.theme
   if (theme) {
     document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem('ease-ui-theme', theme)
+    localStorage.setItem('lynel-desktop-theme', theme)
   }
 }
 

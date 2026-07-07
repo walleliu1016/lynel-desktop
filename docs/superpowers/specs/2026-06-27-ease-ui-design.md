@@ -1,4 +1,4 @@
-# Ease UI — 设计文档
+# Lynel Desktop — 设计文档
 
 **日期**: 2026-06-27
 **作者**: Brainstorming session
@@ -6,7 +6,7 @@
 
 ## 1. 概述
 
-Ease UI 是一个跨平台桌面 App（macOS / Linux / Windows），用于管理本地 Claude Code 会话。它是 Claude CLI 的 GUI 包装，提供：
+Lynel Desktop 是一个跨平台桌面 App（macOS / Linux / Windows），用于管理本地 Claude Code 会话。它是 Claude CLI 的 GUI 包装，提供：
 
 - 集中查看所有 Claude 会话（左侧列表 + 右侧详情）
 - 双向交互：在 App 内发送 prompt、流式接收响应
@@ -29,7 +29,7 @@ Ease UI 是一个跨平台桌面 App（macOS / Linux / Windows），用于管理
 - **「打开终端」按钮**：调起系统终端执行 `claude -r <session-id>`
 - **Hook 配置 Tab**：可编辑 `~/.claude/settings.json` 中的 hooks
 - **设置页（3 tab）**：Hook 配置 / 通用 / 云服务（占位）
-- **云服务 v1**：仅 UI 占位，配置写本地 `~/.ease-ui/config.json`，不连云端
+- **云服务 v1**：仅 UI 占位，配置写本地 `~/.lynel-desktop/config.json`，不连云端
 - **三平台窗口控制**：完全自定义标题栏（min/max/close）
 
 ### 2.2 不在范围内（v1 不做）
@@ -54,17 +54,17 @@ Ease UI 是一个跨平台桌面 App（macOS / Linux / Windows），用于管理
 
 ### 3.1a 未初始化（v1 不做首次设置 UI）
 
-- `auth.json` 不存在时显示：**"Ease 未初始化"** + 提示 `运行 ease-ui init 设置账户密码` + 退出按钮
-- 初始化走 CLI 命令 `ease-ui init`（在终端里执行）：
+- `auth.json` 不存在时显示：**"Ease 未初始化"** + 提示 `运行 lynel-desktop init 设置账户密码` + 退出按钮
+- 初始化走 CLI 命令 `lynel-desktop init`（在终端里执行）：
   - 提示输入密码 + 确认
-  - bcrypt 存到 `~/.ease-ui/auth.json`，权限 0600
-  - 同时写默认 `~/.ease-ui/config.json`
-- 文档提供 `ease-ui init` 用法
+  - bcrypt 存到 `~/.lynel-desktop/auth.json`，权限 0600
+  - 同时写默认 `~/.lynel-desktop/config.json`
+- 文档提供 `lynel-desktop init` 用法
 - v1 **不**做"App 内引导设置密码"流程（避免与登录页 UI 重复）
 
 **CLI init 的实现**：
-- `ease-ui` 二进制启动时检查 `os.Args`：
-  - `ease-ui init` → 走 init 流程（无 GUI，纯 stdin/stdout）
+- `lynel-desktop` 二进制启动时检查 `os.Args`：
+  - `lynel-desktop init` → 走 init 流程（无 GUI，纯 stdin/stdout）
   - 无参数 → 走 Wails GUI 启动
 - 同一二进制，模式分发；不需要单独的可执行文件
 - 子命令路由放在 `main.go`（薄壳，调用 `internal/cli` 或 `internal/app.InitCLI()`）
@@ -124,9 +124,9 @@ Ease UI 是一个跨平台桌面 App（macOS / Linux / Windows），用于管理
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ ⬢ Ease UI                                  ─ ▢ ✕            │  ← 标题栏
+│ ⬢ Lynel Desktop                                  ─ ▢ ✕            │  ← 标题栏
 ├──────────┬──────────────────────────────────────────────────┤
-│ 会话  +  │ ▶ ease-ui 设计  /Users/akke/project/ease-ui  ›_  │  ← 工具栏
+│ 会话  +  │ ▶ lynel-desktop 设计  /Users/akke/project/lynel-desktop  ›_  │  ← 工具栏
 │          ├──────────────────────────────────────────────────┤
 │ ● 会话A  │                                                  │
 │ ○ 会话B  │  [消息区：用户消息 / Claude 响应 / 工具调用块]   │
@@ -221,13 +221,13 @@ Wails 桌面 App + Vue 3 前端 + Go 后端分层。
 ```
 App 启动
   │
-  ├─ auth.LoadConfig() → 读 ~/.ease-ui/auth.json
+  ├─ auth.LoadConfig() → 读 ~/.lynel-desktop/auth.json
   │     ├─ 不存在 → 显示"未初始化"页（见 § 3.1a）
   │     └─ 存在 → 跳登录页
   │
   ├─ 解锁成功
   │
-  ├─ settings.Load() → 读 ~/.ease-ui/config.json
+  ├─ settings.Load() → 读 ~/.lynel-desktop/config.json
   │
   ├─ jsonl.ScanAll() → 扫描 ~/.claude/projects/*/ 列出所有 .jsonl
   │     对每个 jsonl:
@@ -300,7 +300,7 @@ protocol 解析出 type=permission_request
   ▼
 hooks.Handle(req) → 决策
   │
-  ├─ 读 settings.AutoAllowBash() ← 来自 ~/.ease-ui/config.json
+  ├─ 读 settings.AutoAllowBash() ← 来自 ~/.lynel-desktop/config.json
   │
   ├─ if AutoAllowBash && req.tool == "Bash":
   │     decision = "allow"
@@ -450,7 +450,7 @@ func Save(*Config) error
 ### 9.2 具体场景
 
 **致命**：
-- `~/.ease-ui/config.json` 损坏无法解析 → 备份重命名为 .bak
+- `~/.lynel-desktop/config.json` 损坏无法解析 → 备份重命名为 .bak
 - Wails 运行时初始化失败 → 启动页显示错误堆栈
 - 多端同时修改 settings.json 导致 lock 冲突 → 提示用户重启
 
@@ -490,17 +490,17 @@ app 层 (Wails binding) 包装成 user-friendly message
 
 | 级别 | 路径 | 内容 |
 |---|---|---|
-| Info  | `~/.ease-ui/logs/info.log` | 会话创建/关闭、设置变更 |
-| Warn  | `~/.ease-ui/logs/warn.log` | jsonl 跳过行、协议未知字段 |
-| Error | `~/.ease-ui/logs/error.log` | 子进程退出、文件 IO 失败 |
-| 子进程 | `~/.ease-ui/logs/sessions/<sid>.log` | Claude CLI 原始输出（仅 LogEnabled） |
+| Info  | `~/.lynel-desktop/logs/info.log` | 会话创建/关闭、设置变更 |
+| Warn  | `~/.lynel-desktop/logs/warn.log` | jsonl 跳过行、协议未知字段 |
+| Error | `~/.lynel-desktop/logs/error.log` | 子进程退出、文件 IO 失败 |
+| 子进程 | `~/.lynel-desktop/logs/sessions/<sid>.log` | Claude CLI 原始输出（仅 LogEnabled） |
 
 轮转：单文件 10MB，保留 3 个备份。
 
 ## 10. 项目结构
 
 ```
-ease-ui/
+lynel-desktop/
 ├── README.md
 ├── go.mod
 ├── go.sum
@@ -542,7 +542,7 @@ ease-ui/
 ├── docs/
 │   └── superpowers/
 │       └── specs/
-│           └── 2026-06-27-ease-ui-design.md   # 本文档
+│           └── 2026-06-27-lynel-desktop-design.md   # 本文档
 │
 └── .github/
     └── workflows/
@@ -580,17 +580,17 @@ ease-ui/
 
 | 文件 | 路径 | 权限 | 内容 |
 |---|---|---|---|
-| Ease 配置 | `~/.ease-ui/config.json` | 0600 | 主题、CLI 路径、AutoAllowBash、LogEnabled、云服务占位 |
-| 鉴权 | `~/.ease-ui/auth.json` | 0600 | bcrypt hash + salt + lockout 状态 |
-| 日志 | `~/.ease-ui/logs/*.log` | 0644 | 滚动日志 |
-| 子进程日志 | `~/.ease-ui/logs/sessions/<sid>.log` | 0644 | CLI 原始输出 |
+| Ease 配置 | `~/.lynel-desktop/config.json` | 0600 | 主题、CLI 路径、AutoAllowBash、LogEnabled、云服务占位 |
+| 鉴权 | `~/.lynel-desktop/auth.json` | 0600 | bcrypt hash + salt + lockout 状态 |
+| 日志 | `~/.lynel-desktop/logs/*.log` | 0644 | 滚动日志 |
+| 子进程日志 | `~/.lynel-desktop/logs/sessions/<sid>.log` | 0644 | CLI 原始输出 |
 | Hook 配置（**读写**） | `~/.claude/settings.json` | 跟 Claude 共享 | 由 hooks.Editor 写回 |
 | 会话数据（**只读**） | `~/.claude/projects/*/<sid>.jsonl` | 跟 Claude 共享 | 事实源 |
 
 **关键约束**：
 - 写 `~/.claude/settings.json` 前备份为 `settings.json.bak`（最多保留 5 个）
 - 不修改 `~/.claude/projects/` 下任何文件
-- 所有 Ease 自身文件统一在 `~/.ease-ui/`，方便卸载清理
+- 所有 Ease 自身文件统一在 `~/.lynel-desktop/`，方便卸载清理
 
 ## 13. 打包与发布
 
@@ -660,7 +660,7 @@ wails build -clean -trimpath \
 
 ### 14.3 关键场景手测清单（v1 发布前必过）
 
-1. 首次初始化：运行 `ease-ui init` → 设置密码 → 启动 App → 主页
+1. 首次初始化：运行 `lynel-desktop init` → 设置密码 → 启动 App → 主页
 2. 重启：关闭 App 再开 → 登录页 → 输入密码 → 主页
 3. 扫描现有 jsonl：列表正确
 4. 创建新会话：弹窗 → 输入 → 启动子进程 → 发送 → 收到响应

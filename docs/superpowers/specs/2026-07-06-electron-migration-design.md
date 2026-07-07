@@ -1,4 +1,4 @@
-# Ease UI —— 从 Wails + Go 迁移到 Electron 设计文档
+# Lynel Desktop —— 从 Wails + Go 迁移到 Electron 设计文档
 
 **日期**: 2026-07-06  
 **作者**: Brainstorming session  
@@ -6,9 +6,9 @@
 
 ## 1. 概述
 
-当前 `ease-ui` 是基于 Wails v2 + Go 的跨平台桌面应用，用于管理本地 Claude Code 会话。由于需要集成 Node.js 开发的 `wecom-openclaw-plugin`（企业微信 OpenClaw 插件），继续使用 Wails+Go 会带来大量 Go ↔ Node.js 的胶水代码。
+当前 `lynel-desktop` 是基于 Wails v2 + Go 的跨平台桌面应用，用于管理本地 Claude Code 会话。由于需要集成 Node.js 开发的 `wecom-openclaw-plugin`（企业微信 OpenClaw 插件），继续使用 Wails+Go 会带来大量 Go ↔ Node.js 的胶水代码。
 
-本设计目标是将 `ease-ui` 从 Wails + Go 迁移到 **Electron + Node.js + Vue 3**，同时保留现有前端交互，复用已经打磨过的 Vue 组件与状态管理。
+本设计目标是将 `lynel-desktop` 从 Wails + Go 迁移到 **Electron + Node.js + Vue 3**，同时保留现有前端交互，复用已经打磨过的 Vue 组件与状态管理。
 
 ## 2. 范围
 
@@ -136,7 +136,7 @@ Dispatcher 对单个 channel 的错误做隔离捕获，避免一个 channel 失
 - 调用插件的 `sendWeComMessage` 或等效 API。
 - chatId / chatType 通过 sessionKey 关联，大小写保持原始值。
 
-配置示例（`~/.ease-app/settings.json`）：
+配置示例（`~/.lynel-desktop/settings.json`）：
 
 ```json
 {
@@ -211,7 +211,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 ### 8.1 新增文件
 
 ```
-ease-ui/
+lynel-desktop/
 ├── electron/
 │   ├── main.ts          # 主进程入口
 │   ├── preload.ts       # contextBridge
@@ -245,9 +245,9 @@ ease-ui/
 
 | 平台 | 产物 |
 |---|---|
-| Windows | `ease-ui Setup.exe` |
-| macOS | `ease-ui.dmg` |
-| Linux | `ease-ui.AppImage` |
+| Windows | `lynel-desktop Setup.exe` |
+| macOS | `lynel-desktop.dmg` |
+| Linux | `lynel-desktop.AppImage` |
 
 包体预计 80–150MB（Electron 自带 Chromium）。
 

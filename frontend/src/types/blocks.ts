@@ -2,7 +2,7 @@
 // Claude CLI stream-json 输出的 message.content 可能是字符串或 content block 数组;
 // 数组里的元素 type 取值: text / thinking / tool_use / tool_result / image。
 //
-// Ease UI 渲染层只关心这些结构化类型;未知类型(例如 AskUserQuestion 早期的 server_tool_use
+// Lynel Desktop 渲染层只关心这些结构化类型;未知类型(例如 AskUserQuestion 早期的 server_tool_use
 // 变体、EnterPlanMode 等)走 tool_use 通用分支 + JSON fallback。
 
 export type ToolResultBlock =

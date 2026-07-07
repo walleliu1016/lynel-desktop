@@ -47,7 +47,7 @@ function createTray(): void {
   const iconPath = path.join(__dirname, '../build/windows/trayicon.ico');
   const icon = nativeImage.createFromPath(iconPath);
   tray = new Tray(icon.resize({ width: 16, height: 16 }));
-  tray.setToolTip('Ease UI');
+  tray.setToolTip('Lynel Desktop');
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: '显示', click: () => mainWindow?.show() },

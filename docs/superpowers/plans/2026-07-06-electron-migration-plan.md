@@ -1,8 +1,8 @@
-# Ease UI Electron 迁移实施计划
+# Lynel Desktop Electron 迁移实施计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 将 `ease-ui` 从 Wails + Go 迁移到 Electron + Node.js + Vue 3，复用现有前端，实现 SSE 与 WeCom 双 channel 输出。
+**Goal:** 将 `lynel-desktop` 从 Wails + Go 迁移到 Electron + Node.js + Vue 3，复用现有前端，实现 SSE 与 WeCom 双 channel 输出。
 
 **Architecture:** Electron 主进程承担原 Go 后端职责（session/pty/hookserver/apiproxy/channels），通过 `contextBridge` 暴露 API；Vue 前端复用现有组件，仅把 `useWails` 替换为 `useElectron`。
 
@@ -13,7 +13,7 @@
 ## 文件结构总览
 
 ```
-ease-ui/
+lynel-desktop/
 ├── package.json                          # 根 package，新增 Electron 脚本/依赖
 ├── electron-builder.yml                  # 打包配置
 ├── tsconfig.electron.json                # Electron 主进程 TS 配置
@@ -60,7 +60,7 @@ ease-ui/
 
 ```json
 {
-  "name": "ease-ui",
+  "name": "lynel-desktop",
   "version": "0.0.1",
   "private": true,
   "main": "dist-electron/electron/main.js",
@@ -104,7 +104,7 @@ ease-ui/
 
 - [ ] **Step 2: 安装依赖**
 
-Run: `cd G:/work/ease-ui && npm install`
+Run: `cd G:/work/lynel-desktop && npm install`
 Expected: `node_modules` 创建，无报错。
 
 - [ ] **Step 3: Commit**
@@ -205,7 +205,7 @@ function createWindow(): void {
 function createTray(): void {
   const icon = nativeImage.createFromPath(path.join(__dirname, '../build/windows/trayicon.ico'));
   tray = new Tray(icon.resize({ width: 16, height: 16 }));
-  tray.setToolTip('Ease UI');
+  tray.setToolTip('Lynel Desktop');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '显示', click: () => mainWindow?.show() },
     { label: '退出', click: () => app.quit() },
@@ -303,7 +303,7 @@ export type ElectronAPI = typeof api;
 
 - [ ] **Step 3: 编译验证**
 
-Run: `cd G:/work/ease-ui && npm run build:electron`
+Run: `cd G:/work/lynel-desktop && npm run build:electron`
 Expected: `dist-electron/main.js` 和 `dist-electron/preload.js` 生成。
 
 - [ ] **Step 4: Commit**
@@ -343,7 +343,7 @@ describe('log', () => {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `cd G:/work/ease-ui && npx vitest run tests/main/log.test.ts`
+Run: `cd G:/work/lynel-desktop && npx vitest run tests/main/log.test.ts`
 Expected: FAIL `getLogger is not defined`
 
 - [ ] **Step 3: 实现 log.ts**
@@ -361,7 +361,7 @@ export function getLogger() {
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `cd G:/work/ease-ui && npx vitest run tests/main/log.test.ts`
+Run: `cd G:/work/lynel-desktop && npx vitest run tests/main/log.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -1434,7 +1434,7 @@ git commit -m "feat: API Proxy 解析 prompt/text/tool_use 阶段"
 
 - [ ] **Step 1: 安装依赖**
 
-Run: `cd G:/work/ease-ui && npm install @wecom/wecom-openclaw-plugin`
+Run: `cd G:/work/lynel-desktop && npm install @wecom/wecom-openclaw-plugin`
 Expected: `node_modules/@wecom/wecom-openclaw-plugin` 存在。
 
 - [ ] **Step 2: Commit**
@@ -1901,7 +1901,7 @@ export const isElectronDev = import.meta.env.DEV;
 
 - [ ] **Step 2: 全局替换引用**
 
-Run: `cd G:/work/ease-ui/frontend && grep -rl "useWails" src/`
+Run: `cd G:/work/lynel-desktop/frontend && grep -rl "useWails" src/`
 Expected: 列出所有引用文件。
 
 然后对每个文件：
@@ -1916,7 +1916,7 @@ import { SendMessage, EventsOn } from '../composables/useElectron';
 
 - [ ] **Step 3: 运行前端类型检查**
 
-Run: `cd G:/work/ease-ui/frontend && npx vue-tsc --noEmit`
+Run: `cd G:/work/lynel-desktop/frontend && npx vue-tsc --noEmit`
 Expected: 无类型错误。
 
 - [ ] **Step 4: Commit**
@@ -1942,8 +1942,8 @@ git commit -m "refactor: 前端 useWails 替换为 useElectron"
 - [ ] **Step 1: 编写 electron-builder.yml**
 
 ```yaml
-appId: com.akke.ease-ui
-productName: Ease UI
+appId: com.akke.lynel-desktop
+productName: Lynel Desktop
 copyright: Copyright © 2026
 directories:
   output: dist
@@ -1988,13 +1988,13 @@ git commit -m "chore: electron-builder 打包配置"
 
 - [ ] **Step 1: 运行生产构建**
 
-Run: `cd G:/work/ease-ui && npm run build`
+Run: `cd G:/work/lynel-desktop && npm run build`
 Expected: `frontend/dist` 和 `dist-electron` 都生成。
 
 - [ ] **Step 2: 运行打包**
 
-Run: `cd G:/work/ease-ui && npm run dist:win`
-Expected: `dist/ease-ui Setup.exe` 生成。
+Run: `cd G:/work/lynel-desktop && npm run dist:win`
+Expected: `dist/lynel-desktop Setup.exe` 生成。
 
 - [ ] **Step 3: Commit**
 

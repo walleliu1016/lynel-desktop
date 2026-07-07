@@ -43,7 +43,7 @@
 - [ ] **Step 1: 添加 go-pty 依赖**
 
 ```bash
-cd G:/work/ease-ui && go get github.com/aymanbagabas/go-pty@latest
+cd G:/work/lynel-desktop && go get github.com/aymanbagabas/go-pty@latest
 ```
 
 - [ ] **Step 2: 验证依赖下载成功**
@@ -260,7 +260,7 @@ func init() {
 - [ ] **Step 4: 验证编译**
 
 ```bash
-cd G:/work/ease-ui && go build ./internal/pty/...
+cd G:/work/lynel-desktop && go build ./internal/pty/...
 ```
 
 ---
@@ -342,7 +342,7 @@ func (s *Session) Send(prompt string) error {
 - [ ] **Step 3: 验证编译**
 
 ```bash
-cd G:/work/ease-ui && go build ./internal/session/...
+cd G:/work/lynel-desktop && go build ./internal/session/...
 ```
 
 ---
@@ -359,7 +359,7 @@ cd G:/work/ease-ui && go build ./internal/session/...
 ```go
 import (
 	// ... 保留现有 imports
-	"github.com/akke/ease-ui/internal/pty"
+	"github.com/akke/lynel-desktop/internal/pty"
 )
 
 func (a *App) CreateSession(workDir, prompt string) (string, error) {
@@ -544,7 +544,7 @@ func (a *App) ResizeTerminal(sessionID string, cols, rows int) error {
 - [ ] **Step 7: 保留 CloseSession 不变，验证编译**
 
 ```bash
-cd G:/work/ease-ui && go build ./internal/app/...
+cd G:/work/lynel-desktop && go build ./internal/app/...
 ```
 
 ---
@@ -584,7 +584,7 @@ app := &App{
 - [ ] **Step 3: 验证编译**
 
 ```bash
-cd G:/work/ease-ui && go build ./...
+cd G:/work/lynel-desktop && go build ./...
 ```
 
 ---
@@ -601,7 +601,7 @@ cd G:/work/ease-ui && go build ./...
 - [ ] **Step 2: 运行 wails generate 更新前端 bindings**
 
 ```bash
-cd G:/work/ease-ui && wails generate
+cd G:/work/lynel-desktop && wails generate
 ```
 
 ---
@@ -614,7 +614,7 @@ cd G:/work/ease-ui && wails generate
 - [ ] **Step 1: 安装 xterm.js**
 
 ```bash
-cd G:/work/ease-ui/frontend && npm install @xterm/xterm @xterm/addon-fit @xterm/addon-webLinks
+cd G:/work/lynel-desktop/frontend && npm install @xterm/xterm @xterm/addon-fit @xterm/addon-webLinks
 ```
 
 - [ ] **Step 2: 验证安装**
@@ -1087,7 +1087,7 @@ function handleClick() {
 - [ ] **Step 1: 删除所有旧组件文件**
 
 ```bash
-cd G:/work/ease-ui/frontend
+cd G:/work/lynel-desktop/frontend
 rm src/components/Composer.vue
 rm src/components/MessageCard.vue
 rm src/components/PermissionRequestModal.vue
@@ -1104,21 +1104,21 @@ rm -r src/components/blocks/
 - [ ] **Step 1: Go 编译**
 
 ```bash
-cd G:/work/ease-ui && go build ./...
+cd G:/work/lynel-desktop && go build ./...
 ```
 Expected: PASS
 
 - [ ] **Step 2: 前端类型检查**
 
 ```bash
-cd G:/work/ease-ui/frontend && npx vue-tsc --noEmit
+cd G:/work/lynel-desktop/frontend && npx vue-tsc --noEmit
 ```
 Expected: 0 errors
 
 - [ ] **Step 3: Wails dev 完整启动**
 
 ```bash
-cd G:/work/ease-ui && wails dev
+cd G:/work/lynel-desktop && wails dev
 ```
 Expected: 窗口正常启动，创建会话后中间显示 xterm.js 终端
 
