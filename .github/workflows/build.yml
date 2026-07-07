@@ -25,6 +25,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout wecom-openclaw-plugin
+        uses: actions/checkout@v4
+        with:
+          repository: WecomTeam/wecom-openclaw-plugin
+          path: ../wecom-openclaw-plugin
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
