@@ -4,7 +4,7 @@ import { start, PtyMode } from '../../src/main/pty.js';
 describe('pty', () => {
   it('spawns a process and exits', async () => {
     const isWin = process.platform === 'win32';
-    const bin = isWin ? 'cmd.exe' : '/bin/echo';
+    const bin = isWin ? 'cmd.exe' : '/bin/sh';
     const proc = start(
       process.cwd(),
       '',
@@ -17,11 +17,7 @@ describe('pty', () => {
 
     return new Promise<void>((resolve) => {
       proc.onExit(() => resolve());
-      if (isWin) {
-        proc.write('exit 0\r');
-      } else {
-        proc.write('hello\n');
-      }
+      proc.write(isWin ? 'exit 0\r' : 'exit 0\n');
       setTimeout(() => proc.kill('SIGTERM'), 2000);
     });
   });
