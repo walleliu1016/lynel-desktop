@@ -15,7 +15,7 @@
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux",
-    "test": "vitest run",
+    "test": "vitest run tests/main",
     "test:main": "vitest run tests/main"
   },
   "devDependencies": {
