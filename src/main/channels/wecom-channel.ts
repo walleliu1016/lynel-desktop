@@ -1,5 +1,7 @@
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
+import fs from 'node:fs';
+import process from 'node:process';
 import { OutputChannel, ProxyStageEvent } from './channel.js';
 import * as session from '../session.js';
 import { getStore } from '../store.js';
@@ -63,16 +65,27 @@ function resolveSessionArg(arg: string): { id: string; workDir: string } | { err
 }
 
 function resolvePluginDir(): string {
-  const url = (import.meta as any).resolve('@wecom/wecom-openclaw-plugin');
-  const resolvedDir = path.dirname(fileURLToPath(url));
-  // import.meta.resolve 指向包入口（如 dist/index.js），需要回到包根目录
-  return path.basename(resolvedDir) === 'dist' ? path.dirname(resolvedDir) : resolvedDir;
+  // 生产环境优先从 extraResources 读取，避免打包后 node_modules 中不存在该包
+  if (process.resourcesPath) {
+    const resourceDir = path.join(process.resourcesPath, 'vendor', 'wecom-openclaw-plugin');
+    if (fs.existsSync(resourceDir)) return resourceDir;
+  }
+  // 开发环境从 node_modules 解析
+  try {
+    const url = (import.meta as any).resolve('@wecom/wecom-openclaw-plugin');
+    const resolvedDir = path.dirname(fileURLToPath(url));
+    // import.meta.resolve 指向包入口（如 dist/index.js），需要回到包根目录
+    return path.basename(resolvedDir) === 'dist' ? path.dirname(resolvedDir) : resolvedDir;
+  } catch (err) {
+    throw new Error(`[wecom-channel] cannot resolve @wecom/wecom-openclaw-plugin: ${err}`);
+  }
 }
 
 async function loadPlugin(): Promise<any> {
   if (pluginModule) return pluginModule;
+  const pluginDir = resolvePluginDir();
   try {
-    pluginModule = await import('@wecom/wecom-openclaw-plugin');
+    pluginModule = await import(pathToFileURL(path.join(pluginDir, 'dist/index.js')).href);
   } catch (err) {
     console.error('[wecom-channel] failed to load plugin:', err);
   }
