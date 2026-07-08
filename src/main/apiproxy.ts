@@ -96,6 +96,20 @@ function extractPromptText(content: unknown): string | undefined {
   return undefined;
 }
 
+// Claude Code 压缩恢复时注入的系统上下文，不应作为"用户输入"转发到通道
+function isSystemInjectedPrompt(text: string): boolean {
+  // 压缩恢复注入的 recap 提示词
+  if (/The user stepped away and is coming back/i.test(text)) return true;
+  if (/Recap in under \d+ words/i.test(text)) return true;
+  if (/Skip root-cause narrative/i.test(text)) return true;
+  // CLAUDE.md 自动生成提示
+  if (/^We created CLAUDE\.md for/i.test(text)) return true;
+  return false;
+}
+
+// 上一次发出的 prompt，用于去重（同一段系统上下文会在多次 API 请求中重复出现）
+const lastPromptPerSession = new Map<string, string>();
+
 function extractResponseText(parsed: any): string {
   const parts: string[] = [];
   if (Array.isArray(parsed.content)) {
@@ -145,8 +159,15 @@ export function startProxy(
             responseBuffers.delete(token);
             const entry = resolveProxySession(token);
             const sid = entry?.sessionId ?? token;
-            console.log(`[apiproxy] prompt detected (sid=${sid.slice(0, 8)}...): ${prompt.slice(0, 80)}...`);
-            emitStage(dispatcher, sid, workDir, 'prompt', { prompt }, 1);
+            if (isSystemInjectedPrompt(prompt)) {
+              console.log(`[apiproxy] skip system prompt (sid=${sid.slice(0, 8)}...): ${prompt.slice(0, 80)}...`);
+            } else if (lastPromptPerSession.get(sid) === prompt) {
+              console.log(`[apiproxy] skip duplicate prompt (sid=${sid.slice(0, 8)}...): ${prompt.slice(0, 80)}...`);
+            } else {
+              lastPromptPerSession.set(sid, prompt);
+              console.log(`[apiproxy] prompt detected (sid=${sid.slice(0, 8)}...): ${prompt.slice(0, 80)}...`);
+              emitStage(dispatcher, sid, workDir, 'prompt', { prompt }, 1);
+            }
           }
         } catch (err) {
           console.log('[apiproxy] request body is not JSON or missing messages:', err);
