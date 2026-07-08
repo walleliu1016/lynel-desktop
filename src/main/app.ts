@@ -391,6 +391,7 @@ export class App {
       const proc = startPty(workDir, id, 'claude', PtyMode.Resume, env, size, extraArgs);
       proc.onExit(settingsCleanup);
       session.setProcess(id, proc);
+      this.instanceStore.set(`sessions.${id}.state`, 'running');
       this.wirePty(id, proc);
     }).catch((err: any) => {
       getLogger().error(`openTerminal failed for ${id}: ${err?.message ?? err}`);
