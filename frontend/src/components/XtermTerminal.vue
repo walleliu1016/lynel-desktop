@@ -78,8 +78,6 @@ async function initializeTerminal() {
 
   // 等容器真正在布局中占据空间后再初始化 xterm，避免 0 尺寸导致字符测量异常
   await waitForSize()
-  // 等字体就绪，避免字符宽度计算错误
-  await document.fonts.ready
 
   term = new Terminal({
     cursorBlink: false,
@@ -87,6 +85,7 @@ async function initializeTerminal() {
     fontFamily: 'Consolas, "Courier New", monospace',
     allowProposedApi: true,
     minimumContrastRatio: 4.5,
+    scrollback: 1000,
   })
   syncXtermTheme(term)
 
