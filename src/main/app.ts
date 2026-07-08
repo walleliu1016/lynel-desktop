@@ -58,7 +58,6 @@ export class App {
   private window: BrowserWindow | null = null;
   private settingsStore = getStore('settings');
   private instanceStore = getStore('instance');
-  private hooksStore = getStore('hooks');
   private providersStore = getStore('providers');
   private hookServer: HookServer | null = null;
   private dispatcher = new ChannelDispatcher();
@@ -204,11 +203,6 @@ export class App {
       return jsonl.parseMessages(filePath, offset, limit);
     });
 
-    ipcMain.handle('app:getToolExecutions', (_event, id: string, workDir: string) => {
-      const filePath = jsonl.getSessionJsonlPath(id, workDir);
-      return jsonl.parseToolExecutions(filePath);
-    });
-
     ipcMain.handle('app:createSession', async (_event, workDir: string, prompt: string) => {
       const token = newCallID();
       const upstream = resolveAnthropicBaseUrl();
@@ -311,14 +305,6 @@ export class App {
     });
 
     ipcMain.handle('app:getHookServerPort', () => this.hookServer?.getPort() ?? 0);
-
-    ipcMain.handle('app:getHooksConfig', () => {
-      return this.hooksStore.get('config', {}) as Record<string, any>;
-    });
-
-    ipcMain.handle('app:saveHooksConfig', (_event, cfg: Record<string, any>) => {
-      this.hooksStore.set('config', cfg);
-    });
 
     ipcMain.handle('app:getProvidersConfig', () => {
       const cfg = (this.providersStore.get('config', {}) as Record<string, any>) || {};

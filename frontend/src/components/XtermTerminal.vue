@@ -69,7 +69,17 @@ function focusTerminal() {
 }
 
 onMounted(async () => {
-  if (!terminalEl.value) return
+  if (!terminalEl.value || !props.visible) return
+  await initializeTerminal()
+})
+
+async function initializeTerminal() {
+  if (term || !terminalEl.value) return
+
+  // 等容器真正在布局中占据空间后再初始化 xterm，避免 0 尺寸导致字符测量异常
+  await waitForSize()
+  // 等字体就绪，避免字符宽度计算错误
+  await document.fonts.ready
 
   term = new Terminal({
     cursorBlink: false,
@@ -118,15 +128,21 @@ onMounted(async () => {
 
   try {
     emit('starting')
-    // 等容器真正在布局中占据空间后再 fit 和启动 PTY，避免 0 尺寸导致终端空白
-    await waitForSize()
-    fitAndResize()
+    await fitWithRetry()
     await OpenSessionTerminalSized(props.sessionId, props.workdir, term.cols, term.rows)
   } catch (e: any) {
     revealTerminal()
     term?.writeln(`\r\n启动 Claude 失败：${e?.message || e}`)
   }
-})
+}
+
+async function fitWithRetry(maxAttempts = 10): Promise<void> {
+  for (let i = 0; i < maxAttempts; i++) {
+    if (fitAndResize()) return
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+  }
+  throw new Error('无法获得有效的终端尺寸')
+}
 
 function bufferHasVisibleContent(): boolean {
   if (!term) return false
@@ -185,7 +201,12 @@ function fitAndResize(): boolean {
 
 watch(() => props.visible, (visible) => {
   if (!visible) return
-  nextTick(() => {
+  nextTick(async () => {
+    if (!term) {
+      // 之前因 v-show=false 未初始化，现在可见了再初始化
+      await initializeTerminal()
+      return
+    }
     // 从 v-show=false 切回时，xterm 需要重新 fit 才能正确渲染
     lastCols = 0
     lastRows = 0

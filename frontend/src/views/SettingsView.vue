@@ -17,8 +17,7 @@
         </div>
       </nav>
       <main class="content">
-        <HooksTab v-if="active === 'hooks'" />
-        <GeneralTab v-else-if="active === 'general'" />
+        <GeneralTab v-if="active === 'general'" />
         <CloudTab v-else-if="active === 'cloud'" />
         <ProviderTab v-else-if="active === 'provider'" />
         <ChannelTab v-else-if="active === 'channel'" />
@@ -33,7 +32,6 @@ import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import Icon from '../components/Icon.vue'
 import SettingsTabs, { type Tab } from '../components/SettingsTabs.vue'
-import HooksTab from '../components/settings/HooksTab.vue'
 import GeneralTab from '../components/settings/GeneralTab.vue'
 import CloudTab from '../components/settings/CloudTab.vue'
 import ProviderTab from '../components/settings/ProviderTab.vue'

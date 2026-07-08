@@ -22,19 +22,6 @@ export interface JsonlMessage {
   timestamp: number;
 }
 
-export interface ToolExecution {
-  id: string;
-  kind: 'tool' | 'llm';
-  name: string;
-  startedAt: number;
-  endedAt: number;
-  durationMs: number;
-  status: 'running' | 'success' | 'error';
-  input: string;
-  output: string;
-  exitCode: number;
-}
-
 let rootDir = path.join(os.homedir(), '.claude', 'projects');
 
 export function setRoot(dir: string): void {
@@ -227,143 +214,6 @@ export async function parseMessages(
   return out;
 }
 
-export async function parseToolExecutions(filePath: string): Promise<ToolExecution[]> {
-  const execs = new Map<string, ToolExecution>();
-  const msgs: JsonlMessage[] = [];
-  try {
-    const stream = fsSync.createReadStream(filePath, { encoding: 'utf-8' });
-    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-    for await (const line of rl) {
-      const parsed = safeParseLine(line);
-      if (!parsed) continue;
-      const ts = parseTimestamp(parsed.timestamp);
-
-      if (parsed.type === 'user' || parsed.type === 'assistant') {
-        if (!parsed.message || typeof parsed.message !== 'object') continue;
-        const msg = parsed.message as Record<string, unknown>;
-        msgs.push({ role: String(msg.role), content: msg.content, timestamp: ts });
-
-        if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-          for (const b of msg.content) {
-            if (!b || typeof b !== 'object') continue;
-            const block = b as Record<string, unknown>;
-            if (block.type !== 'tool_use' || typeof block.name !== 'string') continue;
-            const id = typeof block.id === 'string' ? block.id : block.name;
-            if (!execs.has(id)) {
-              execs.set(id, {
-                id,
-                kind: 'tool',
-                name: block.name,
-                startedAt: 0,
-                endedAt: 0,
-                durationMs: 0,
-                status: 'running',
-                input: toolInputSummary(block.name, block.input),
-                output: '',
-                exitCode: 0,
-              });
-            }
-          }
-        }
-        continue;
-      }
-
-      if (parsed.type === 'attachment' && parsed.attachment) {
-        const att = parsed.attachment;
-        if (
-          att.hookEvent !== 'PreToolUse' &&
-          att.hookEvent !== 'PostToolUse' &&
-          att.hookEvent !== 'PostToolUseFailure'
-        ) {
-          continue;
-        }
-        const id = att.toolUseID;
-        if (!id) continue;
-        if (!execs.has(id)) {
-          execs.set(id, { id, kind: 'tool', name: '', startedAt: 0, endedAt: 0, durationMs: 0, status: 'running', input: '', output: '', exitCode: 0 });
-        }
-        const e = execs.get(id)!;
-        if (att.hookName) {
-          const parts = att.hookName.split(':');
-          e.name = parts.length === 2 ? parts[1] : att.hookName;
-        }
-        if (att.hookEvent === 'PreToolUse') {
-          e.startedAt = ts;
-          e.status = 'running';
-        } else if (att.hookEvent === 'PostToolUse') {
-          e.endedAt = ts;
-          e.durationMs = e.endedAt - e.startedAt;
-          e.status = 'success';
-          e.output = att.stdout ?? '';
-          e.exitCode = att.exitCode ?? 0;
-        } else if (att.hookEvent === 'PostToolUseFailure') {
-          e.endedAt = ts;
-          e.durationMs = e.endedAt - e.startedAt;
-          e.status = 'error';
-          e.output = att.stderr ?? '';
-          e.exitCode = att.exitCode ?? 0;
-        }
-      }
-    }
-  } catch {
-    // ignore read errors
-  }
-
-  // 从 user 消息的 tool_result 补 output
-  for (const m of msgs) {
-    if (m.role !== 'user' || !Array.isArray(m.content)) continue;
-    for (const b of m.content) {
-      if (!b || typeof b !== 'object') continue;
-      const block = b as Record<string, unknown>;
-      if (block.type !== 'tool_result') continue;
-      const toolUseId = typeof block.tool_use_id === 'string' ? block.tool_use_id : '';
-      const e = execs.get(toolUseId);
-      if (!e || e.output) continue;
-      e.output = toolResultSummary(block.content);
-    }
-  }
-
-  const out: ToolExecution[] = [];
-  for (const e of execs.values()) {
-    if (e.startedAt === 0) e.startedAt = e.endedAt;
-    if (e.endedAt === 0) e.status = 'running';
-    if (e.durationMs === 0 && e.endedAt > e.startedAt) e.durationMs = e.endedAt - e.startedAt;
-    out.push(e);
-  }
-
-  // LLM 调用：每条带 text/thinking 的 assistant 消息
-  for (let i = 0; i < msgs.length; i++) {
-    const m = msgs[i];
-    if (m.role !== 'assistant' || !Array.isArray(m.content)) continue;
-    const hasText = m.content.some(
-      (b: unknown) =>
-        b &&
-        typeof b === 'object' &&
-        ((b as Record<string, unknown>).type === 'text' || (b as Record<string, unknown>).type === 'thinking'),
-    );
-    if (!hasText) continue;
-    const end = i + 1 < msgs.length ? msgs[i + 1].timestamp : m.timestamp;
-    out.push({
-      id: `llm-${i}`,
-      kind: 'llm',
-      name: 'LLM',
-      startedAt: m.timestamp,
-      endedAt: end,
-      durationMs: end - m.timestamp,
-      status: 'success',
-      input: '',
-      output: llmOutputSummary(m.content as unknown[]),
-      exitCode: 0,
-    });
-  }
-
-  out.sort((a, b) => {
-    if (a.startedAt !== b.startedAt) return a.startedAt - b.startedAt;
-    return a.id.localeCompare(b.id);
-  });
-  return out;
-}
-
 function parseTimestamp(ts: string | undefined): number {
   if (!ts) return Date.now();
   const d = Date.parse(ts);
@@ -408,33 +258,6 @@ function toolInputSummary(name: string, input: unknown): string {
     if (typeof v === 'string' && v) return truncate(v, 120);
   }
   return truncate(JSON.stringify(args), 120);
-}
-
-function toolResultSummary(content: unknown): string {
-  if (content === null || content === undefined) return '';
-  if (typeof content === 'string') return content.replace(/\s+$/, '');
-  if (Array.isArray(content)) {
-    const parts: string[] = [];
-    for (const b of content) {
-      if (b && typeof b === 'object' && (b as Record<string, unknown>).type === 'text') {
-        const text = (b as Record<string, unknown>).text;
-        if (typeof text === 'string') parts.push(text);
-      }
-    }
-    return parts.join('\n').replace(/\s+$/, '');
-  }
-  return truncate(JSON.stringify(content), 1500);
-}
-
-function llmOutputSummary(content: unknown[]): string {
-  const parts: string[] = [];
-  for (const b of content) {
-    if (!b || typeof b !== 'object') continue;
-    const block = b as Record<string, unknown>;
-    if (block.type === 'text' && typeof block.text === 'string') parts.push(block.text);
-    if (block.type === 'thinking' && typeof block.thinking === 'string') parts.push(block.thinking);
-  }
-  return truncate(parts.join(' '), 200);
 }
 
 function truncate(s: string, max: number): string {

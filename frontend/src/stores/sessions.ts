@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { SessionMeta, ChatMessage, SessionState, ToolExecution } from '../types/session'
+import type { SessionMeta, ChatMessage, SessionState } from '../types/session'
 import type { ContentBlock, ToolResultBlock, RawContent } from '../types/blocks'
-import { ListSessions, CreateSession, SendMessage, GetSessionMessages, GetToolExecutions, GetSessionStates, AdoptSession } from '../composables/useElectron'
+import { ListSessions, CreateSession, SendMessage, GetSessionMessages, GetSessionStates, AdoptSession } from '../composables/useElectron'
 
 export interface HookPermissionRequest {
   requestId: string
@@ -109,7 +109,6 @@ export const useSessionsStore = defineStore('sessions', () => {
   const creating = ref(false)
   const adopted = ref<Record<string, boolean>>({})
   const drafts = ref<Record<string, string>>({})
-  const executions = ref<Record<string, ToolExecution[]>>({})
   const hookPermissions = ref<Record<string, HookPermissionRequest | null>>({})
   const loading = ref(false)
 
@@ -249,32 +248,6 @@ export const useSessionsStore = defineStore('sessions', () => {
       const total = meta.msg_count
       await loadHistory(id, meta.workdir, Math.max(0, total - PAGE_SIZE), PAGE_SIZE, true)
     }
-    await loadExecutions(id, meta.workdir)
-  }
-
-  async function loadExecutions(sid: string, workdir: string) {
-    try {
-      const raw = await GetToolExecutions(sid, workdir)
-      const list = (raw || []).map(normalizeExecution)
-      executions.value = { ...executions.value, [sid]: list }
-    } catch (e: any) {
-      console.error('[sessions] loadExecutions failed:', e?.message || e)
-    }
-  }
-
-  function normalizeExecution(m: any): ToolExecution {
-    return {
-      id: m.id || m.ID || '',
-      kind: (m.kind || m.Kind || 'tool') as 'tool' | 'llm',
-      name: m.name || m.Name || '',
-      startedAt: m.startedAt || m.StartedAt || 0,
-      endedAt: m.endedAt || m.EndedAt || 0,
-      durationMs: m.durationMs || m.DurationMs || 0,
-      status: (m.status || m.Status || 'running') as 'running' | 'success' | 'error',
-      input: m.input || m.Input || '',
-      output: m.output || m.Output || '',
-      exitCode: m.exitCode || m.ExitCode || 0,
-    }
   }
 
   async function loadHistory(sid: string, workdir: string, offset: number, limit: number, isFirst: boolean) {
@@ -330,7 +303,6 @@ export const useSessionsStore = defineStore('sessions', () => {
       historyOffset.value = { ...historyOffset.value, [sid]: offset + (raw?.length || 0) }
       hasMore.value = { ...hasMore.value, [sid]: offset > 0 }
       messages.value = { ...messages.value, [sid]: msgs }
-      await loadExecutions(sid, meta.workdir)
     } catch (e: any) {
       console.error('[sessions] reloadFromJsonl failed:', e?.message || e)
     }
@@ -366,14 +338,6 @@ export const useSessionsStore = defineStore('sessions', () => {
       case 'SessionEnd':
         state.value = { ...state.value, [sid]: 'done' }
         break
-      case 'PreToolUse':
-      case 'PostToolUse':
-      case 'PostToolUseFailure': {
-        const toolUseID = evt.tool_use_id || evt.toolUseID
-        if (!toolUseID) break
-        updateExecutionFromHook(sid, tp, evt)
-        break
-      }
       case 'UserPromptSubmit':
         break
       case 'idle_timeout':
@@ -381,65 +345,6 @@ export const useSessionsStore = defineStore('sessions', () => {
           state.value = { ...state.value, [sid]: 'idle' }
         }
         break
-    }
-  }
-
-  function updateExecutionFromHook(sid: string, tp: string, evt: any) {
-    const list = executions.value[sid] || []
-    const toolUseID = evt.tool_use_id || evt.toolUseID
-    const hookName = evt.hook_name || evt.hookName || ''
-    const name = hookName.split(':').pop() || toolUseID
-    const idx = list.findIndex((e) => e.id === toolUseID)
-    const now = Date.now()
-
-    if (tp === 'PreToolUse') {
-      if (idx >= 0) {
-        const updated = { ...list[idx], startedAt: now, status: 'running' as const }
-        const next = [...list]
-        next[idx] = updated
-        executions.value = { ...executions.value, [sid]: next }
-      } else {
-        executions.value = { ...executions.value, [sid]: [...list, {
-          id: toolUseID,
-          kind: 'tool',
-          name,
-          startedAt: now,
-          endedAt: 0,
-          durationMs: 0,
-          status: 'running',
-          input: '',
-          output: '',
-          exitCode: 0,
-        }] }
-      }
-      return
-    }
-
-    const exitCode = evt.exit_code ?? evt.exitCode ?? 0
-    const output = evt.stdout || evt.stderr || ''
-    const status = tp === 'PostToolUseFailure' ? 'error' : 'success'
-    const endedAt = now
-    if (idx >= 0) {
-      const prev = list[idx]
-      const duration = endedAt - (prev.startedAt || endedAt)
-      const updated: ToolExecution = { ...prev, endedAt, durationMs: duration, status, output, exitCode }
-      if (prev.name === toolUseID && name) updated.name = name
-      const next = [...list]
-      next[idx] = updated
-      executions.value = { ...executions.value, [sid]: next }
-    } else {
-      executions.value = { ...executions.value, [sid]: [...list, {
-        id: toolUseID,
-        kind: 'tool',
-        name,
-        startedAt: endedAt,
-        endedAt,
-        durationMs: 0,
-        status,
-        input: '',
-        output,
-        exitCode,
-      }] }
     }
   }
 
@@ -465,7 +370,7 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   return { list, activeId, active, messages, streaming, state,
-    hasMore, creating, loading, adopted, drafts, executions, hookPermissions,
+    hasMore, creating, loading, adopted, drafts, hookPermissions,
     setDraft, refresh, create, select, send, setHookPermission,
     reloadFromJsonl, handleHookEvent, loadMore }
 })

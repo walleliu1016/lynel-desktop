@@ -15,12 +15,8 @@ const api = {
   updateSettings: (cfg: any) => ipcRenderer.invoke('app:updateSettings', cfg),
   getWeComConfig: () => ipcRenderer.invoke('app:getWeComConfig'),
   updateWeComConfig: (cfg: any) => ipcRenderer.invoke('app:updateWeComConfig', cfg),
-  getHooksConfig: () => ipcRenderer.invoke('app:getHooksConfig'),
-  saveHooksConfig: (cfg: any) => ipcRenderer.invoke('app:saveHooksConfig', cfg),
   getSessionMessages: (id: string, workDir: string, offset: number, limit: number) =>
     ipcRenderer.invoke('app:getSessionMessages', id, workDir, offset, limit),
-  getToolExecutions: (id: string, workDir: string) =>
-    ipcRenderer.invoke('app:getToolExecutions', id, workDir),
   pickDirectory: () => ipcRenderer.invoke('app:pickDirectory'),
   getHookServerPort: () => ipcRenderer.invoke('app:getHookServerPort'),
   checkAndFixHooks: () => ipcRenderer.invoke('app:checkAndFixHooks'),

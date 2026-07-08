@@ -9,8 +9,7 @@
       </div>
       <SettingsTabs v-model="active" layout="horizontal" />
       <div class="content">
-        <HooksTab v-if="active === 'hooks'" />
-        <GeneralTab v-else-if="active === 'general'" />
+        <GeneralTab v-if="active === 'general'" />
         <CloudTab v-else-if="active === 'cloud'" />
         <ProviderTab v-else-if="active === 'provider'" />
         <ChannelTab v-else-if="active === 'channel'" />
@@ -27,7 +26,6 @@
 import { ref, onMounted } from 'vue'
 import Icon from './Icon.vue'
 import SettingsTabs, { type Tab } from './SettingsTabs.vue'
-import HooksTab from './settings/HooksTab.vue'
 import GeneralTab from './settings/GeneralTab.vue'
 import CloudTab from './settings/CloudTab.vue'
 import ProviderTab from './settings/ProviderTab.vue'

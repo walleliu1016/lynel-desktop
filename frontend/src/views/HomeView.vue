@@ -42,11 +42,6 @@
           <div class="empty-text">选择左侧会话，或点击 + 创建新会话</div>
         </div>
       </main>
-      <ToolTimeline
-        v-model:collapsed="timelineCollapsed"
-        :executions="sessions.executions"
-        :active-id="sessions.activeId"
-      />
     </div>
     <NewSessionDialog
       :open="showNew"
@@ -71,7 +66,6 @@ import UserBar from '../components/UserBar.vue'
 import ToolBar from '../components/ToolBar.vue'
 import XtermTerminal from '../components/XtermTerminal.vue'
 import NewSessionDialog from '../components/NewSessionDialog.vue'
-import ToolTimeline from '../components/ToolTimeline.vue'
 import PermissionToast from '../components/PermissionToast.vue'
 import { useSessionsStore } from '../stores/sessions'
 import { WriteTerminalInput } from '../composables/useElectron'
@@ -84,7 +78,6 @@ useEventStream()
 const showNew = ref(false)
 const username = ref('')
 const version = ref('0.1.0')
-const timelineCollapsed = ref(false)
 type OpenedTerminal = { id: string; workdir: string }
 const openedTerminals = ref<OpenedTerminal[]>([])
 const terminalLoading = ref<Record<string, boolean>>({})

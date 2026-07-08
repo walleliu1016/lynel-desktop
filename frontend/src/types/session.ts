@@ -37,15 +37,3 @@ export interface ChatMessage {
   optimistic?: boolean // 乐观插入的本地消息，等待真实事件替换
 }
 
-export interface ToolExecution {
-  id: string
-  kind: 'tool' | 'llm'
-  name: string
-  startedAt: number
-  endedAt: number
-  durationMs: number
-  status: 'running' | 'success' | 'error'
-  input: string
-  output: string
-  exitCode: number
-}
