@@ -67,12 +67,12 @@ defineEmits<{
 
 const sessions = useSessionsStore()
 
-type TabKey = 'running' | 'idle' | 'ended'
-const filter = ref<TabKey>('idle')
+type TabKey = 'all' | 'running' | 'ended'
+const filter = ref<TabKey>('all')
 const search = ref('')
 const tabs: { key: TabKey; label: string }[] = [
+  { key: 'all', label: '所有' },
   { key: 'running', label: '运行中' },
-  { key: 'idle', label: '空闲' },
   { key: 'ended', label: '结束' },
 ]
 
@@ -80,12 +80,15 @@ const filteredList = computed(() => {
   const q = search.value.trim().toLowerCase()
   return props.list.filter((s) => {
     const st = sessions.state[s.id] || 'idle'
+    const isOpened = !!sessions.opened[s.id]
+    const isEnded = st === 'done' || st === 'ended'
+    const isRunning = !isEnded && (isOpened || st !== 'idle')
     // 状态过滤
     let stateMatch = false
     switch (filter.value) {
-      case 'running': stateMatch = st !== 'idle' && st !== 'done' && st !== 'ended'; break
-      case 'ended': stateMatch = st === 'done' || st === 'ended'; break
-      default: stateMatch = st === 'idle'
+      case 'all': stateMatch = true; break
+      case 'running': stateMatch = isRunning; break
+      case 'ended': stateMatch = isEnded; break
     }
     if (!stateMatch) return false
     // 搜索过滤

@@ -110,6 +110,7 @@ export const useSessionsStore = defineStore('sessions', () => {
   const adopted = ref<Record<string, boolean>>({})
   const drafts = ref<Record<string, string>>({})
   const hookPermissions = ref<Record<string, HookPermissionRequest | null>>({})
+  const opened = ref<Record<string, boolean>>({})
   const loading = ref(false)
 
   const active = computed(() => list.value.find((s) => s.id === activeId.value) ?? null)
@@ -241,6 +242,7 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   async function select(id: string) {
     activeId.value = id
+    opened.value = { ...opened.value, [id]: true }
     const meta = list.value.find((s) => s.id === id)
     if (!meta) return
     await AdoptSession(id, meta.workdir)
@@ -370,7 +372,7 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   return { list, activeId, active, messages, streaming, state,
-    hasMore, creating, loading, adopted, drafts, hookPermissions,
+    hasMore, creating, loading, adopted, drafts, hookPermissions, opened,
     setDraft, refresh, create, select, send, setHookPermission,
     reloadFromJsonl, handleHookEvent, loadMore }
 })
