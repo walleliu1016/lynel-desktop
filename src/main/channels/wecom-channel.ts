@@ -2,6 +2,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { OutputChannel, ProxyStageEvent } from './channel.js';
 import * as session from '../session.js';
+import { getStore } from '../store.js';
 
 export interface WeComChannelConfig {
   enabled: boolean;
@@ -21,6 +22,45 @@ let pluginModule: any;
 let stateManagerModule: any;
 let wsClientModule: any;
 let wecomPlugin: any;
+
+interface WeComRoutingEntry {
+  sessionId: string;
+  workDir: string;
+  updatedAt: number;
+}
+
+const routingStore = getStore('wecom-routing');
+
+function getMapping(chatId: string): WeComRoutingEntry | undefined {
+  return routingStore.get(`mappings.${chatId}`) as WeComRoutingEntry | undefined;
+}
+
+function setMapping(chatId: string, sessionId: string, workDir: string): void {
+  routingStore.set(`mappings.${chatId}`, { sessionId, workDir, updatedAt: Date.now() });
+}
+
+function deleteMapping(chatId: string): void {
+  routingStore.delete(`mappings.${chatId}` as any);
+}
+
+function resolveSessionArg(arg: string): { id: string; workDir: string } | { error: string } {
+  const all = session.list();
+  const idx = parseInt(arg, 10);
+  if (!isNaN(idx) && idx >= 1 && idx <= all.length) {
+    const s = all[idx - 1];
+    return { id: s.id, workDir: s.workDir };
+  }
+  const exact = session.lookup(arg);
+  if (exact) return { id: exact.id, workDir: exact.workDir };
+  const matches = all.filter((s) => s.id.startsWith(arg));
+  if (matches.length === 0) {
+    return { error: `未找到匹配会话：${arg}，请发送 #list 查看。` };
+  }
+  if (matches.length > 1) {
+    return { error: `找到 ${matches.length} 个匹配会话，请使用完整 session ID。` };
+  }
+  return { id: matches[0].id, workDir: matches[0].workDir };
+}
 
 function resolvePluginDir(): string {
   const url = (import.meta as any).resolve('@wecom/wecom-openclaw-plugin');
@@ -88,7 +128,7 @@ export class WeComChannel implements OutputChannel {
   private wsClient: any = null;
   private connecting: Promise<void> | null = null;
   private chatIdToSession = new Map<string, string>();
-  private lastSessionId: string | null = null;
+  private lastActiveSession = new Map<string, string>();
 
   constructor(cfg: WeComChannelConfig) {
     this.cfg = cfg;
@@ -117,6 +157,22 @@ export class WeComChannel implements OutputChannel {
     this.disconnect();
   }
 
+  clearSessionMappings(sessionId: string): void {
+    const all = (routingStore.store as any) || {};
+    const mappings = all.mappings || {};
+    for (const [chatId, entry] of Object.entries(mappings)) {
+      if ((entry as WeComRoutingEntry).sessionId === sessionId) {
+        routingStore.delete(`mappings.${chatId}` as any);
+      }
+    }
+    this.chatIdToSession.forEach((sid, chatId) => {
+      if (sid === sessionId) this.chatIdToSession.delete(chatId);
+    });
+    this.lastActiveSession.forEach((sid, chatId) => {
+      if (sid === sessionId) this.lastActiveSession.delete(chatId);
+    });
+  }
+
   send(event: ProxyStageEvent): void {
     console.log(`[wecom-channel] receive event ${event.kind} (sid=${event.sessionId.slice(0, 8)}...)`);
     if (!this.isEnabled()) {
@@ -138,9 +194,13 @@ export class WeComChannel implements OutputChannel {
     console.log(`[wecom-channel] formatted content: ${content.slice(0, 80)}...`);
 
     // 记录会话路由关系，方便企业微信入站消息找到对应 session
-    this.lastSessionId = event.sessionId;
     if (this.cfg.chatId) {
+      this.lastActiveSession.set(this.cfg.chatId, event.sessionId);
       this.chatIdToSession.set(this.cfg.chatId, event.sessionId);
+      const s = session.lookup(event.sessionId);
+      if (s) {
+        setMapping(this.cfg.chatId, event.sessionId, s.workDir);
+      }
     }
 
     // 异步发送，不阻塞 dispatcher / 主进程事件循环
@@ -260,20 +320,69 @@ export class WeComChannel implements OutputChannel {
       return;
     }
 
+    const chatId = body.chatid || body.from?.userid;
+    if (!chatId) {
+      console.log('[wecom-channel] inbound message has no chatId');
+      return;
+    }
+
     const text = this.extractInboundText(body);
     if (!text) {
       console.log('[wecom-channel] inbound message has no text content');
       return;
     }
 
-    const chatId = body.chatid || body.from?.userid;
-    const sessionId = (chatId && this.chatIdToSession.get(chatId)) || this.lastSessionId;
-    if (!sessionId) {
-      console.log('[wecom-channel] no active session for inbound message');
+    // 单条消息指定 session，不修改默认绑定
+    if (text.startsWith('#to ')) {
+      this.handleToCommand(chatId, text).catch((err) => console.error('[wecom-channel] #to failed:', err));
       return;
     }
 
-    console.log(`[wecom-channel] inbound message from ${chatId || 'unknown'}, forward to session ${sessionId.slice(0, 8)}...`);
+    // 其他命令消息在企业微信侧处理，不送给 Claude
+    if (text.startsWith('#')) {
+      this.handleCommand(chatId, text).catch((err) => console.error('[wecom-channel] command failed:', err));
+      return;
+    }
+
+    // 优先用持久化映射，其次内存映射，最后最近活跃 session
+    const mapping = getMapping(chatId);
+    let sessionId: string | undefined;
+    if (mapping) {
+      const s = session.lookup(mapping.sessionId);
+      if (!s) {
+        this.sendWeComReply(chatId, '绑定的会话已不存在，请发送 #bind 重新绑定。').catch((err) =>
+          console.error('[wecom-channel] failed to send reply:', err),
+        );
+        return;
+      }
+      if (s.workDir !== mapping.workDir) {
+        this.sendWeComReply(chatId, '绑定会话的工作目录已变更，请发送 #bind 重新绑定。').catch((err) =>
+          console.error('[wecom-channel] failed to send reply:', err),
+        );
+        return;
+      }
+      sessionId = mapping.sessionId;
+    } else {
+      sessionId = this.chatIdToSession.get(chatId) || this.lastActiveSession.get(chatId);
+    }
+    if (!sessionId) {
+      console.log('[wecom-channel] no active session for inbound message');
+      this.sendWeComReply(chatId, '当前没有绑定会话，请发送 #list 查看，或 #bind <sessionId> / #bind <序号> 绑定。').catch((err) =>
+        console.error('[wecom-channel] failed to send reply:', err),
+      );
+      return;
+    }
+
+    const s = session.lookup(sessionId);
+    if (!s || !s.process) {
+      console.log(`[wecom-channel] session ${sessionId.slice(0, 8)}... not found or no process`);
+      this.sendWeComReply(chatId, `会话 ${sessionId.slice(0, 8)}... 不存在或未启动，请重新绑定。`).catch((err) =>
+        console.error('[wecom-channel] failed to send reply:', err),
+      );
+      return;
+    }
+
+    console.log(`[wecom-channel] inbound message from ${chatId}, forward to session ${sessionId.slice(0, 8)}...`);
     try {
       session.send(sessionId, text);
     } catch (err) {
@@ -296,6 +405,123 @@ export class WeComChannel implements OutputChannel {
       return joined || undefined;
     }
     return undefined;
+  }
+
+  private async handleCommand(chatId: string, text: string): Promise<void> {
+    const parts = text.trim().split(/\s+/);
+    const cmd = parts[0].toLowerCase();
+    const arg = parts[1];
+
+    switch (cmd) {
+      case '#bind':
+      case '#switch': {
+        if (!arg) {
+          await this.sendWeComReply(chatId, '用法：#bind <sessionId> 或 #bind <序号>，先发送 #list 查看列表。');
+          return;
+        }
+        const resolved = resolveSessionArg(arg);
+        if ('error' in resolved) {
+          await this.sendWeComReply(chatId, resolved.error);
+          return;
+        }
+        setMapping(chatId, resolved.id, resolved.workDir);
+        await this.sendWeComReply(chatId, `已绑定到会话 ${resolved.id.slice(0, 8)}...\n工作目录：${resolved.workDir}`);
+        return;
+      }
+      case '#unbind':
+      case '#close': {
+        deleteMapping(chatId);
+        await this.sendWeComReply(chatId, '已解绑当前聊天与会话的关联。');
+        return;
+      }
+      case '#status': {
+        const mapping = getMapping(chatId);
+        if (!mapping) {
+          await this.sendWeComReply(chatId, '当前聊天未绑定会话。发送 #list 查看可用会话，或 #bind <sessionId> 绑定。');
+          return;
+        }
+        const s = session.lookup(mapping.sessionId);
+        const state = s?.state ?? 'unknown';
+        await this.sendWeComReply(
+          chatId,
+          `当前绑定会话：${mapping.sessionId.slice(0, 8)}...\n状态：${state}\n工作目录：${mapping.workDir}`,
+        );
+        return;
+      }
+      case '#list': {
+        const sessions = session.list();
+        if (sessions.length === 0) {
+          await this.sendWeComReply(chatId, '当前没有可用会话。请先在 Lynel Desktop 中创建或打开一个会话。');
+          return;
+        }
+        const lines = sessions.map((s, i) => `${i + 1}. ${s.id} [${s.state}] ${s.workDir}`);
+        await this.sendWeComReply(chatId, '可用会话：\n' + lines.join('\n'));
+        return;
+      }
+      default: {
+        await this.sendWeComReply(
+          chatId,
+          '未知命令。可用命令：#list、#bind <sessionId/序号>、#switch <sessionId/序号>、#to <sessionId/序号> <消息>、#status、#unbind',
+        );
+        return;
+      }
+    }
+  }
+
+  private async handleToCommand(chatId: string, text: string): Promise<void> {
+    const rest = text.slice(3).trim();
+    const spaceIdx = rest.search(/\s/);
+    if (spaceIdx === -1) {
+      await this.sendWeComReply(chatId, '用法：#to <sessionId/序号> <消息内容>');
+      return;
+    }
+    const arg = rest.slice(0, spaceIdx);
+    const message = rest.slice(spaceIdx + 1).trim();
+    if (!message) {
+      await this.sendWeComReply(chatId, '消息内容不能为空。');
+      return;
+    }
+
+    const resolved = resolveSessionArg(arg);
+    if ('error' in resolved) {
+      await this.sendWeComReply(chatId, resolved.error);
+      return;
+    }
+
+    const s = session.lookup(resolved.id);
+    if (!s || !s.process) {
+      await this.sendWeComReply(chatId, `会话 ${resolved.id.slice(0, 8)}... 不存在或未启动。`);
+      return;
+    }
+
+    console.log(`[wecom-channel] #to from ${chatId}, forward to session ${resolved.id.slice(0, 8)}...`);
+    try {
+      session.send(resolved.id, message);
+      await this.sendWeComReply(chatId, `已临时发送到会话 ${resolved.id.slice(0, 8)}...`);
+    } catch (err) {
+      console.error('[wecom-channel] failed to forward #to message to session:', err);
+      await this.sendWeComReply(chatId, `发送失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private async sendWeComReply(chatId: string, text: string): Promise<void> {
+    const plugin = await loadWecomPlugin();
+    if (!plugin?.outbound?.sendText) {
+      console.warn('[wecom-channel] plugin outbound.sendText not available');
+      return;
+    }
+    await this.ensureWebSocket();
+    const cfg = {
+      channels: {
+        wecom: {
+          enabled: true,
+          botId: this.cfg.botId,
+          secret: this.cfg.secret,
+          agent: this.cfg.agent,
+        },
+      },
+    };
+    await plugin.outbound.sendText({ to: chatId, text, accountId: 'default', cfg });
   }
 
   private formatMessage(event: ProxyStageEvent): string {

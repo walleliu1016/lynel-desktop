@@ -8,6 +8,7 @@ import { getLogger } from './log.js';
 import * as auth from './auth.js';
 import * as jsonl from './jsonl.js';
 import * as session from './session.js';
+
 import { HookServer } from './hookserver.js';
 import { ChannelDispatcher } from './channels/registry.js';
 import { SSEChannel } from './channels/sse-channel.js';
@@ -123,6 +124,7 @@ export class App {
 
   async init(): Promise<void> {
     this.applyWeComConfig();
+    session.setOnRemove((id) => this.wecomChannel.clearSessionMappings(id));
     await this.ensureHookServer();
     this.watchJsonl();
     this.registerIpcHandlers();

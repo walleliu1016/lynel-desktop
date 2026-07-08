@@ -11,6 +11,11 @@ export interface Session {
 }
 
 const sessions = new Map<string, Session>();
+let onRemoveCallback: ((id: string) => void) | null = null;
+
+export function setOnRemove(callback: (id: string) => void): void {
+  onRemoveCallback = callback;
+}
 
 export function newSession(id: string, workDir: string): Session {
   return {
@@ -32,6 +37,7 @@ export function lookup(id: string): Session | undefined {
 
 export function remove(id: string): void {
   sessions.delete(id);
+  onRemoveCallback?.(id);
 }
 
 export function list(): Session[] {
