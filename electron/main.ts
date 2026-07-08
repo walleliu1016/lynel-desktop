@@ -55,7 +55,16 @@ function createTray(): void {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: '显示', click: () => mainWindow?.show() },
-      { label: '退出', click: () => app.quit() },
+      {
+        label: '退出',
+        click: () => {
+          if (tray) {
+            tray.destroy();
+            tray = null;
+          }
+          app.quit();
+        },
+      },
     ]),
   );
 }
@@ -82,6 +91,13 @@ if (!gotTheLock) {
       await appInstance.init();
     } catch (err) {
       console.error('[main] app init failed:', err);
+    }
+  });
+
+  app.on('before-quit', () => {
+    if (tray) {
+      tray.destroy();
+      tray = null;
     }
   });
 
