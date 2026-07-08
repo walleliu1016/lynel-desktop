@@ -28,26 +28,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Checkout wecom-openclaw-plugin
-        uses: actions/checkout@v4
-        with:
-          repository: WecomTeam/wecom-openclaw-plugin
-          path: wecom-openclaw-plugin
-
-      - name: Move wecom-openclaw-plugin to sibling directory
-        shell: bash
-        run: mv wecom-openclaw-plugin ../wecom-openclaw-plugin
-
-      - name: Build wecom-openclaw-plugin bundle
-        shell: bash
-        run: |
-          cd ../wecom-openclaw-plugin
-          npm install
-          npm run build
-          rm -rf ../wecom-plugin-bundle
-          mkdir -p ../wecom-plugin-bundle
-          cp -r dist node_modules ../wecom-plugin-bundle/
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

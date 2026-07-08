@@ -1,7 +1,5 @@
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import fs from 'node:fs';
-import process from 'node:process';
 import { OutputChannel, ProxyStageEvent } from './channel.js';
 import * as session from '../session.js';
 import { getStore } from '../store.js';
@@ -67,34 +65,18 @@ function resolveSessionArg(arg: string): { id: string; workDir: string } | { err
   return { id: matches[0].id, workDir: matches[0].workDir };
 }
 
-function resolvePluginDir(): string {
-  // 生产环境优先从 extraResources 读取，避免打包后 node_modules 中不存在该包
-  if (process.resourcesPath) {
-    const resourceDir = path.join(process.resourcesPath, 'vendor', 'wecom-openclaw-plugin');
-    const exists = fs.existsSync(resourceDir);
-    logger.info(`[wecom-channel] resolvePluginDir resourcesPath=${process.resourcesPath} vendorExists=${exists} resourceDir=${resourceDir}`);
-    if (exists) return resourceDir;
-  }
-  // 开发环境从 node_modules 解析
-  try {
-    const url = (import.meta as any).resolve('@wecom/wecom-openclaw-plugin');
-    const resolvedDir = path.dirname(fileURLToPath(url));
-    // import.meta.resolve 指向包入口（如 dist/index.js），需要回到包根目录
-    const pluginDir = path.basename(resolvedDir) === 'dist' ? path.dirname(resolvedDir) : resolvedDir;
-    logger.info(`[wecom-channel] resolvePluginDir node_modules pluginDir=${pluginDir}`);
-    return pluginDir;
-  } catch (err) {
-    throw new Error(`[wecom-channel] cannot resolve @wecom/wecom-openclaw-plugin: ${err}`);
-  }
+async function resolvePluginRoot(): Promise<string> {
+  const url = await (import.meta as any).resolve('@wecom/wecom-openclaw-plugin');
+  const entryPath = fileURLToPath(url);
+  // import.meta.resolve 指向 dist/index.js，包根目录是其父目录
+  return path.dirname(path.dirname(entryPath));
 }
 
 async function loadPlugin(): Promise<any> {
   if (pluginModule) return pluginModule;
-  const pluginDir = resolvePluginDir();
-  const entryPath = path.join(pluginDir, 'dist/index.js');
-  logger.info(`[wecom-channel] loadPlugin from ${entryPath}`);
+  logger.info('[wecom-channel] loadPlugin from npm package');
   try {
-    pluginModule = await import(pathToFileURL(entryPath).href);
+    pluginModule = await import('@wecom/wecom-openclaw-plugin');
     logger.info(`[wecom-channel] loadPlugin success defaultKeys=${pluginModule?.default ? Object.keys(pluginModule.default) : 'none'}`);
   } catch (err) {
     logger.error('[wecom-channel] failed to load plugin:', err);
@@ -136,16 +118,15 @@ async function loadWecomPlugin(): Promise<any> {
 
 async function getSetWeComWebSocket(): Promise<(client: any, accountId: string) => void> {
   if (stateManagerModule) return stateManagerModule.setWeComWebSocket;
-  const pluginDir = resolvePluginDir();
-  stateManagerModule = await import(pathToFileURL(path.join(pluginDir, 'dist/src/state-manager.js')).href);
+  const pluginRoot = await resolvePluginRoot();
+  stateManagerModule = await import(pathToFileURL(path.join(pluginRoot, 'dist/src/state-manager.js')).href);
   return stateManagerModule.setWeComWebSocket;
 }
 
 async function getWSClientClass(): Promise<any> {
   if (wsClientModule) return wsClientModule.WSClient;
-  const pluginDir = resolvePluginDir();
-  const m = await import(pathToFileURL(path.join(pluginDir, 'node_modules/@wecom/aibot-node-sdk/dist/index.esm.js')).href);
-  return m.WSClient;
+  wsClientModule = await import('@wecom/aibot-node-sdk');
+  return wsClientModule.WSClient;
 }
 
 export class WeComChannel implements OutputChannel {

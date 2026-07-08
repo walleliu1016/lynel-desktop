@@ -8,9 +8,6 @@ files:
   - dist-electron/**/*
   - frontend/dist/**/*
   - build/windows/trayicon.ico
-extraResources:
-  - from: ../wecom-plugin-bundle
-    to: vendor/wecom-openclaw-plugin
 extraMetadata:
   main: dist-electron/electron/main.js
 icon: build/appicon.png
