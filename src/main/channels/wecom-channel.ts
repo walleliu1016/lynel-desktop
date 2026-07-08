@@ -5,6 +5,9 @@ import process from 'node:process';
 import { OutputChannel, ProxyStageEvent } from './channel.js';
 import * as session from '../session.js';
 import { getStore } from '../store.js';
+import { getLogger } from '../log.js';
+
+const logger = getLogger().scope('wecom-channel');
 
 export interface WeComChannelConfig {
   enabled: boolean;
@@ -68,14 +71,18 @@ function resolvePluginDir(): string {
   // 生产环境优先从 extraResources 读取，避免打包后 node_modules 中不存在该包
   if (process.resourcesPath) {
     const resourceDir = path.join(process.resourcesPath, 'vendor', 'wecom-openclaw-plugin');
-    if (fs.existsSync(resourceDir)) return resourceDir;
+    const exists = fs.existsSync(resourceDir);
+    logger.info(`[wecom-channel] resolvePluginDir resourcesPath=${process.resourcesPath} vendorExists=${exists} resourceDir=${resourceDir}`);
+    if (exists) return resourceDir;
   }
   // 开发环境从 node_modules 解析
   try {
     const url = (import.meta as any).resolve('@wecom/wecom-openclaw-plugin');
     const resolvedDir = path.dirname(fileURLToPath(url));
     // import.meta.resolve 指向包入口（如 dist/index.js），需要回到包根目录
-    return path.basename(resolvedDir) === 'dist' ? path.dirname(resolvedDir) : resolvedDir;
+    const pluginDir = path.basename(resolvedDir) === 'dist' ? path.dirname(resolvedDir) : resolvedDir;
+    logger.info(`[wecom-channel] resolvePluginDir node_modules pluginDir=${pluginDir}`);
+    return pluginDir;
   } catch (err) {
     throw new Error(`[wecom-channel] cannot resolve @wecom/wecom-openclaw-plugin: ${err}`);
   }
@@ -84,10 +91,13 @@ function resolvePluginDir(): string {
 async function loadPlugin(): Promise<any> {
   if (pluginModule) return pluginModule;
   const pluginDir = resolvePluginDir();
+  const entryPath = path.join(pluginDir, 'dist/index.js');
+  logger.info(`[wecom-channel] loadPlugin from ${entryPath}`);
   try {
-    pluginModule = await import(pathToFileURL(path.join(pluginDir, 'dist/index.js')).href);
+    pluginModule = await import(pathToFileURL(entryPath).href);
+    logger.info(`[wecom-channel] loadPlugin success defaultKeys=${pluginModule?.default ? Object.keys(pluginModule.default) : 'none'}`);
   } catch (err) {
-    console.error('[wecom-channel] failed to load plugin:', err);
+    logger.error('[wecom-channel] failed to load plugin:', err);
   }
   return pluginModule;
 }
@@ -95,12 +105,15 @@ async function loadPlugin(): Promise<any> {
 async function loadWecomPlugin(): Promise<any> {
   if (wecomPlugin) return wecomPlugin;
   const module = await loadPlugin();
-  if (!module?.default?.register) return null;
+  if (!module?.default?.register) {
+    logger.warn('[wecom-channel] loadWecomPlugin plugin default.register not found');
+    return null;
+  }
 
   const mockApi = {
     runtime: {
-      log: () => {},
-      error: () => {},
+      log: (...args: any[]) => logger.info('[wecom-channel] plugin:', ...args),
+      error: (...args: any[]) => logger.error('[wecom-channel] plugin:', ...args),
       config: { readConfigFile: async () => ({}), writeConfigFile: async () => {} },
       channel: {
         text: { chunkMarkdownText: (text: string) => [text] },
@@ -117,6 +130,7 @@ async function loadWecomPlugin(): Promise<any> {
     on: () => {},
   };
   module.default.register(mockApi);
+  logger.info(`[wecom-channel] loadWecomPlugin registered outboundKeys=${wecomPlugin?.outbound ? Object.keys(wecomPlugin.outbound) : 'none'}`);
   return wecomPlugin;
 }
 
@@ -149,12 +163,12 @@ export class WeComChannel implements OutputChannel {
 
   isEnabled(): boolean {
     const ok = this.cfg.enabled && !!this.cfg.chatId && (!!this.cfg.botId || !!this.cfg.agent);
-    console.log(`[wecom-channel] isEnabled=${ok} enabled=${this.cfg.enabled} chatId=${this.cfg.chatId ? 'set' : 'unset'} botId=${this.cfg.botId ? 'set' : 'unset'}`);
+    logger.info(`[wecom-channel] isEnabled=${ok} enabled=${this.cfg.enabled} chatId=${this.cfg.chatId ? 'set' : 'unset'} botId=${this.cfg.botId ? 'set' : 'unset'}`);
     return ok;
   }
 
   updateConfig(cfg: WeComChannelConfig): void {
-    console.log('[wecom-channel] updateConfig', { enabled: cfg.enabled, chatId: cfg.chatId, botId: cfg.botId ? 'set' : 'unset' });
+    logger.info('[wecom-channel] updateConfig', { enabled: cfg.enabled, chatId: cfg.chatId, botId: cfg.botId ? 'set' : 'unset' });
     this.cfg = cfg;
     if (!this.isEnabled()) {
       this.disconnect();
@@ -162,7 +176,7 @@ export class WeComChannel implements OutputChannel {
     }
     // 预连接 websocket，避免第一次发送消息时才阻塞连接
     if (this.cfg.botId && this.cfg.secret) {
-      this.ensureWebSocket().catch((err) => console.error('[wecom-channel] proactive connect failed:', err));
+      this.ensureWebSocket().catch((err) => logger.error('[wecom-channel] proactive connect failed:', err));
     }
   }
 
@@ -187,24 +201,24 @@ export class WeComChannel implements OutputChannel {
   }
 
   send(event: ProxyStageEvent): void {
-    console.log(`[wecom-channel] receive event ${event.kind} (sid=${event.sessionId.slice(0, 8)}...)`);
+    logger.info(`[wecom-channel] receive event ${event.kind} (sid=${event.sessionId.slice(0, 8)}...)`);
     if (!this.isEnabled()) {
-      console.log('[wecom-channel] disabled, skip');
+      logger.info('[wecom-channel] disabled, skip');
       return;
     }
 
     const outboundEvents = ['prompt', 'tool_use', 'response_complete', 'PermissionRequest', 'tool_result', 'SessionEnd', 'error'];
     if (!outboundEvents.includes(event.kind)) {
-      console.log(`[wecom-channel] event ${event.kind} not in outbound list, skip`);
+      logger.info(`[wecom-channel] event ${event.kind} not in outbound list, skip`);
       return;
     }
 
     const content = this.formatMessage(event);
     if (!content) {
-      console.log('[wecom-channel] empty content, skip');
+      logger.info('[wecom-channel] empty content, skip');
       return;
     }
-    console.log(`[wecom-channel] formatted content: ${content.slice(0, 80)}...`);
+    logger.info(`[wecom-channel] formatted content: ${content.slice(0, 80)}...`);
 
     // 记录会话路由关系，方便企业微信入站消息找到对应 session
     if (this.cfg.chatId) {
@@ -217,17 +231,17 @@ export class WeComChannel implements OutputChannel {
     }
 
     // 异步发送，不阻塞 dispatcher / 主进程事件循环
-    this.sendContent(content, event.sessionId).catch((err) => console.error('[wecom-channel] send failed:', err));
+    this.sendContent(content, event.sessionId).catch((err) => logger.error('[wecom-channel] send failed:', err));
   }
 
   private async sendContent(content: string, _sessionId: string): Promise<void> {
     const plugin = await loadWecomPlugin();
     if (!plugin?.outbound?.sendText) {
-      console.warn('[wecom-channel] plugin outbound.sendText not available');
+      logger.warn('[wecom-channel] plugin outbound.sendText not available');
       return;
     }
 
-    console.log('[wecom-channel] ensuring websocket...');
+    logger.info('[wecom-channel] ensuring websocket...');
     await this.ensureWebSocket();
 
     const cfg = {
@@ -241,14 +255,14 @@ export class WeComChannel implements OutputChannel {
       },
     };
 
-    console.log('[wecom-channel] sending to WeCom...');
+    logger.info('[wecom-channel] sending to WeCom...');
     const result = await plugin.outbound.sendText({
       to: this.cfg.chatId,
       text: content,
       accountId: 'default',
       cfg,
     });
-    console.log('[wecom-channel] send success:', JSON.stringify(result));
+    logger.info('[wecom-channel] send success:', JSON.stringify(result));
   }
 
   private async ensureWebSocket(): Promise<void> {
@@ -268,10 +282,10 @@ export class WeComChannel implements OutputChannel {
   }
 
   private async connect(): Promise<void> {
-    console.log('[wecom-channel] connecting websocket...');
+    logger.info('[wecom-channel] connecting websocket...');
     const WSClient = await getWSClientClass();
     const setWeComWebSocket = await getSetWeComWebSocket();
-    console.log('[wecom-channel] WSClient loaded');
+    logger.info('[wecom-channel] WSClient loaded');
 
     return new Promise((resolve, reject) => {
       const wsClient = new WSClient({
@@ -284,8 +298,8 @@ export class WeComChannel implements OutputChannel {
         logger: {
           debug: () => {},
           info: () => {},
-          warn: (...args: any[]) => console.warn('[wecom-channel] ws warn:', ...args),
-          error: (...args: any[]) => console.error('[wecom-channel] ws error:', ...args),
+          warn: (...args: any[]) => logger.warn('[wecom-channel] ws warn:', ...args),
+          error: (...args: any[]) => logger.error('[wecom-channel] ws error:', ...args),
         },
       });
 
@@ -295,7 +309,7 @@ export class WeComChannel implements OutputChannel {
       }, 15000);
 
       wsClient.on('authenticated', () => {
-        console.log('[wecom-channel] websocket authenticated');
+        logger.info('[wecom-channel] websocket authenticated');
         clearTimeout(timer);
         this.wsClient = wsClient;
         setWeComWebSocket('default', wsClient);
@@ -306,7 +320,7 @@ export class WeComChannel implements OutputChannel {
         try {
           this.handleInboundMessage(frame);
         } catch (err) {
-          console.error('[wecom-channel] failed to handle inbound message:', err);
+          logger.error('[wecom-channel] failed to handle inbound message:', err);
         }
       });
 
@@ -327,33 +341,35 @@ export class WeComChannel implements OutputChannel {
   }
 
   private handleInboundMessage(frame: any): void {
+    logger.info('[wecom-channel] inbound frame received');
     const body = frame?.body as any;
     if (!body) {
-      console.log('[wecom-channel] inbound frame has no body');
+      logger.info('[wecom-channel] inbound frame has no body');
       return;
     }
 
     const chatId = body.chatid || body.from?.userid;
     if (!chatId) {
-      console.log('[wecom-channel] inbound message has no chatId');
+      logger.info('[wecom-channel] inbound message has no chatId', { body });
       return;
     }
 
     const text = this.extractInboundText(body);
+    logger.info(`[wecom-channel] inbound from ${chatId} text=${text}`);
     if (!text) {
-      console.log('[wecom-channel] inbound message has no text content');
+      logger.info('[wecom-channel] inbound message has no text content', { msgtype: body.msgtype });
       return;
     }
 
     // 单条消息指定 session，不修改默认绑定
     if (text.startsWith('#to ')) {
-      this.handleToCommand(chatId, text).catch((err) => console.error('[wecom-channel] #to failed:', err));
+      this.handleToCommand(chatId, text).catch((err) => logger.error('[wecom-channel] #to failed:', err));
       return;
     }
 
     // 其他命令消息在企业微信侧处理，不送给 Claude
     if (text.startsWith('#')) {
-      this.handleCommand(chatId, text).catch((err) => console.error('[wecom-channel] command failed:', err));
+      this.handleCommand(chatId, text).catch((err) => logger.error('[wecom-channel] command failed:', err));
       return;
     }
 
@@ -364,13 +380,13 @@ export class WeComChannel implements OutputChannel {
       const s = session.lookup(mapping.sessionId);
       if (!s) {
         this.sendWeComReply(chatId, '绑定的会话已不存在，请发送 #bind 重新绑定。').catch((err) =>
-          console.error('[wecom-channel] failed to send reply:', err),
+          logger.error('[wecom-channel] failed to send reply:', err),
         );
         return;
       }
       if (s.workDir !== mapping.workDir) {
         this.sendWeComReply(chatId, '绑定会话的工作目录已变更，请发送 #bind 重新绑定。').catch((err) =>
-          console.error('[wecom-channel] failed to send reply:', err),
+          logger.error('[wecom-channel] failed to send reply:', err),
         );
         return;
       }
@@ -379,27 +395,27 @@ export class WeComChannel implements OutputChannel {
       sessionId = this.chatIdToSession.get(chatId) || this.lastActiveSession.get(chatId);
     }
     if (!sessionId) {
-      console.log('[wecom-channel] no active session for inbound message');
+      logger.info('[wecom-channel] no active session for inbound message');
       this.sendWeComReply(chatId, '当前没有绑定会话，请发送 #list 查看，或 #bind <sessionId> / #bind <序号> 绑定。').catch((err) =>
-        console.error('[wecom-channel] failed to send reply:', err),
+        logger.error('[wecom-channel] failed to send reply:', err),
       );
       return;
     }
 
     const s = session.lookup(sessionId);
     if (!s || !s.process) {
-      console.log(`[wecom-channel] session ${sessionId.slice(0, 8)}... not found or no process`);
+      logger.info(`[wecom-channel] session ${sessionId.slice(0, 8)}... not found or no process`);
       this.sendWeComReply(chatId, `会话 ${sessionId.slice(0, 8)}... 不存在或未启动，请重新绑定。`).catch((err) =>
-        console.error('[wecom-channel] failed to send reply:', err),
+        logger.error('[wecom-channel] failed to send reply:', err),
       );
       return;
     }
 
-    console.log(`[wecom-channel] inbound message from ${chatId}, forward to session ${sessionId.slice(0, 8)}...`);
+    logger.info(`[wecom-channel] inbound message from ${chatId}, forward to session ${sessionId.slice(0, 8)}...`);
     try {
       session.send(sessionId, text);
     } catch (err) {
-      console.error('[wecom-channel] failed to forward inbound message to session:', err);
+      logger.error('[wecom-channel] failed to forward inbound message to session:', err);
     }
   }
 
@@ -424,6 +440,7 @@ export class WeComChannel implements OutputChannel {
     const parts = text.trim().split(/\s+/);
     const cmd = parts[0].toLowerCase();
     const arg = parts[1];
+    logger.info(`[wecom-channel] handleCommand cmd=${cmd} arg=${arg} chatId=${chatId}`);
 
     switch (cmd) {
       case '#bind':
@@ -507,20 +524,21 @@ export class WeComChannel implements OutputChannel {
       return;
     }
 
-    console.log(`[wecom-channel] #to from ${chatId}, forward to session ${resolved.id.slice(0, 8)}...`);
+    logger.info(`[wecom-channel] #to from ${chatId}, forward to session ${resolved.id.slice(0, 8)}...`);
     try {
       session.send(resolved.id, message);
       await this.sendWeComReply(chatId, `已临时发送到会话 ${resolved.id.slice(0, 8)}...`);
     } catch (err) {
-      console.error('[wecom-channel] failed to forward #to message to session:', err);
+      logger.error('[wecom-channel] failed to forward #to message to session:', err);
       await this.sendWeComReply(chatId, `发送失败：${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
   private async sendWeComReply(chatId: string, text: string): Promise<void> {
+    logger.info(`[wecom-channel] sendWeComReply chatId=${chatId} text=${text.slice(0, 80)}`);
     const plugin = await loadWecomPlugin();
     if (!plugin?.outbound?.sendText) {
-      console.warn('[wecom-channel] plugin outbound.sendText not available');
+      logger.warn('[wecom-channel] plugin outbound.sendText not available');
       return;
     }
     await this.ensureWebSocket();
@@ -534,7 +552,13 @@ export class WeComChannel implements OutputChannel {
         },
       },
     };
-    await plugin.outbound.sendText({ to: chatId, text, accountId: 'default', cfg });
+    try {
+      const result = await plugin.outbound.sendText({ to: chatId, text, accountId: 'default', cfg });
+      logger.info('[wecom-channel] sendWeComReply success:', JSON.stringify(result));
+    } catch (err) {
+      logger.error('[wecom-channel] sendWeComReply failed:', err);
+      throw err;
+    }
   }
 
   private formatMessage(event: ProxyStageEvent): string {
