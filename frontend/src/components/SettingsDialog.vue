@@ -13,6 +13,7 @@
         <GeneralTab v-else-if="active === 'general'" />
         <CloudTab v-else-if="active === 'cloud'" />
         <ProviderTab v-else-if="active === 'provider'" />
+        <ChannelTab v-else-if="active === 'channel'" />
       </div>
       <div v-if="hookPort" class="foot">
         <span class="port-dot" />
@@ -30,6 +31,7 @@ import HooksTab from './settings/HooksTab.vue'
 import GeneralTab from './settings/GeneralTab.vue'
 import CloudTab from './settings/CloudTab.vue'
 import ProviderTab from './settings/ProviderTab.vue'
+import ChannelTab from './settings/ChannelTab.vue'
 import { GetHookServerPort } from '../composables/useElectron'
 
 defineEmits<{ (e: 'close'): void }>()

@@ -1,5 +1,6 @@
 import * as pty from 'node-pty';
 import os from 'node:os';
+import { getLogger } from './log.js';
 
 export enum PtyMode {
   Auto = 'auto',
@@ -25,6 +26,8 @@ function buildCommand(
   bin: string,
   sessionId: string,
   mode: PtyMode,
+  env: Record<string, string> = {},
+  extraArgs: string[] = [],
 ): { file: string; args: string[] } {
   const args: string[] = [];
   if (mode === PtyMode.New && sessionId) {
@@ -32,12 +35,18 @@ function buildCommand(
   } else if (mode === PtyMode.Resume && sessionId) {
     args.push('--resume', sessionId);
   }
+  args.push(...extraArgs);
 
   if (os.platform() === 'win32') {
-    return {
-      file: 'cmd.exe',
-      args: ['/c', bin, ...args],
-    };
+    const envEntries = Object.entries(env);
+    if (envEntries.length === 0) {
+      return { file: 'cmd.exe', args: ['/c', bin, ...args] };
+    }
+    // Windows ConPTY 通过 pty.spawn 的 env 选项传播环境变量不可靠，
+    // 在命令行显式 set 后再执行目标程序，确保 ANTHROPIC_BASE_URL 等变量生效。
+    const envArgs = envEntries.flatMap(([k, v]) => ['set', `${k}=${v}`]);
+    getLogger().info(`[pty] windows env injection: ${envArgs.join(' ')} && ${bin} ${args.join(' ')}`);
+    return { file: 'cmd.exe', args: ['/c', ...envArgs, '&&', bin, ...args] };
   }
   return { file: bin, args };
 }
@@ -49,8 +58,11 @@ export function start(
   mode: PtyMode,
   env: Record<string, string> = {},
   size: PtySize = { cols: 80, rows: 24 },
+  extraArgs: string[] = [],
 ): PtyProcess {
-  const { file, args } = buildCommand(bin, sessionId, mode);
+  const { file, args } = buildCommand(bin, sessionId, mode, env, extraArgs);
+
+  getLogger().info(`[pty] spawn ${file} ${args.map((a) => `"${a}"`).join(' ')} (cwd=${cwd})`);
 
   const proc = pty.spawn(file, args, {
     name: 'xterm-256color',

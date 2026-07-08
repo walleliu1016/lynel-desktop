@@ -1,4 +1,7 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { getStore } from './store.js';
 import { getBus } from './events.js';
 import { getLogger } from './log.js';
@@ -8,9 +11,47 @@ import * as session from './session.js';
 import { HookServer } from './hookserver.js';
 import { ChannelDispatcher } from './channels/registry.js';
 import { SSEChannel } from './channels/sse-channel.js';
-import { WeComChannel } from './channels/wecom-channel.js';
+import { WeComChannel, WeComChannelConfig } from './channels/wecom-channel.js';
 import { startProxy, newCallID } from './apiproxy.js';
 import { start as startPty, PtyMode, PtySize } from './pty.js';
+
+const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
+
+function resolveAnthropicBaseUrl(): string {
+  const candidates = [
+    path.resolve('.claude/settings.local.json'),
+    path.resolve('.claude/settings.json'),
+    path.join(os.homedir(), '.claude', 'settings.json'),
+  ];
+  for (const f of candidates) {
+    try {
+      const url = JSON.parse(fs.readFileSync(f, 'utf8'))?.env?.ANTHROPIC_BASE_URL;
+      if (typeof url === 'string' && url) {
+        getLogger().info(`[app] resolved ANTHROPIC_BASE_URL from ${f}: ${url}`);
+        return url;
+      }
+    } catch {}
+  }
+  return DEFAULT_ANTHROPIC_BASE_URL;
+}
+
+function createSettingsOverrideFile(proxyUrl: string): { args: string[]; cleanup: () => void } {
+  const settings = JSON.stringify({ env: { ANTHROPIC_BASE_URL: proxyUrl } }, null, 2);
+  const tmpDir = path.join(os.tmpdir(), 'ease-ui');
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const tmpFile = path.join(tmpDir, `claude-settings-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+  fs.writeFileSync(tmpFile, settings, 'utf8');
+  getLogger().info(`[app] created settings override: ${tmpFile}`);
+  return {
+    args: ['--settings', tmpFile],
+    cleanup: () => {
+      try {
+        fs.unlinkSync(tmpFile);
+        getLogger().info(`[app] removed settings override: ${tmpFile}`);
+      } catch {}
+    },
+  };
+}
 
 export class App {
   private window: BrowserWindow | null = null;
@@ -81,9 +122,15 @@ export class App {
   }
 
   async init(): Promise<void> {
+    this.applyWeComConfig();
     await this.ensureHookServer();
     this.watchJsonl();
     this.registerIpcHandlers();
+  }
+
+  private applyWeComConfig(): void {
+    const cfg = this.settingsStore.get('wecom', {}) as WeComChannelConfig;
+    this.wecomChannel.updateConfig(cfg);
   }
 
   private async ensureHookServer(): Promise<void> {
@@ -162,9 +209,14 @@ export class App {
 
     ipcMain.handle('app:createSession', async (_event, workDir: string, prompt: string) => {
       const token = newCallID();
-      const proxy = await startProxy(workDir, token, this.dispatcher);
-      const env = { ANTHROPIC_BASE_URL: `http://127.0.0.1:${proxy.port}` };
-      const proc = startPty(workDir, '', 'claude', PtyMode.Auto, env);
+      const upstream = resolveAnthropicBaseUrl();
+      const proxy = await startProxy(workDir, token, this.dispatcher, upstream);
+      const proxyUrl = `http://127.0.0.1:${proxy.port}`;
+      const env = { ANTHROPIC_BASE_URL: proxyUrl };
+      const { args: extraArgs, cleanup: settingsCleanup } = createSettingsOverrideFile(proxyUrl);
+      getLogger().info(`[app:createSession] proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir}`);
+      const proc = startPty(workDir, '', 'claude', PtyMode.Auto, env, { cols: 80, rows: 24 }, extraArgs);
+      proc.onExit(settingsCleanup);
       const tmpId = `tmp-${proc.pid}`;
       const s = session.newSession(tmpId, workDir);
       session.register(s);
@@ -204,6 +256,14 @@ export class App {
     ipcMain.handle('app:getSettings', () => this.settingsStore.store);
     ipcMain.handle('app:updateSettings', (_event, cfg: any) => {
       this.settingsStore.set(cfg);
+    });
+
+    ipcMain.handle('app:getWeComConfig', () => {
+      return this.settingsStore.get('wecom', { enabled: false }) as WeComChannelConfig;
+    });
+    ipcMain.handle('app:updateWeComConfig', (_event, cfg: WeComChannelConfig) => {
+      this.settingsStore.set('wecom', cfg);
+      this.wecomChannel.updateConfig(cfg);
     });
 
     ipcMain.handle('app:getSessionStates', async () => {
@@ -333,10 +393,15 @@ export class App {
     const s = session.lookup(id)!;
     if (s.process) return;
     const token = newCallID();
-    startProxy(workDir, token, this.dispatcher).then((proxy) => {
+    const upstream = resolveAnthropicBaseUrl();
+    startProxy(workDir, token, this.dispatcher, upstream).then((proxy) => {
       proxy.setSessionID(id);
-      const env = { ANTHROPIC_BASE_URL: `http://127.0.0.1:${proxy.port}` };
-      const proc = startPty(workDir, id, 'claude', PtyMode.Resume, env, size);
+      const proxyUrl = `http://127.0.0.1:${proxy.port}`;
+      const env = { ANTHROPIC_BASE_URL: proxyUrl };
+      const { args: extraArgs, cleanup: settingsCleanup } = createSettingsOverrideFile(proxyUrl);
+      getLogger().info(`[app:openSessionTerminal] proxyUrl=${proxyUrl} upstream=${upstream} sid=${id}`);
+      const proc = startPty(workDir, id, 'claude', PtyMode.Resume, env, size, extraArgs);
+      proc.onExit(settingsCleanup);
       session.setProcess(id, proc);
       this.wirePty(id, proc);
     }).catch((err: any) => {

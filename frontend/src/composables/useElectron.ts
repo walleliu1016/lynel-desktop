@@ -22,6 +22,8 @@ export const SendMessage = (id: string, prompt: string) => api().sendMessage(id,
 export const CloseSession = (id: string) => api().closeSession(id);
 export const GetSettings = () => api().getSettings();
 export const UpdateSettings = (cfg: any) => api().updateSettings(cfg);
+export const GetWeComConfig = () => api().getWeComConfig();
+export const UpdateWeComConfig = (cfg: any) => api().updateWeComConfig(cfg);
 export const GetHooksConfig = () => api().getHooksConfig();
 export const SaveHooksConfig = (cfg: any) => api().saveHooksConfig(cfg);
 export const GetSessionMessages = (id: string, workDir: string, offset: number, limit: number) => api().getSessionMessages(id, workDir, offset, limit);

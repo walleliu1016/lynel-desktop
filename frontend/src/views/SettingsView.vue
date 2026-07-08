@@ -21,6 +21,7 @@
         <GeneralTab v-else-if="active === 'general'" />
         <CloudTab v-else-if="active === 'cloud'" />
         <ProviderTab v-else-if="active === 'provider'" />
+        <ChannelTab v-else-if="active === 'channel'" />
       </main>
     </div>
   </div>
@@ -36,6 +37,7 @@ import HooksTab from '../components/settings/HooksTab.vue'
 import GeneralTab from '../components/settings/GeneralTab.vue'
 import CloudTab from '../components/settings/CloudTab.vue'
 import ProviderTab from '../components/settings/ProviderTab.vue'
+import ChannelTab from '../components/settings/ChannelTab.vue'
 import { GetHookServerPort } from '../composables/useElectron'
 
 const router = useRouter()
