@@ -66,18 +66,7 @@ inbound 消息按以下优先级选择目标 session：
 
 ## 企业微信命令
 
-在企业微信聊天中发送以下命令管理本地 session：
-
-| 命令 | 说明 |
-|---|---|
-| `#list` | 列出当前所有本地 session 及序号 |
-| `#bind <sessionId/序号>` | 将当前聊天绑定到指定 session |
-| `#switch <sessionId/序号>` | 同 `#bind`，用于切换绑定 |
-| `#to <sessionId/序号> <消息>` | 单条消息临时发送到指定 session，不修改默认绑定 |
-| `#status` | 查看当前聊天绑定的 session 及状态 |
-| `#unbind` / `#close` | 解绑当前聊天与 session 的关联 |
-
-绑定关系持久化在本地 store，应用重启后仍然有效。删除 session 时会自动清理相关绑定。
+在企业微信聊天中发送 `#` 开头命令管理本地 session，详见 [`wecom-commands.md`](wecom-commands.md)。
 
 ## 实现文件
 
