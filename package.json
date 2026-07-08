@@ -32,6 +32,7 @@
     "@wecom/aibot-node-sdk": "^1.0.7",
     "@wecom/wecom-openclaw-plugin": "^20206.7.201",
     "bcryptjs": "^2.4.3",
+    "openclaw": "file:vendor/openclaw-stub",
     "chokidar": "^4.0.0",
     "electron-log": "^5.0.0",
     "electron-store": "^10.0.0",

@@ -1,0 +1,10 @@
+{
+  "name": "openclaw",
+  "version": "2026.3.28",
+  "description": "Minimal stub for @wecom/wecom-openclaw-plugin peer dependency",
+  "type": "module",
+  "exports": {
+    "./plugin-sdk/runtime-store": "./plugin-sdk/runtime-store.js",
+    "./plugin-sdk/account-id": "./plugin-sdk/account-id.js"
+  }
+}
