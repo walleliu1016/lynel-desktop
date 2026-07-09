@@ -19,10 +19,16 @@ jobs:
         include:
           - os: windows-latest
             target: win
+            arch: ''
           - os: macos-latest
             target: mac
+            arch: '--x64'
+          - os: macos-15
+            target: mac-arm64
+            arch: '--arm64'
           - os: ubuntu-latest
             target: linux
+            arch: ''
 
     steps:
       - name: Checkout
@@ -46,7 +52,7 @@ jobs:
         run: npm run build
 
       - name: Build installer
-        run: npx electron-builder --${{ matrix.target }} --publish=never
+        run: npx electron-builder --${{ matrix.target }} ${{ matrix.arch }} --publish=never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -64,6 +70,7 @@ jobs:
           files: |
             dist/*.exe
             dist/*.dmg
+            dist/*arm64*.dmg
             dist/*.AppImage
           generate_release_notes: true
         env:
