@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,7 +14,7 @@ import { HookServer } from './hookserver.js';
 import { ChannelDispatcher } from './channels/registry.js';
 import { SSEChannel } from './channels/sse-channel.js';
 import { WeComChannel, WeComChannelConfig } from './channels/wecom-channel.js';
-import { startProxy, newCallID } from './apiproxy.js';
+import { startProxy } from './apiproxy.js';
 import { start as startPty, PtyMode, PtySize } from './pty.js';
 
 const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
@@ -38,13 +39,23 @@ function resolveAnthropicBaseUrl(): string {
 }
 
 function createSettingsOverrideFile(proxyUrl: string): { args: string[]; cleanup: () => void } {
-  const settings = JSON.stringify({ env: { ANTHROPIC_BASE_URL: proxyUrl } }, null, 2);
+  const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
   const tmpDir = path.join(os.tmpdir(), 'ease-ui');
   try {
+    // 读取现有 settings.json，在此基础上覆盖 ANTHROPIC_BASE_URL，保留 hooks 等配置
+    let data: Record<string, any> = {};
+    try {
+      const raw = fs.readFileSync(settingsPath, 'utf8');
+      if (raw.trim()) data = JSON.parse(raw);
+    } catch {}
+    data.env = { ...(data.env || {}), ANTHROPIC_BASE_URL: proxyUrl };
+    const settings = JSON.stringify(data, null, 2);
     fs.mkdirSync(tmpDir, { recursive: true });
     const tmpFile = path.join(tmpDir, `claude-settings-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
     fs.writeFileSync(tmpFile, settings, 'utf8');
-    getLogger().info(`[app] created settings override: ${tmpFile}`);
+    const fileSize = fs.statSync(tmpFile).size;
+    const hasHooks = !!(data.hooks && Object.keys(data.hooks).length > 0);
+    getLogger().info(`[app] created settings override: ${tmpFile} size=${fileSize} hasHooks=${hasHooks}`);
     return {
       args: ['--settings', tmpFile],
       cleanup: () => {
@@ -60,66 +71,6 @@ function createSettingsOverrideFile(proxyUrl: string): { args: string[]; cleanup
   }
 }
 
-function sessionStartScriptUnix(hookURL: string): string {
-  return `#!/bin/bash
-# Ease UI SessionStart hook
-INPUT=$(cat)
-curl -s -X POST ${hookURL} \\
-  -H "Content-Type: application/json" \\
-  -d "$INPUT" \\
-  > /dev/null 2>&1
-`;
-}
-
-function sessionStartScriptWin(hookURL: string): string {
-  return `<#
-.SYNOPSIS
-    Ease UI SessionStart hook
-.DESCRIPTION
-    Forwards session start event to Ease UI HTTP server with user account header
-#>
-
-$headers = @{
-    "Content-Type" = "application/json"
-    "X-UM-ACCOUNT" = "$env:USERNAME"
-}
-
-$jsonInput = $null
-try {
-    $jsonInput = [System.Console]::In.ReadToEnd()
-} catch {
-}
-if (-not $jsonInput) {
-    $jsonInput = '{"hook_event_name":"SessionStart"}'
-}
-
-try {
-    Invoke-RestMethod -Uri "${hookURL}" -Method POST -Headers $headers -Body $jsonInput -ErrorAction SilentlyContinue | Out-Null
-} catch {
-}
-`;
-}
-
-function ensureSessionStartScript(hookURL: string): string | null {
-  const easeDir = path.join(os.homedir(), '.ease-app');
-  try {
-    fs.mkdirSync(easeDir, { recursive: true });
-    if (process.platform === 'win32') {
-      const scriptPath = path.join(easeDir, 'session-start.ps1');
-      fs.writeFileSync(scriptPath, sessionStartScriptWin(hookURL), 'utf8');
-      getLogger().info(`[app] SessionStart script created: ${scriptPath}`);
-      return 'powershell -NoProfile -ExecutionPolicy Bypass -Command . $HOME/.ease-app/session-start.ps1';
-    }
-    const scriptPath = path.join(easeDir, 'session-start.sh');
-    fs.writeFileSync(scriptPath, sessionStartScriptUnix(hookURL), { mode: 0o755 });
-    getLogger().info(`[app] SessionStart script created: ${scriptPath}`);
-    return '~/.ease-app/session-start.sh';
-  } catch (err: any) {
-    getLogger().error(`[app] failed to create SessionStart script: ${err.message}`);
-    return null;
-  }
-}
-
 export class App {
   private window: BrowserWindow | null = null;
   private settingsStore = getStore('settings');
@@ -129,40 +80,11 @@ export class App {
   private dispatcher = new ChannelDispatcher();
   private sseChannel = new SSEChannel();
   private wecomChannel = new WeComChannel({ enabled: false });
-  private pendingSession: { resolve: (id: string) => void; reject: (err: Error) => void; timer: NodeJS.Timeout } | null = null;
   private ptyCleanups = new Map<string, (() => void) | null>();
 
   constructor() {
     this.dispatcher.register(this.sseChannel);
     this.dispatcher.register(this.wecomChannel);
-  }
-
-  private registerPending(): Promise<string> {
-    return new Promise((resolve, reject) => {
-      if (this.pendingSession) {
-        getLogger().warn('[app] replacing stale pending session registration');
-        this.pendingSession.reject(new Error('new session creation started'));
-        clearTimeout(this.pendingSession.timer);
-      }
-      const timer = setTimeout(() => {
-        this.pendingSession = null;
-        getLogger().error('[app] SessionStart timeout: no hook response in 15s');
-        reject(new Error('session start timeout (15s)'));
-      }, 15000);
-      this.pendingSession = { resolve, reject, timer };
-    });
-  }
-
-  private deliverSessionID(realId: string): void {
-    const pending = this.pendingSession;
-    if (!pending) {
-      getLogger().warn(`[app] received SessionStart id=${realId} but no pending registration`);
-      return;
-    }
-    clearTimeout(pending.timer);
-    this.pendingSession = null;
-    getLogger().info(`[app] SessionStart delivered: id=${realId}`);
-    pending.resolve(realId);
   }
 
   setWindow(win: BrowserWindow): void {
@@ -197,6 +119,16 @@ export class App {
   async init(): Promise<void> {
     this.applyWeComConfig();
     session.setOnRemove((id) => this.wecomChannel.clearSessionMappings(id));
+    this.wecomChannel.setCreateSessionHandler(async () => {
+      const projects = await jsonl.scanAll();
+      const workDir = projects.length > 0 ? projects[0].workdir : process.cwd();
+      try {
+        const id = await this.createSessionInternal(workDir, '');
+        return { id, workDir };
+      } catch (err: any) {
+        return { error: err.message };
+      }
+    });
     await this.ensureHookServer();
     this.watchJsonl();
     this.registerIpcHandlers();
@@ -212,9 +144,6 @@ export class App {
     this.hookServer.onEvent((evt) => {
       const sid = evt.session_id ?? '';
       const name = evt.hook_event_name ?? evt.type ?? '';
-      if (name === 'SessionStart' && sid) {
-        this.deliverSessionID(sid);
-      }
       getBus().emit(`hook:${sid}`, JSON.stringify(evt));
     });
     this.hookServer.onSend(async (sid, prompt) => {
@@ -256,11 +185,6 @@ export class App {
       }
     }
 
-    const scriptCommand = ensureSessionStartScript(hookURL);
-    if (!scriptCommand) {
-      getLogger().warn('[app] SessionStart script unavailable, hooks config will not include SessionStart');
-    }
-
     const hookTypes: Record<string, number> = {
       Notification: 120,
       PermissionRequest: 300,
@@ -279,12 +203,6 @@ export class App {
     const hooksObj: Record<string, any> = {};
     for (const [name, timeout] of Object.entries(hookTypes)) {
       hooksObj[name] = [{ hooks: [{ type: 'http', url: hookURL, timeout }] }];
-    }
-
-    if (scriptCommand) {
-      hooksObj['SessionStart'] = [
-        { matcher: '', hooks: [{ type: 'command', command: scriptCommand, timeout: 5 }] },
-      ];
     }
 
     // 检查是否已正确配置，避免重复写入
@@ -313,6 +231,27 @@ export class App {
       getLogger().error(`[app] write settings.json failed: ${err.message}`);
       return false;
     }
+  }
+
+  private async createSessionInternal(workDir: string, prompt: string): Promise<string> {
+    const realId = randomUUID();
+    const upstream = resolveAnthropicBaseUrl();
+    const proxy = await startProxy(workDir, realId, this.dispatcher, upstream);
+    const proxyUrl = `http://127.0.0.1:${proxy.port}`;
+    const { args, cleanup } = createSettingsOverrideFile(proxyUrl);
+    getLogger().info(`[app:createSession] proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId}`);
+    const proc = startPty(workDir, realId, 'claude', PtyMode.New, {}, { cols: 80, rows: 24 }, args);
+    const s = session.newSession(realId, workDir);
+    s.process = proc;
+    s.state = 'running';
+    session.register(s);
+    this.instanceStore.set(`sessions.${realId}.state`, 'running');
+    this.wirePty(realId, proc);
+    proc.onExit(() => cleanup());
+
+    getLogger().info(`[app:createSession] session created id=${realId} workDir=${workDir}`);
+    if (prompt) session.send(realId, prompt);
+    return realId;
   }
 
   private watchJsonl(): void {
@@ -365,41 +304,7 @@ export class App {
     });
 
     ipcMain.handle('app:createSession', async (_event, workDir: string, prompt: string) => {
-      const token = newCallID();
-      const upstream = resolveAnthropicBaseUrl();
-      const proxy = await startProxy(workDir, token, this.dispatcher, upstream);
-      const proxyUrl = `http://127.0.0.1:${proxy.port}`;
-      const env = { ANTHROPIC_BASE_URL: proxyUrl };
-      const { args: extraArgs, cleanup: settingsCleanup } = createSettingsOverrideFile(proxyUrl);
-      getLogger().info(`[app:createSession] proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir}`);
-      const proc = startPty(workDir, '', 'claude', PtyMode.Auto, env, { cols: 80, rows: 24 }, extraArgs);
-      proc.onExit(settingsCleanup);
-      const tmpId = `tmp-${proc.pid}`;
-      const s = session.newSession(tmpId, workDir);
-      session.register(s);
-      session.setProcess(tmpId, proc);
-
-      let realId: string;
-      try {
-        realId = await this.registerPending();
-      } catch (err: any) {
-        proc.kill();
-        session.remove(tmpId);
-        getLogger().error(`[app:createSession] timeout waiting for SessionStart, workDir=${workDir}: ${err?.message ?? err}`);
-        throw new Error('Claude 未在 15 秒内返回会话 ID，请检查 SessionStart hook 配置');
-      }
-      proxy.setSessionID(realId);
-      session.remove(tmpId);
-      const realSession = session.newSession(realId, workDir);
-      realSession.process = proc;
-      realSession.state = 'running';
-      session.register(realSession);
-      this.instanceStore.set(`sessions.${realId}.state`, 'running');
-      this.wirePty(realId, proc);
-
-      getLogger().info(`[app:createSession] session created id=${realId} workDir=${workDir}`);
-      if (prompt) session.send(realId, prompt);
-      return realId;
+      return this.createSessionInternal(workDir, prompt);
     });
 
     ipcMain.handle('app:sendMessage', (_event, id: string, prompt: string) => {
@@ -549,25 +454,21 @@ export class App {
       getLogger().info(`[app:openSessionTerminal] pty already running for sid=${id}`);
       return;
     }
-    const token = newCallID();
     const upstream = resolveAnthropicBaseUrl();
-    startProxy(workDir, token, this.dispatcher, upstream).then((proxy) => {
-      proxy.setSessionID(id);
+    startProxy(workDir, id, this.dispatcher, upstream).then((proxy) => {
       const proxyUrl = `http://127.0.0.1:${proxy.port}`;
-      const env = { ANTHROPIC_BASE_URL: proxyUrl };
-      const { args: extraArgs, cleanup: settingsCleanup } = createSettingsOverrideFile(proxyUrl);
+      const { args, cleanup } = createSettingsOverrideFile(proxyUrl);
       getLogger().info(`[app:openSessionTerminal] proxyUrl=${proxyUrl} upstream=${upstream} sid=${id}`);
       try {
-        const proc = startPty(workDir, id, 'claude', PtyMode.Resume, env, size, extraArgs);
-        proc.onExit(settingsCleanup);
+        const proc = startPty(workDir, id, 'claude', PtyMode.Resume, {}, size, args);
         session.setProcess(id, proc);
+        proc.onExit(() => cleanup());
         this.instanceStore.set(`sessions.${id}.state`, 'running');
         this.wirePty(id, proc);
       } catch (err: any) {
         getLogger().error(`[app:openSessionTerminal] startPty failed for sid=${id}: ${err.message}`);
         getBus().emit(`session:${id}`, `\r\n启动终端失败：${err.message}\r\n`);
         this.instanceStore.set(`sessions.${id}.state`, 'done');
-        settingsCleanup();
       }
     }).catch((err: any) => {
       getLogger().error(`[app:openSessionTerminal] proxy failed for sid=${id}: ${err?.message ?? err}`);

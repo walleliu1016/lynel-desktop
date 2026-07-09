@@ -38,6 +38,21 @@ function createWindow(): void {
     mainWindow?.show();
   });
 
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const template: Electron.MenuItemConstructorOptions[] = [];
+    if (params.selectionText) {
+      template.push({ label: '复制', role: 'copy' });
+    }
+    if (params.isEditable) {
+      template.push({ label: '粘贴', role: 'paste' });
+    }
+    if (template.length > 0) {
+      template.push({ type: 'separator' });
+    }
+    template.push({ label: '全选', role: 'selectAll' });
+    Menu.buildFromTemplate(template).popup({ window: mainWindow! });
+  });
+
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error('[main] did-fail-load', errorCode, errorDescription);
   });

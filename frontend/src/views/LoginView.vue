@@ -62,6 +62,7 @@ import TitleBar from '../components/TitleBar.vue'
 import SettingsDialog from '../components/SettingsDialog.vue'
 import Icon from '../components/Icon.vue'
 import { useAuthStore } from '../stores/auth'
+import { WindowCenter } from '../composables/useElectron'
 import { useWindowState } from '../composables/useWindowState'
 
 const router = useRouter()
@@ -126,6 +127,7 @@ async function onSubmit() {
   }
   // 进入主页前先把窗口切到主布局，避免 HomeView 挂载后闪现小窗口再变大
   try { await win.applyHomeLayout() } catch {}
+  try { WindowCenter() } catch {}
   router.push('/home')
 }
 
