@@ -4,3 +4,7 @@ frontend/dist
 lynel-desktop
 .omc/
 .superpowers/
+.claude-flow/
+dist/
+dist-electron/
+.claude/

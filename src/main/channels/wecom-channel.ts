@@ -138,9 +138,14 @@ export class WeComChannel implements OutputChannel {
   private chatIdToSession = new Map<string, string>();
   private lastActiveSession = new Map<string, string>();
   private sessionSeqCounters = new Map<string, number>();
+  private createSessionCallback: (() => Promise<{ id: string; workDir: string } | { error: string }>) | null = null;
 
   constructor(cfg: WeComChannelConfig) {
     this.cfg = cfg;
+  }
+
+  setCreateSessionHandler(handler: () => Promise<{ id: string; workDir: string } | { error: string }>): void {
+    this.createSessionCallback = handler;
   }
 
   isEnabled(): boolean {
@@ -463,6 +468,26 @@ export class WeComChannel implements OutputChannel {
         );
         return;
       }
+      case '#create':
+      case '#new': {
+        if (!this.createSessionCallback) {
+          await this.sendWeComReply(chatId, '创建会话功能暂不可用。');
+          return;
+        }
+        await this.sendWeComReply(chatId, '正在创建新会话…');
+        try {
+          const result = await this.createSessionCallback();
+          if ('error' in result) {
+            await this.sendWeComReply(chatId, `创建失败：${result.error}`);
+            return;
+          }
+          setMapping(chatId, result.id, result.workDir);
+          await this.sendWeComReply(chatId, `已创建并绑定到新会话 ${result.id.slice(0, 8)}...\n工作目录：${result.workDir}`);
+        } catch (err: any) {
+          await this.sendWeComReply(chatId, `创建失败：${err.message}`);
+        }
+        return;
+      }
       case '#list': {
         const sessions = session.list();
         if (sessions.length === 0) {
@@ -476,7 +501,7 @@ export class WeComChannel implements OutputChannel {
       default: {
         await this.sendWeComReply(
           chatId,
-          '未知命令。可用命令：#list、#bind <sessionId/序号>、#switch <sessionId/序号>、#to <sessionId/序号> <消息>、#status、#unbind',
+          '未知命令。可用命令：#list、#create、#bind <sessionId/序号>、#switch <sessionId/序号>、#to <sessionId/序号> <消息>、#status、#unbind',
         );
         return;
       }
