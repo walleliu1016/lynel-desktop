@@ -137,6 +137,7 @@ export class WeComChannel implements OutputChannel {
   private connecting: Promise<void> | null = null;
   private chatIdToSession = new Map<string, string>();
   private lastActiveSession = new Map<string, string>();
+  private sessionSeqCounters = new Map<string, number>();
 
   constructor(cfg: WeComChannelConfig) {
     this.cfg = cfg;
@@ -194,7 +195,10 @@ export class WeComChannel implements OutputChannel {
       return;
     }
 
-    const content = this.formatMessage(event);
+    const msgSeq = (this.sessionSeqCounters.get(event.sessionId) ?? 0) + 1;
+    this.sessionSeqCounters.set(event.sessionId, msgSeq);
+
+    const content = this.formatMessage(event, msgSeq);
     if (!content) {
       logger.info('[wecom-channel] empty content, skip');
       return;
@@ -542,14 +546,21 @@ export class WeComChannel implements OutputChannel {
     }
   }
 
-  private formatHeader(event: ProxyStageEvent): string {
-    const project = path.basename(event.workDir);
-    const sid = event.sessionId.slice(0, 8);
-    return `[${project}] #${event.seq} [sid:${sid}]`;
+  private getSessionListIndex(sessionId: string): string {
+    const all = session.list();
+    const idx = all.findIndex((s) => s.id === sessionId);
+    return idx >= 0 ? `会话#${idx + 1}` : '?';
   }
 
-  private formatMessage(event: ProxyStageEvent): string {
-    const header = this.formatHeader(event);
+  private formatHeader(event: ProxyStageEvent, msgSeq: number): string {
+    const project = path.basename(event.workDir);
+    const sid = event.sessionId.slice(0, 8);
+    const sessionIdx = this.getSessionListIndex(event.sessionId);
+    return `[${project}] ${sessionIdx} #${msgSeq} [sid:${sid}]`;
+  }
+
+  private formatMessage(event: ProxyStageEvent, msgSeq: number): string {
+    const header = this.formatHeader(event, msgSeq);
     const p = event.payload as any;
     switch (event.kind) {
       case 'prompt':
