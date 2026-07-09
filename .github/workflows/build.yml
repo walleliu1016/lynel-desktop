@@ -20,15 +20,19 @@ jobs:
           - os: windows-latest
             target: win
             arch: ''
+            artifact: win
           - os: macos-latest
             target: mac
             arch: '--x64'
+            artifact: mac-x64
           - os: macos-15
-            target: mac-arm64
+            target: mac
             arch: '--arm64'
+            artifact: mac-arm64
           - os: ubuntu-latest
             target: linux
             arch: ''
+            artifact: linux
 
     steps:
       - name: Checkout
@@ -60,7 +64,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: lynel-desktop-${{ matrix.target }}
+          name: lynel-desktop-${{ matrix.artifact }}
           path: dist/
 
       - name: Release

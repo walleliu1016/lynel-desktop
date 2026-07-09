@@ -283,6 +283,7 @@ onBeforeUnmount(() => {
 }
 .xterm-container :deep(.xterm-viewport)::-webkit-scrollbar {
   width: 8px;
+  display: block !important;
 }
 .xterm-container :deep(.xterm-viewport)::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
@@ -293,5 +294,9 @@ onBeforeUnmount(() => {
 }
 .xterm-container :deep(.xterm-viewport)::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
+}
+/* 隐藏 xterm.js 叠加滚动条，避免遮挡原生滚动条 */
+.xterm-container :deep(.xterm-scrollable-element > .scrollbar) {
+  display: none !important;
 }
 </style>
