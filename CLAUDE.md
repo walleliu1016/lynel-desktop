@@ -78,16 +78,16 @@ npm run dist:linux
 - `src/main/channels/`：Channel Dispatcher，将 apiproxy 阶段事件路由到 SSE / WeCom 等输出通道。
 
 ### 3. Session 生命周期与 PTY
-- `SessionManager.create`：用 `PtyMode.Auto` 启动交互式 Claude（不带 session flag），阻塞等待 `SessionStart` hook 返回真实 UUID（15s 超时）。
+- `SessionManager.create`：用 `randomUUID()` 预生成 session ID，`PtyMode.New` + `--session-id <id>` 启动交互式 Claude，不再阻塞等待 SessionStart hook。
 - `SessionManager.adopt`：对 Lynel Desktop 启动前已存在的历史 session 做注册，不启动进程。
 - `SessionManager.openTerminal`：点击已有 session 时启动或复用 PTY；未启动时必须用 `claude --resume <sid>`。
 - `SessionManager.send`：向 PTY 写裸文本 prompt；写入前必须确保末尾有回车，`Session.send` 会自动补 `\r`。
 - `WriteTerminalInput`：xterm.js 逐键输入直通 PTY，不自动补回车。
 - xterm.js 是唯一终端入口。
 - `PtyMode` 三种 mode：
-  - `Auto`：Claude 自己生成 UUID（新建 session）。
-  - `New`：`--session-id <sid>`，保留兼容性，正常新建不用它。
+  - `New`：`--session-id <sid>`，新建 session 使用，传入预生成的 UUID。
   - `Resume`：`--resume <sid>`，jsonl 已存在的 sid 必须用它，否则 Claude 会 DEAD。
+  - `Auto`：不带 flag，保留兼容性（一般不用）。
 
 ### 4. PTY 输入与 xterm.js 渲染（关键）
 - 向交互式 Claude PTY 发送用户消息必须是裸文本，并以回车结束；没有回车 Claude 不会执行。
@@ -99,9 +99,8 @@ npm run dist:linux
 
 ### 5. Hooks
 - `src/main/hookserver.ts` 内置 HTTP server，监听 `127.0.0.1:<port>`。
-- `SessionStart` **必须**用 command 脚本：`~/.lynel-desktop/session-start.sh`（macOS/Linux）或 `session-start.ps1`（Windows）。Claude 不支持 HTTP 类型的 `SessionStart` hook。
+- `SessionStart` hook 已移除（改用预生成 UUID + `--session-id`，不再需要 hook 返回 session ID）。
 - 其余 12 类 hook 走 HTTP POST；`hookserver` 自动写 `~/.claude/settings.json`。
-- command hook 的 JSON 字段是 `hook_event_name`，不是 HTTP hook 用的 `type`。
 - 前端 `handleHookEvent` 收到 `SessionStart` 时，只有 `owner.value[sid] !== 'app'` 才标记为 `terminal`，避免覆盖 Lynel Desktop 自己新建的 session。
 
 ### 6. 窗口状态
@@ -111,13 +110,14 @@ npm run dist:linux
 
 ### 7. API 网关代理（apiproxy）
 - `src/main/apiproxy.ts` 按 session 启动独立 HTTP 代理，通过注入 `ANTHROPIC_BASE_URL` 拦截 Claude API 流量。
-- 每个 session 一个 `APIProxy` 实例，共用同一个 `ProxyStore`；`ModeAuto` 新建 session 先用临时 token 启动代理，等 `SessionStart` 返回真实 UUID 后再迁移。
-- 代理只解析**显示需要**的字段：`prompt`、tools 名称、`tool_result`、响应 `text` / `thinking` / `tool_use` / `usage` / `stop_reason`，不保留完整 messages 历史。
+- 每个 session 一个 `APIProxy` 实例，共用同一个 `ProxyStore`；创建 session 时直接用预生成的 UUID 启动代理，不再需要临时代理后迁移。
+- 代理解析**显示需要**的字段：`prompt`、`tool_use`（含完整 `input`，通过累积 `input_json_delta`）、`tool_result`（从请求体提取，携带 `tool_use_id`）、响应 `text` / `response_complete`。
+- 流式 SSE 数据增量解析；过滤系统注入 prompt 和跨请求重复 prompt。
 - 阶段数据落盘到 `~/.lynel-desktop/projects/<encoded-project>/<sid>-calls.jsonl`，每行一个 JSON。
 - 关键字段：
-  - `seq`：全局自增，所有 session 共享；store 启动时从已有文件恢复最大值。
+  - `seq`：全局自增，所有 session 共享。
   - `turn`：用户可见交互轮次；纯文本 prompt 进入新 turn，tool_result-only 请求保持当前 turn。
-  - `tool_use_id`：关联 `tool_use` 与 `tool_result`；store 维护 `pendingToolUse` 映射。
+  - `tool_use_id`：关联 `tool_use` 与 `tool_result`。
 - `hookserver` 暴露 REST/SSE；前端消费地址为 `http://localhost:<hookPort>/api/sessions/{id}/calls?workDir=...`。
 - 代理启动失败**不阻塞 PTY**：打日志后继续启动 Claude，只是无网关数据。
 
@@ -125,7 +125,8 @@ npm run dist:linux
 - `src/main/channels/channel.ts` 定义 `OutputChannel` 接口与 `ProxyStageEvent`。
 - `src/main/channels/registry.ts` 的 `ChannelDispatcher` 注册多个 channel，逐个 dispatch 并隔离错误。
 - `src/main/channels/sse-channel.ts`：向订阅了 session 的 Express Response 写 `text/event-stream`。
-- `src/main/channels/wecom-channel.ts`：动态加载 `@wecom/wecom-openclaw-plugin`，将阶段数据发送到企业微信。
+- `src/main/channels/wecom-channel.ts`：动态加载 `@wecom/wecom-openclaw-plugin`，将阶段数据发送到企业微信；`tool_use` 消息展示命令/file_path 详情。
+- `src/main/channels/localfile-channel.ts`：将阶段事件写入本地 JSONL/JSON 文件，过滤流式 text/thinking 碎片。
 
 ---
 
@@ -140,10 +141,10 @@ npm run dist:linux
 
 ## 重要不变量（改之前必须确认）
 
-- 绝不自己生成 session ID；Claude 通过 `SessionStart` hook 返回 UUID。
+- 新建 session 用 `randomUUID()` 预生成 UUID + `--session-id`；不再依赖 SessionStart hook。
 - jsonl 已存在的 sid 用 `--resume`；全新 sid 用 `--session-id`。
 - 向 PTY 发送用户消息必须以回车结尾；`session.send` 会自动补，但 `writeTerminalInput` 不会。
-- 启动 PTY 前必须先确保对应 session 的 `APIProxy` 已启动并把 `ANTHROPIC_BASE_URL` 注入 env；`ModeAuto` 用临时 token，等真实 UUID 后再迁移。
+- 启动 PTY 前必须先确保对应 session 的 `APIProxy` 已启动并把 `ANTHROPIC_BASE_URL` 注入 env；代理直接使用预生成的 UUID，不需要迁移。
 - `ProxyStore` 是全局单例，所有 proxy 共享；不要为同一个 session 创建多个 proxy。
 - 网关数据是 PTY+xterm.js 的**补充**，不替代终端渲染；前端消费失败不能影响 Claude 正常运行。
 
