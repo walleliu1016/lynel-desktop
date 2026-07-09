@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import http from 'node:http';
 import { SSEChannel } from './channels/sse-channel.js';
+import { getLogger } from './log.js';
 
 export interface HookEvent {
   hook_event_name?: string;
@@ -48,13 +49,17 @@ export class HookServer {
 
   start(): Promise<number> {
     return new Promise((resolve, reject) => {
-      const server = this.app.listen(0, '127.0.0.1', () => {
+      const server = this.app.listen(17527, '127.0.0.1', () => {
         const addr = server.address();
         this.port = typeof addr === 'object' && addr ? addr.port : 0;
+        getLogger().info(`[hookserver] listening on http://127.0.0.1:${this.port}/hook`);
         resolve(this.port);
       });
       this.server = server;
-      server.once('error', reject);
+      server.once('error', (err) => {
+        getLogger().error(`[hookserver] failed to start: ${err.message}`);
+        reject(err);
+      });
     });
   }
 

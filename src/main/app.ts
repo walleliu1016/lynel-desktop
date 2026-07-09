@@ -33,25 +33,91 @@ function resolveAnthropicBaseUrl(): string {
       }
     } catch {}
   }
+  getLogger().warn(`[app] no ANTHROPIC_BASE_URL found in settings, using default: ${DEFAULT_ANTHROPIC_BASE_URL}`);
   return DEFAULT_ANTHROPIC_BASE_URL;
 }
 
 function createSettingsOverrideFile(proxyUrl: string): { args: string[]; cleanup: () => void } {
   const settings = JSON.stringify({ env: { ANTHROPIC_BASE_URL: proxyUrl } }, null, 2);
   const tmpDir = path.join(os.tmpdir(), 'ease-ui');
-  fs.mkdirSync(tmpDir, { recursive: true });
-  const tmpFile = path.join(tmpDir, `claude-settings-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
-  fs.writeFileSync(tmpFile, settings, 'utf8');
-  getLogger().info(`[app] created settings override: ${tmpFile}`);
-  return {
-    args: ['--settings', tmpFile],
-    cleanup: () => {
-      try {
-        fs.unlinkSync(tmpFile);
-        getLogger().info(`[app] removed settings override: ${tmpFile}`);
-      } catch {}
-    },
-  };
+  try {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const tmpFile = path.join(tmpDir, `claude-settings-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+    fs.writeFileSync(tmpFile, settings, 'utf8');
+    getLogger().info(`[app] created settings override: ${tmpFile}`);
+    return {
+      args: ['--settings', tmpFile],
+      cleanup: () => {
+        try {
+          fs.unlinkSync(tmpFile);
+          getLogger().info(`[app] removed settings override: ${tmpFile}`);
+        } catch {}
+      },
+    };
+  } catch (err: any) {
+    getLogger().error(`[app] failed to create settings override: ${err.message}`);
+    return { args: [], cleanup: () => {} };
+  }
+}
+
+function sessionStartScriptUnix(hookURL: string): string {
+  return `#!/bin/bash
+# Ease UI SessionStart hook
+INPUT=$(cat)
+curl -s -X POST ${hookURL} \\
+  -H "Content-Type: application/json" \\
+  -d "$INPUT" \\
+  > /dev/null 2>&1
+`;
+}
+
+function sessionStartScriptWin(hookURL: string): string {
+  return `<#
+.SYNOPSIS
+    Ease UI SessionStart hook
+.DESCRIPTION
+    Forwards session start event to Ease UI HTTP server with user account header
+#>
+
+$headers = @{
+    "Content-Type" = "application/json"
+    "X-UM-ACCOUNT" = "$env:USERNAME"
+}
+
+$jsonInput = $null
+try {
+    $jsonInput = [System.Console]::In.ReadToEnd()
+} catch {
+}
+if (-not $jsonInput) {
+    $jsonInput = '{"hook_event_name":"SessionStart"}'
+}
+
+try {
+    Invoke-RestMethod -Uri "${hookURL}" -Method POST -Headers $headers -Body $jsonInput -ErrorAction SilentlyContinue | Out-Null
+} catch {
+}
+`;
+}
+
+function ensureSessionStartScript(hookURL: string): string | null {
+  const easeDir = path.join(os.homedir(), '.ease-app');
+  try {
+    fs.mkdirSync(easeDir, { recursive: true });
+    if (process.platform === 'win32') {
+      const scriptPath = path.join(easeDir, 'session-start.ps1');
+      fs.writeFileSync(scriptPath, sessionStartScriptWin(hookURL), 'utf8');
+      getLogger().info(`[app] SessionStart script created: ${scriptPath}`);
+      return 'powershell -NoProfile -ExecutionPolicy Bypass -Command . $HOME/.ease-app/session-start.ps1';
+    }
+    const scriptPath = path.join(easeDir, 'session-start.sh');
+    fs.writeFileSync(scriptPath, sessionStartScriptUnix(hookURL), { mode: 0o755 });
+    getLogger().info(`[app] SessionStart script created: ${scriptPath}`);
+    return '~/.ease-app/session-start.sh';
+  } catch (err: any) {
+    getLogger().error(`[app] failed to create SessionStart script: ${err.message}`);
+    return null;
+  }
 }
 
 export class App {
@@ -74,11 +140,13 @@ export class App {
   private registerPending(): Promise<string> {
     return new Promise((resolve, reject) => {
       if (this.pendingSession) {
+        getLogger().warn('[app] replacing stale pending session registration');
         this.pendingSession.reject(new Error('new session creation started'));
         clearTimeout(this.pendingSession.timer);
       }
       const timer = setTimeout(() => {
         this.pendingSession = null;
+        getLogger().error('[app] SessionStart timeout: no hook response in 15s');
         reject(new Error('session start timeout (15s)'));
       }, 15000);
       this.pendingSession = { resolve, reject, timer };
@@ -87,9 +155,13 @@ export class App {
 
   private deliverSessionID(realId: string): void {
     const pending = this.pendingSession;
-    if (!pending) return;
+    if (!pending) {
+      getLogger().warn(`[app] received SessionStart id=${realId} but no pending registration`);
+      return;
+    }
     clearTimeout(pending.timer);
     this.pendingSession = null;
+    getLogger().info(`[app] SessionStart delivered: id=${realId}`);
     pending.resolve(realId);
   }
 
@@ -118,6 +190,7 @@ export class App {
     this.settingsStore.set('lockout.attempts', attempts);
     if (attempts >= 5) {
       this.settingsStore.set('lockout.until', Date.now() + 5 * 60 * 1000);
+      getLogger().warn('[app] lockout triggered: 5 failed attempts');
     }
   }
 
@@ -152,7 +225,94 @@ export class App {
         return { ok: false, error: err.message };
       }
     });
-    await this.hookServer.start();
+    try {
+      await this.hookServer.start();
+      getLogger().info(`[app] hook server started on port ${this.hookServer.getPort()}`);
+    } catch (err: any) {
+      getLogger().error(`[app] hook server failed to start: ${err.message}`);
+      return;
+    }
+    this.checkAndFixHooks();
+  }
+
+  private checkAndFixHooks(): boolean {
+    const port = this.hookServer?.getPort() ?? 0;
+    if (port === 0) {
+      getLogger().error('[app] hook server not running, skip hook fix');
+      return false;
+    }
+
+    const hookURL = `http://127.0.0.1:${port}/hook`;
+    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+
+    let data: Record<string, any> = {};
+    try {
+      const raw = fs.readFileSync(settingsPath, 'utf8');
+      if (raw.trim()) data = JSON.parse(raw);
+    } catch (err: any) {
+      if (err.code !== 'ENOENT') {
+        getLogger().error(`[app] read settings.json failed: ${err.message}`);
+        return false;
+      }
+    }
+
+    const scriptCommand = ensureSessionStartScript(hookURL);
+    if (!scriptCommand) {
+      getLogger().warn('[app] SessionStart script unavailable, hooks config will not include SessionStart');
+    }
+
+    const hookTypes: Record<string, number> = {
+      Notification: 120,
+      PermissionRequest: 300,
+      PreToolUse: 5,
+      PostToolUse: 5,
+      PostToolUseFailure: 5,
+      PostCompact: 5,
+      PreCompact: 5,
+      SessionEnd: 5,
+      Stop: 5,
+      SubagentStart: 5,
+      SubagentStop: 5,
+      UserPromptSubmit: 5,
+    };
+
+    const hooksObj: Record<string, any> = {};
+    for (const [name, timeout] of Object.entries(hookTypes)) {
+      hooksObj[name] = [{ hooks: [{ type: 'http', url: hookURL, timeout }] }];
+    }
+
+    if (scriptCommand) {
+      hooksObj['SessionStart'] = [
+        { matcher: '', hooks: [{ type: 'command', command: scriptCommand, timeout: 5 }] },
+      ];
+    }
+
+    // 检查是否已正确配置，避免重复写入
+    if (data.hooks && JSON.stringify(data.hooks) === JSON.stringify(hooksObj)) {
+      getLogger().info('[app] hooks already configured correctly, skip');
+      return true;
+    }
+
+    getLogger().info('[app] hooks config outdated or missing, fixing...');
+    if (fs.existsSync(settingsPath)) {
+      try {
+        fs.copyFileSync(settingsPath, settingsPath + '.lynel-desktop.bak');
+      } catch (err: any) {
+        getLogger().warn(`[app] backup settings.json failed: ${err.message}`);
+      }
+    }
+
+    data.hooks = hooksObj;
+
+    try {
+      fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+      fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2), 'utf8');
+      getLogger().info(`[app] hooks configured for ${hookURL}`);
+      return true;
+    } catch (err: any) {
+      getLogger().error(`[app] write settings.json failed: ${err.message}`);
+      return false;
+    }
   }
 
   private watchJsonl(): void {
@@ -174,6 +334,7 @@ export class App {
         this.clearLockout();
       } else {
         this.recordFailedAttempt();
+        getLogger().warn('[app] password verification failed');
       }
       return ok;
     });
@@ -224,11 +385,10 @@ export class App {
       } catch (err: any) {
         proc.kill();
         session.remove(tmpId);
-        getLogger().error(`createSession timeout for ${workDir}: ${err?.message ?? err}`);
+        getLogger().error(`[app:createSession] timeout waiting for SessionStart, workDir=${workDir}: ${err?.message ?? err}`);
         throw new Error('Claude 未在 15 秒内返回会话 ID，请检查 SessionStart hook 配置');
       }
       proxy.setSessionID(realId);
-      // migrate tmp session to real id
       session.remove(tmpId);
       const realSession = session.newSession(realId, workDir);
       realSession.process = proc;
@@ -237,15 +397,22 @@ export class App {
       this.instanceStore.set(`sessions.${realId}.state`, 'running');
       this.wirePty(realId, proc);
 
+      getLogger().info(`[app:createSession] session created id=${realId} workDir=${workDir}`);
       if (prompt) session.send(realId, prompt);
       return realId;
     });
 
     ipcMain.handle('app:sendMessage', (_event, id: string, prompt: string) => {
-      session.send(id, prompt);
+      try {
+        session.send(id, prompt);
+      } catch (err: any) {
+        getLogger().error(`[app:sendMessage] failed for sid=${id}: ${err.message}`);
+        throw err;
+      }
     });
 
     ipcMain.handle('app:closeSession', (_event, id: string) => {
+      getLogger().info(`[app:closeSession] closing sid=${id}`);
       session.close(id);
     });
 
@@ -280,6 +447,7 @@ export class App {
     ipcMain.handle('app:adoptSession', (_event, id: string, workDir: string) => {
       if (!session.lookup(id)) {
         session.register(session.newSession(id, workDir));
+        getLogger().info(`[app:adoptSession] adopted sid=${id} workDir=${workDir}`);
       }
     });
 
@@ -323,10 +491,7 @@ export class App {
       return true;
     });
 
-    ipcMain.handle('app:checkAndFixHooks', () => {
-      // TODO: 校验并修复 ~/.claude/settings.json 中的 hook URL
-      return true;
-    });
+    ipcMain.handle('app:checkAndFixHooks', () => this.checkAndFixHooks());
 
     // Window controls
     ipcMain.on('window:minimise', () => this.window?.minimize());
@@ -359,6 +524,7 @@ export class App {
     const onExit = (code: number) => {
       if (exited) return;
       exited = true;
+      getLogger().info(`[app:wirePty] pty exited sid=${id} code=${code}`);
       getBus().emit(`session:${id}`, JSON.stringify({ type: 'done' }));
       this.instanceStore.set(`sessions.${id}.state`, 'done');
       const s = session.lookup(id);
@@ -379,7 +545,10 @@ export class App {
   private openTerminal(id: string, workDir: string, size: PtySize = { cols: 80, rows: 24 }): void {
     if (!session.lookup(id)) session.register(session.newSession(id, workDir));
     const s = session.lookup(id)!;
-    if (s.process) return;
+    if (s.process) {
+      getLogger().info(`[app:openSessionTerminal] pty already running for sid=${id}`);
+      return;
+    }
     const token = newCallID();
     const upstream = resolveAnthropicBaseUrl();
     startProxy(workDir, token, this.dispatcher, upstream).then((proxy) => {
@@ -388,13 +557,20 @@ export class App {
       const env = { ANTHROPIC_BASE_URL: proxyUrl };
       const { args: extraArgs, cleanup: settingsCleanup } = createSettingsOverrideFile(proxyUrl);
       getLogger().info(`[app:openSessionTerminal] proxyUrl=${proxyUrl} upstream=${upstream} sid=${id}`);
-      const proc = startPty(workDir, id, 'claude', PtyMode.Resume, env, size, extraArgs);
-      proc.onExit(settingsCleanup);
-      session.setProcess(id, proc);
-      this.instanceStore.set(`sessions.${id}.state`, 'running');
-      this.wirePty(id, proc);
+      try {
+        const proc = startPty(workDir, id, 'claude', PtyMode.Resume, env, size, extraArgs);
+        proc.onExit(settingsCleanup);
+        session.setProcess(id, proc);
+        this.instanceStore.set(`sessions.${id}.state`, 'running');
+        this.wirePty(id, proc);
+      } catch (err: any) {
+        getLogger().error(`[app:openSessionTerminal] startPty failed for sid=${id}: ${err.message}`);
+        getBus().emit(`session:${id}`, `\r\n启动终端失败：${err.message}\r\n`);
+        this.instanceStore.set(`sessions.${id}.state`, 'done');
+        settingsCleanup();
+      }
     }).catch((err: any) => {
-      getLogger().error(`openTerminal failed for ${id}: ${err?.message ?? err}`);
+      getLogger().error(`[app:openSessionTerminal] proxy failed for sid=${id}: ${err?.message ?? err}`);
       getBus().emit(`session:${id}`, `\r\n启动终端失败：${err?.message ?? err}\r\n`);
       this.instanceStore.set(`sessions.${id}.state`, 'done');
     });
