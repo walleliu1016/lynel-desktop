@@ -196,10 +196,23 @@ export function startProxy(
           const json = JSON.parse(bodyBuf.toString('utf8'));
           const rawContent = json.messages?.[json.messages.length - 1]?.content;
           const prompt = extractPromptText(rawContent);
+          const entry = resolveProxySession(token);
+          const sid = entry?.sessionId ?? token;
+
+          // 截获 tool_result（携带 tool_use_id 以便关联）
+          if (Array.isArray(rawContent)) {
+            for (const block of rawContent) {
+              if (block?.type === 'tool_result') {
+                emitStage(dispatcher, sid, workDir, 'tool_result', {
+                  tool_use_id: block.tool_use_id,
+                  content: typeof block.content === 'string' ? block.content.slice(0, 500) : '',
+                }, 1);
+              }
+            }
+          }
+
           if (prompt) {
             responseBuffers.delete(token);
-            const entry = resolveProxySession(token);
-            const sid = entry?.sessionId ?? token;
             if (isSystemInjectedPrompt(prompt)) {
               console.log(`[apiproxy] skip system prompt (sid=${sid.slice(0, 8)}...): ${prompt.slice(0, 80)}...`);
             } else if (lastPromptPerSession.get(sid) === prompt) {

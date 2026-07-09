@@ -92,7 +92,9 @@ function defaultConfig(ch: ChannelDef) {
 }
 
 const active = ref('wecom')
-const configs = reactive<Record<string, any>>({})
+const configs = reactive<Record<string, any>>(
+  Object.fromEntries(channels.map((ch) => [ch.id, defaultConfig(ch)]))
+)
 const dirty = ref(false)
 const saving = ref(false)
 

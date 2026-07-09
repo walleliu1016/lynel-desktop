@@ -14,6 +14,7 @@ import { HookServer } from './hookserver.js';
 import { ChannelDispatcher } from './channels/registry.js';
 import { SSEChannel } from './channels/sse-channel.js';
 import { WeComChannel, WeComChannelConfig } from './channels/wecom-channel.js';
+import { LocalFileChannel } from './channels/localfile-channel.js';
 import { startProxy } from './apiproxy.js';
 import { start as startPty, PtyMode, PtySize } from './pty.js';
 
@@ -80,11 +81,13 @@ export class App {
   private dispatcher = new ChannelDispatcher();
   private sseChannel = new SSEChannel();
   private wecomChannel = new WeComChannel({ enabled: false });
+  private localFileChannel = new LocalFileChannel();
   private ptyCleanups = new Map<string, (() => void) | null>();
 
   constructor() {
     this.dispatcher.register(this.sseChannel);
     this.dispatcher.register(this.wecomChannel);
+    this.dispatcher.register(this.localFileChannel);
   }
 
   setWindow(win: BrowserWindow): void {
@@ -117,7 +120,7 @@ export class App {
   }
 
   async init(): Promise<void> {
-    this.applyWeComConfig();
+    this.applyChannelConfigs();
     session.setOnRemove((id) => this.wecomChannel.clearSessionMappings(id));
     this.wecomChannel.setCreateSessionHandler(async () => {
       const projects = await jsonl.scanAll();
@@ -134,9 +137,20 @@ export class App {
     this.registerIpcHandlers();
   }
 
-  private applyWeComConfig(): void {
-    const cfg = this.settingsStore.get('wecom', {}) as WeComChannelConfig;
-    this.wecomChannel.updateConfig(cfg);
+  private applyChannelConfigs(): void {
+    const channels = (this.settingsStore.get('channels', {}) || {}) as Record<string, any>;
+    if (channels.wecom) {
+      this.wecomChannel.updateConfig(channels.wecom);
+    }
+    if (channels.localfile) {
+      this.localFileChannel.updateConfig(channels.localfile);
+    }
+    if (!channels.wecom) {
+      const legacy = this.settingsStore.get('wecom', {}) as WeComChannelConfig;
+      if (legacy?.enabled) {
+        this.wecomChannel.updateConfig(legacy);
+      }
+    }
   }
 
   private async ensureHookServer(): Promise<void> {
@@ -353,6 +367,8 @@ export class App {
       this.settingsStore.set('channels', channels);
       if (id === 'wecom') {
         this.wecomChannel.updateConfig(config);
+      } else if (id === 'localfile') {
+        this.localFileChannel.updateConfig(config);
       }
       getLogger().info(`[app] channel config updated: ${id}`);
     });
