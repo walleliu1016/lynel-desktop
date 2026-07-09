@@ -5,9 +5,10 @@
   "main": "dist-electron/electron/main.js",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:electron\"",
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:electron\" \"npm run dev:app\"",
     "dev:frontend": "cd frontend && vite",
     "dev:electron": "tsc -p tsconfig.electron.json --watch",
+    "dev:app": "wait-on http://localhost:5173 && electron .",
     "build": "npm run build:frontend && npm run build:electron",
     "build:frontend": "cd frontend && npx vue-tsc --noEmit && npx vite build",
     "build:electron": "tsc -p tsconfig.electron.json",

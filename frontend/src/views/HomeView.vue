@@ -27,7 +27,7 @@
             </div>
             <XtermTerminal
               v-for="session in openedTerminals"
-              v-show="session.id === sessions.activeId"
+              :class="{ 'terminal-hidden': session.id !== sessions.activeId }"
               :key="session.id"
               :session-id="session.id"
               :workdir="session.workdir"
@@ -187,4 +187,10 @@ function goSettings() { router.push('/settings') }
 @keyframes spin { to { transform: rotate(360deg); } }
 .empty { flex: 1; display: flex; align-items: center; justify-content: center; }
 .empty-text { color: var(--text-tertiary); font-size: 12px; }
+.terminal-hidden {
+  position: absolute !important;
+  visibility: hidden;
+  pointer-events: none;
+  opacity: 0;
+}
 </style>

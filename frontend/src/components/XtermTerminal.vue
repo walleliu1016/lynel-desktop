@@ -76,7 +76,6 @@ onMounted(async () => {
 async function initializeTerminal() {
   if (term || !terminalEl.value) return
 
-  // 等容器真正在布局中占据空间后再初始化 xterm，避免 0 尺寸导致字符测量异常
   await waitForSize()
 
   term = new Terminal({
@@ -95,7 +94,6 @@ async function initializeTerminal() {
 
   term.open(terminalEl.value)
 
-  // 等 xterm 真正画出可见内容再隐藏 loading，避免 spinner 提前消失后留白
   renderDisposer = term.onRender(() => {
     if (!loading.value) return
     if (bufferHasVisibleContent()) revealTerminal()
@@ -122,7 +120,6 @@ async function initializeTerminal() {
     term?.write(line)
   })
 
-  // 兜底：即使没有任何渲染事件，10s 后也不再卡住 loading
   fallbackTimer = setTimeout(() => revealTerminal(), 10000)
 
   try {
@@ -202,15 +199,20 @@ watch(() => props.visible, (visible) => {
   if (!visible) return
   nextTick(async () => {
     if (!term) {
-      // 之前因 v-show=false 未初始化，现在可见了再初始化
       await initializeTerminal()
       return
     }
-    // 从 v-show=false 切回时，xterm 需要重新 fit 才能正确渲染
+    // 等容器恢复实际尺寸后再 fit，避免 0 尺寸损坏 viewport 滚动状态
+    await waitForSize()
     lastCols = 0
     lastRows = 0
-    fitAndResize()
-    requestAnimationFrame(() => fitAndResize())
+    fitAddon?.fit()
+    if (term && term.cols > 0 && term.rows > 0) {
+      term.refresh(0, term.rows - 1)
+      lastCols = term.cols
+      lastRows = term.rows
+      ResizeTerminal(props.sessionId, term.cols, term.rows).catch(() => {})
+    }
     term?.focus()
   })
 })
@@ -283,7 +285,6 @@ onBeforeUnmount(() => {
 }
 .xterm-container :deep(.xterm-viewport)::-webkit-scrollbar {
   width: 8px;
-  display: block !important;
 }
 .xterm-container :deep(.xterm-viewport)::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
@@ -294,9 +295,5 @@ onBeforeUnmount(() => {
 }
 .xterm-container :deep(.xterm-viewport)::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
-}
-/* 隐藏 xterm.js 叠加滚动条，避免遮挡原生滚动条 */
-.xterm-container :deep(.xterm-scrollable-element > .scrollbar) {
-  display: none !important;
 }
 </style>
