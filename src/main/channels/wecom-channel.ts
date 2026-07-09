@@ -584,6 +584,25 @@ export class WeComChannel implements OutputChannel {
     return `[${project}] ${sessionIdx} #${msgSeq} [sid:${sid}]`;
   }
 
+  private formatToolInput(p: any): string {
+    if (!p?.input || typeof p.input !== 'object') return '';
+    const input = p.input as Record<string, any>;
+    const keys = Object.keys(input);
+    if (keys.length === 0) return '';
+
+    if (input.command) {
+      const cmd = String(input.command);
+      return `\n\`\`\`\n${cmd.length > 300 ? cmd.slice(0, 300) + '...' : cmd}\n\`\`\``;
+    }
+    if (input.file_path || input.path) {
+      return `\n📄 ${input.file_path || input.path}`;
+    }
+    const firstKey = keys[0];
+    const val = typeof input[firstKey] === 'string' ? input[firstKey] : JSON.stringify(input[firstKey]);
+    const short = val.length > 100 ? val.slice(0, 100) + '...' : val;
+    return `\n${firstKey}: ${short}`;
+  }
+
   private formatMessage(event: ProxyStageEvent, msgSeq: number): string {
     const header = this.formatHeader(event, msgSeq);
     const p = event.payload as any;
@@ -591,7 +610,7 @@ export class WeComChannel implements OutputChannel {
       case 'prompt':
         return `${header}\n👤 用户: ${p?.prompt || ''}`;
       case 'tool_use':
-        return `${header}\n🛠️ 调用工具: ${p?.name || 'unknown'}`;
+        return `${header}\n🛠️ 调用工具: ${p?.name || 'unknown'}${this.formatToolInput(p)}`;
       case 'response_complete':
         return `${header}\n🤖 Claude: ${p?.text || ''}`;
       case 'PermissionRequest':

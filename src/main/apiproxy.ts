@@ -62,6 +62,29 @@ function flushResponseBuffer(token: string): ResponseBuffer | undefined {
   return buffer;
 }
 
+const pendingToolInput = new Map<string, { name: string; id: string; inputJson: string; index: number }>();
+
+function flushPendingToolUse(
+  token: string,
+  sid: string,
+  dispatcher: ChannelDispatcher,
+  workDir: string,
+): void {
+  const pending = pendingToolInput.get(token);
+  if (!pending) return;
+  pendingToolInput.delete(token);
+  let input: any = {};
+  if (pending.inputJson) {
+    try { input = JSON.parse(pending.inputJson); } catch { /* partial JSON, ignore */ }
+  }
+  emitStage(dispatcher, sid, workDir, 'tool_use', {
+    type: 'tool_use',
+    id: pending.id,
+    name: pending.name,
+    input,
+  }, 1);
+}
+
 function processSSEData(
   data: string,
   token: string,
@@ -78,7 +101,25 @@ function processSSEData(
       emitStage(dispatcher, sid, workDir, 'text', { text: delta.text }, 1);
     }
     if (parsed.type === 'content_block_start' && parsed.content_block?.type === 'tool_use') {
-      emitStage(dispatcher, sid, workDir, 'tool_use', parsed.content_block, 1);
+      const block = parsed.content_block;
+      pendingToolInput.set(token, {
+        name: block.name || 'unknown',
+        id: block.id || '',
+        inputJson: '',
+        index: parsed.index ?? 0,
+      });
+    }
+    if (parsed.type === 'content_block_delta' && delta?.type === 'input_json_delta' && delta?.partial_json) {
+      const pending = pendingToolInput.get(token);
+      if (pending) {
+        pending.inputJson += delta.partial_json;
+      }
+    }
+    if (parsed.type === 'message_delta' && delta?.stop_reason === 'tool_use') {
+      flushPendingToolUse(token, sid, dispatcher, workDir);
+    }
+    if (parsed.type === 'content_block_stop') {
+      flushPendingToolUse(token, sid, dispatcher, workDir);
     }
   } catch {
     // ignore parse errors

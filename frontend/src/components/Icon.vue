@@ -9,9 +9,11 @@ import {
   ChevronRight,
   Cloud,
   Copy,
+  FileText,
   MessageSquare,
   Minus,
   Plus,
+  Send,
   Settings,
   Square,
   Trash2,
@@ -44,6 +46,8 @@ const icons: Record<string, unknown> = {
   cloud: Cloud,
   bot: Bot,
   'message-square': MessageSquare,
+  send: Send,
+  'file-text': FileText,
 }
 
 const Comp = computed(() => icons[props.name] ?? null)

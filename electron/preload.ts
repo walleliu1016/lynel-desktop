@@ -15,6 +15,8 @@ const api = {
   updateSettings: (cfg: any) => ipcRenderer.invoke('app:updateSettings', cfg),
   getWeComConfig: () => ipcRenderer.invoke('app:getWeComConfig'),
   updateWeComConfig: (cfg: any) => ipcRenderer.invoke('app:updateWeComConfig', cfg),
+  getChannelsConfig: () => ipcRenderer.invoke('app:getChannelsConfig'),
+  updateChannelConfig: (id: string, cfg: any) => ipcRenderer.invoke('app:updateChannelConfig', id, cfg),
   getSessionMessages: (id: string, workDir: string, offset: number, limit: number) =>
     ipcRenderer.invoke('app:getSessionMessages', id, workDir, offset, limit),
   pickDirectory: () => ipcRenderer.invoke('app:pickDirectory'),

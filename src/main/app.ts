@@ -334,6 +334,29 @@ export class App {
       this.wecomChannel.updateConfig(cfg);
     });
 
+    ipcMain.handle('app:getChannelsConfig', () => {
+      const channels = (this.settingsStore.get('channels', {}) || {}) as Record<string, any>;
+      if (!channels.wecom) {
+        const legacy = this.settingsStore.get('wecom', null) as WeComChannelConfig | null;
+        if (legacy) {
+          channels.wecom = { enabled: legacy.enabled, chatId: legacy.chatId || '', botId: legacy.botId || '', secret: legacy.secret || '' };
+          this.settingsStore.set('channels', channels);
+          getLogger().info('[app] migrated legacy wecom config to channels');
+        }
+      }
+      return channels;
+    });
+
+    ipcMain.handle('app:updateChannelConfig', (_event, id: string, config: any) => {
+      const channels = (this.settingsStore.get('channels', {}) || {}) as Record<string, any>;
+      channels[id] = config;
+      this.settingsStore.set('channels', channels);
+      if (id === 'wecom') {
+        this.wecomChannel.updateConfig(config);
+      }
+      getLogger().info(`[app] channel config updated: ${id}`);
+    });
+
     ipcMain.handle('app:getSessionStates', async () => {
       const states: Record<string, string> = {};
       const list = await jsonl.scanAll();
