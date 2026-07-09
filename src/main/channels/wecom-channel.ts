@@ -542,23 +542,30 @@ export class WeComChannel implements OutputChannel {
     }
   }
 
+  private formatHeader(event: ProxyStageEvent): string {
+    const project = path.basename(event.workDir);
+    const sid = event.sessionId.slice(0, 8);
+    return `[${project}] #${event.seq} [sid:${sid}]`;
+  }
+
   private formatMessage(event: ProxyStageEvent): string {
+    const header = this.formatHeader(event);
     const p = event.payload as any;
     switch (event.kind) {
       case 'prompt':
-        return `👤 用户: ${p?.prompt || ''}`;
+        return `${header}\n👤 用户: ${p?.prompt || ''}`;
       case 'tool_use':
-        return `🛠️ 调用工具: ${p?.name || 'unknown'}`;
+        return `${header}\n🛠️ 调用工具: ${p?.name || 'unknown'}`;
       case 'response_complete':
-        return `🤖 Claude: ${p?.text || ''}`;
+        return `${header}\n🤖 Claude: ${p?.text || ''}`;
       case 'PermissionRequest':
-        return `🔒 权限请求: ${p?.tool || 'unknown'}`;
+        return `${header}\n🔒 权限请求: ${p?.tool || 'unknown'}`;
       case 'tool_result':
-        return `🛠️ 工具结果: ${p?.name || 'unknown'}`;
+        return `${header}\n🛠️ 工具结果: ${p?.name || 'unknown'}`;
       case 'error':
-        return `❌ 错误: ${p?.message || 'unknown'}`;
+        return `${header}\n❌ 错误: ${p?.message || 'unknown'}`;
       case 'SessionEnd':
-        return `📌 会话结束 (session ${event.sessionId})`;
+        return `${header}\n📌 会话结束`;
       default:
         return '';
     }
