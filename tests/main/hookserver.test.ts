@@ -66,6 +66,11 @@ describe('hookserver', () => {
       }),
     });
     expect(res.ok).toBe(true);
-    expect(await res.json()).toEqual({ id: 'r1', decision: 'deny' });
+    expect(await res.json()).toEqual({
+      hookSpecificOutput: {
+        hookEventName: 'PermissionRequest',
+        decision: { behavior: 'deny' },
+      },
+    });
   });
 });

@@ -52,6 +52,7 @@
     <PermissionToast
       :tool-name="permissionToastName"
       :session-id="sessions.activeId || ''"
+      :request-id="permissionRequestId"
       @navigate="navigateToSession"
     />
   </div>
@@ -108,6 +109,12 @@ const permissionToastName = computed(() => {
   if (!sessions.activeId) return ''
   const req = sessions.hookPermissions[sessions.activeId]
   return req?.toolName || ''
+})
+
+const permissionRequestId = computed(() => {
+  if (!sessions.activeId) return ''
+  const req = sessions.hookPermissions[sessions.activeId]
+  return req?.requestId || ''
 })
 
 async function selectSession(id: string) {

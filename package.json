@@ -1,6 +1,6 @@
 {
   "name": "lynel-desktop",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "private": true,
   "main": "dist-electron/electron/main.js",
   "type": "module",
@@ -27,18 +27,19 @@
     "electron": "^43.0.0",
     "electron-builder": "^26.15.0",
     "typescript": "^5.3.3",
-    "vitest": "^2.0.0"
+    "vitest": "^2.0.0",
+    "wait-on": "^9.0.10"
   },
   "dependencies": {
     "@wecom/aibot-node-sdk": "^1.0.7",
     "@wecom/wecom-openclaw-plugin": "^20206.7.201",
     "bcryptjs": "^2.4.3",
-    "openclaw": "file:vendor/openclaw-stub",
     "chokidar": "^4.0.0",
     "electron-log": "^5.0.0",
     "electron-store": "^10.0.0",
     "express": "^4.21.0",
     "node-pty": "^1.0.0",
+    "openclaw": "file:vendor/openclaw-stub",
     "undici": "^7.24.6"
   },
   "engines": {
