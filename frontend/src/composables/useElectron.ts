@@ -40,6 +40,12 @@ export const GetProvidersConfig = () => api().getProvidersConfig();
 export const SaveProvidersConfig = (cfg: any) => api().saveProvidersConfig(cfg);
 export const ApplyActiveProvider = () => api().applyActiveProvider();
 
+export const ResolvePermission = (id: string, decision: 'allow' | 'deny', source: string, answers?: Record<string, string | string[]>) => api().resolvePermission(id, decision, source, answers);
+export const IsPermissionPending = (id: string) => api().isPermissionPending(id);
+
+export const SetNotchPassthrough = (passthrough: boolean) => api().setNotchPassthrough(passthrough);
+export const SetNotchSize = (w: number, h: number) => api().setNotchSize(w, h);
+
 export const EventsOn = (channel: string, cb: (...args: any[]) => void) => api().eventsOn(channel, cb);
 
 export const WindowMinimise = () => api().windowMinimise();

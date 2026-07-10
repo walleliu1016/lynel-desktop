@@ -37,6 +37,15 @@ const api = {
   saveProvidersConfig: (cfg: any) => ipcRenderer.invoke('app:saveProvidersConfig', cfg),
   applyActiveProvider: () => ipcRenderer.invoke('app:applyActiveProvider'),
 
+  resolvePermission: (id: string, decision: 'allow' | 'deny', source: string, answers?: Record<string, string | string[]>) =>
+    ipcRenderer.invoke('permission:resolve', id, decision, source, answers),
+  isPermissionPending: (id: string) => ipcRenderer.invoke('permission:isPending', id),
+
+  setNotchPassthrough: (passthrough: boolean) =>
+    ipcRenderer.send('notch:setPassthrough', passthrough),
+  setNotchSize: (w: number, h: number) =>
+    ipcRenderer.send('notch:setSize', w, h),
+
   eventsOn: (channel: string, callback: (...args: any[]) => void) => {
     const handler = (_event: IpcRendererEvent, ...args: any[]) => callback(...args);
     ipcRenderer.on(channel, handler);

@@ -15,6 +15,9 @@ import { ChannelDispatcher } from './channels/registry.js';
 import { SSEChannel } from './channels/sse-channel.js';
 import { WeComChannel, WeComChannelConfig } from './channels/wecom-channel.js';
 import { LocalFileChannel } from './channels/localfile-channel.js';
+import { makeHookEvent, ProxyStageKind } from './channels/channel.js';
+import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
+import { setNotchMousePassthrough, resizeNotchWindow, getNotchWindow } from './notch-window.js';
 import { startProxy } from './apiproxy.js';
 import { start as startPty, PtyMode, PtySize } from './pty.js';
 
@@ -72,6 +75,47 @@ function createSettingsOverrideFile(proxyUrl: string): { args: string[]; cleanup
   }
 }
 
+function mapHookToKind(name: string): ProxyStageKind | null {
+  switch (name) {
+    case 'SessionStart': return 'session_start';
+    case 'SessionEnd': return 'SessionEnd';
+    case 'UserPromptSubmit': return 'prompt';
+    default: return null;
+  }
+}
+
+interface SessionActivity {
+  phase: 'thinking' | 'working' | 'idle' | 'awaiting_permission';
+  tool?: string;
+  toolInput?: string;
+}
+
+function normalizeHookActivity(name: string, evt: any): SessionActivity | null {
+  switch (name) {
+    case 'PreToolUse': {
+      const tool = evt.tool_name || evt.tool || '';
+      const input = extractToolInput(evt.tool_input || evt.input || {});
+      return { phase: 'working', tool, toolInput: input };
+    }
+    case 'PostToolUse':
+      return { phase: 'thinking' };
+    case 'UserPromptSubmit':
+      return { phase: 'thinking' };
+    case 'Stop':
+    case 'SessionEnd':
+      return { phase: 'idle' };
+    case 'Notification':
+      return { phase: 'idle' };
+    default:
+      return null;
+  }
+}
+
+function extractToolInput(input: any): string {
+  if (!input || typeof input !== 'object') return '';
+  return input.command || input.file_path || input.pattern || input.url || input.query || '';
+}
+
 export class App {
   private window: BrowserWindow | null = null;
   private settingsStore = getStore('settings');
@@ -95,8 +139,14 @@ export class App {
     const bus = getBus();
     const originalEmit = bus.emit.bind(bus);
     bus.emit = (event: string | symbol, ...args: any[]) => {
-      if (typeof event === 'string' && !this.window?.isDestroyed()) {
-        this.window?.webContents.send(event, ...args);
+      if (typeof event === 'string') {
+        if (!this.window?.isDestroyed()) {
+          this.window?.webContents.send(event, ...args);
+        }
+        const notch = getNotchWindow();
+        if (notch && !notch.isDestroyed()) {
+          notch.webContents.send(event, ...args);
+        }
       }
       return originalEmit(event, ...args);
     };
@@ -108,6 +158,11 @@ export class App {
   private clearLockout(): void {
     this.settingsStore.set('lockout.attempts', 0);
     this.settingsStore.set('lockout.until', 0);
+  }
+
+  private setSessionState(id: string, state: string): void {
+    this.instanceStore.set(`sessions.${id}.state`, state);
+    getBus().emit('sessions:state:changed', id, state);
   }
 
   private recordFailedAttempt(): void {
@@ -155,11 +210,56 @@ export class App {
 
   private async ensureHookServer(): Promise<void> {
     this.hookServer = new HookServer(this.sseChannel);
+
+    // 通用 hook 事件：EventBus + ChannelDispatcher（部分事件）
     this.hookServer.onEvent((evt) => {
       const sid = evt.session_id ?? '';
       const name = evt.hook_event_name ?? evt.type ?? '';
       getBus().emit(`hook:${sid}`, JSON.stringify(evt));
+
+      // 广播结构化活动事件（供灵动岛等 UI 消费）
+      const activity = normalizeHookActivity(name, evt);
+      if (activity && sid) {
+        getBus().emit('sessions:activity', JSON.stringify({ sessionId: sid, ...activity }));
+      }
+
+      const kind = mapHookToKind(name);
+      if (kind) {
+        const s = session.lookup(sid);
+        const workDir = s?.workDir ?? '';
+        try {
+          this.dispatcher.dispatch(makeHookEvent(kind, sid, workDir, evt));
+        } catch {}
+      }
     });
+
+    // PermissionRequest：走 broker 阻塞等待用户决策
+    this.hookServer.onPermissionRequest(async (evt) => {
+      const sid = evt.session_id ?? '';
+      const request = evt.request || ({} as any);
+      const toolName = evt.tool_name || evt.tool || request.tool_name || 'unknown';
+      const toolInput = evt.tool_input || request.tool_input || request.toolInput || request.input || {};
+
+      const s = session.lookup(sid);
+      const workDir = s?.workDir ?? '';
+      const reqId = String(request.id || randomUUID());
+
+      const req: BrokerPermissionRequest = { id: reqId, sessionId: sid, workDir, toolName, toolInput };
+
+      // 通知主窗口（保持兼容现有 PermissionToast）
+      getBus().emit('permission:request', JSON.stringify(req));
+      getBus().emit(`hook:${sid}`, JSON.stringify(evt));
+
+      // 通知所有通道展示审批 UI
+      try {
+        this.dispatcher.dispatch(makeHookEvent('PermissionRequest', sid, workDir, req));
+      } catch {}
+
+      // 阻塞等待
+      const result = await permissionBroker.wait(req);
+      return { id: reqId, allowed: result.decision === 'allow', answers: result.answers };
+    });
+
     this.hookServer.onSend(async (sid, prompt) => {
       try {
         session.send(sid, prompt);
@@ -168,6 +268,19 @@ export class App {
         return { ok: false, error: err.message };
       }
     });
+
+    // broker resolve/cancel 回调 → 广播到通道同步状态
+    permissionBroker.onResolve((id, decision, source) => {
+      try {
+        this.dispatcher.dispatch(makeHookEvent('PermissionResolved', '', '', { id, decision, source }));
+      } catch {}
+    });
+    permissionBroker.onCancel((id) => {
+      try {
+        this.dispatcher.dispatch(makeHookEvent('PermissionResolved', '', '', { id, decision: 'deny', source: 'timeout' }));
+      } catch {}
+    });
+
     try {
       await this.hookServer.start();
       getLogger().info(`[app] hook server started on port ${this.hookServer.getPort()}`);
@@ -259,7 +372,7 @@ export class App {
     s.process = proc;
     s.state = 'running';
     session.register(s);
-    this.instanceStore.set(`sessions.${realId}.state`, 'running');
+    this.setSessionState(realId, 'running');
     this.wirePty(realId, proc);
     proc.onExit(() => cleanup());
 
@@ -437,6 +550,23 @@ export class App {
 
     ipcMain.handle('app:checkAndFixHooks', () => this.checkAndFixHooks());
 
+    // 权限审批
+    ipcMain.handle('permission:resolve', (_event, id: string, decision: 'allow' | 'deny', source: string, answers?: Record<string, string | string[]>) => {
+      return permissionBroker.resolve(id, decision, source, answers);
+    });
+
+    ipcMain.handle('permission:isPending', (_event, id: string) => {
+      return permissionBroker.isPending(id);
+    });
+
+    // 灵动岛窗口控制
+    ipcMain.on('notch:setPassthrough', (_event, passthrough: boolean) => {
+      setNotchMousePassthrough(passthrough);
+    });
+    ipcMain.on('notch:setSize', (_event, w: number, h: number) => {
+      resizeNotchWindow(w, h);
+    });
+
     // Window controls
     ipcMain.on('window:minimise', () => this.window?.minimize());
     ipcMain.on('window:maximise', () => this.window?.maximize());
@@ -470,7 +600,7 @@ export class App {
       exited = true;
       getLogger().info(`[app:wirePty] pty exited sid=${id} code=${code}`);
       getBus().emit(`session:${id}`, JSON.stringify({ type: 'done' }));
-      this.instanceStore.set(`sessions.${id}.state`, 'done');
+      this.setSessionState(id, 'done');
       const s = session.lookup(id);
       if (s) {
         s.process = null;
@@ -502,17 +632,17 @@ export class App {
         const proc = startPty(workDir, id, 'claude', PtyMode.Resume, {}, size, args);
         session.setProcess(id, proc);
         proc.onExit(() => cleanup());
-        this.instanceStore.set(`sessions.${id}.state`, 'running');
+        this.setSessionState(id, 'running');
         this.wirePty(id, proc);
       } catch (err: any) {
         getLogger().error(`[app:openSessionTerminal] startPty failed for sid=${id}: ${err.message}`);
         getBus().emit(`session:${id}`, `\r\n启动终端失败：${err.message}\r\n`);
-        this.instanceStore.set(`sessions.${id}.state`, 'done');
+        this.setSessionState(id, 'done');
       }
     }).catch((err: any) => {
       getLogger().error(`[app:openSessionTerminal] proxy failed for sid=${id}: ${err?.message ?? err}`);
       getBus().emit(`session:${id}`, `\r\n启动终端失败：${err?.message ?? err}\r\n`);
-      this.instanceStore.set(`sessions.${id}.state`, 'done');
+      this.setSessionState(id, 'done');
     });
   }
 }

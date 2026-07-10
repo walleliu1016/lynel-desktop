@@ -9,11 +9,13 @@ export interface HookEvent {
   session_id?: string;
   request?: any;
   tool?: string;
+  tool_name?: string;
+  tool_input?: any;
 }
 
 export type SendHandler = (sessionId: string, prompt: string) => Promise<{ ok: boolean; error?: string }>;
 export type EventHandler = (evt: HookEvent) => void;
-export type PermissionHandler = (evt: HookEvent) => Promise<{ id: string; allowed: boolean }>;
+export type PermissionHandler = (evt: HookEvent) => Promise<{ id: string; allowed: boolean; answers?: Record<string, string | string[]> }>;
 
 export class HookServer {
   private app = express();
@@ -88,8 +90,46 @@ export class HookServer {
     if (sid) this.lastSeenMap.set(sid, Date.now());
 
     if (name === 'PermissionRequest' && this.onPermissionHandler) {
+      const log = getLogger().scope('hookserver');
+      req.on('close', () => {
+        log.info(`[PermissionRequest] client closed connection before response (sid=${sid.slice(0, 8)})`);
+      });
       this.onPermissionHandler(evt).then((result) => {
-        res.json({ id: result.id, decision: result.allowed ? 'allow' : 'deny' });
+        try {
+          const allowed = result.allowed;
+          const isAsk = evt.tool_name === 'AskUserQuestion';
+          const decision: any = { behavior: allowed ? 'allow' : 'deny' };
+          if (isAsk && allowed && result.answers) {
+            const toolInput = evt.tool_input || {};
+            const originalQuestions = (toolInput as any).questions;
+            const input: any = {};
+            if (originalQuestions) input.questions = originalQuestions;
+            input.answers = result.answers;
+            decision.updatedInput = input;
+          }
+          res.json({
+            hookSpecificOutput: {
+              hookEventName: 'PermissionRequest',
+              decision,
+            },
+          });
+          log.info(`[PermissionRequest] responded ${allowed ? 'allow' : 'deny'}${isAsk ? ' (AskUserQuestion)' : ''} (sid=${sid.slice(0, 8)})`);
+        } catch {
+          log.info(`[PermissionRequest] response failed, client already disconnected (sid=${sid.slice(0, 8)})`);
+        }
+      }).catch((err) => {
+        log.error(`[PermissionRequest] handler error (sid=${sid.slice(0, 8)}): ${err?.message || err}`);
+        try {
+          res.json({
+            hookSpecificOutput: {
+              hookEventName: 'PermissionRequest',
+              decision: {
+                behavior: 'deny',
+                message: 'handler error',
+              },
+            },
+          });
+        } catch {}
       });
       return;
     }

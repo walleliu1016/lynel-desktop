@@ -2,6 +2,7 @@ import { app, BrowserWindow, Tray, Menu, nativeImage } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { App } from '../src/main/app.js';
+import { createNotchWindow } from '../src/main/notch-window.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -107,6 +108,10 @@ if (!gotTheLock) {
     } catch (err) {
       console.error('[main] app init failed:', err);
     }
+
+    // 创建灵动岛浮动窗口
+    const devUrl = mainWindow?.webContents.getURL() || 'http://localhost:5173/';
+    createNotchWindow(isDev, devUrl, path.join(__dirname, 'preload.js'));
   });
 
   app.on('before-quit', () => {
