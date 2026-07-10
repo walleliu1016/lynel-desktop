@@ -215,12 +215,21 @@ export class App {
     this.hookServer.onEvent((evt) => {
       const sid = evt.session_id ?? '';
       const name = evt.hook_event_name ?? evt.type ?? '';
+      const toolName = evt.tool_name || (evt as any).tool || '';
       getBus().emit(`hook:${sid}`, JSON.stringify(evt));
 
       // 广播结构化活动事件（供灵动岛等 UI 消费）
       const activity = normalizeHookActivity(name, evt);
       if (activity && sid) {
         getBus().emit('sessions:activity', JSON.stringify({ sessionId: sid, ...activity }));
+      }
+
+      // PostToolUse / PostToolUseFailure：如果 broker 仍有该 session+tool 的待处理条目，
+      // 说明用户在终端自行解决了权限 → 取消 broker 条目并通知 UI 关闭
+      if ((name === 'PostToolUse' || name === 'PostToolUseFailure') && sid && toolName) {
+        if (permissionBroker.cancelBySessionTool(sid, toolName)) {
+          getBus().emit('permission:cancelled', JSON.stringify({ sessionId: sid, toolName }));
+        }
       }
 
       const kind = mapHookToKind(name);

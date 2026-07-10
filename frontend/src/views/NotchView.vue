@@ -319,6 +319,21 @@ onMounted(() => {
       fetchSessions()
     } catch {}
   }))
+
+  // 用户在终端自行解决权限时，broker 取消 → 关闭权限 UI
+  cleanups.push(EventsOn('permission:cancelled', (payload: string) => {
+    try {
+      const data = JSON.parse(payload)
+      if (pendingReq.value && pendingReq.value.sessionId === data.sessionId) {
+        resetAsk()
+        collapseTimer = window.setTimeout(() => {
+          expanded.value = false
+          SetNotchSize(PILL_W, PILL_H)
+          collapseTimer = null
+        }, 300)
+      }
+    } catch {}
+  }))
 })
 
 onBeforeUnmount(() => {
