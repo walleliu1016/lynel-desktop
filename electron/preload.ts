@@ -1,14 +1,15 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
 const api = {
+  getAppInfo: () => ipcRenderer.invoke('app:getAppInfo'),
   isInitialized: () => ipcRenderer.invoke('app:isInitialized'),
   verify: (pw: string) => ipcRenderer.invoke('app:verify', pw),
   lockoutState: () => ipcRenderer.invoke('app:lockoutState'),
   setPassword: (pw: string) => ipcRenderer.invoke('app:setPassword', pw),
   clearPassword: () => ipcRenderer.invoke('app:clearPassword'),
   listSessions: () => ipcRenderer.invoke('app:listSessions'),
-  createSession: (workDir: string, prompt: string) =>
-    ipcRenderer.invoke('app:createSession', workDir, prompt),
+  createSession: (workDir: string, prompt: string, extraArgs: string[] = []) =>
+    ipcRenderer.invoke('app:createSession', workDir, prompt, extraArgs),
   sendMessage: (id: string, prompt: string) => ipcRenderer.invoke('app:sendMessage', id, prompt),
   closeSession: (id: string) => ipcRenderer.invoke('app:closeSession', id),
   getSettings: () => ipcRenderer.invoke('app:getSettings'),
@@ -36,6 +37,8 @@ const api = {
   getProvidersConfig: () => ipcRenderer.invoke('app:getProvidersConfig'),
   saveProvidersConfig: (cfg: any) => ipcRenderer.invoke('app:saveProvidersConfig', cfg),
   applyActiveProvider: () => ipcRenderer.invoke('app:applyActiveProvider'),
+  testProviderConnection: (baseUrl: string, authToken: string) =>
+    ipcRenderer.invoke('app:testProviderConnection', baseUrl, authToken),
 
   resolvePermission: (id: string, decision: 'allow' | 'deny', source: string, answers?: Record<string, string | string[]>) =>
     ipcRenderer.invoke('permission:resolve', id, decision, source, answers),

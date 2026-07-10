@@ -13,6 +13,13 @@
       <div class="spinner" />
       <div class="loading-text">正在启动 Claude 会话…</div>
     </div>
+    <div
+      v-if="exited"
+      class="terminal-exited"
+    >
+      <div class="exited-text">Claude 进程已退出</div>
+      <button class="exited-btn" @click="reconnect">重新进入</button>
+    </div>
   </div>
 </template>
 
@@ -52,6 +59,7 @@ const emit = defineEmits<{
 
 const terminalEl = ref<HTMLElement | null>(null)
 const loading = ref(true)
+const exited = ref(false)
 
 let term: Terminal | null = null
 let fitAddon: FitAddon | null = null
@@ -66,6 +74,26 @@ let lastRows = 0
 
 function focusTerminal() {
   term?.focus()
+}
+
+async function reconnect() {
+  if (!terminalEl.value || !props.visible) return
+  cleanupEvents?.()
+  resizeObserver?.disconnect()
+  renderDisposer?.dispose()
+  term?.dispose()
+  term = null
+  fitAddon = null
+  cleanupEvents = null
+  resizeObserver = null
+  renderDisposer = null
+  lastCols = 0
+  lastRows = 0
+  exited.value = false
+  loading.value = true
+  if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null }
+  if (resizeTimer) { clearTimeout(resizeTimer); resizeTimer = null }
+  await initializeTerminal()
 }
 
 onMounted(async () => {
@@ -116,7 +144,11 @@ async function initializeTerminal() {
 
   const topic = `session:${props.sessionId}`
   cleanupEvents = EventsOn(topic, (line: string) => {
-    if (line === '{"type":"done"}') return
+    if (line === '{"type":"done"}') {
+      loading.value = false
+      exited.value = true
+      return
+    }
     term?.write(line)
   })
 
@@ -274,6 +306,35 @@ onBeforeUnmount(() => {
 .loading-text {
   font-size: 12px;
 }
+
+.terminal-exited {
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text-secondary);
+  background: var(--bg-terminal-loading);
+}
+
+.exited-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.exited-btn {
+  padding: 8px 24px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  cursor: pointer;
+}
+.exited-btn:hover { background: var(--accent-deep); }
 
 @keyframes spin {
   to { transform: rotate(360deg); }

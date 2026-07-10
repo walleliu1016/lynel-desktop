@@ -11,13 +11,14 @@ function api(): ElectronAPI {
   return window.electronAPI;
 }
 
+export const GetAppInfo = () => api().getAppInfo();
 export const IsInitialized = () => api().isInitialized();
 export const Verify = (pw: string) => api().verify(pw);
 export const LockoutState = () => api().lockoutState();
 export const SetPassword = (pw: string) => api().setPassword(pw);
 export const ClearPassword = () => api().clearPassword();
 export const ListSessions = () => api().listSessions();
-export const CreateSession = (workDir: string, prompt: string) => api().createSession(workDir, prompt);
+export const CreateSession = (workDir: string, prompt: string, extraArgs: string[] = []) => api().createSession(workDir, prompt, extraArgs);
 export const SendMessage = (id: string, prompt: string) => api().sendMessage(id, prompt);
 export const CloseSession = (id: string) => api().closeSession(id);
 export const GetSettings = () => api().getSettings();
@@ -39,6 +40,7 @@ export const ResizeTerminal = (id: string, cols: number, rows: number) => api().
 export const GetProvidersConfig = () => api().getProvidersConfig();
 export const SaveProvidersConfig = (cfg: any) => api().saveProvidersConfig(cfg);
 export const ApplyActiveProvider = () => api().applyActiveProvider();
+export const TestProviderConnection = (baseUrl: string, authToken: string) => api().testProviderConnection(baseUrl, authToken);
 
 export const ResolvePermission = (id: string, decision: 'allow' | 'deny', source: string, answers?: Record<string, string | string[]>) => api().resolvePermission(id, decision, source, answers);
 export const IsPermissionPending = (id: string) => api().isPermissionPending(id);

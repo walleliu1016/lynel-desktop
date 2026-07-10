@@ -19,6 +19,23 @@
           <label class="form-label">提示词</label>
           <textarea class="form-input area" v-model="prompt" rows="4" placeholder="你想让 Claude 做什么？" :disabled="loading"></textarea>
         </div>
+        <div class="form-group">
+          <label class="form-label">Claude 选项</label>
+          <div class="multi-select" :class="{ open: flagsOpen }">
+            <div class="select-trigger" @click="flagsOpen = !flagsOpen">
+              <span v-if="selectedFlags.length === 0" class="placeholder">无额外参数</span>
+              <span v-else>{{ selectedFlags.join(', ') }}</span>
+              <Icon name="chevron-down" :size="12" class="arrow" :class="{ flip: flagsOpen }" />
+            </div>
+            <div v-if="flagsOpen" class="select-dropdown">
+              <label v-for="f in flagOptions" :key="f.value" class="flag-option" @click.stop>
+                <input type="checkbox" :value="f.value" v-model="selectedFlags" />
+                <span class="flag-label">{{ f.label }}</span>
+                <span class="flag-desc">{{ f.desc }}</span>
+              </label>
+            </div>
+          </div>
+        </div>
         <div class="form-actions">
           <button type="button" class="cancel" :disabled="loading" @click="$emit('close')">取消</button>
           <button type="submit" class="primary" :disabled="!workdir.trim() || !prompt.trim() || loading">
@@ -39,16 +56,25 @@ import { PickDirectory } from '../composables/useElectron'
 const props = defineProps<{ open: boolean; loading?: boolean }>()
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'create', workdir: string, prompt: string): void
+  (e: 'create', workdir: string, prompt: string, extraArgs: string[]): void
 }>()
 
 const workdir = ref('')
 const prompt = ref('')
+const flagsOpen = ref(false)
+const selectedFlags = ref<string[]>([])
+
+const flagOptions = [
+  { value: '--verbose', label: '--verbose', desc: '输出详细的调试信息' },
+  { value: '--debug', label: '--debug', desc: '启用调试模式' },
+]
 
 watch(() => props.open, (isOpen) => {
   if (isOpen) {
     workdir.value = ''
     prompt.value = ''
+    selectedFlags.value = []
+    flagsOpen.value = false
   }
 })
 
@@ -61,7 +87,7 @@ async function onPick() {
 
 function onSubmit() {
   if (!workdir.value.trim() || !prompt.value.trim() || props.loading) return
-  emit('create', workdir.value.trim(), prompt.value.trim())
+  emit('create', workdir.value.trim(), prompt.value.trim(), [...selectedFlags.value])
 }
 </script>
 
@@ -115,4 +141,31 @@ h2 { font-size: 14px; color: var(--text-primary); }
   animation: spin 0.75s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.multi-select { position: relative; user-select: none; }
+.select-trigger {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 7px 10px;
+  font-size: 12px; color: var(--text-primary); cursor: pointer;
+}
+.select-trigger:hover { border-color: var(--accent); }
+.placeholder { color: var(--text-tertiary); }
+.arrow { color: var(--text-tertiary); transition: transform 0.2s; flex-shrink: 0; }
+.arrow.flip { transform: rotate(180deg); }
+.select-dropdown {
+  position: absolute; top: 100%; left: 0; right: 0;
+  margin-top: 2px; background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: var(--radius-md); z-index: 10; padding: 4px;
+  box-shadow: var(--shadow-window);
+}
+.flag-option {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer;
+  font-size: 12px;
+}
+.flag-option:hover { background: var(--bg-input); }
+.flag-option input[type="checkbox"] { accent-color: var(--accent); flex-shrink: 0; }
+.flag-label { color: var(--text-primary); font-family: var(--font-mono); white-space: nowrap; }
+.flag-desc { color: var(--text-tertiary); margin-left: auto; font-size: 11px; }
 </style>

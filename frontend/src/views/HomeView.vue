@@ -69,7 +69,7 @@ import XtermTerminal from '../components/XtermTerminal.vue'
 import NewSessionDialog from '../components/NewSessionDialog.vue'
 import PermissionToast from '../components/PermissionToast.vue'
 import { useSessionsStore } from '../stores/sessions'
-import { WriteTerminalInput } from '../composables/useElectron'
+import { WriteTerminalInput, GetAppInfo } from '../composables/useElectron'
 import { useEventStream } from '../composables/useEventStream'
 
 const router = useRouter()
@@ -78,7 +78,7 @@ useEventStream()
 
 const showNew = ref(false)
 const username = ref('')
-const version = ref('0.1.0')
+const version = ref('')
 type OpenedTerminal = { id: string; workdir: string }
 const openedTerminals = ref<OpenedTerminal[]>([])
 const terminalLoading = ref<Record<string, boolean>>({})
@@ -98,7 +98,9 @@ watch(() => [sessions.activeId, sessions.list.length], () => {
 onMounted(async () => {
   await sessions.refresh()
   try {
-    username.value = await (window as any).go?.app?.App?.OSUsername?.() ?? ''
+    const info = await GetAppInfo()
+    username.value = info.username
+    version.value = info.version
   } catch {}
 })
 
@@ -140,9 +142,9 @@ async function onTerminalData(sessionId: string, data: string) {
   }
 }
 
-async function onCreate(workdir: string, prompt: string) {
+async function onCreate(workdir: string, prompt: string, extraArgs: string[] = []) {
   try {
-    const id = await sessions.create(workdir, prompt)
+    const id = await sessions.create(workdir, prompt, extraArgs)
     terminalLoading.value = { ...terminalLoading.value, [id]: true }
     showNew.value = false
   } catch (e: any) {
