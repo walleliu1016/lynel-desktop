@@ -12,7 +12,7 @@ const PILL_W = 240;
 const PILL_H = 34;
 // 窗口最大尺寸
 const MAX_W = 400;
-const MAX_H = 300;
+const MAX_H = 500;
 
 let notchWin: BrowserWindow | null = null;
 
@@ -95,6 +95,9 @@ export function resizeNotchWindow(w: number, h: number): void {
   const clampedH = Math.min(h, MAX_H);
   notchWin.setSize(clampedW, clampedH);
   positionAtTopCenter(notchWin, clampedW);
+  // 强制 Windows 重新计算鼠标命中区域，避免缩小后旧区域仍拦截点击
+  notchWin.setIgnoreMouseEvents(true, { forward: true });
+  notchWin.setIgnoreMouseEvents(false);
   logger.info('[notch-window] resize %dx%d', clampedW, clampedH);
 }
 

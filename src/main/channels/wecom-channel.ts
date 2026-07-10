@@ -246,8 +246,10 @@ export class WeComChannel implements OutputChannel {
       },
     };
 
-    logger.info('[wecom-channel] sending to WeCom...');
-    const result = await plugin.outbound.sendText({
+    // 优先使用 sendMarkdown（支持富文本），回退到 sendText
+    const sendFn = plugin.outbound.sendMarkdown || plugin.outbound.sendText;
+    logger.info(`[wecom-channel] sending to WeCom via ${plugin.outbound.sendMarkdown ? 'sendMarkdown' : 'sendText'}...`);
+    const result = await sendFn({
       to: this.cfg.chatId,
       text: content,
       accountId: 'default',
@@ -493,13 +495,18 @@ export class WeComChannel implements OutputChannel {
       case '#deny': {
         const isAllow = cmd === '#allow';
         if (!arg) {
-          await this.sendWeComReply(chatId, `用法：${cmd} <requestId 前8位>`);
+          await this.sendWeComReply(chatId, `用法：${cmd} <序号>`);
           return;
         }
-        // 尝试完整或部分匹配
-        const ok = permissionBroker.resolve(arg, isAllow ? 'allow' : 'deny', 'wecom');
+        // 尝试数字序号匹配，再尝试 UUID 匹配
+        const seq = parseInt(arg, 10);
+        let ok: boolean;
+        if (!isNaN(seq) && seq > 0) {
+          ok = permissionBroker.resolveBySeq(seq, isAllow ? 'allow' : 'deny', 'wecom');
+        } else {
+          ok = permissionBroker.resolve(arg, isAllow ? 'allow' : 'deny', 'wecom');
+        }
         if (!ok) {
-          // 尝试完整 ID 匹配（requestId 通常更长）
           await this.sendWeComReply(chatId, `权限请求 ${arg} 不存在或已被处理。`);
         } else {
           await this.sendWeComReply(chatId, `已${isAllow ? '批准' : '拒绝'}权限请求 ${arg}`);
@@ -626,11 +633,11 @@ export class WeComChannel implements OutputChannel {
     const p = event.payload as any;
     switch (event.kind) {
       case 'prompt':
-        return `${header}\n<font color="info">👤 用户</font>\n${p?.prompt || ''}`;
+        return `${header}\n👤 **用户**\n${p?.prompt || ''}`;
       case 'tool_use':
-        return `${header}\n<font color="warning">🔧 工具调用: ${p?.name || 'unknown'}</font>${this.formatToolInput(p)}`;
+        return `${header}\n🔧 **工具调用: ${p?.name || 'unknown'}**${this.formatToolInput(p)}`;
       case 'response_complete':
-        return `${header}\n<font color="comment">🤖 Claude</font>\n${p?.text || ''}`;
+        return `${header}\n🤖 **Claude**\n${p?.text || ''}`;
       case 'PermissionRequest': {
         const toolName = p?.toolName || 'unknown';
         const input = p?.toolInput;
@@ -640,19 +647,19 @@ export class WeComChannel implements OutputChannel {
         } else if (input?.file_path || input?.path) {
           inputPreview = `\n📄 ${input.file_path || input.path}`;
         }
-        const reqId = p?.id || '';
-        return `${header}\n<font color="warning">🔒 权限请求: ${toolName}</font>${inputPreview}\n回复 #allow ${reqId.slice(0, 8)} 批准，#deny ${reqId.slice(0, 8)} 拒绝`;
+        const reqId = p?.seq || p?.id?.slice(0, 8) || '';
+        return `${header}\n🔒 **权限请求: ${toolName}**${inputPreview}\n回复 #allow ${reqId} 批准，#deny ${reqId} 拒绝`;
       }
       case 'PermissionResolved': {
         const src = p?.source === 'wecom' ? '企业微信' : p?.source === 'notch' ? '桌面端' : '终端';
-        return `${header}\n<font color="comment">✅ 权限已处理: ${p?.decision} (${src})</font>`;
+        return `${header}\n✅ **权限已处理: ${p?.decision}** (${src})`;
       }
       case 'tool_result':
-        return `${header}\n<font color="comment">📋 工具结果: ${p?.name || 'unknown'}</font>`;
+        return `${header}\n📋 **工具结果: ${p?.name || 'unknown'}**`;
       case 'error':
-        return `${header}\n<font color="warning">❌ 错误: ${p?.message || 'unknown'}</font>`;
+        return `${header}\n❌ **错误: ${p?.message || 'unknown'}**`;
       case 'SessionEnd':
-        return `${header}\n<font color="info">📌 会话结束</font>`;
+        return `${header}\n📌 **会话结束**`;
       default:
         return '';
     }

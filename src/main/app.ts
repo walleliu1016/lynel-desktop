@@ -253,15 +253,16 @@ export class App {
       const workDir = s?.workDir ?? '';
       const reqId = String(request.id || randomUUID());
 
+      const seq = permissionBroker.allocateSeq(reqId);
       const req: BrokerPermissionRequest = { id: reqId, sessionId: sid, workDir, toolName, toolInput };
 
       // 通知主窗口（保持兼容现有 PermissionToast）
-      getBus().emit('permission:request', JSON.stringify(req));
+      getBus().emit('permission:request', JSON.stringify({ ...req, seq }));
       getBus().emit(`hook:${sid}`, JSON.stringify(evt));
 
-      // 通知所有通道展示审批 UI
+      // 通知所有通道展示审批 UI（带上预分配的 seq）
       try {
-        this.dispatcher.dispatch(makeHookEvent('PermissionRequest', sid, workDir, req));
+        this.dispatcher.dispatch(makeHookEvent('PermissionRequest', sid, workDir, { ...req, seq }));
       } catch {}
 
       // 阻塞等待
@@ -278,8 +279,10 @@ export class App {
       }
     });
 
-    // broker resolve/cancel 回调 → 广播到通道同步状态
-    permissionBroker.onResolve((id, decision, source) => {
+    // broker resolve/cancel 回调 → 广播到通道 + 通知灵动岛关闭 UI
+    permissionBroker.onResolve((id, decision, source, sessionId, toolName) => {
+      // 通知灵动岛关闭权限 UI
+      getBus().emit('permission:cancelled', JSON.stringify({ sessionId, toolName }));
       try {
         this.dispatcher.dispatch(makeHookEvent('PermissionResolved', '', '', { id, decision, source }));
       } catch {}
