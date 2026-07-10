@@ -253,6 +253,15 @@ export class App {
       const workDir = s?.workDir ?? '';
       const reqId = String(request.id || randomUUID());
 
+      // 自动允许：除 AskUserQuestion 外的工具直接放行
+      if (toolName !== 'AskUserQuestion') {
+        const autoAllowBash = this.settingsStore.get('auto_allow_bash', false) as boolean;
+        if (autoAllowBash) {
+          getLogger().info(`[permission] auto-allowed tool=${toolName} sid=${sid.slice(0, 8)}`);
+          return { id: reqId, allowed: true };
+        }
+      }
+
       const seq = permissionBroker.allocateSeq(reqId);
       const req: BrokerPermissionRequest = { id: reqId, sessionId: sid, workDir, toolName, toolInput };
 
