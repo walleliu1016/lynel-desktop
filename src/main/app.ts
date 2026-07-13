@@ -44,7 +44,7 @@ function resolveAnthropicBaseUrl(): string {
 
 function createSettingsOverrideFile(proxyUrl: string): { args: string[]; cleanup: () => void } {
   const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
-  const tmpDir = path.join(os.tmpdir(), 'ease-ui');
+  const tmpDir = path.join(os.tmpdir(), 'lynel-desktop');
   try {
     // 读取现有 settings.json，在此基础上覆盖 ANTHROPIC_BASE_URL，保留 hooks 等配置
     let data: Record<string, any> = {};

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, toRaw } from 'vue'
 import type { ChannelInstance, ChannelsData } from '../types/channels'
 import { CHANNEL_TYPES, defaultConfigForType } from '../types/channels'
 import { GetChannelsConfig, UpdateChannelConfig } from '../composables/useElectron'
@@ -21,7 +21,10 @@ export const useChannelsStore = defineStore('channels', () => {
 
   async function save(id: string) {
     if (!data.value[id]) return
-    await UpdateChannelConfig(id, { ...data.value[id] })
+    // toRaw + JSON 确保 IPC 传递的是纯对象，避免 Vue reactive Proxy 无法被 structured clone
+    const raw = toRaw(data.value[id])
+    const clone = JSON.parse(JSON.stringify(raw))
+    await UpdateChannelConfig(id, clone)
     dirty.value = false
   }
 

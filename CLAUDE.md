@@ -23,10 +23,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run test:main
 
 # 前端类型检查
-cd frontend && npx vue-tsc --noEmit
+cd src/renderer && npx vue-tsc --noEmit
 
 # 前端单独开发（Vite dev server，5173 端口）
-cd frontend && npm run dev
+cd src/renderer && npm run dev
 # 这种模式下没有 Electron runtime，window.electronAPI 是 undefined，
 # 只适合做纯 UI 调试。IPC 相关的代码要走 npm run dev。
 
@@ -50,8 +50,8 @@ npm run dist:linux
 ## 代码风格
 
 ### TypeScript / Node.js
-- `src/main/` 是 Electron 主进程代码；`electron/` 是入口与窗口/托盘壳；`frontend/src/` 是 Vue 3 前端。
-- `frontend/src/composables/useElectron.ts` 是唯一接触 `window.electronAPI` 的文件；其他文件必须 `import { X } from '../composables/useElectron'`。
+- `src/main/` 是 Electron 主进程全部代码（入口、preload、业务逻辑）；`src/renderer/` 是 Vue 3 前端。
+- `src/renderer/src/composables/useElectron.ts` 是唯一接触 `window.electronAPI` 的文件；其他文件必须 `import { X } from '../composables/useElectron'`。
 - 禁止直接 `window.electronAPI.X(...)`。
 - Pinia 用 setup style；Vue 组件用 `<script setup lang="ts">`；路由用 hash mode。
 - 样式用 `styles/theme.css` 的 CSS 变量，不要硬编码颜色。
@@ -64,9 +64,9 @@ npm run dist:linux
 ## 架构要点（需要读多文件才能理解）
 
 ### 1. Electron IPC
-- `electron/main.ts` 创建 BrowserWindow、Tray、处理单例锁，并实例化 `src/main/app.ts` 的 `App` 类。
-- `electron/preload.ts` 通过 `contextBridge` 暴露 `window.electronAPI`。
-- `frontend/src/composables/useElectron.ts` 是类型化的 IPC 转发层。
+- `src/main/index.ts` 创建 BrowserWindow、Tray、处理单例锁，并实例化 `src/main/app.ts` 的 `App` 类。
+- `src/main/preload.ts` 通过 `contextBridge` 暴露 `window.electronAPI`。
+- `src/renderer/src/composables/useElectron.ts` 是类型化的 IPC 转发层。
 - 所有主进程方法通过 `ipcMain.handle` / `ipcRenderer.invoke` 调用。
 
 ### 2. 主进程结构
@@ -106,7 +106,7 @@ npm run dist:linux
 - 前端 `handleHookEvent` 收到 `SessionStart` 时，只有 `owner.value[sid] !== 'app'` 才标记为 `terminal`，避免覆盖 Lynel Desktop 自己新建的 session。
 
 ### 6. 窗口状态
-- `frontend/src/composables/useWindowState.ts` 是唯一的窗口尺寸/最大化状态管理中心。
+- `src/renderer/src/composables/useWindowState.ts` 是唯一的窗口尺寸/最大化状态管理中心。
 - 禁止在视图组件里直接调用 `BrowserWindow` 尺寸方法；统一通过 `useWindowState.applyLoginLayout()` / `applyHomeLayout()` / `applySettingsLayout()` 切换。
 - 最大化状态通过 `window.resize` 事件同步，不再轮询。
 
@@ -148,7 +148,7 @@ npm run dist:linux
 
 - 一个 task 一个 commit，格式：`<type>: <subject>`。
   type：`feat` / `fix` / `refactor` / `test` / `docs` / `chore` / `ci`。
-- commit 前必须 `npm run test:main` 和 `cd frontend && npx vue-tsc --noEmit` 全绿。
+- commit 前必须 `npm run test:main` 和 `cd src/renderer && npx vue-tsc --noEmit` 全绿。
 - 改 `preload.ts` / `index.html` 的诊断代码时，在 commit message 里标 **临时**。
 
 ---

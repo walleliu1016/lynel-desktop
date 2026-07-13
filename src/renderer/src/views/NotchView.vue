@@ -135,9 +135,10 @@ function onMouseEnter() {
 
 function onMouseLeave() {
   if (!expanded.value) return
-  if (pendingReq.value && !isAsk.value) return
+  // 有待处理权限请求时不自动折叠，避免 IME 输入法选词等场景误触发
+  if (pendingReq.value) return
   collapseTimer = window.setTimeout(() => {
-    if (!pendingReq.value || isAsk.value) {
+    if (!pendingReq.value) {
       expanded.value = false
       SetNotchSize(PILL_W, PILL_H)
     }

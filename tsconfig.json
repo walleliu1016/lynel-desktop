@@ -13,6 +13,6 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": ["electron/**/*", "src/main/**/*"],
-  "exclude": ["node_modules", "frontend", "dist", "dist-electron"]
+  "include": ["src/main/**/*"],
+  "exclude": ["node_modules", "src/renderer", "dist", "dist-electron"]
 }
