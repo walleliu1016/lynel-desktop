@@ -58,7 +58,7 @@ function resolveSessionArg(arg: string): { id: string; workDir: string } | { err
   if (exact) return { id: exact.id, workDir: exact.workDir };
   const matches = all.filter((s) => s.id.startsWith(arg));
   if (matches.length === 0) {
-    return { error: `未找到匹配会话：${arg}，请发送 #list 查看。` };
+    return { error: `未找到匹配会话：${arg}，请发送 /list 查看。` };
   }
   if (matches.length > 1) {
     return { error: `找到 ${matches.length} 个匹配会话，请使用完整 session ID。` };
@@ -347,21 +347,29 @@ export class WeComChannel implements OutputChannel {
       return;
     }
 
-    const text = this.extractInboundText(body);
+    let text = this.extractInboundText(body);
     logger.info(`[wecom-channel] inbound from ${chatId} text=${text}`);
     if (!text) {
       logger.info('[wecom-channel] inbound message has no text content', { msgtype: body.msgtype });
       return;
     }
 
+    // 剥离群聊中 @botname 前缀，确保命令检测不受影响
+    text = text.replace(/^@\S+\s*/, '').trimStart();
+    if (!text) {
+      logger.info('[wecom-channel] inbound message empty after stripping @mention');
+      return;
+    }
+    logger.info(`[wecom-channel] after strip text=${text}`);
+
     // 单条消息指定 session，不修改默认绑定
-    if (text.startsWith('#to ')) {
-      this.handleToCommand(chatId, text).catch((err) => logger.error('[wecom-channel] #to failed:', err));
+    if (text.startsWith('/to ')) {
+      this.handleToCommand(chatId, text).catch((err) => logger.error('[wecom-channel] /to failed:', err));
       return;
     }
 
     // 其他命令消息在企业微信侧处理，不送给 Claude
-    if (text.startsWith('#')) {
+    if (text.startsWith('/')) {
       this.handleCommand(chatId, text).catch((err) => logger.error('[wecom-channel] command failed:', err));
       return;
     }
@@ -372,13 +380,13 @@ export class WeComChannel implements OutputChannel {
     if (mapping) {
       const s = session.lookup(mapping.sessionId);
       if (!s) {
-        this.sendWeComReply(chatId, '绑定的会话已不存在，请发送 #bind 重新绑定。').catch((err) =>
+        this.sendWeComReply(chatId, '绑定的会话已不存在，请发送 /bind 重新绑定。').catch((err) =>
           logger.error('[wecom-channel] failed to send reply:', err),
         );
         return;
       }
       if (s.workDir !== mapping.workDir) {
-        this.sendWeComReply(chatId, '绑定会话的工作目录已变更，请发送 #bind 重新绑定。').catch((err) =>
+        this.sendWeComReply(chatId, '绑定会话的工作目录已变更，请发送 /bind 重新绑定。').catch((err) =>
           logger.error('[wecom-channel] failed to send reply:', err),
         );
         return;
@@ -389,7 +397,7 @@ export class WeComChannel implements OutputChannel {
     }
     if (!sessionId) {
       logger.info('[wecom-channel] no active session for inbound message');
-      this.sendWeComReply(chatId, '当前没有绑定会话，请发送 #list 查看，或 #bind <sessionId> / #bind <序号> 绑定。').catch((err) =>
+      this.sendWeComReply(chatId, '当前没有绑定会话，请发送 /list 查看，或 /bind <sessionId> / /bind <序号> 绑定。').catch((err) =>
         logger.error('[wecom-channel] failed to send reply:', err),
       );
       return;
@@ -436,10 +444,10 @@ export class WeComChannel implements OutputChannel {
     logger.info(`[wecom-channel] handleCommand cmd=${cmd} arg=${arg} chatId=${chatId}`);
 
     switch (cmd) {
-      case '#bind':
-      case '#switch': {
+      case '/bind':
+      case '/switch': {
         if (!arg) {
-          await this.sendWeComReply(chatId, '用法：#bind <sessionId> 或 #bind <序号>，先发送 #list 查看列表。');
+          await this.sendWeComReply(chatId, '用法：/bind <sessionId> 或 /bind <序号>，先发送 /list 查看列表。');
           return;
         }
         const resolved = resolveSessionArg(arg);
@@ -451,16 +459,16 @@ export class WeComChannel implements OutputChannel {
         await this.sendWeComReply(chatId, `已绑定到会话 ${resolved.id.slice(0, 8)}...\n工作目录：${resolved.workDir}`);
         return;
       }
-      case '#unbind':
-      case '#close': {
+      case '/unbind':
+      case '/close': {
         deleteMapping(chatId);
         await this.sendWeComReply(chatId, '已解绑当前聊天与会话的关联。');
         return;
       }
-      case '#status': {
+      case '/status': {
         const mapping = getMapping(chatId);
         if (!mapping) {
-          await this.sendWeComReply(chatId, '当前聊天未绑定会话。发送 #list 查看可用会话，或 #bind <sessionId> 绑定。');
+          await this.sendWeComReply(chatId, '当前聊天未绑定会话。发送 /list 查看可用会话，或 /bind <sessionId> 绑定。');
           return;
         }
         const s = session.lookup(mapping.sessionId);
@@ -471,8 +479,8 @@ export class WeComChannel implements OutputChannel {
         );
         return;
       }
-      case '#create':
-      case '#new': {
+      case '/create':
+      case '/new': {
         if (!this.createSessionCallback) {
           await this.sendWeComReply(chatId, '创建会话功能暂不可用。');
           return;
@@ -491,9 +499,9 @@ export class WeComChannel implements OutputChannel {
         }
         return;
       }
-      case '#allow':
-      case '#deny': {
-        const isAllow = cmd === '#allow';
+      case '/allow':
+      case '/deny': {
+        const isAllow = cmd === '/allow';
         if (!arg) {
           await this.sendWeComReply(chatId, `用法：${cmd} <序号>`);
           return;
@@ -513,7 +521,7 @@ export class WeComChannel implements OutputChannel {
         }
         return;
       }
-      case '#list': {
+      case '/list': {
         const sessions = session.list();
         if (sessions.length === 0) {
           await this.sendWeComReply(chatId, '当前没有可用会话。请先在 Lynel Desktop 中创建或打开一个会话。');
@@ -523,10 +531,27 @@ export class WeComChannel implements OutputChannel {
         await this.sendWeComReply(chatId, '可用会话：\n' + lines.join('\n'));
         return;
       }
+      case '/help': {
+        await this.sendWeComReply(
+          chatId,
+          '可用命令：\n' +
+          '/list - 查看可用会话列表\n' +
+          '/create (/new) - 创建新会话\n' +
+          '/bind <sessionId/序号> - 绑定会话\n' +
+          '/switch <sessionId/序号> - 切换绑定\n' +
+          '/status - 查看当前绑定状态\n' +
+          '/unbind (/close) - 解绑会话\n' +
+          '/to <sessionId/序号> <消息> - 临时发送到指定会话\n' +
+          '/allow <序号> - 批准权限请求\n' +
+          '/deny <序号> - 拒绝权限请求\n' +
+          '/help - 显示此帮助信息',
+        );
+        return;
+      }
       default: {
         await this.sendWeComReply(
           chatId,
-          '未知命令。可用命令：#list、#create、#bind <sessionId/序号>、#switch <sessionId/序号>、#to <sessionId/序号> <消息>、#allow <reqId>、#deny <reqId>、#status、#unbind',
+          '未知命令。发送 /help 查看可用命令。',
         );
         return;
       }
@@ -537,7 +562,7 @@ export class WeComChannel implements OutputChannel {
     const rest = text.slice(3).trim();
     const spaceIdx = rest.search(/\s/);
     if (spaceIdx === -1) {
-      await this.sendWeComReply(chatId, '用法：#to <sessionId/序号> <消息内容>');
+      await this.sendWeComReply(chatId, '用法：/to <sessionId/序号> <消息内容>');
       return;
     }
     const arg = rest.slice(0, spaceIdx);
@@ -559,12 +584,12 @@ export class WeComChannel implements OutputChannel {
       return;
     }
 
-    logger.info(`[wecom-channel] #to from ${chatId}, forward to session ${resolved.id.slice(0, 8)}...`);
+    logger.info(`[wecom-channel] /to from ${chatId}, forward to session ${resolved.id.slice(0, 8)}...`);
     try {
       session.send(resolved.id, message);
       await this.sendWeComReply(chatId, `已临时发送到会话 ${resolved.id.slice(0, 8)}...`);
     } catch (err) {
-      logger.error('[wecom-channel] failed to forward #to message to session:', err);
+      logger.error('[wecom-channel] failed to forward /to message to session:', err);
       await this.sendWeComReply(chatId, `发送失败：${err instanceof Error ? err.message : String(err)}`);
     }
   }
@@ -648,7 +673,7 @@ export class WeComChannel implements OutputChannel {
           inputPreview = `\n📄 ${input.file_path || input.path}`;
         }
         const reqId = p?.seq || p?.id?.slice(0, 8) || '';
-        return `${header}\n🔒 **权限请求: ${toolName}**${inputPreview}\n回复 #allow ${reqId} 批准，#deny ${reqId} 拒绝`;
+        return `${header}\n🔒 **权限请求: ${toolName}**${inputPreview}\n回复 /allow ${reqId} 批准，/deny ${reqId} 拒绝`;
       }
       case 'PermissionResolved': {
         const src = p?.source === 'wecom' ? '企业微信' : p?.source === 'notch' ? '桌面端' : '终端';
