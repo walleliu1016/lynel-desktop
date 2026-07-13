@@ -219,10 +219,10 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
-  async function create(workdir: string, prompt: string) {
+  async function create(workdir: string, prompt: string, extraArgs: string[] = []) {
     creating.value = true
     try {
-      const id = await CreateSession(workdir, prompt)
+      const id = await CreateSession(workdir, prompt, extraArgs)
       adopted.value = { ...adopted.value, [id]: true }
       state.value = { ...state.value, [id]: 'waiting' }
       if (!list.value.find(s => s.id === id)) {

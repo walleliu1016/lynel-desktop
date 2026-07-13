@@ -62,7 +62,7 @@ import TitleBar from '../components/TitleBar.vue'
 import SettingsDialog from '../components/SettingsDialog.vue'
 import Icon from '../components/Icon.vue'
 import { useAuthStore } from '../stores/auth'
-import { WindowCenter } from '../composables/useElectron'
+import { WindowCenter, GetAppInfo } from '../composables/useElectron'
 import { useWindowState } from '../composables/useWindowState'
 
 const router = useRouter()
@@ -73,7 +73,7 @@ const username = ref('')
 const password = ref('')
 const error = ref<string | null>(null)
 const errorField = ref<'username' | 'password' | null>(null)
-const version = ref('0.1.0')
+const version = ref('')
 const showSettings = ref(false)
 
 const locked = computed(() => !!auth.lockedUntil)
@@ -92,8 +92,9 @@ const canSubmit = computed(() => {
 let timer: number | null = null
 onMounted(async () => {
   try {
-    const u = await (window as any).go?.app?.App?.OSUsername?.()
-    if (u) username.value = u
+    const info = await GetAppInfo()
+    if (info.username) username.value = info.username
+    version.value = info.version
   } catch {}
 
   timer = window.setInterval(() => {

@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, dialog } from 'electron';
+import { app, ipcMain, BrowserWindow, dialog } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -381,14 +381,67 @@ export class App {
     }
   }
 
-  private async createSessionInternal(workDir: string, prompt: string): Promise<string> {
+  private applyActiveProvider(): boolean {
+    const cfg = (this.providersStore.get('config', {}) as Record<string, any>) || {};
+    const activeId = cfg.active_provider_id as string | undefined;
+    if (!activeId) return false;
+    const providers = cfg.providers as any[] | undefined;
+    if (!Array.isArray(providers)) return false;
+    const active = providers.find((p: any) => p.id === activeId);
+    if (!active) return false;
+
+    const envKeys: Record<string, string> = {
+      base_url: 'ANTHROPIC_BASE_URL',
+      auth_token: 'ANTHROPIC_AUTH_TOKEN',
+      default_model: 'ANTHROPIC_MODEL',
+      default_haiku_model: 'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+      default_sonnet_model: 'ANTHROPIC_DEFAULT_SONNET_MODEL',
+      default_opus_model: 'ANTHROPIC_DEFAULT_OPUS_MODEL',
+    };
+    // 推理模型使用通用模型名
+    const reasoningModel = active.reasoning_model as string | undefined;
+
+    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+    let data: Record<string, any> = {};
+    try {
+      const raw = fs.readFileSync(settingsPath, 'utf8');
+      if (raw.trim()) data = JSON.parse(raw);
+    } catch (err: any) {
+      if (err.code !== 'ENOENT') {
+        getLogger().error(`[app] read settings.json for provider failed: ${err.message}`);
+        return false;
+      }
+    }
+
+    if (!data.env) data.env = {};
+    for (const [key, envName] of Object.entries(envKeys)) {
+      const val = active[key] as string | undefined;
+      if (val) data.env[envName] = val;
+    }
+    if (reasoningModel) {
+      data.env['ANTHROPIC_REASONING_MODEL'] = reasoningModel;
+    }
+
+    try {
+      fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+      fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2), 'utf8');
+      getLogger().info(`[app] applied provider "${active.name}" to settings.json`);
+      return true;
+    } catch (err: any) {
+      getLogger().error(`[app] write settings.json for provider failed: ${err.message}`);
+      return false;
+    }
+  }
+
+  private async createSessionInternal(workDir: string, prompt: string, extraArgs: string[] = []): Promise<string> {
     const realId = randomUUID();
     const upstream = resolveAnthropicBaseUrl();
     const proxy = await startProxy(workDir, realId, this.dispatcher, upstream);
     const proxyUrl = `http://127.0.0.1:${proxy.port}`;
     const { args, cleanup } = createSettingsOverrideFile(proxyUrl);
-    getLogger().info(`[app:createSession] proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId}`);
-    const proc = startPty(workDir, realId, 'claude', PtyMode.New, {}, { cols: 80, rows: 24 }, args);
+    const allArgs = [...args, ...extraArgs];
+    getLogger().info(`[app:createSession] proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId} extraArgs=${extraArgs.join(',')}`);
+    const proc = startPty(workDir, realId, 'claude', PtyMode.New, {}, { cols: 80, rows: 24 }, allArgs);
     const s = session.newSession(realId, workDir);
     s.process = proc;
     s.state = 'running';
@@ -451,8 +504,8 @@ export class App {
       return jsonl.parseMessages(filePath, offset, limit);
     });
 
-    ipcMain.handle('app:createSession', async (_event, workDir: string, prompt: string) => {
-      return this.createSessionInternal(workDir, prompt);
+    ipcMain.handle('app:createSession', async (_event, workDir: string, prompt: string, extraArgs: string[] = []) => {
+      return this.createSessionInternal(workDir, prompt, extraArgs);
     });
 
     ipcMain.handle('app:sendMessage', (_event, id: string, prompt: string) => {
@@ -468,6 +521,11 @@ export class App {
       getLogger().info(`[app:closeSession] closing sid=${id}`);
       session.close(id);
     });
+
+    ipcMain.handle('app:getAppInfo', () => ({
+      version: app.getVersion(),
+      username: os.userInfo().username,
+    }));
 
     ipcMain.handle('app:getSettings', () => this.settingsStore.store);
     ipcMain.handle('app:updateSettings', (_event, cfg: any) => {
@@ -562,11 +620,36 @@ export class App {
 
     ipcMain.handle('app:saveProvidersConfig', (_event, cfg: Record<string, any>) => {
       this.providersStore.set('config', cfg);
+      this.applyActiveProvider();
     });
 
     ipcMain.handle('app:applyActiveProvider', () => {
-      // TODO: 将当前供应商环境变量写入 Claude 配置
-      return true;
+      return this.applyActiveProvider();
+    });
+
+    ipcMain.handle('app:testProviderConnection', async (_event, baseUrl: string, authToken: string) => {
+      try {
+        const url = baseUrl.replace(/\/+$/, '') + '/v1/messages';
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': authToken,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6-20251101',
+            max_tokens: 1,
+            messages: [{ role: 'user', content: 'hi' }],
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        const body = await res.text().catch(() => '');
+        if (res.ok) return { ok: true };
+        return { ok: false, error: `HTTP ${res.status}: ${body.slice(0, 200)}` };
+      } catch (err: any) {
+        return { ok: false, error: err.message || String(err) };
+      }
     });
 
     ipcMain.handle('app:checkAndFixHooks', () => this.checkAndFixHooks());

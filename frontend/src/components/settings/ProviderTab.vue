@@ -86,6 +86,7 @@
 import { onMounted, ref, computed } from 'vue'
 import Icon from '../../components/Icon.vue'
 import { useProvidersStore } from '../../stores/providers'
+import { TestProviderConnection, ApplyActiveProvider } from '../../composables/useElectron'
 import { showToast } from '../../composables/useToast'
 
 const store = useProvidersStore()
@@ -116,9 +117,16 @@ function onDelete() {
   selectedId.value = store.removeProvider(selectedId.value)
 }
 
-function onSetActive() {
+async function onSetActive() {
   if (!provider.value) return
   store.setActive(provider.value.id)
+  try {
+    await store.save()
+    await ApplyActiveProvider()
+    showToast('已切换为当前供应商')
+  } catch (e: any) {
+    showToast('切换失败：' + (e?.message ?? e), 'error')
+  }
 }
 
 async function onSave() {
@@ -137,8 +145,17 @@ async function onCancel() {
   }
 }
 
-function onTest() {
-  alert('连接测试暂未实现')
+async function onTest() {
+  if (!provider.value) return
+  const { base_url, auth_token } = provider.value
+  if (!base_url) return
+  showToast('正在测试连接...')
+  const result = await TestProviderConnection(base_url, auth_token || '')
+  if (result.ok) {
+    showToast('连接成功')
+  } else {
+    showToast('连接失败：' + (result.error || '未知错误'), 'error')
+  }
 }
 
 </script>

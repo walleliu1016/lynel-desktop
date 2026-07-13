@@ -53,10 +53,13 @@ export function createNotchWindow(isDev: boolean, devUrl: string, preloadPath: s
 
   positionAtTopCenter(notchWin, PILL_W);
 
-  const url = isDev ? `${devUrl}#/notch` : `file://${path.join(__dirname, '..', 'frontend', 'dist', 'index.html')}#/notch`;
-  logger.info('[notch-window] loading url=%s preload=%s', url, preloadPath);
-
-  notchWin.loadURL(url);
+  if (isDev) {
+    notchWin.loadURL(`${devUrl}#/notch`);
+  } else {
+    const indexPath = path.join(__dirname, '../../../frontend/dist/index.html');
+    logger.info('[notch-window] loading file=%s preload=%s', indexPath, preloadPath);
+    notchWin.loadFile(indexPath, { hash: '/notch' });
+  }
 
   notchWin.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     logger.error('[notch-window] did-fail-load %s %s', errorCode, errorDescription);
