@@ -56,7 +56,7 @@ export function createNotchWindow(isDev: boolean, devUrl: string, preloadPath: s
   if (isDev) {
     notchWin.loadURL(`${devUrl}#/notch`);
   } else {
-    const indexPath = path.join(__dirname, '../../../frontend/dist/index.html');
+    const indexPath = path.join(__dirname, '../../../src/renderer/dist/index.html');
     logger.info('[notch-window] loading file=%s preload=%s', indexPath, preloadPath);
     notchWin.loadFile(indexPath, { hash: '/notch' });
   }

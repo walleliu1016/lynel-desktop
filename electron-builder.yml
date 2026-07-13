@@ -6,10 +6,10 @@ directories:
   buildResources: build
 files:
   - dist-electron/**/*
-  - frontend/dist/**/*
+  - src/renderer/dist/**/*
   - build/windows/trayicon.ico
 extraMetadata:
-  main: dist-electron/electron/main.js
+  main: dist-electron/src/main/index.js
 icon: build/appicon.png
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/

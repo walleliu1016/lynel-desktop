@@ -1,8 +1,8 @@
 import { app, BrowserWindow, Tray, Menu, nativeImage } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { App } from '../src/main/app.js';
-import { createNotchWindow } from '../src/main/notch-window.js';
+import { App } from './app.js';
+import { createNotchWindow } from './notch-window.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -32,7 +32,7 @@ function createWindow(): void {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../../frontend/dist/index.html'));
+    mainWindow.loadFile(path.join(__dirname, '../../../src/renderer/dist/index.html'));
   }
 
   mainWindow.once('ready-to-show', () => {
