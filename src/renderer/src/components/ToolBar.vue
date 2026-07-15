@@ -41,7 +41,7 @@ const stateLabel = computed(() => {
 <style scoped>
 .toolbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 18px; border-bottom: 1px solid var(--border);
+  padding: 0 18px; border-bottom: 1px solid var(--border-strong, var(--border));
   background: var(--bg-terminal-header, var(--bg-terminal)); flex-shrink: 0;
   gap: 12px; height: 48px;
 }

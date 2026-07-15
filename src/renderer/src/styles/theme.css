@@ -218,9 +218,9 @@
   --bg-panel: #ffffff;
   --bg-input: #ffffff;
   --bg-titlebar: linear-gradient(180deg, #ffffff 0%, #f6f7f9 100%);
-  --bg-terminal: #f8fafc;
+  --bg-terminal: #ffffff;
   --bg-terminal-header: #f1f5f9;
-  --bg-terminal-loading: #f8fafc;
+  --bg-terminal-loading: #ffffff;
 
   --accent: #1e5af5;
   --accent-deep: #1749cc;
@@ -243,6 +243,7 @@
   --status-warn-border: rgba(245, 158, 11, 0.35);
 
   --border: #eef1f5;
+  --border-strong: #e2e8f0;
   --border-focus: var(--accent);
 
   --scrollbar-track: transparent;
