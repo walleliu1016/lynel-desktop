@@ -1,63 +1,62 @@
 <template>
   <div class="home">
-    <TitleBar :username="username" @settings="goSettings" />
+    <TitleBar :username="username" @settings="openSettingsTab" />
     <div class="layout">
       <aside class="left">
         <SessionList
+          v-if="tabsStore.activeType === 'welcome' || tabsStore.activeType === 'session'"
           :list="sessions.list"
-          :active-id="sessions.activeId"
-          @create="showNew = true"
-          @select="selectSession"
+          :active-id="activeSessionId"
+          @create="showNewSession = true"
+          @select="onSelectSession"
         />
+        <SettingsSidebar v-else-if="tabsStore.activeType === 'settings'" />
       </aside>
       <main class="right">
-        <template v-if="sessions.active">
-          <ToolBar
-            :title="displayName"
-            :ai-title="sessions.active?.ai_title"
-            :project="sessions.active.project"
-            :session-id="sessions.active.id"
-            :msg-count="sessions.active.msg_count"
-            :state="state"
+        <GlobalTabs
+          :tabs="tabsStore.tabs"
+          :active-id="tabsStore.activeId"
+          @select="onSelectTab"
+          @close="onCloseTab"
+          @create="onCreateTab"
+        />
+        <div class="content">
+          <WelcomeTab
+            v-if="tabsStore.activeType === 'welcome'"
+            @create="showOpenFolder = true"
+            @open-recent="onOpenRecent"
           />
-          <div class="terminal-area">
-            <div
-              v-if="activeTerminalLoading"
-              class="terminal-area-loading"
-            >
-              <div class="spinner" />
-              <div class="loading-text">正在启动 Claude 会话…</div>
+          <template v-else-if="tabsStore.activeType === 'session'">
+            <SessionTabContent
+              v-for="tab in sessionTabs"
+              :key="tab.payload?.sessionId as string"
+              v-show="activeSessionId === tab.payload?.sessionId"
+              :session-id="tab.payload?.sessionId as string"
+              :workdir="tab.payload?.workdir as string"
+              :visible="activeSessionId === tab.payload?.sessionId"
+            />
+            <div v-if="!activeSessionId" class="empty">
+              <div class="empty-text">未选择会话</div>
             </div>
-            <XtermTerminal
-              v-for="session in openedTerminals"
-              :class="{ 'terminal-hidden': session.id !== sessions.activeId }"
-              :key="session.id"
-              :session-id="session.id"
-              :workdir="session.workdir"
-              :visible="session.id === sessions.activeId"
-              @starting="onTerminalStarting(session.id)"
-              @ready="onTerminalReady(session.id)"
-              @data="onTerminalData(session.id, $event)"
-            />
-            <PermissionToast
-              :tool-name="permissionToastName"
-              :tool-input="permissionToolInput"
-              :session-id="sessions.activeId || ''"
-              :request-id="permissionRequestId"
-              @navigate="navigateToSession"
-            />
+          </template>
+          <SettingsTab v-else-if="tabsStore.activeType === 'settings'" />
+          <div v-else class="empty">
+            <div class="empty-text">未知页面</div>
           </div>
-        </template>
-        <div v-else class="empty">
-          <div class="empty-text">选择左侧会话，或点击「打开 Session」</div>
         </div>
       </main>
     </div>
-    <NewSessionDialog
-      :open="showNew"
+    <OpenFolderDialog
+      :open="showOpenFolder"
       :loading="sessions.creating"
-      @close="showNew = false"
-      @create="onCreate"
+      @close="showOpenFolder = false"
+      @create="onCreateFromFolder"
+    />
+    <NewSessionDialog
+      :open="showNewSession"
+      :loading="sessions.creating"
+      @close="showNewSession = false"
+      @create="onCreateFromSession"
       @open-recent="onOpenRecent"
     />
   </div>
@@ -67,120 +66,149 @@
 import { onMounted, ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
+import GlobalTabs from '../components/GlobalTabs.vue'
 import SessionList from '../components/SessionList.vue'
-import ToolBar from '../components/ToolBar.vue'
-import XtermTerminal from '../components/XtermTerminal.vue'
+import SettingsSidebar from '../components/SettingsSidebar.vue'
+import WelcomeTab from '../components/WelcomeTab.vue'
+import SessionTabContent from '../components/SessionTabContent.vue'
+import SettingsTab from '../components/SettingsTab.vue'
+import OpenFolderDialog from '../components/OpenFolderDialog.vue'
 import NewSessionDialog from '../components/NewSessionDialog.vue'
-import PermissionToast from '../components/PermissionToast.vue'
 import { useSessionsStore } from '../stores/sessions'
+import { useTabsStore } from '../stores/tabs'
 import type { RecentSession } from '../types/recent'
-import { WriteTerminalInput, GetAppInfo, AdoptSession, OpenSessionTerminal } from '../composables/useElectron'
+import type { SessionState } from '../types/session'
+import { GetAppInfo, AdoptSession, OpenSessionTerminal, CloseSession } from '../composables/useElectron'
 import { useEventStream } from '../composables/useEventStream'
 
 const router = useRouter()
 const sessions = useSessionsStore()
+const tabsStore = useTabsStore()
 useEventStream()
 
-const showNew = ref(false)
+const showOpenFolder = ref(false)
+const showNewSession = ref(false)
 const username = ref('')
-const version = ref('')
-type OpenedTerminal = { id: string; workdir: string }
-const openedTerminals = ref<OpenedTerminal[]>([])
-const terminalLoading = ref<Record<string, boolean>>({})
 
-const activeTerminalLoading = computed(() => {
-  const id = sessions.activeId
-  return !!id && !!terminalLoading.value[id]
+const activeTab = computed(() => tabsStore.activeTab)
+const activeSessionId = computed(() => {
+  if (activeTab.value?.type !== 'session') return null
+  return (activeTab.value.payload?.sessionId as string) ?? null
 })
-
-watch(() => [sessions.activeId, sessions.list.length], () => {
-  const id = sessions.activeId
-  const meta = sessions.list.find((s) => s.id === id)
-  if (meta && !openedTerminals.value.some((s) => s.id === id)) {
-    openedTerminals.value = [...openedTerminals.value, { id: meta.id, workdir: meta.workdir }]
-  }
-}, { immediate: true })
+const activeSessionWorkdir = computed(() => {
+  if (activeTab.value?.type !== 'session') return ''
+  return (activeTab.value.payload?.workdir as string) ?? ''
+})
+const sessionTabs = computed(() => tabsStore.tabs.filter((t) => t.type === 'session'))
 
 onMounted(async () => {
   try {
     const info = await GetAppInfo()
     username.value = info.username
-    version.value = info.version
   } catch {}
 })
 
-const state = computed(() => sessions.activeId ? (sessions.state[sessions.activeId] || 'idle') : 'idle')
-const displayName = computed(() => sessions.active?.first_prompt || '新会话')
+function onSelectTab(id: string) {
+  tabsStore.activate(id)
+}
 
-const permissionToastName = computed(() => {
-  if (!sessions.activeId) return ''
-  const req = sessions.hookPermissions[sessions.activeId]
-  return req?.toolName || ''
-})
+function onCreateTab() {
+  tabsStore.openWelcome()
+}
 
-const permissionRequestId = computed(() => {
-  if (!sessions.activeId) return ''
-  const req = sessions.hookPermissions[sessions.activeId]
-  return req?.requestId || ''
-})
+function isRunningState(state: SessionState) {
+  return (
+    state === 'waiting' ||
+    state === 'thinking' ||
+    state === 'streaming' ||
+    state === 'running_tool' ||
+    state === 'awaiting_permission'
+  )
+}
 
-const permissionToolInput = computed(() => {
-  if (!sessions.activeId) return undefined
-  const req = sessions.hookPermissions[sessions.activeId]
-  return req?.toolInput as Record<string, unknown> | undefined
-})
+async function onCloseTab(id: string) {
+  const tab = tabsStore.tabs.find((t) => t.id === id)
+  if (!tab) return
 
-async function selectSession(id: string) {
-  if (!openedTerminals.value.some((s) => s.id === id)) {
-    terminalLoading.value = { ...terminalLoading.value, [id]: true }
+  if (tab.type === 'session') {
+    const sid = tab.payload?.sessionId as string
+    const state = sessions.state[sid] || 'idle'
+    if (isRunningState(state)) {
+      const ok = window.confirm('该会话仍在运行中，关闭将终止 Claude，是否继续？')
+      if (!ok) return
+    }
+    try {
+      await CloseSession(sid)
+    } catch (e: any) {
+      console.error('[home] close session failed:', e?.message || e)
+    }
   }
+
+  tabsStore.close(id)
+}
+
+async function onSelectSession(id: string) {
+  const meta = sessions.list.find((s) => s.id === id)
+  if (!meta) return
+  tabsStore.openSession(id, meta.workdir, meta.ai_title || meta.first_prompt)
   await sessions.select(id)
-}
-
-function onTerminalStarting(sessionId: string) {
-  terminalLoading.value = { ...terminalLoading.value, [sessionId]: true }
-}
-
-function onTerminalReady(sessionId: string) {
-  terminalLoading.value = { ...terminalLoading.value, [sessionId]: false }
-}
-
-async function onTerminalData(sessionId: string, data: string) {
-  try {
-    await WriteTerminalInput(sessionId, data)
-  } catch (e: any) {
-    console.error('[terminal] write failed:', e?.message)
-  }
 }
 
 async function onCreate(workdir: string, prompt: string, extraArgs: string[] = []) {
   try {
     const id = await sessions.create(workdir, prompt, extraArgs)
-    terminalLoading.value = { ...terminalLoading.value, [id]: true }
-    showNew.value = false
+    const meta = sessions.list.find((s) => s.id === id)
+    if (meta) {
+      tabsStore.openSession(id, meta.workdir, meta.ai_title || meta.first_prompt || prompt)
+    }
   } catch (e: any) {
     alert('创建失败：' + (e?.message ?? e))
   }
 }
 
+async function onCreateFromFolder(workdir: string, prompt: string, extraArgs: string[] = []) {
+  await onCreate(workdir, prompt, extraArgs)
+  showOpenFolder.value = false
+}
+
+async function onCreateFromSession(workdir: string, prompt: string, extraArgs: string[] = []) {
+  await onCreate(workdir, prompt, extraArgs)
+  showNewSession.value = false
+}
+
 async function onOpenRecent(item: RecentSession) {
   try {
     sessions.open(item)
-    terminalLoading.value = { ...terminalLoading.value, [item.sessionId]: true }
+    tabsStore.openSession(item.sessionId, item.workdir, item.aiTitle || item.firstPrompt)
     await AdoptSession(item.sessionId, item.workdir)
     await OpenSessionTerminal(item.sessionId, item.workdir)
-    showNew.value = false
+    showNewSession.value = false
   } catch (e: any) {
     console.error('[home] open recent failed:', e?.message || e)
     alert('打开最近会话失败：' + (e?.message || e))
   }
 }
 
-function navigateToSession(sessionId: string) {
-  void selectSession(sessionId)
+function openSettingsTab() {
+  tabsStore.openSettings()
 }
 
-function goSettings() { router.push('/settings') }
+// 当 session 元信息加载后，同步更新对应 Tab 标题
+watch(
+  () => sessions.list.map((s) => `${s.id}:${s.ai_title}:${s.first_prompt}`).join('|'),
+  () => {
+    for (const s of sessions.list) {
+      const tabId = `session-${s.id}`
+      const tab = tabsStore.tabs.find((t) => t.id === tabId)
+      if (tab) {
+        const newTitle = s.ai_title || s.first_prompt || s.id.slice(0, 8)
+        if (tab.title !== newTitle) {
+          tab.title = newTitle
+        }
+      }
+    }
+  }
+)
 </script>
 
 <style scoped>
@@ -194,36 +222,7 @@ function goSettings() { router.push('/settings') }
   z-index: 1;
 }
 .right { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-primary); }
-.terminal-area { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg-terminal); padding-left: 8px; border-left: 1px solid var(--border-strong, var(--border)); }
-.terminal-area-loading {
-  position: absolute;
-  z-index: 30;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: var(--text-secondary);
-  background: var(--bg-terminal-loading);
-  pointer-events: none;
-}
-.spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-.loading-text { font-size: 12px; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.content { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; position: relative; }
 .empty { flex: 1; display: flex; align-items: center; justify-content: center; }
 .empty-text { color: var(--text-tertiary); font-size: 12px; }
-.terminal-hidden {
-  position: absolute !important;
-  visibility: hidden;
-  pointer-events: none;
-  opacity: 0;
-}
 </style>

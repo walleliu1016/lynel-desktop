@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Session Tabs Redesign</title>
+  <style>
+    :root {
+      --bg-primary: #f6f7f9;
+      --bg-panel: #ffffff;
+      --bg-terminal: #ffffff;
+      --bg-terminal-header: #f1f5f9;
+      --accent: #1e5af5;
+      --accent-soft-bg: rgba(30, 90, 245, 0.10);
+      --accent-soft-border: rgba(30, 90, 245, 0.30);
+      --text-primary: #0d1321;
+      --text-secondary: #6b7280;
+      --text-tertiary: #9ca3af;
+      --border: #eef1f5;
+      --border-strong: #e2e8f0;
+      --status-success: #10b981;
+      --status-error: #e63946;
+      --status-warn: #f59e0b;
+      --radius-sm: 4px;
+      --radius-md: 6px;
+      --radius-lg: 10px;
+      --font-ui: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", "PingFang SC", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 40px;
+      font-family: var(--font-ui);
+      background: #e5e7eb;
+      color: var(--text-primary);
+    }
+    h1 { font-size: 24px; margin-bottom: 8px; }
+    .subtitle { color: var(--text-secondary); margin-bottom: 32px; }
+    .design { margin-bottom: 48px; }
+    .design h2 { font-size: 18px; margin-bottom: 8px; }
+    .design p { color: var(--text-secondary); margin-bottom: 16px; max-width: 800px; line-height: 1.6; }
+    .mockup {
+      width: 900px;
+      height: 520px;
+      background: var(--bg-primary);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 8px 32px rgba(13, 24, 41, 0.12);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .titlebar {
+      height: 40px;
+      background: linear-gradient(180deg, #fff 0%, #f6f7f9 100%);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .titlebar .badge {
+      margin-left: 16px;
+      background: var(--accent-soft-bg);
+      color: var(--accent);
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .titlebar .spacer { flex: 1; }
+    .titlebar .btn { width: 28px; height: 28px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; color: var(--text-secondary); margin-left: 4px; }
+    .layout { flex: 1; display: flex; min-height: 0; }
+    .sidebar {
+      width: 230px;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+    }
+    .new-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      cursor: pointer;
+    }
+    .search { background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; font-size: 12px; color: var(--text-tertiary); margin-bottom: 16px; }
+    .list-title { font-size: 11px; color: var(--text-tertiary); margin-bottom: 8px; padding-left: 4px; }
+    .session-item {
+      padding: 10px;
+      border-radius: var(--radius-lg);
+      margin-bottom: 6px;
+      cursor: pointer;
+      background: var(--accent-soft-bg);
+      border: 1px solid var(--accent-soft-border);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+    .session-item .title { font-size: 12px; font-weight: 600; display: flex; justify-content: space-between; }
+    .session-item .meta { font-size: 10px; color: var(--text-tertiary); margin-top: 4px; }
+    .session-item .event { font-size: 10px; color: var(--text-secondary); margin-top: 6px; }
+    .state-tag { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: var(--accent-soft-bg); color: var(--accent); }
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+    /* Toolbar (current problematic) */
+    .toolbar {
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+    }
+    .toolbar .title { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .toolbar .subtitle { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; margin-bottom: 0; }
+
+    /* Tab bar variants */
+    .tabs {
+      display: flex;
+      align-items: flex-end;
+      height: 36px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-strong);
+      padding: 0 8px;
+      gap: 2px;
+      overflow-x: auto;
+    }
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 12px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: transparent;
+      border: 1px solid transparent;
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      cursor: pointer;
+      max-width: 160px;
+      min-width: 80px;
+      position: relative;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .tab:hover { background: var(--bg-primary); }
+    .tab.active {
+      background: var(--bg-terminal);
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+      border-bottom: 1px solid var(--bg-terminal);
+      margin-bottom: -1px;
+      z-index: 1;
+    }
+    .tab-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tab-close { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); opacity: 0.6; }
+    .tab-close:hover { background: rgba(230, 57, 70, 0.1); color: var(--status-error); }
+    .tab.active .tab-close { opacity: 1; }
+    .tab-new { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-md); border: none; background: transparent; color: var(--text-secondary); cursor: pointer; margin-bottom: 2px; }
+    .tab-new:hover { background: var(--bg-primary); }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    /* Variant B: card tabs */
+    .tabs-b {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 40px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-strong);
+      padding: 0 12px;
+      overflow-x: auto;
+    }
+    .tab-b {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 10px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      max-width: 160px;
+      transition: all 0.12s;
+    }
+    .tab-b:hover { border-color: var(--border-strong); }
+    .tab-b.active { background: var(--accent-soft-bg); border-color: var(--accent-soft-border); color: var(--accent); }
+
+    /* Variant C: editor tabs */
+    .tabs-c {
+      display: flex;
+      align-items: flex-end;
+      height: 38px;
+      background: var(--bg-terminal-header);
+      border-bottom: 1px solid var(--border-strong);
+      padding-left: 8px;
+      overflow-x: auto;
+    }
+    .tab-c {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 34px;
+      padding: 0 14px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: transparent;
+      border-right: 1px solid var(--border);
+      cursor: pointer;
+      max-width: 180px;
+      min-width: 90px;
+      position: relative;
+      transition: background 0.12s;
+    }
+    .tab-c:hover { background: rgba(255,255,255,0.5); }
+    .tab-c.active { background: var(--bg-terminal); color: var(--text-primary); }
+    .tab-c.active::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--accent);
+    }
+
+    .terminal-area {
+      flex: 1;
+      background: var(--bg-terminal);
+      padding: 16px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 13px;
+      color: var(--text-secondary);
+      overflow: auto;
+    }
+    .code-line { margin-bottom: 2px; }
+    .k { color: #1d4ed8; }
+    .s { color: #047857; }
+    .c { color: var(--text-tertiary); }
+
+    .tooltip {
+      position: absolute;
+      top: 80px;
+      right: 40px;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 12px;
+      box-shadow: 0 8px 24px rgba(13,24,41,0.12);
+      font-size: 12px;
+      z-index: 10;
+      width: 200px;
+    }
+    .tooltip .tt-title { font-weight: 700; margin-bottom: 6px; }
+    .tooltip .tt-row { color: var(--text-secondary); margin-bottom: 4px; }
+    .note {
+      background: #fffbeb;
+      border: 1px solid #f59e0b;
+      border-radius: var(--radius-md);
+      padding: 12px;
+      font-size: 13px;
+      color: #92400e;
+      margin-top: 12px;
+    }
+    .label {
+      display: inline-block;
+      background: var(--accent);
+      color: white;
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      margin-left: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Session Tabs Redesign</h1>
+  <p class="subtitle">基于你截图的反馈：1) 顶部 ToolBar 与 Tab 重复且显细碎；2) Tab 不像标签页。下面给出 3 个方案。</p>
+
+  <!-- Current problematic -->
+  <div class="design">
+    <h2>当前实现（问题版） <span class="label">问题</span></h2>
+    <p>ToolBar 占了独立一行显示标题+项目+ID+状态，下方 Tab 栏只有一条细线+文字，整体看起来上面重复、下面不像 tab。</p>
+    <div class="mockup">
+      <div class="titlebar">Lynel Desktop <span class="badge">1 个 Session 运行中</span><div class="spacer"></div><div class="btn">⚙</div><div class="btn">👤</div></div>
+      <div class="layout">
+        <div class="sidebar">
+          <button class="new-btn">+ 打开 Session</button>
+          <div class="search">🔍 搜索会话...</div>
+          <div class="list-title">会话列表</div>
+          <div class="session-item">
+            <div class="title">的hi的hi放到 <span class="state-tag">运行中</span></div>
+            <div class="meta">pty-claude · 687mo 前</div>
+            <div class="event">的hi的hi放到</div>
+          </div>
+        </div>
+        <div class="main">
+          <div class="toolbar">
+            <div class="title">的hi的hi放到 <span class="state-tag">等待中</span></div>
+            <div class="subtitle">pty-claude · Session da07c089 · 由终端创建</div>
+          </div>
+          <div class="tabs" style="border-bottom: 2px solid var(--border-strong);">
+            <div class="tab active"><span class="status-dot"></span><span class="tab-title">的hi的hi放到</span><span class="tab-close">×</span></div>
+            <button class="tab-new">+</button>
+          </div>
+          <div class="terminal-area">
+            <div class="code-line"><span class="k">func</span> (c *Cmd) wait() <span class="k">error</span> {</div>
+            <div class="code-line">&nbsp;&nbsp;<span class="k">if</span> c.Process == <span class="k">nil</span> {</div>
+            <div class="code-line">&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">return</span> errors.New(<span class="s">"exec: not started"</span>)</div>
+            <div class="code-line">&nbsp;&nbsp;}</div>
+            <div class="code-line">&nbsp;&nbsp;<span class="c">// ...</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Option A -->
+  <div class="design">
+    <h2>方案 A：真 Tab 栏，详情进 Tooltip（推荐）</h2>
+    <p><strong>核心改动：</strong>去掉独立 ToolBar，把 Tab 做成真正的标签页（圆角上边框 + active Tab 与终端区同色相连）。Tab 上只保留标题、状态点、关闭按钮；完整项目/ID/创建来源等信息，hover 到 Tab 上时以 Tooltip 显示。</p>
+    <div class="mockup">
+      <div class="titlebar">Lynel Desktop <span class="badge">1 个 Session 运行中</span><div class="spacer"></div><div class="btn">⚙</div><div class="btn">👤</div></div>
+      <div class="layout">
+        <div class="sidebar">
+          <button class="new-btn">+ 打开 Session</button>
+          <div class="search">🔍 搜索会话...</div>
+          <div class="list-title">会话列表</div>
+          <div class="session-item">
+            <div class="title">的hi的hi放到 <span class="state-tag">运行中</span></div>
+            <div class="meta">pty-claude · 687mo 前</div>
+            <div class="event">的hi的hi放到</div>
+          </div>
+        </div>
+        <div class="main">
+          <div class="tabs">
+            <div class="tab active"><span class="status-dot"></span><span class="tab-title">的hi的hi放到</span><span class="tab-close">×</span></div>
+            <div class="tab"><span class="tab-title">另一个会话</span><span class="tab-close">×</span></div>
+            <button class="tab-new">+</button>
+          </div>
+          <div class="terminal-area">
+            <div class="code-line"><span class="k">func</span> (c *Cmd) wait() <span class="k">error</span> {</div>
+            <div class="code-line">&nbsp;&nbsp;<span class="k">if</span> c.Process == <span class="k">nil</span> {</div>
+            <div class="code-line">&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">return</span> errors.New(<span class="s">"exec: not started"</span>)</div>
+            <div class="code-line">&nbsp;&nbsp;}</div>
+            <div class="code-line">&nbsp;&nbsp;<span class="c">// ...</span></div>
+          </div>
+          <div class="tooltip">
+            <div class="tt-title">的hi的hi放到</div>
+            <div class="tt-row">项目：pty-claude</div>
+            <div class="tt-row">Session：da07c089</div>
+            <div class="tt-row">来源：由终端创建</div>
+            <div class="tt-row">状态：等待中</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="note"><strong>优点：</strong>界面最干净，Tab 一眼可识别，详情不占用常驻空间。<strong>缺点：</strong>需要用户 hover 才能看到完整元信息。</div>
+  </div>
+
+  <!-- Option B -->
+  <div class="design">
+    <h2>方案 B：卡片式 Tab + 极简标题栏</h2>
+    <p><strong>核心改动：</strong>保留一条极窄的标题栏（只显示当前 session 标题），Tab 改成更明显的小卡片（圆角矩形、active 有底色）。项目/ID 等详情 hover 标题栏或 Tab 时 tooltip 展示。</p>
+    <div class="mockup">
+      <div class="titlebar">Lynel Desktop <span class="badge">1 个 Session 运行中</span><div class="spacer"></div><div class="btn">⚙</div><div class="btn">👤</div></div>
+      <div class="layout">
+        <div class="sidebar">
+          <button class="new-btn">+ 打开 Session</button>
+          <div class="search">🔍 搜索会话...</div>
+          <div class="list-title">会话列表</div>
+          <div class="session-item">
+            <div class="title">的hi的hi放到 <span class="state-tag">运行中</span></div>
+            <div class="meta">pty-claude · 687mo 前</div>
+          </div>
+        </div>
+        <div class="main">
+          <div style="display:flex; align-items:center; gap:10px; padding:8px 16px; background:var(--bg-panel); border-bottom:1px solid var(--border);">
+            <span style="font-size:13px; font-weight:700;">的hi的hi放到</span>
+            <span class="state-tag">等待中</span>
+          </div>
+          <div class="tabs-b">
+            <div class="tab-b active"><span class="status-dot"></span><span class="tab-title">的hi的hi放到</span><span class="tab-close">×</span></div>
+            <div class="tab-b"><span class="tab-title">另一个会话</span><span class="tab-close">×</span></div>
+            <button class="tab-new">+</button>
+          </div>
+          <div class="terminal-area">
+            <div class="code-line"><span class="k">func</span> (c *Cmd) wait() <span class="k">error</span> {</div>
+            <div class="code-line">&nbsp;&nbsp;<span class="k">if</span> c.Process == <span class="k">nil</span> {</div>
+            <div class="code-line">&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">return</span> errors.New(<span class="s">"exec: not started"</span>)</div>
+            <div class="code-line">&nbsp;&nbsp;}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="note"><strong>优点：</strong>标题栏提供常驻标题，卡片 Tab 更现代。<strong>缺点：</strong>多占一行，标题栏和 Tab 仍有一定重复。</div>
+  </div>
+
+  <!-- Option C -->
+  <div class="design">
+    <h2>方案 C：VS Code 编辑器 Tab（顶色条）</h2>
+    <p><strong>核心改动：</strong>Tab 完全仿 VS Code 编辑器标签：active tab 顶部有一条 accent 色细线，tab 之间用竖线分隔，背景与终端区一致。同样去掉 ToolBar，详情 hover 显示。</p>
+    <div class="mockup">
+      <div class="titlebar">Lynel Desktop <span class="badge">1 个 Session 运行中</span><div class="spacer"></div><div class="btn">⚙</div><div class="btn">👤</div></div>
+      <div class="layout">
+        <div class="sidebar">
+          <button class="new-btn">+ 打开 Session</button>
+          <div class="search">🔍 搜索会话...</div>
+          <div class="list-title">会话列表</div>
+          <div class="session-item">
+            <div class="title">的hi的hi放到 <span class="state-tag">运行中</span></div>
+            <div class="meta">pty-claude · 687mo 前</div>
+          </div>
+        </div>
+        <div class="main">
+          <div class="tabs-c">
+            <div class="tab-c active"><span class="status-dot"></span><span class="tab-title">的hi的hi放到</span><span class="tab-close">×</span></div>
+            <div class="tab-c"><span class="tab-title">另一个会话</span><span class="tab-close">×</span></div>
+            <button class="tab-new">+</button>
+          </div>
+          <div class="terminal-area">
+            <div class="code-line"><span class="k">func</span> (c *Cmd) wait() <span class="k">error</span> {</div>
+            <div class="code-line">&nbsp;&nbsp;<span class="k">if</span> c.Process == <span class="k">nil</span> {</div>
+            <div class="code-line">&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">return</span> errors.New(<span class="s">"exec: not started"</span>)</div>
+            <div class="code-line">&nbsp;&nbsp;}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="note"><strong>优点：</strong>最贴近 VS Code 习惯，程序员一眼识别。<strong>缺点：</strong>风格偏 IDE，可能和当前偏工具类 UI 的调性略有冲突。</div>
+  </div>
+
+  <h2>我的建议</h2>
+  <p>推荐 <strong>方案 A</strong>：它最干净地解决了你提出的两个问题——去掉重复 ToolBar、让 Tab 看起来像真正的标签页。hover tooltip 补充完整信息，不会增加常驻视觉噪音。如果你更在意“一眼就是 VS Code”，可以选方案 C。</p>
+</body>
+</html>

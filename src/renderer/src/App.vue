@@ -13,10 +13,12 @@ import { useRouter } from 'vue-router'
 import { EventsOn, WindowShow, WindowUnminimise, WindowCenter } from './composables/useElectron'
 import { useWindowState } from './composables/useWindowState'
 import { useToastState } from './composables/useToast'
+import { useTabsStore } from './stores/tabs'
 
 const router = useRouter()
 const win = useWindowState()
 const toast = useToastState()
+const tabs = useTabsStore()
 let cleanup: (() => void) | null = null
 
 onMounted(async () => {
@@ -28,7 +30,9 @@ onMounted(async () => {
   cleanup = EventsOn('tray:open-settings', () => {
     WindowShow()
     WindowUnminimise()
-    router.push('/settings')
+    router.push('/home').then(() => {
+      tabs.openSettings()
+    })
   })
 })
 

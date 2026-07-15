@@ -125,7 +125,7 @@ async function onSubmit() {
   // 进入主页前先把窗口切到主布局，避免 HomeView 挂载后闪现小窗口再变大
   try { await win.applyHomeLayout() } catch {}
   try { WindowCenter() } catch {}
-  router.push('/welcome')
+  router.push('/home')
 }
 
 async function goSettings() {

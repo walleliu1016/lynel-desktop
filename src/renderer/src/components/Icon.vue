@@ -11,12 +11,15 @@ import {
   Copy,
   FileText,
   FolderOpen,
+  Loader2,
   MessageSquare,
   Minus,
   Plus,
   Send,
   Settings,
+  ShieldAlert,
   Square,
+  Terminal,
   Trash2,
   User,
   X,
@@ -50,6 +53,9 @@ const icons: Record<string, unknown> = {
   send: Send,
   'file-text': FileText,
   'folder-open': FolderOpen,
+  loader: Loader2,
+  terminal: Terminal,
+  'shield-alert': ShieldAlert,
 }
 
 const Comp = computed(() => icons[props.name] ?? null)
