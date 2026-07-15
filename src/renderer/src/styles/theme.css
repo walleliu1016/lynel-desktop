@@ -208,100 +208,103 @@
   --commit-card-border: #FB923C;
 }
 
-/* === Light Pro === */
+/* === Light Pro（红蓝主题）=== */
 [data-theme="light-pro"] {
-  --bg-primary: #F0F0F5;
-  --bg-panel: #FFFFFF;
-  --bg-input: #F2F2F7;
-  --bg-titlebar: linear-gradient(180deg, #F9F9FB 0%, #EFEFF3 100%);
-  --bg-terminal: #FFFFFF;
-  --bg-terminal-loading: #FFFFFF;
+  --bg-primary: #f6f7f9;
+  --bg-panel: #ffffff;
+  --bg-input: #ffffff;
+  --bg-titlebar: linear-gradient(180deg, #ffffff 0%, #f6f7f9 100%);
+  --bg-terminal: #f8fafc;
+  --bg-terminal-header: #f1f5f9;
+  --bg-terminal-loading: #f8fafc;
 
-  --accent: #8B5CF6;
-  --accent-deep: #7C3AED;
-  --accent-light: #7C3AED;
-  --accent-soft-bg: rgba(139, 92, 246, 0.10);
-  --accent-soft-border: rgba(139, 92, 246, 0.30);
-  --accent-glow: rgba(139, 92, 246, 0.22);
+  --accent: #1e5af5;
+  --accent-deep: #1749cc;
+  --accent-light: #3b82f6;
+  --accent-soft-bg: rgba(30, 90, 245, 0.10);
+  --accent-soft-border: rgba(30, 90, 245, 0.30);
+  --accent-glow: rgba(30, 90, 245, 0.22);
 
-  --text-primary: #1F1F24;
-  --text-secondary: #52525B;
-  --text-tertiary: #8E8E99;
-  --text-inverse: #FFFFFF;
+  --text-primary: #0d1321;
+  --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
+  --text-inverse: #ffffff;
 
-  --status-success: #10B981;
-  --status-warn: #D97706;
-  --status-error: #EF4444;
-  --status-warn-bg: rgba(217, 119, 6, 0.10);
-  --status-warn-border: rgba(217, 119, 6, 0.30);
+  --status-success: #10b981;
+  --status-success-soft: rgba(16, 185, 129, 0.12);
+  --status-warn: #f59e0b;
+  --status-error: #e63946;
+  --status-error-soft: rgba(230, 57, 70, 0.12);
+  --status-warn-bg: rgba(245, 158, 11, 0.12);
+  --status-warn-border: rgba(245, 158, 11, 0.35);
 
-  --border: #C9C9D3;
+  --border: #eef1f5;
   --border-focus: var(--accent);
 
   --scrollbar-track: transparent;
-  --scrollbar-thumb: #C9C9D3;
-  --scrollbar-thumb-hover: #A1A1AA;
+  --scrollbar-thumb: #d1d5db;
+  --scrollbar-thumb-hover: #9ca3af;
 
-  --shadow-window: 0 8px 32px rgba(0,0,0,0.14);
+  --shadow-window: 0 8px 32px rgba(13, 24, 41, 0.12);
   --shadow-accent: 0 4px 14px var(--accent-glow);
-  --shadow-panel: 0 0 0 1px var(--border), 0 2px 6px rgba(0,0,0,0.06);
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-panel: 0 0 0 1px var(--border), 0 2px 6px rgba(13, 24, 41, 0.04);
+  --shadow-card: 0 1px 3px rgba(13, 24, 41, 0.04);
 
-  --session-item-bg: var(--bg-input);
-  --session-item-hover-bg: #FFFFFF;
-  --session-item-active-bg: var(--accent-soft-bg);
+  --session-item-bg: transparent;
+  --session-item-hover-bg: #f3f4f6;
+  --session-item-active-bg: #e8f0fe;
 
-  --assistant-card-bg: #FFFFFF;
+  --assistant-card-bg: #ffffff;
   --message-card-shadow: var(--shadow-card);
   --timeline-item-hover-bg: var(--bg-input);
-  --composer-shadow: 0 -2px 6px rgba(0,0,0,0.04);
+  --composer-shadow: 0 -2px 6px rgba(13, 24, 41, 0.03);
 
   /* === 对话历史渲染专用变量 === */
-  --code-bg: #263238;
-  --code-text: #AED581;
+  --code-bg: #1a1f2e;
+  --code-text: #d1d5db;
 
-  --user-bg: rgba(124, 58, 237, 0.06);
-  --user-border: #8B5CF6;
+  --user-bg: rgba(30, 90, 245, 0.06);
+  --user-border: var(--accent);
 
-  --thinking-bg: #FEF9E7;
-  --thinking-border: #FBC02D;
-  --thinking-label: #F57C00;
+  --thinking-bg: #fffbeb;
+  --thinking-border: #f59e0b;
+  --thinking-label: #d97706;
 
-  --tool-bg: #F5EEFD;
-  --tool-border: #A855F7;
-  --tool-header: #7E22CE;
+  --tool-bg: #eff6ff;
+  --tool-border: var(--accent);
+  --tool-header: #1d4ed8;
 
-  --tool-result-bg: #EDF7EE;
-  --tool-result-border: #66BB6A;
-  --tool-error-bg: #FFEBEE;
+  --tool-result-bg: #ecfdf5;
+  --tool-result-border: #10b981;
+  --tool-error-bg: #fff0f0;
 
-  --tool-reply-bg: #FFF7E6;
-  --tool-reply-border: #F59E0B;
-  --tool-reply-header: #D97706;
+  --tool-reply-bg: #fffbeb;
+  --tool-reply-border: #f59e0b;
+  --tool-reply-header: #d97706;
 
-  --write-bg: linear-gradient(135deg, #E8F4FD 0%, #EDF7EE 100%);
-  --write-border: #4CAF50;
-  --write-header: #2E7D32;
+  --write-bg: linear-gradient(135deg, #eff6ff 0%, #ecfdf5 100%);
+  --write-border: #10b981;
+  --write-header: #047857;
 
-  --edit-bg: linear-gradient(135deg, #FFF5EB 0%, #FCE4EC 100%);
-  --edit-border: #F97316;
-  --edit-header: #C2410C;
-  --edit-old-label: #B91C1C;
-  --edit-new-label: #15803D;
+  --edit-bg: linear-gradient(135deg, #fff7ed 0%, #fff1f2 100%);
+  --edit-border: #f97316;
+  --edit-header: #c2410c;
+  --edit-old-label: #b91c1c;
+  --edit-new-label: #047857;
 
-  --todo-bg: linear-gradient(135deg, #EDF7EE 0%, #F4FCE8 100%);
-  --todo-border: #81C784;
-  --todo-header: #2E7D32;
+  --todo-bg: linear-gradient(135deg, #ecfdf5 0%, #f7fee7 100%);
+  --todo-border: #22c55e;
+  --todo-header: #047857;
 
-  --ask-bg: #F5EEFD;
-  --ask-border: #A855F7;
-  --ask-header: #7E22CE;
-  --ask-option-bg: #FFFFFF;
+  --ask-bg: #eff6ff;
+  --ask-border: var(--accent);
+  --ask-header: #1d4ed8;
+  --ask-option-bg: #ffffff;
 
-  --plan-bg: #F5EEFD;
-  --plan-border: #A855F7;
-  --plan-header: #7E22CE;
+  --plan-bg: #eff6ff;
+  --plan-border: var(--accent);
+  --plan-header: #1d4ed8;
 
-  --commit-card-bg: #FFF5EB;
-  --commit-card-border: #F97316;
+  --commit-card-bg: #fff7ed;
+  --commit-card-border: #f97316;
 }

@@ -22,6 +22,7 @@ export interface SessionMeta {
   first_prompt: string
   ai_title: string
   size: number
+  lastEvent?: { type: string; summary: string }
 }
 
 import type { ContentBlock } from './blocks'

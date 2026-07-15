@@ -7,7 +7,7 @@ const api = {
   lockoutState: () => ipcRenderer.invoke('app:lockoutState'),
   setPassword: (pw: string) => ipcRenderer.invoke('app:setPassword', pw),
   clearPassword: () => ipcRenderer.invoke('app:clearPassword'),
-  listSessions: () => ipcRenderer.invoke('app:listSessions'),
+  listSessions: (workDir?: string) => ipcRenderer.invoke('app:listSessions', workDir),
   createSession: (workDir: string, prompt: string, extraArgs: string[] = []) =>
     ipcRenderer.invoke('app:createSession', workDir, prompt, extraArgs),
   sendMessage: (id: string, prompt: string) => ipcRenderer.invoke('app:sendMessage', id, prompt),
@@ -21,6 +21,9 @@ const api = {
   getSessionMessages: (id: string, workDir: string, offset: number, limit: number) =>
     ipcRenderer.invoke('app:getSessionMessages', id, workDir, offset, limit),
   pickDirectory: () => ipcRenderer.invoke('app:pickDirectory'),
+  getRecentSessions: () => ipcRenderer.invoke('app:getRecentSessions'),
+  addRecentSession: (record: any) => ipcRenderer.invoke('app:addRecentSession', record),
+  removeRecentSession: (sessionId: string) => ipcRenderer.invoke('app:removeRecentSession', sessionId),
   getHookServerPort: () => ipcRenderer.invoke('app:getHookServerPort'),
   checkAndFixHooks: () => ipcRenderer.invoke('app:checkAndFixHooks'),
   getSessionStates: () => ipcRenderer.invoke('app:getSessionStates'),

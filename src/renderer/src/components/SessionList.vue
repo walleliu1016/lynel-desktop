@@ -1,20 +1,11 @@
 <template>
   <div class="session-list">
-    <div class="header">
-      <div class="tabs">
-        <button
-          v-for="t in tabs"
-          :key="t.key"
-          class="tab"
-          :class="{ active: filter === t.key }"
-          @click="filter = t.key"
-        >{{ t.label }}</button>
-      </div>
-      <button class="add" @click="$emit('create')">
-        <Icon name="plus" :size="12" /> 新建
-      </button>
-    </div>
+    <button class="open-session" @click="$emit('create')">
+      <Icon name="folder-open" :size="14" />
+      <span>打开 Session</span>
+    </button>
     <div class="search-bar">
+      <Icon name="message-square" :size="12" class="search-icon" />
       <input
         v-model="search"
         class="search-input"
@@ -25,10 +16,14 @@
         <Icon name="close" :size="12" />
       </button>
     </div>
+    <div class="sidehead">
+      <span>会话列表</span>
+      <span class="count">{{ filteredList.length }}</span>
+    </div>
     <div class="items">
       <template v-if="sessions.loading && !list.length">
         <div v-for="i in 6" :key="i" class="skeleton-item">
-          <div class="skeleton-dot" />
+          <div class="skeleton-icon" />
           <div class="skeleton-lines">
             <div class="skeleton-line short" />
             <div class="skeleton-line" />
@@ -45,7 +40,7 @@
           @select="$emit('select', s.id)"
         />
         <div v-if="!filteredList.length" class="empty">
-          {{ search ? '无匹配结果' : filter === 'running' ? '暂无运行中的会话' : filter === 'ended' ? '暂无已结束的会话' : '暂无会话' }}
+          {{ search ? '无匹配结果' : '暂无会话' }}
         </div>
       </template>
     </div>
@@ -66,33 +61,12 @@ defineEmits<{
 }>()
 
 const sessions = useSessionsStore()
-
-type TabKey = 'all' | 'running' | 'ended'
-const filter = ref<TabKey>('all')
 const search = ref('')
-const tabs: { key: TabKey; label: string }[] = [
-  { key: 'all', label: '所有' },
-  { key: 'running', label: '运行中' },
-  { key: 'ended', label: '结束' },
-]
 
 const filteredList = computed(() => {
   const q = search.value.trim().toLowerCase()
+  if (!q) return props.list
   return props.list.filter((s) => {
-    const st = sessions.state[s.id] || 'idle'
-    const isOpened = !!sessions.opened[s.id]
-    const isEnded = st === 'done' || st === 'ended'
-    const isRunning = !isEnded && (isOpened || st !== 'idle')
-    // 状态过滤
-    let stateMatch = false
-    switch (filter.value) {
-      case 'all': stateMatch = true; break
-      case 'running': stateMatch = isRunning; break
-      case 'ended': stateMatch = isEnded; break
-    }
-    if (!stateMatch) return false
-    // 搜索过滤
-    if (!q) return true
     const pn = s.project.toLowerCase()
     const title = (s.first_prompt || s.ai_title || '').toLowerCase()
     const sid = s.id.toLowerCase()
@@ -110,34 +84,28 @@ const dupProjects = computed(() => {
 </script>
 
 <style scoped>
-.session-list { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 8px 0 12px; border-bottom: 1px solid var(--border);
-  flex-shrink: 0; height: 38px; gap: 8px;
-}
-.tabs { display: flex; gap: 2px; }
-.tab {
-  padding: 4px 10px; border-radius: var(--radius-sm);
-  font-size: 12px; color: var(--text-tertiary);
-  border-bottom: 2px solid transparent;
-}
-.tab:hover { color: var(--text-secondary); }
-.tab.active { color: var(--accent-light); border-bottom-color: var(--accent); }
-.add {
-  display: flex; align-items: center; gap: 4px;
-  padding: 3px 10px; border-radius: var(--radius-md);
+.session-list { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 12px; }
+.open-session {
+  width: 100%; height: 40px; border-radius: 11px;
   background: var(--accent); color: white;
-  font-size: 12px; font-weight: 500; flex-shrink: 0;
+  font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  flex-shrink: 0;
+  transition: background 0.15s;
 }
-.add:hover { background: var(--accent-deep); }
+.open-session:hover { background: var(--accent-deep); }
 .search-bar {
-  position: relative; margin: 6px 6px 0;
+  position: relative; margin-top: 12px;
   flex-shrink: 0;
 }
+.search-icon {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--text-tertiary); pointer-events: none;
+}
 .search-input {
-  width: 100%; background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 5px 28px 5px 10px;
+  width: 100%; height: 34px;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 9px; padding: 0 28px 0 30px;
   color: var(--text-primary); font-size: 12px; font-family: inherit;
   outline: none; transition: border-color 0.15s;
 }
@@ -149,16 +117,26 @@ const dupProjects = computed(() => {
   color: var(--text-tertiary); font-size: 12px; border-radius: 50%;
 }
 .search-clear:hover { background: var(--border); color: var(--text-primary); }
-.items { flex: 1; overflow-y: auto; padding: 6px; min-height: 0; }
+.sidehead {
+  margin: 14px 4px 8px;
+  display: flex; justify-content: space-between; align-items: center;
+  color: var(--text-secondary);
+  font-size: 11px; font-weight: 700;
+  flex-shrink: 0;
+}
+.sidehead .count {
+  font-size: 10px; color: var(--text-tertiary);
+}
+.items { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; }
 .empty { color: var(--text-tertiary); font-size: 12px; text-align: center; padding: 20px; }
 
 .skeleton-item {
   display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px; border-radius: var(--radius-md);
-  margin-bottom: 4px;
+  padding: 11px; border-radius: var(--radius-lg);
+  margin-bottom: 6px;
 }
-.skeleton-dot {
-  width: 8px; height: 8px; border-radius: 50%;
+.skeleton-icon {
+  width: 30px; height: 30px; border-radius: 9px;
   background: var(--border); flex-shrink: 0;
   animation: pulse 1.4s ease-in-out infinite;
 }

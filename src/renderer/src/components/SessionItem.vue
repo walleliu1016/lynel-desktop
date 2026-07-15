@@ -7,13 +7,16 @@
     @mouseleave="onLeave"
     ref="itemEl"
   >
-    <div class="status-dot" :class="state"></div>
+    <div class="cc-icon">CC</div>
     <div class="body">
       <div class="row1">
-        <span class="project">{{ projectName }}</span>
-        <span class="duration">{{ duration }}</span>
+        <span class="title" :title="title">{{ title }}</span>
+        <span v-if="stateLabel" class="state-tag" :class="state">{{ stateLabel }}</span>
       </div>
-      <div class="row2">{{ displayText }}</div>
+      <div class="row2">
+        <span class="meta" :title="`${projectName} · ${duration}`">{{ projectName }} · {{ duration }}</span>
+      </div>
+      <div v-if="eventText" class="event">{{ eventText }}</div>
     </div>
   </div>
   <Teleport to="body">
@@ -57,6 +60,15 @@ function cancelHide() {
   if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
 }
 
+const title = computed(() => props.meta.ai_title || props.meta.first_prompt || props.meta.id?.slice(0, 8) || '新会话')
+
+const eventText = computed(() => {
+  if (props.meta.lastEvent) {
+    return `${props.meta.lastEvent.type} · ${props.meta.lastEvent.summary}`
+  }
+  return props.meta.ai_title || props.meta.first_prompt || ''
+})
+
 const projectName = computed(() => {
   const name = props.meta.project || props.meta.workdir || '新会话'
   if (props.dup) {
@@ -64,8 +76,6 @@ const projectName = computed(() => {
   }
   return name
 })
-
-const displayText = computed(() => props.meta.ai_title || props.meta.first_prompt || props.meta.id?.slice(0, 8) || '新会话')
 
 const duration = computed(() => {
   const now = Date.now()
@@ -83,45 +93,80 @@ const duration = computed(() => {
 })
 
 const state = computed(() => sessions.state[props.meta.id] || 'idle')
+
+const stateLabel = computed(() => {
+  switch (state.value) {
+    case 'waiting':
+    case 'thinking':
+    case 'streaming':
+    case 'running_tool':
+      return '运行中'
+    case 'awaiting_permission': return '等待授权'
+    case 'done': return '已完成'
+    case 'ended': return '已结束'
+    default: return ''
+  }
+})
 </script>
 
 <style scoped>
 .session-item {
-  display: flex; align-items: flex-start; gap: 8px;
-  padding: 8px 10px; border-radius: var(--radius-md);
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 11px; border-radius: var(--radius-lg);
   cursor: pointer; position: relative;
-  background: var(--session-item-bg);
+  background: transparent;
   border: 1px solid transparent;
-  margin: 5px 0;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  margin-bottom: 6px;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
 .session-item:hover { background: var(--session-item-hover-bg); }
-.session-item.active { background: var(--session-item-active-bg); border-color: var(--accent-soft-border); }
-.status-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--text-tertiary); flex-shrink: 0; margin-top: 5px;
+.session-item.active {
+  background: var(--session-item-active-bg);
+  border-color: var(--accent-soft-border);
+  box-shadow: inset 4px 0 0 var(--status-error);
 }
-.status-dot.running { background: var(--status-success); }
-.status-dot.awaiting_permission { background: var(--status-warn); }
-.status-dot.done { background: var(--text-tertiary); }
-.status-dot.ended {
-  background: var(--text-tertiary);
-  /* 中空圆点 + 灰边框，区别于 done（用户主动 /exit，比 done 更"永久"） */
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--text-tertiary);
+.cc-icon {
+  width: 30px; height: 30px; border-radius: 9px;
+  background: var(--accent-soft-bg);
+  color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.2px;
+  flex-shrink: 0; margin-top: 1px;
 }
 .body { flex: 1; min-width: 0; }
 .row1 {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
 }
-.project {
-  font-size: 12px; color: var(--accent-light); font-weight: 500;
+.title {
+  font-size: 12px; color: var(--text-primary); font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.duration { font-size: 10px; color: var(--text-tertiary); flex-shrink: 0; }
-.row2 {
-  font-size: 13px; color: var(--text-primary); margin-top: 1px;
+.state-tag {
+  font-size: 9px; font-weight: 700; white-space: nowrap;
+  padding: 2px 6px; border-radius: 6px; flex-shrink: 0;
+}
+.state-tag.waiting,
+.state-tag.thinking,
+.state-tag.streaming,
+.state-tag.running_tool {
+  color: var(--accent);
+  background: var(--accent-soft-bg);
+}
+.state-tag.awaiting_permission {
+  color: var(--status-error);
+  background: var(--status-error-soft);
+}
+.state-tag.done,
+.state-tag.ended {
+  color: #047857;
+  background: #ecfdf5;
+}
+.row2 { margin-top: 2px; }
+.meta { font-size: 10px; color: var(--text-tertiary); }
+.event {
+  font-size: 10px; color: var(--text-secondary); margin-top: 6px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.event :deep(b), .event b { font-weight: 600; color: var(--text-primary); }
 </style>

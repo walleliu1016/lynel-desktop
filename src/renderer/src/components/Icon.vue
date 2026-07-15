@@ -10,6 +10,7 @@ import {
   Cloud,
   Copy,
   FileText,
+  FolderOpen,
   MessageSquare,
   Minus,
   Plus,
@@ -48,6 +49,7 @@ const icons: Record<string, unknown> = {
   'message-square': MessageSquare,
   send: Send,
   'file-text': FileText,
+  'folder-open': FolderOpen,
 }
 
 const Comp = computed(() => icons[props.name] ?? null)

@@ -7,7 +7,7 @@
       <select class="form-select" v-model="cfg.theme" @change="onThemeChange">
         <option value="oled-dark">OLED 暗色</option>
         <option value="dark-pro">深色专业</option>
-        <option value="light-pro">浅色专业</option>
+        <option value="light-pro">浅色（红蓝）</option>
       </select>
     </div>
 
@@ -69,7 +69,7 @@ import { showToast } from '../../composables/useToast'
 
 const settings = useSettingsStore()
 const cfg = computed(() => settings.cfg ?? (settings.cfg = {
-  theme: 'oled-dark',
+  theme: 'light-pro',
   claude_path: '',
   auto_allow_bash: false,
   log_enabled: false,

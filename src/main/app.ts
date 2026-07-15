@@ -116,6 +116,88 @@ function extractToolInput(input: any): string {
   return input.command || input.file_path || input.pattern || input.url || input.query || '';
 }
 
+interface RecentSessionRecord {
+  sessionId: string;
+  workdir: string;
+  project: string;
+  aiTitle: string;
+  firstPrompt: string;
+  lastOpenedAt: number;
+  state: string;
+}
+
+const RECENT_SESSIONS_PATH = path.join(os.homedir(), '.lynel-desktop', 'recent-sessions.json');
+const MAX_RECENT_SESSIONS = 30;
+
+function readRecentSessions(): RecentSessionRecord[] {
+  try {
+    const raw = fs.readFileSync(RECENT_SESSIONS_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {
+    // 文件不存在或解析失败时返回空数组
+  }
+  return [];
+}
+
+function writeRecentSessions(list: RecentSessionRecord[]): void {
+  try {
+    fs.mkdirSync(path.dirname(RECENT_SESSIONS_PATH), { recursive: true });
+    fs.writeFileSync(RECENT_SESSIONS_PATH, JSON.stringify(list, null, 2), 'utf8');
+  } catch (err: any) {
+    getLogger().error(`[recent-sessions] write failed: ${err.message}`);
+  }
+}
+
+async function generateRecentFromProjects(): Promise<RecentSessionRecord[]> {
+  const sessions = await jsonl.scanAll();
+  const map = new Map<string, RecentSessionRecord>();
+  for (const s of sessions) {
+    const existing = map.get(s.id);
+    const lastOpened = s.mtime * 1000;
+    if (!existing || existing.lastOpenedAt < lastOpened) {
+      map.set(s.id, {
+        sessionId: s.id,
+        workdir: s.workdir,
+        project: s.project,
+        aiTitle: s.ai_title || '',
+        firstPrompt: s.first_prompt || '',
+        lastOpenedAt: lastOpened,
+        state: 'idle',
+      });
+    }
+  }
+  return Array.from(map.values())
+    .sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
+    .slice(0, MAX_RECENT_SESSIONS);
+}
+
+async function getRecentSessions(): Promise<RecentSessionRecord[]> {
+  let list = readRecentSessions();
+  if (list.length === 0) {
+    list = await generateRecentFromProjects();
+    if (list.length > 0) writeRecentSessions(list);
+  }
+  return list;
+}
+
+async function addRecentSession(record: RecentSessionRecord): Promise<void> {
+  const list = await getRecentSessions();
+  const idx = list.findIndex((r) => r.sessionId === record.sessionId);
+  if (idx >= 0) {
+    list[idx] = { ...list[idx], ...record, lastOpenedAt: Date.now() };
+  } else {
+    list.unshift({ ...record, lastOpenedAt: Date.now() });
+  }
+  const sorted = list.sort((a, b) => b.lastOpenedAt - a.lastOpenedAt).slice(0, MAX_RECENT_SESSIONS);
+  writeRecentSessions(sorted);
+}
+
+function removeRecentSession(sessionId: string): void {
+  const list = readRecentSessions().filter((r) => r.sessionId !== sessionId);
+  writeRecentSessions(list);
+}
+
 export class App {
   private window: BrowserWindow | null = null;
   private settingsStore = getStore('settings');
@@ -452,6 +534,16 @@ export class App {
 
     getLogger().info(`[app:createSession] session created id=${realId} workDir=${workDir}`);
     if (prompt) session.send(realId, prompt);
+    const project = workDir.split(/[\\/]/).filter(Boolean).pop() || workDir;
+    await addRecentSession({
+      sessionId: realId,
+      workdir: workDir,
+      project,
+      aiTitle: '',
+      firstPrompt: prompt,
+      lastOpenedAt: Date.now(),
+      state: 'running',
+    });
     return realId;
   }
 
@@ -497,7 +589,12 @@ export class App {
       this.settingsStore.set('auth.hash', '');
     });
 
-    ipcMain.handle('app:listSessions', () => jsonl.scanAll());
+    ipcMain.handle('app:listSessions', async (_event, workDir?: string) => {
+      const all = await jsonl.scanAll();
+      if (!workDir) return all;
+      const normalized = path.normalize(workDir).toLowerCase();
+      return all.filter((s) => path.normalize(s.workdir).toLowerCase() === normalized);
+    });
 
     ipcMain.handle('app:getSessionMessages', (_event, id: string, workDir: string, offset: number, limit: number) => {
       const filePath = jsonl.getSessionJsonlPath(id, workDir);
@@ -607,6 +704,10 @@ export class App {
       const result = await dialog.showOpenDialog(this.window!, { properties: ['openDirectory'] });
       return result.filePaths[0] ?? '';
     });
+
+    ipcMain.handle('app:getRecentSessions', () => getRecentSessions());
+    ipcMain.handle('app:addRecentSession', (_event, record: RecentSessionRecord) => addRecentSession(record));
+    ipcMain.handle('app:removeRecentSession', (_event, sessionId: string) => removeRecentSession(sessionId));
 
     ipcMain.handle('app:getHookServerPort', () => this.hookServer?.getPort() ?? 0);
 

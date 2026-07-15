@@ -8,3 +8,4 @@ lynel-desktop
 dist/
 dist-electron/
 .claude/
+.worktrees/

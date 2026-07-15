@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lynel Desktop - VS Code 风格会话管理设计方案</title>
+<style>
+  /* === 复用项目 theme.css 的 Dark Pro 变量 === */
+  :root {
+    --bg-primary: #09090B;
+    --bg-panel: #121214;
+    --bg-input: #1A1A1E;
+    --bg-titlebar: linear-gradient(180deg, #1C1C1F 0%, #18181B 100%);
+    --bg-terminal: #1e1e1e;
+    --accent: #8B5CF6;
+    --accent-deep: #7C3AED;
+    --accent-light: #C4B5FD;
+    --accent-soft-bg: rgba(139, 92, 246, 0.12);
+    --accent-soft-border: rgba(139, 92, 246, 0.35);
+    --text-primary: #F4F4F5;
+    --text-secondary: #A1A1AA;
+    --text-tertiary: #71717A;
+    --text-inverse: #FFFFFF;
+    --status-success: #34D399;
+    --status-warn: #FBBF24;
+    --border: #27272A;
+    --border-focus: var(--accent);
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 10px;
+    --shadow-window: 0 12px 40px rgba(0,0,0,0.5);
+    --font-ui: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: var(--font-ui);
+    background: #000;
+    color: var(--text-primary);
+    display: flex; flex-direction: column;
+    align-items: center; padding: 40px 20px;
+    gap: 48px;
+  }
+
+  h2.section-title {
+    font-size: 20px; font-weight: 600;
+    color: var(--text-primary);
+    text-align: center; margin-bottom: 8px;
+  }
+  .section-sub {
+    font-size: 13px; color: var(--text-tertiary);
+    text-align: center; margin-bottom: 24px;
+  }
+
+  /* ==================== 窗口模拟器 ==================== */
+  .window {
+    width: 1000px; max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-window);
+    background: var(--bg-primary);
+  }
+
+  /* ==================== 标题栏 ==================== */
+  .titlebar {
+    height: 36px;
+    background: var(--bg-titlebar);
+    display: flex; align-items: center;
+    padding: 0 12px; gap: 10px;
+    -webkit-app-region: drag;
+    user-select: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .titlebar-logo {
+    font-size: 12px; font-weight: 600; color: var(--text-secondary);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .titlebar-logo svg { width: 14px; height: 14px; color: var(--accent); }
+  .titlebar-spacer { flex: 1; }
+
+  /* ==================== 页面1: 欢迎页 ==================== */
+  .welcome-body {
+    display: flex; flex-direction: column;
+    align-items: center; padding: 64px 48px 48px;
+    min-height: 520px;
+  }
+  .welcome-logo {
+    width: 64px; height: 64px;
+    background: var(--accent-soft-bg);
+    border: 1px solid var(--accent-soft-border);
+    border-radius: 16px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 20px;
+  }
+  .welcome-logo svg { width: 32px; height: 32px; color: var(--accent); }
+  .welcome-title {
+    font-size: 24px; font-weight: 700; color: var(--text-primary);
+    margin-bottom: 6px;
+  }
+  .welcome-desc {
+    font-size: 14px; color: var(--text-tertiary);
+    margin-bottom: 36px;
+  }
+
+  .welcome-actions {
+    display: flex; gap: 12px; margin-bottom: 48px;
+  }
+  .btn-open {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 24px;
+    background: var(--accent);
+    color: white; border: none;
+    border-radius: var(--radius-md);
+    font-size: 14px; font-weight: 500;
+    cursor: pointer; font-family: inherit;
+    transition: background 0.15s;
+  }
+  .btn-open:hover { background: var(--accent-deep); }
+  .btn-open svg { width: 16px; height: 16px; }
+
+  .btn-clone {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 20px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 13px; cursor: pointer;
+    font-family: inherit; transition: all 0.15s;
+  }
+  .btn-clone:hover { border-color: var(--accent); color: var(--accent-light); }
+  .btn-clone svg { width: 15px; height: 15px; }
+
+  /* 最近项目列表 */
+  .recent-section {
+    width: 100%; max-width: 580px;
+  }
+  .recent-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .recent-label {
+    font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.8px;
+  }
+  .recent-list {
+    display: flex; flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  .recent-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: background 0.1s;
+    border-bottom: 1px solid var(--border);
+  }
+  .recent-item:last-child { border-bottom: none; }
+  .recent-item:hover { background: rgba(255,255,255,0.03); }
+  .recent-icon {
+    width: 32px; height: 32px;
+    background: var(--bg-input);
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .recent-icon svg { width: 16px; height: 16px; color: var(--accent-light); }
+  .recent-info { flex: 1; min-width: 0; }
+  .recent-name {
+    font-size: 13px; font-weight: 500; color: var(--text-primary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .recent-path {
+    font-size: 11px; color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-top: 2px;
+  }
+  .recent-time {
+    font-size: 11px; color: var(--text-tertiary);
+    flex-shrink: 0; text-align: right;
+  }
+  .recent-remove {
+    width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-tertiary); border-radius: var(--radius-sm);
+    cursor: pointer; opacity: 0; transition: opacity 0.1s;
+    font-size: 14px; flex-shrink: 0;
+  }
+  .recent-item:hover .recent-remove { opacity: 1; }
+  .recent-remove:hover { background: var(--bg-input); color: var(--text-primary); }
+
+  .welcome-footer {
+    margin-top: 48px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .welcome-footer a {
+    font-size: 12px; color: var(--text-tertiary);
+    text-decoration: none; cursor: pointer;
+  }
+  .welcome-footer a:hover { color: var(--accent-light); }
+
+  /* ==================== 页面2: 工作区 ==================== */
+  .workspace-layout {
+    display: flex; height: 520px;
+  }
+
+  /* 左侧栏 */
+  .sidebar {
+    width: 260px; background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    flex-shrink: 0;
+  }
+  .sidebar-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    height: 36px;
+  }
+  .sidebar-title {
+    font-size: 10px; font-weight: 600; color: var(--text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.8px;
+  }
+  .sidebar-open-btn {
+    padding: 3px 12px;
+    background: var(--accent);
+    color: white; border: none;
+    border-radius: var(--radius-sm);
+    font-size: 11px; font-weight: 500;
+    cursor: pointer; font-family: inherit;
+    transition: background 0.15s;
+  }
+  .sidebar-open-btn:hover { background: var(--accent-deep); }
+
+  .sidebar-list {
+    flex: 1; overflow-y: auto; padding: 4px 6px;
+  }
+
+  .sidebar-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: var(--radius-md);
+    cursor: pointer; margin-bottom: 2px;
+    transition: background 0.1s;
+    border: 1px solid transparent;
+  }
+  .sidebar-item:hover { background: rgba(255,255,255,0.04); }
+  .sidebar-item.active {
+    background: var(--accent-soft-bg);
+    border-color: var(--accent-soft-border);
+  }
+  .sidebar-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--text-tertiary); flex-shrink: 0;
+  }
+  .sidebar-dot.running { background: var(--status-success); }
+  .sidebar-dot.warn { background: var(--status-warn); }
+  .sidebar-item-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+  .sidebar-project {
+    font-size: 12px; color: var(--accent-light); font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sidebar-desc {
+    font-size: 12px; color: var(--text-secondary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-top: 1px;
+  }
+  .sidebar-close {
+    width: 18px; height: 18px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-tertiary); border-radius: var(--radius-sm);
+    cursor: pointer; opacity: 0; transition: opacity 0.1s;
+    font-size: 12px; flex-shrink: 0;
+  }
+  .sidebar-item:hover .sidebar-close { opacity: 1; }
+  .sidebar-close:hover { background: var(--bg-input); color: var(--text-primary); }
+
+  /* 底部用户栏 */
+  .sidebar-user {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; border-top: 1px solid var(--border);
+    font-size: 12px; color: var(--text-secondary);
+  }
+  .sidebar-user-avatar {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 600;
+    flex-shrink: 0;
+  }
+  .sidebar-user-spacer { flex: 1; }
+  .sidebar-user-settings {
+    width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-tertiary); border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .sidebar-user-settings:hover { background: var(--bg-input); color: var(--text-primary); }
+  .sidebar-user-settings svg { width: 14px; height: 14px; }
+
+  /* 右侧主区域 */
+  .main-area {
+    flex: 1; display: flex; flex-direction: column;
+    min-width: 0; background: var(--bg-primary);
+  }
+  .toolbar {
+    height: 36px; display: flex; align-items: center;
+    padding: 0 14px; gap: 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .toolbar-project {
+    color: var(--accent-light); font-weight: 500;
+  }
+  .toolbar-sep {
+    width: 1px; height: 16px; background: var(--border);
+  }
+  .toolbar-info {
+    color: var(--text-tertiary); font-size: 11px;
+  }
+  .toolbar-spacer { flex: 1; }
+  .toolbar-status {
+    font-size: 11px; padding: 2px 8px;
+    border-radius: 10px;
+  }
+  .toolbar-status.running {
+    background: rgba(52,211,153,0.12); color: var(--status-success);
+  }
+  .toolbar-status.idle {
+    background: var(--bg-input); color: var(--text-tertiary);
+  }
+
+  .terminal-area {
+    flex: 1; background: var(--bg-terminal);
+    padding: 12px 14px; font-family: var(--font-mono);
+    font-size: 13px; line-height: 1.6;
+    color: var(--text-secondary);
+    overflow: hidden;
+    position: relative;
+  }
+  .terminal-line { white-space: pre-wrap; }
+  .terminal-prompt { color: var(--accent-light); }
+  .terminal-cursor {
+    display: inline-block; width: 8px; height: 15px;
+    background: var(--text-primary);
+    animation: blink 1s step-end infinite;
+    vertical-align: text-bottom;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ==================== 对话框模拟 ==================== */
+  .dialog-overlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  .dialog {
+    width: 440px; background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-window);
+    padding: 20px 24px;
+  }
+  .dialog h3 {
+    font-size: 14px; color: var(--text-primary);
+    margin-bottom: 16px;
+  }
+  .dialog-label {
+    display: block; font-size: 10px; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px;
+  }
+  .dialog-dir-row {
+    display: flex; gap: 8px; margin-bottom: 14px;
+  }
+  .dialog-input {
+    flex: 1; background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 8px 10px; color: var(--text-primary);
+    font-size: 12px; font-family: var(--font-mono);
+    cursor: pointer;
+  }
+  .dialog-input:focus { outline: none; border-color: var(--accent); }
+  .dialog-pick {
+    padding: 8px 14px; background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md); color: var(--text-primary);
+    font-size: 12px; cursor: pointer; font-family: inherit;
+    white-space: nowrap;
+  }
+  .dialog-pick:hover { background: var(--border); }
+  .dialog-actions {
+    display: flex; justify-content: flex-end; gap: 8px;
+    margin-top: 18px;
+  }
+  .btn-cancel {
+    padding: 7px 16px; background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md); font-size: 12px;
+    color: var(--text-primary); cursor: pointer; font-family: inherit;
+  }
+  .btn-primary {
+    padding: 7px 18px; background: var(--accent);
+    color: white; border: none;
+    border-radius: var(--radius-md); font-size: 12px;
+    font-weight: 500; cursor: pointer; font-family: inherit;
+  }
+  .btn-primary:hover { background: var(--accent-deep); }
+
+  /* 对话框内历史列表 */
+  .dialog-recent-list {
+    display: flex; flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden; margin-bottom: 12px;
+    max-height: 144px; overflow-y: auto;
+  }
+  .dialog-recent-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; cursor: pointer;
+    transition: background 0.1s;
+    border-bottom: 1px solid var(--border);
+  }
+  .dialog-recent-item:last-child { border-bottom: none; }
+  .dialog-recent-item:hover { background: rgba(255,255,255,0.03); }
+  .dialog-recent-item.selected {
+    background: var(--accent-soft-bg);
+    border-color: var(--accent-soft-border);
+  }
+  .dialog-recent-icon {
+    width: 28px; height: 28px;
+    background: var(--bg-input);
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .dialog-recent-icon svg { width: 14px; height: 14px; color: var(--accent-light); }
+  .dialog-recent-info { flex: 1; min-width: 0; }
+  .dialog-recent-name {
+    font-size: 12px; font-weight: 500; color: var(--text-primary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .dialog-recent-path {
+    font-size: 10px; color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-top: 1px;
+  }
+  .dialog-recent-check {
+    width: 18px; height: 18px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent); font-size: 12px; flex-shrink: 0;
+  }
+  .dialog-divider {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 10px;
+  }
+  .dialog-divider::before, .dialog-divider::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+  .dialog-divider-text {
+    font-size: 10px; color: var(--text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+
+  /* ==================== 注释标注 ==================== */
+  .annotation {
+    position: absolute;
+    background: rgba(139,92,246,0.9);
+    color: white; font-size: 11px;
+    padding: 4px 10px; border-radius: 3px;
+    pointer-events: none; z-index: 50;
+    white-space: nowrap;
+  }
+  .annotation::after {
+    content: '';
+    position: absolute;
+    border: 5px solid transparent;
+  }
+</style>
+</head>
+<body>
+
+<h2 class="section-title">Lynel Desktop 会话管理 redesign</h2>
+<p class="section-sub">参考 VS Code 工作区管理方式，简化会话生命周期</p>
+
+<!-- ======================== 页面 1: 欢迎页 ======================== -->
+<h2 style="font-size:15px;color:var(--text-tertiary);margin-bottom:16px;">页面 1 — 欢迎页（启动后默认进入，替代当前空状态）</h2>
+<div class="window" style="position:relative;">
+  <div class="titlebar">
+    <div class="titlebar-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      Lynel Desktop
+    </div>
+    <div class="titlebar-spacer"></div>
+  </div>
+
+  <div class="welcome-body">
+    <div class="welcome-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+    </div>
+    <div class="welcome-title">Lynel Desktop</div>
+    <div class="welcome-desc">AI 编程助手，为专业开发者而生</div>
+
+    <div class="welcome-actions">
+      <button class="btn-open">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        打开项目
+      </button>
+    </div>
+
+    <div class="recent-section">
+      <div class="recent-header">
+        <span class="recent-label">最近项目</span>
+      </div>
+      <div class="recent-list">
+        <div class="recent-item">
+          <div class="recent-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="recent-info">
+            <div class="recent-name">ease-ui</div>
+            <div class="recent-path">G:\work\ease-ui</div>
+          </div>
+          <div class="recent-time">5m 前</div>
+          <div class="recent-remove" title="从列表中移除">×</div>
+        </div>
+        <div class="recent-item">
+          <div class="recent-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="recent-info">
+            <div class="recent-name">my-backend-service</div>
+            <div class="recent-path">/home/bruceliu/projects/my-backend-service</div>
+          </div>
+          <div class="recent-time">2h 前</div>
+          <div class="recent-remove" title="从列表中移除">×</div>
+        </div>
+        <div class="recent-item">
+          <div class="recent-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="recent-info">
+            <div class="recent-name">data-pipeline</div>
+            <div class="recent-path">/home/bruceliu/work/data-pipeline</div>
+          </div>
+          <div class="recent-time">昨天</div>
+          <div class="recent-remove" title="从列表中移除">×</div>
+        </div>
+        <div class="recent-item">
+          <div class="recent-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="recent-info">
+            <div class="recent-name">cli-tools</div>
+            <div class="recent-path">G:\work\cli-tools</div>
+          </div>
+          <div class="recent-time">3d 前</div>
+          <div class="recent-remove" title="从列表中移除">×</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="welcome-footer">
+      <a>帮助文档</a>
+      <a>快捷键参考</a>
+      <a>⚙ 设置</a>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== 页面 2: 工作区（有活跃会话） ======================== -->
+<h2 style="font-size:15px;color:var(--text-tertiary);margin:32px 0 16px;">页面 2 — 工作区（打开项目后，左侧会话列表 + 终端）</h2>
+<div class="window" style="position:relative;">
+  <div class="titlebar">
+    <div class="titlebar-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      Lynel Desktop
+    </div>
+    <div class="titlebar-spacer"></div>
+  </div>
+
+  <div class="workspace-layout">
+    <!-- 左侧栏 -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-title">会话</span>
+        <button class="sidebar-open-btn">打开</button>
+      </div>
+      <div class="sidebar-list">
+        <!-- 活跃会话 -->
+        <div class="sidebar-item active">
+          <div class="sidebar-dot running"></div>
+          <div class="sidebar-item-body">
+            <div class="sidebar-project">ease-ui</div>
+            <div class="sidebar-desc">修复了登录页面样式问题</div>
+          </div>
+          <div class="sidebar-close" title="关闭会话（停止 Claude 进程）">×</div>
+        </div>
+        <!-- 其他已打开会话 -->
+        <div class="sidebar-item">
+          <div class="sidebar-dot running"></div>
+          <div class="sidebar-item-body">
+            <div class="sidebar-project">my-backend-service</div>
+            <div class="sidebar-desc">帮我优化数据库查询性能</div>
+          </div>
+          <div class="sidebar-close" title="关闭会话（停止 Claude 进程）">×</div>
+        </div>
+        <div class="sidebar-item">
+          <div class="sidebar-dot"></div>
+          <div class="sidebar-item-body">
+            <div class="sidebar-project">data-pipeline</div>
+            <div class="sidebar-desc">写一个 ETL 脚本…</div>
+          </div>
+          <div class="sidebar-close" title="关闭会话（停止 Claude 进程）">×</div>
+        </div>
+      </div>
+      <div class="sidebar-user">
+        <div class="sidebar-user-avatar">B</div>
+        <span>bruceliu</span>
+        <div class="sidebar-user-spacer"></div>
+        <div class="sidebar-user-settings" title="设置">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧主区域 -->
+    <div class="main-area">
+      <div class="toolbar">
+        <span class="toolbar-project">ease-ui</span>
+        <span class="toolbar-sep"></span>
+        <span class="toolbar-info" style="font-family:var(--font-mono);">G:\work\ease-ui</span>
+        <span class="toolbar-sep"></span>
+        <span class="toolbar-info">32 条消息</span>
+        <span class="toolbar-spacer"></span>
+        <span class="toolbar-status running">运行中</span>
+      </div>
+
+      <div class="terminal-area">
+        <div class="terminal-line"><span class="terminal-prompt">$</span> claude --session-id a1b2c3d4</div>
+        <div class="terminal-line">Claude Code v2.4.1</div>
+        <div class="terminal-line" style="margin-top:8px;color:var(--text-primary);">我来帮你分析登录页面的问题。让我先看看相关代码…</div>
+        <div class="terminal-line" style="color:var(--text-tertiary);">⏺ Read src/renderer/src/views/LoginView.vue</div>
+        <div class="terminal-line" style="margin-top:8px;">找到问题了 —— <code style="color:var(--accent-light);">handleSubmit</code> 中错误处理</div>
+        <div class="terminal-line">不完整，导致异常时按钮一直处于 loading 状态。</div>
+        <div class="terminal-line" style="margin-top:12px;"><span class="terminal-prompt">&gt;</span> <span class="terminal-cursor"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== 页面 3: 打开项目对话框 ======================== -->
+<h2 style="font-size:15px;color:var(--text-tertiary);margin:32px 0 16px;">对话框 — 打开项目（浏览目录 + 点击历史快速选择）</h2>
+<div class="window" style="position:relative;height:520px;">
+  <div class="titlebar">
+    <div class="titlebar-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      Lynel Desktop
+    </div>
+  </div>
+
+  <div style="padding:32px;display:flex;align-items:flex-start;justify-content:center;height:100%;">
+    <div class="dialog" style="width:520px;">
+      <h3>打开项目</h3>
+
+      <!-- 历史记录快速选择 -->
+      <label class="dialog-label">从历史中选择</label>
+      <div class="dialog-recent-list">
+        <div class="dialog-recent-item selected">
+          <div class="dialog-recent-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="dialog-recent-info">
+            <div class="dialog-recent-name">ease-ui</div>
+            <div class="dialog-recent-path">G:\work\ease-ui</div>
+          </div>
+          <div class="dialog-recent-check">✓</div>
+        </div>
+        <div class="dialog-recent-item">
+          <div class="dialog-recent-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="dialog-recent-info">
+            <div class="dialog-recent-name">my-backend-service</div>
+            <div class="dialog-recent-path">/home/bruceliu/projects/my-backend-service</div>
+          </div>
+        </div>
+        <div class="dialog-recent-item">
+          <div class="dialog-recent-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="dialog-recent-info">
+            <div class="dialog-recent-name">data-pipeline</div>
+            <div class="dialog-recent-path">/home/bruceliu/work/data-pipeline</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dialog-divider">
+        <span class="dialog-divider-text">或者浏览目录</span>
+      </div>
+
+      <label class="dialog-label">项目目录</label>
+      <div class="dialog-dir-row">
+        <input class="dialog-input" value="G:\work\ease-ui" readonly placeholder="选择项目目录…">
+        <button class="dialog-pick">浏览…</button>
+      </div>
+      <label class="dialog-label">提示词（可选）</label>
+      <textarea class="dialog-input" style="width:100%;resize:none;min-height:44px;font-family:var(--font-ui);" placeholder="你想让 Claude 做什么？留空直接进入交互模式"></textarea>
+      <div class="dialog-actions">
+        <button class="btn-cancel">取消</button>
+        <button class="btn-primary">打开并启动</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 设计要点说明 ==================== -->
+<div style="width:1000px;max-width:100%;margin-top:48px;">
+  <h2 style="font-size:16px;color:var(--text-primary);margin-bottom:16px;">核心变更 vs 当前实现</h2>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead>
+      <tr style="text-align:left;border-bottom:1px solid var(--border);">
+        <th style="padding:10px 12px;color:var(--text-tertiary);width:25%;">维度</th>
+        <th style="padding:10px 12px;color:var(--text-tertiary);width:37.5%;">当前</th>
+        <th style="padding:10px 12px;color:var(--accent-light);width:37.5%;">新设计</th>
+      </tr>
+    </thead>
+    <tbody style="color:var(--text-secondary);">
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:10px 12px;font-weight:500;color:var(--text-primary);">会话发现</td>
+        <td style="padding:10px 12px;">启动时扫描 ~/.lynel-desktop/projects/ 下所有 JSONL，展示全部历史会话</td>
+        <td style="padding:10px 12px;color:var(--text-primary);">不扫描。用户主动"打开项目"才创建/恢复会话。历史记录存在本地 JSON 文件中</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:10px 12px;font-weight:500;color:var(--text-primary);">会话列表</td>
+        <td style="padding:10px 12px;">标签页切换：所有 / 运行中 / 结束 + 搜索栏</td>
+        <td style="padding:10px 12px;color:var(--text-primary);">单一扁平列表，只显示用户主动打开的项目。无标签页、无状态过滤</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:10px 12px;font-weight:500;color:var(--text-primary);">新建会话</td>
+        <td style="padding:10px 12px;">弹出 NewSessionDialog：选目录 + 必填提示词 + 选项 → 创建</td>
+        <td style="padding:10px 12px;color:var(--text-primary);">打开项目"对话框：选目录即可，提示词可选。打开 = 新建，无需区分"新建"和"打开"</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:10px 12px;font-weight:500;color:var(--text-primary);">主页</td>
+        <td style="padding:10px 12px;">直接进入 HomeView，无活跃会话时显示空状态提示</td>
+        <td style="padding:10px 12px;color:var(--text-primary);">欢迎页：Logo + 打开项目按钮 + 最近项目列表。类似 VS Code 的 Start 页面</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:10px 12px;font-weight:500;color:var(--text-primary);">历史持久化</td>
+        <td style="padding:10px 12px;">隐式：通过扫描 projects 目录获得</td>
+        <td style="padding:10px 12px;color:var(--text-primary);">显式：打开过的项目写入 recent.json，最多保留 50 条，按最近打开时间排序</td>
+      </tr>
+      <tr>
+        <td style="padding:10px 12px;font-weight:500;color:var(--text-primary);">关闭会话</td>
+        <td style="padding:10px 12px;">无明确关闭操作，状态变为 ended/done 后仍在列表中</td>
+        <td style="padding:10px 12px;color:var(--text-primary);">侧边栏每个会话有 × 按钮，点击关闭 → 停止 Claude 进程 → 从侧边栏移除（不删除 JSONL 数据）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 style="font-size:16px;color:var(--text-primary);margin:32px 0 12px;">实施计划</h2>
+  <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px 24px;">
+    <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--text-secondary);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="background:var(--accent);color:white;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">1</span>
+        <span><b style="color:var(--text-primary);">新增 WelcomeView.vue</b> — 欢迎页面组件（Logo + 打开项目按钮 + 最近项目列表）</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="background:var(--accent);color:white;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">2</span>
+        <span><b style="color:var(--text-primary);">新增 recent store</b> — 管理最近打开的项目列表，持久化到 ~/.lynel-desktop/recent.json</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="background:var(--accent);color:white;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">3</span>
+        <span><b style="color:var(--text-primary);">重写 SessionList.vue</b> — 去掉标签页/搜索，改为简洁的已打开会话列表</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="background:var(--accent);color:white;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">4</span>
+        <span><b style="color:var(--text-primary);">重写 NewSessionDialog → OpenProjectDialog</b> — 简化为选目录 + 可选提示词</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="background:var(--accent);color:white;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">5</span>
+        <span><b style="color:var(--text-primary);">调整路由</b> — 登录后进入 /welcome；打开项目后进入 /home（工作区视图）</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="background:var(--accent);color:white;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">6</span>
+        <span><b style="color:var(--text-primary);">简化 sessions store</b> — 移除 adopted / opened 等冗余状态；后端不再扫描 projects 目录</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

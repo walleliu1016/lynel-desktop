@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { SessionMeta, ChatMessage, SessionState } from '../types/session'
+import type { RecentSession } from '../types/recent'
 import type { ContentBlock, ToolResultBlock, RawContent } from '../types/blocks'
-import { ListSessions, CreateSession, SendMessage, GetSessionMessages, GetSessionStates, AdoptSession } from '../composables/useElectron'
+import { CreateSession, SendMessage, GetSessionMessages, AdoptSession } from '../composables/useElectron'
 
 export interface HookPermissionRequest {
   requestId: string
@@ -164,61 +165,6 @@ export const useSessionsStore = defineStore('sessions', () => {
     return s.slice(0, max) + '…'
   }
 
-  async function refresh(options?: { sort?: boolean }) {
-    loading.value = true
-    try {
-      const backend = await ListSessions()
-      try {
-        const states = await GetSessionStates()
-        for (const [id, st] of Object.entries(states)) {
-          const normalized = st === 'running' ? 'waiting' : st
-          state.value = { ...state.value, [id]: normalized as SessionState }
-        }
-      } catch {}
-
-      if (options?.sort !== false) {
-        list.value = backend
-        return
-      }
-
-      const existingMap = new Map(list.value.map((s: SessionMeta) => [s.id, s]))
-      const added: SessionMeta[] = []
-      const changed: SessionMeta[] = []
-      for (const s of backend) {
-        const cur = existingMap.get(s.id)
-        if (!cur) {
-          added.push(s)
-        } else if (
-          cur.workdir !== s.workdir ||
-          cur.mtime !== s.mtime ||
-          cur.msg_count !== s.msg_count ||
-          cur.first_prompt !== s.first_prompt ||
-          cur.ai_title !== s.ai_title ||
-          cur.size !== s.size
-        ) {
-          changed.push(s)
-        }
-      }
-      const removed = list.value.some((s: SessionMeta) => !backend.some((b: SessionMeta) => b.id === s.id))
-      if (added.length === 0 && !removed && changed.length === 0) return
-
-      if (added.length === 0 && !removed) {
-        for (const s of changed) {
-          const idx = list.value.findIndex((x: SessionMeta) => x.id === s.id)
-          if (idx >= 0) list.value[idx] = s
-        }
-        return
-      }
-
-      const preserved = list.value
-        .filter((s: SessionMeta) => backend.some((b: SessionMeta) => b.id === s.id))
-        .map((s: SessionMeta) => changed.find((b: SessionMeta) => b.id === s.id) || s)
-      list.value = [...added, ...preserved]
-    } finally {
-      loading.value = false
-    }
-  }
-
   async function create(workdir: string, prompt: string, extraArgs: string[] = []) {
     creating.value = true
     try {
@@ -238,6 +184,25 @@ export const useSessionsStore = defineStore('sessions', () => {
     } finally {
       creating.value = false
     }
+  }
+
+  function open(record: RecentSession) {
+    if (!list.value.find((s) => s.id === record.sessionId)) {
+      list.value = [{
+        id: record.sessionId,
+        workdir: record.workdir,
+        project: record.project,
+        mtime: Math.floor(record.lastOpenedAt / 1000),
+        msg_count: 0,
+        first_prompt: record.firstPrompt,
+        ai_title: record.aiTitle,
+        size: 0,
+      }, ...list.value]
+    }
+    activeId.value = record.sessionId
+    opened.value = { ...opened.value, [record.sessionId]: true }
+    const st = record.state === 'running' ? 'waiting' : (record.state || 'idle')
+    state.value = { ...state.value, [record.sessionId]: st as SessionState }
   }
 
   async function select(id: string) {
@@ -287,23 +252,19 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   async function reloadFromJsonl(sid: string) {
+    const meta = list.value.find((s) => s.id === sid)
+    if (!meta) return
     try {
-      await refresh()
-      const meta = list.value.find((s) => s.id === sid)
-      if (!meta) return
-      const total = meta.msg_count
-      if (total === 0) return
-      const offset = Math.max(0, total - PAGE_SIZE)
-      const raw = await GetSessionMessages(sid, meta.workdir, offset, PAGE_SIZE)
+      const raw = await GetSessionMessages(sid, meta.workdir, 0, 0)
       const msgs = (raw || []).map((m: any, i: number) => ({
-        id: `${sid}-${offset + i}`,
+        id: `${sid}-${i}`,
         msgId: m.msgId,
         role: m.role || m.Role || 'assistant',
         blocks: parseBlocks(m.content || m.Content),
         ts: m.Timestamp || m.timestamp || Date.now(),
       } as ChatMessage))
-      historyOffset.value = { ...historyOffset.value, [sid]: offset + (raw?.length || 0) }
-      hasMore.value = { ...hasMore.value, [sid]: offset > 0 }
+      historyOffset.value = { ...historyOffset.value, [sid]: raw?.length || 0 }
+      hasMore.value = { ...hasMore.value, [sid]: false }
       messages.value = { ...messages.value, [sid]: msgs }
     } catch (e: any) {
       console.error('[sessions] reloadFromJsonl failed:', e?.message || e)
@@ -373,6 +334,6 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   return { list, activeId, active, messages, streaming, state,
     hasMore, creating, loading, adopted, drafts, hookPermissions, opened,
-    setDraft, refresh, create, select, send, setHookPermission,
+    setDraft, create, open, select, send, setHookPermission,
     reloadFromJsonl, handleHookEvent, loadMore }
 })

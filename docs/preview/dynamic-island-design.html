@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>灵动岛设计 v4 — 真螃蟹 + AUQ自定义</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0d0d0d;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+    min-height: 100vh;
+  }
+
+  .scene {
+    position: relative;
+    width: 760px;
+    border-radius: 16px;
+    margin-bottom: 32px;
+    overflow: hidden;
+  }
+  .scene.menubar {
+    height: 200px;
+    background: linear-gradient(180deg, #2c2c2c 0px, #2c2c2c 28px, #1a1a2e 28px, #0f0f23 100%);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .scene.menubar::before { content: "菜单栏"; position: absolute; top: 7px; left: 16px; font-size: 11px; color: #888; }
+  .scene.fullscreen {
+    background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .scene.fullscreen::before { content: "全屏应用 / IDE"; position: absolute; top: 8px; left: 12px; font-size: 10px; color: #333; letter-spacing: 0.5px; }
+
+  /* ── 药丸 ── */
+  .notch {
+    position: absolute;
+    left: 50%; top: 0;
+    transform: translateX(-50%);
+    background: #000;
+    transition: all 0.42s cubic-bezier(0.22, 0.99, 0.51, 1.02);
+    overflow: hidden;
+    z-index: 100;
+    user-select: none;
+    display: flex; flex-direction: column; align-items: stretch;
+  }
+  .notch.closed {
+    width: 240px; height: 34px;
+    border-radius: 6px 6px 14px 14px;
+    top: -1px;
+  }
+  .notch.open {
+    width: 400px;
+    border-radius: 19px 19px 24px 24px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 8px 32px rgba(0,0,0,0.7);
+    top: 0;
+    max-height: 580px;
+    overflow-y: auto;
+  }
+
+  /* ── 头部 ── */
+  .notch-header {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 34px; padding: 0 14px; flex-shrink: 0;
+  }
+  .notch-header .left  { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .notch-header .right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+  /* ── 螃蟹 pixel-art SVG ── */
+  .crab-svg { flex-shrink: 0; }
+  .crab-svg .crab-fill { transition: fill 0.15s; }
+  .crab-svg.idle      .crab-fill { fill: #555; }
+  .crab-svg.running   .crab-fill { fill: #D97857; }
+  .crab-svg.wait-input .crab-fill { fill: #66BF73; }
+  .crab-svg.warning   .crab-fill { fill: #FFB300; animation: crab-blink 0.8s infinite; }
+  .crab-svg.error     .crab-fill { fill: #FF4D4D; }
+  @keyframes crab-blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* 螃蟹腿部动画 */
+  .crab-svg.running .leg1 { animation: leg-wave 0.6s infinite; }
+  .crab-svg.running .leg2 { animation: leg-wave 0.6s 0.15s infinite; }
+  .crab-svg.running .leg3 { animation: leg-wave 0.6s 0.3s infinite; }
+  .crab-svg.running .leg4 { animation: leg-wave 0.6s 0.45s infinite; }
+  @keyframes leg-wave {
+    0%,100% { transform: scaleY(0.75); }
+    50%     { transform: scaleY(1.25); }
+  }
+
+  .tag-text {
+    font-size: 11px; color: #999;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 140px;
+  }
+  .tag-text.active { color: #D97857; }
+  .tag-text.warn   { color: #FFB300; }
+  .tag-text.err    { color: #FF4D4D; }
+
+  .spinner {
+    display: flex; align-items: center; gap: 3px;
+    font-size: 10px; color: #D97857;
+  }
+  .spinner .sym { display: inline-block; width: 12px; text-align: center; animation: spin-sym 0.9s steps(1) infinite; }
+  @keyframes spin-sym {
+    0%{opacity:1} 16%{opacity:0.2} 33%{opacity:0.2} 50%{opacity:0.2} 66%{opacity:0.2} 83%{opacity:0.2} 100%{opacity:1}
+  }
+
+  /* ── 内容区 ── */
+  .notch-body {
+    padding: 0 16px 12px; flex: 1;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .notch-body .row {
+    display: flex; align-items: center; gap: 8px; padding: 7px 0;
+  }
+  .notch-body .row + .row { border-top: 1px solid rgba(255,255,255,0.04); }
+  .notch-body .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .notch-body .row-label {
+    font-size: 12px; color: #aaa; flex: 1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .notch-body .row-meta { font-size: 10px; color: #555; white-space: nowrap; }
+
+  .cmd-preview {
+    background: rgba(255,255,255,0.04);
+    border-radius: 6px; padding: 7px 10px; margin: 6px 0;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 11px; color: #aab;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .notch-actions {
+    display: flex; gap: 8px; margin-top: auto; padding-top: 8px;
+  }
+  .notch-actions button {
+    flex: 1; padding: 7px 0;
+    border: none; border-radius: 8px;
+    font-size: 12px; font-weight: 500; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-deny  { background: rgba(255,77,77,0.12);  color: #FF4D4D; }
+  .btn-deny:hover  { background: rgba(255,77,77,0.22); }
+  .btn-allow { background: rgba(102,191,115,0.12); color: #66BF73; }
+  .btn-allow:hover { background: rgba(102,191,115,0.22); }
+  .btn-open  { background: rgba(217,120,87,0.12);  color: #D97857; }
+  .btn-open:hover  { background: rgba(217,120,87,0.22); }
+  .btn-dismiss { background: rgba(255,255,255,0.06); color: #888; }
+  .btn-dismiss:hover { background: rgba(255,255,255,0.1); }
+  .btn-submit { background: rgba(139,92,246,0.15); color: #a78bfa; }
+  .btn-submit:hover { background: rgba(139,92,246,0.25); }
+
+  .expand-left, .expand-right {
+    position: absolute; top: 7px; height: 20px; background: #000;
+    transition: all 0.42s cubic-bezier(0.22, 0.99, 0.51, 1.02);
+  }
+  .expand-left  { right: calc(100% - 1px); border-radius: 10px 0 0 10px; }
+  .expand-right { left: calc(100% - 1px);  border-radius: 0 10px 10px 0; }
+  .expand-left.active  { width: 32px; }
+  .expand-right.active { width: 42px; }
+
+  /* ══════════════════════════════════════ */
+  /*  AUQ 样式                             */
+  /* ══════════════════════════════════════ */
+  .auq-section {
+    padding: 4px 0;
+  }
+  .auq-section + .auq-section {
+    border-top: 1px solid rgba(255,255,255,0.06);
+    margin-top: 4px; padding-top: 10px;
+  }
+
+  .auq-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 10px;
+    background: rgba(139,92,246,0.15);
+    font-size: 10px; font-weight: 600; color: #a78bfa;
+    margin-bottom: 6px; letter-spacing: 0.3px;
+  }
+  .auq-chip .chip-num { opacity: 0.6; }
+
+  .auq-question {
+    font-size: 13px; color: #ddd; font-weight: 500;
+    line-height: 1.4; margin-bottom: 8px;
+  }
+  .auq-hint {
+    font-size: 10px; color: #555; font-weight: 400;
+    margin-left: 4px;
+  }
+
+  .auq-options {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+
+  .auq-option {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.03);
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1px solid transparent;
+  }
+  .auq-option:hover { background: rgba(255,255,255,0.06); }
+  .auq-option.selected {
+    background: rgba(139,92,246,0.08);
+    border-color: rgba(139,92,246,0.25);
+  }
+
+  /* 单选 radio */
+  .auq-option .opt-radio {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 1.5px solid #555;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; margin-top: 1px;
+    transition: all 0.15s;
+  }
+  .auq-option.selected .opt-radio {
+    border-color: #a78bfa;
+    background: rgba(139,92,246,0.2);
+  }
+  .auq-option.selected .opt-radio::after {
+    content: ""; width: 7px; height: 7px;
+    border-radius: 50%; background: #a78bfa;
+  }
+
+  /* 多选 checkbox */
+  .auq-option .opt-check {
+    width: 16px; height: 16px; border-radius: 4px;
+    border: 1.5px solid #555;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; margin-top: 1px;
+    transition: all 0.15s;
+  }
+  .auq-option.selected .opt-check {
+    border-color: #a78bfa;
+    background: rgba(139,92,246,0.25);
+  }
+  .auq-option.selected .opt-check::after {
+    content: "✓"; font-size: 11px; color: #a78bfa; font-weight: 700; line-height: 1;
+  }
+
+  .auq-option .opt-body { flex: 1; min-width: 0; }
+  .auq-option .opt-label {
+    font-size: 12px; color: #ccc; font-weight: 500;
+  }
+  .auq-option .opt-desc {
+    font-size: 10px; color: #666; margin-top: 2px; line-height: 1.4;
+  }
+  .auq-option .opt-recommend {
+    font-size: 9px; color: #D97857;
+    background: rgba(217,120,87,0.12);
+    padding: 1px 5px; border-radius: 4px;
+    margin-left: 4px;
+  }
+
+  /* 自定义输入框 */
+  .auq-custom {
+    margin-top: 8px;
+    position: relative;
+  }
+  .auq-custom input {
+    width: 100%;
+    padding: 8px 28px 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    color: #ccc;
+    font-size: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .auq-custom input:focus {
+    border-color: rgba(139,92,246,0.35);
+  }
+  .auq-custom input::placeholder {
+    color: #444;
+  }
+  .auq-custom .custom-badge {
+    position: absolute;
+    right: 8px; top: 50%; transform: translateY(-50%);
+    font-size: 9px; color: #a78bfa;
+    background: rgba(139,92,246,0.12);
+    padding: 1px 5px; border-radius: 3px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .auq-custom input:not(:placeholder-shown) ~ .custom-badge {
+    opacity: 1;
+  }
+
+  h3 {
+    color: #666; font-size: 11px; font-weight: 400;
+    letter-spacing: 0.5px; margin: 40px 0 12px;
+    text-transform: uppercase;
+  }
+  h3:first-of-type { margin-top: 0; }
+  .row-desc {
+    display: flex; gap: 40px; flex-wrap: wrap; justify-content: center;
+    margin: 0 0 20px;
+  }
+  .row-desc span { font-size: 11px; color: #555; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════ 1. 闭口态 ═══════════════════════ -->
+<h3>闭口态 — 5 种状态 · 螃蟹变色</h3>
+
+<!-- 螃蟹 SVG 模板，参考 vibe-notch ClaudeCrabIcon: 66x52 viewBox -->
+<!-- 身体(6,0,54,39) · 眼睛(12,13,6,6.5)/(48,13,6,6.5) · 触角(0,13,6,13)/(60,13,6,13) · 腿(6/18/42/54, y=39, h=13) -->
+
+<div class="scene menubar">
+  <div class="notch closed" style="top:2px;">
+    <div class="notch-header">
+      <div class="left">
+        <svg class="crab-svg idle" width="20" height="16" viewBox="0 0 66 52">
+          <g class="crab-fill">
+            <rect x="0" y="13" width="6" height="13" rx="1"/>        <!-- 左触角 -->
+            <rect x="60" y="13" width="6" height="13" rx="1"/>       <!-- 右触角 -->
+            <rect class="leg1" x="6" y="39" width="6" height="13" rx="1"/>
+            <rect class="leg2" x="18" y="39" width="6" height="13" rx="1"/>
+            <rect class="leg3" x="42" y="39" width="6" height="13" rx="1"/>
+            <rect class="leg4" x="54" y="39" width="6" height="13" rx="1"/>
+            <rect x="6" y="0" width="54" height="39" rx="3"/>        <!-- 身体 -->
+          </g>
+          <rect x="12" y="13" width="6" height="6.5" rx="1" fill="#000"/>  <!-- 左眼 -->
+          <rect x="48" y="13" width="6" height="6.5" rx="1" fill="#000"/>  <!-- 右眼 -->
+        </svg>
+        <span class="tag-text">Lynel</span>
+      </div>
+      <div class="right"></div>
+    </div>
+  </div>
+</div>
+<div class="row-desc"><span>空闲 — 灰螃蟹 · 安静</span></div>
+
+<div class="scene menubar" style="margin-top:20px;">
+  <div class="notch closed" style="top:2px;">
+    <div class="notch-header">
+      <div class="left">
+        <svg class="crab-svg running" width="20" height="16" viewBox="0 0 66 52">
+          <g class="crab-fill">
+            <rect x="0" y="13" width="6" height="13" rx="1"/>
+            <rect x="60" y="13" width="6" height="13" rx="1"/>
+            <rect class="leg1" x="6" y="39" width="6" height="13" rx="1"/>
+            <rect class="leg2" x="18" y="39" width="6" height="13" rx="1"/>
+            <rect class="leg3" x="42" y="39" width="6" height="13" rx="1"/>
+            <rect class="leg4" x="54" y="39" width="6" height="13" rx="1"/>
+            <rect x="6" y="0" width="54" height="39" rx="3"/>
+          </g>
+          <rect x="12" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+          <rect x="48" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+        </svg>
+        <span class="tag-text active">思考中...</span>
+      </div>
+      <div class="right"><span class="spinner"><span class="sym">✢</span></span></div>
+    </div>
+    <div class="expand-right active"></div>
+  </div>
+</div>
+<div class="row-desc"><span>运行中 — 橙螃蟹 + 腿摆动 + 旋转符</span></div>
+
+<div class="scene menubar" style="margin-top:20px;">
+  <div class="notch closed" style="top:2px;">
+    <div class="notch-header">
+      <div class="left">
+        <svg class="crab-svg wait-input" width="20" height="16" viewBox="0 0 66 52">
+          <g class="crab-fill">
+            <rect x="0" y="13" width="6" height="13" rx="1"/>
+            <rect x="60" y="13" width="6" height="13" rx="1"/>
+            <rect x="6" y="39" width="6" height="13" rx="1"/>
+            <rect x="18" y="39" width="6" height="13" rx="1"/>
+            <rect x="42" y="39" width="6" height="13" rx="1"/>
+            <rect x="54" y="39" width="6" height="13" rx="1"/>
+            <rect x="6" y="0" width="54" height="39" rx="3"/>
+          </g>
+          <rect x="12" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+          <rect x="48" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+        </svg>
+        <span class="tag-text">就绪</span>
+      </div>
+      <div class="right">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#66BF73" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+    </div>
+    <div class="expand-right active"></div>
+  </div>
+</div>
+<div class="row-desc"><span>就绪 — 绿螃蟹 + 勾</span></div>
+
+<div class="scene menubar" style="margin-top:20px;">
+  <div class="notch closed" style="top:2px;">
+    <div class="notch-header">
+      <div class="left">
+        <svg class="crab-svg warning" width="20" height="16" viewBox="0 0 66 52">
+          <g class="crab-fill">
+            <rect x="0" y="13" width="6" height="13" rx="1"/>
+            <rect x="60" y="13" width="6" height="13" rx="1"/>
+            <rect x="6" y="39" width="6" height="13" rx="1"/>
+            <rect x="18" y="39" width="6" height="13" rx="1"/>
+            <rect x="42" y="39" width="6" height="13" rx="1"/>
+            <rect x="54" y="39" width="6" height="13" rx="1"/>
+            <rect x="6" y="0" width="54" height="39" rx="3"/>
+          </g>
+          <rect x="12" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+          <rect x="48" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+        </svg>
+        <span class="tag-text warn">权限请求</span>
+      </div>
+      <div class="right"><span class="spinner"><span class="sym">✢</span></span></div>
+    </div>
+    <div class="expand-left active"></div>
+    <div class="expand-right active"></div>
+  </div>
+</div>
+<div class="row-desc"><span>待审批 — 黄螃蟹闪烁</span></div>
+
+<div class="scene menubar" style="margin-top:20px;">
+  <div class="notch closed" style="top:2px;">
+    <div class="notch-header">
+      <div class="left">
+        <svg class="crab-svg error" width="20" height="16" viewBox="0 0 66 52">
+          <g class="crab-fill">
+            <rect x="0" y="13" width="6" height="13" rx="1"/>
+            <rect x="60" y="13" width="6" height="13" rx="1"/>
+            <rect x="6" y="39" width="6" height="13" rx="1"/>
+            <rect x="18" y="39" width="6" height="13" rx="1"/>
+            <rect x="42" y="39" width="6" height="13" rx="1"/>
+            <rect x="54" y="39" width="6" height="13" rx="1"/>
+            <rect x="6" y="0" width="54" height="39" rx="3"/>
+          </g>
+          <rect x="12" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+          <rect x="48" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+        </svg>
+        <span class="tag-text err">异常</span>
+      </div>
+      <div class="right"></div>
+    </div>
+  </div>
+</div>
+<div class="row-desc"><span>异常 — 红螃蟹</span></div>
+
+<!-- ═══════════════════════ 2. 开口态 ═══════════════════════ -->
+<h3>开口态 — 权限 / 进度</h3>
+
+<div style="display:flex;gap:20px;flex-wrap:wrap;justify-content:center;align-items:flex-start;">
+  <div>
+    <div style="font-size:11px;color:#555;margin-bottom:6px;">权限请求</div>
+    <div class="scene fullscreen" style="width:420px;height:220px;">
+      <div class="notch open" style="position:relative;width:380px;height:170px;border-radius:19px 19px 24px 24px;box-shadow:0 0 0 1px rgba(255,255,255,0.06),0 8px 32px rgba(0,0,0,0.7);">
+        <div class="notch-header">
+          <div class="left">
+            <svg class="crab-svg warning" width="20" height="16" viewBox="0 0 66 52">
+              <g class="crab-fill">
+                <rect x="0" y="13" width="6" height="13" rx="1"/><rect x="60" y="13" width="6" height="13" rx="1"/>
+                <rect x="6" y="39" width="6" height="13" rx="1"/><rect x="18" y="39" width="6" height="13" rx="1"/>
+                <rect x="42" y="39" width="6" height="13" rx="1"/><rect x="54" y="39" width="6" height="13" rx="1"/>
+                <rect x="6" y="0" width="54" height="39" rx="3"/>
+              </g>
+              <rect x="12" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+              <rect x="48" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+            </svg>
+            <span class="tag-text warn">权限请求</span>
+          </div>
+          <div class="right"><span style="font-size:10px;color:#888;">pty-claude</span></div>
+        </div>
+        <div class="notch-body">
+          <div class="row" style="border:none;padding-top:0;"><span style="font-size:12px;color:#ccc;">Claude 想要执行 <b>Bash</b> 命令</span></div>
+          <div class="cmd-preview">npm install @anthropic-ai/sdk</div>
+          <div class="notch-actions">
+            <button class="btn-deny">拒绝</button>
+            <button class="btn-allow">允许</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div style="font-size:11px;color:#555;margin-bottom:6px;">处理进度</div>
+    <div class="scene fullscreen" style="width:420px;height:220px;">
+      <div class="notch open" style="position:relative;width:380px;height:170px;border-radius:19px 19px 24px 24px;box-shadow:0 0 0 1px rgba(255,255,255,0.06),0 8px 32px rgba(0,0,0,0.7);">
+        <div class="notch-header">
+          <div class="left">
+            <svg class="crab-svg running" width="20" height="16" viewBox="0 0 66 52">
+              <g class="crab-fill">
+                <rect x="0" y="13" width="6" height="13" rx="1"/><rect x="60" y="13" width="6" height="13" rx="1"/>
+                <rect x="6" y="39" width="6" height="13" rx="1"/><rect x="18" y="39" width="6" height="13" rx="1"/>
+                <rect x="42" y="39" width="6" height="13" rx="1"/><rect x="54" y="39" width="6" height="13" rx="1"/>
+                <rect x="6" y="0" width="54" height="39" rx="3"/>
+              </g>
+              <rect x="12" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+              <rect x="48" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+            </svg>
+            <span class="tag-text active">pty-claude</span>
+          </div>
+          <div class="right"><span class="spinner"><span class="sym">✢</span></span></div>
+        </div>
+        <div class="notch-body">
+          <div class="row" style="border:none;padding-top:0;"><span class="dot" style="background:#D97857;"></span><span class="row-label">调用工具: Read</span></div>
+          <div class="cmd-preview">G:\work\ease-ui\wecom-channel.ts</div>
+          <div style="font-size:10px;color:#555;margin-top:6px;">第 3 轮 · 已用 12s</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════ 3. AUQ ═══════════════════════ -->
+<h3>AskUserQuestion — 单选 · 自定义 · 多选 · 多问题</h3>
+
+<!-- 单选 + 自定义输入 -->
+<div>
+  <div style="font-size:11px;color:#555;margin-bottom:6px;">单选 + 底部自定义输入框（不选选项=自定义回答）</div>
+  <div class="scene fullscreen" style="width:440px;height:380px;">
+    <div class="notch open" style="position:relative;width:400px;max-height:580px;border-radius:19px 19px 24px 24px;box-shadow:0 0 0 1px rgba(255,255,255,0.06),0 8px 32px rgba(0,0,0,0.7);">
+      <div class="notch-header">
+        <div class="left">
+          <svg class="crab-svg running" width="20" height="16" viewBox="0 0 66 52">
+            <g class="crab-fill">
+              <rect x="0" y="13" width="6" height="13" rx="1"/><rect x="60" y="13" width="6" height="13" rx="1"/>
+              <rect x="6" y="39" width="6" height="13" rx="1"/><rect x="18" y="39" width="6" height="13" rx="1"/>
+              <rect x="42" y="39" width="6" height="13" rx="1"/><rect x="54" y="39" width="6" height="13" rx="1"/>
+              <rect x="6" y="0" width="54" height="39" rx="3"/>
+            </g>
+            <rect x="12" y="13" width="6" height="6.5" rx="1" fill="#000"/><rect x="48" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+          </svg>
+          <span class="tag-text active">Claude 提问</span>
+        </div>
+        <div class="right"><span style="font-size:10px;color:#555;">pty-claude</span></div>
+      </div>
+      <div class="notch-body">
+        <div class="auq-section">
+          <div class="auq-chip"><span class="chip-num">1</span> 状态管理</div>
+          <div class="auq-question">Choose state management for the new feature.</div>
+          <div class="auq-options">
+            <div class="auq-option">
+              <div class="opt-radio"></div>
+              <div class="opt-body"><div class="opt-label">Pinia <span class="opt-recommend">推荐</span></div><div class="opt-desc">与现有架构一致</div></div>
+            </div>
+            <div class="auq-option selected">
+              <div class="opt-radio"></div>
+              <div class="opt-body"><div class="opt-label">Provide/Inject</div><div class="opt-desc">轻量级，无需额外依赖</div></div>
+            </div>
+            <div class="auq-option">
+              <div class="opt-radio"></div>
+              <div class="opt-body"><div class="opt-label">Vuex</div><div class="opt-desc">经典方案，生态成熟</div></div>
+            </div>
+          </div>
+          <!-- 自定义输入 -->
+          <div class="auq-custom">
+            <input type="text" placeholder="或输入自定义回答...">
+            <span class="custom-badge">自定义</span>
+          </div>
+        </div>
+        <div class="notch-actions" style="padding-top:8px;">
+          <button class="btn-deny" style="max-width:70px;">跳过</button>
+          <button class="btn-submit">确认</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 多选 + 自定义 -->
+<div style="margin-top:20px;">
+  <div style="font-size:11px;color:#555;margin-bottom:6px;">多选 + 自定义输入</div>
+  <div class="scene fullscreen" style="width:440px;height:380px;">
+    <div class="notch open" style="position:relative;width:400px;max-height:580px;border-radius:19px 19px 24px 24px;box-shadow:0 0 0 1px rgba(255,255,255,0.06),0 8px 32px rgba(0,0,0,0.7);">
+      <div class="notch-header">
+        <div class="left">
+          <svg class="crab-svg running" width="20" height="16" viewBox="0 0 66 52">
+            <g class="crab-fill">
+              <rect x="0" y="13" width="6" height="13" rx="1"/><rect x="60" y="13" width="6" height="13" rx="1"/>
+              <rect x="6" y="39" width="6" height="13" rx="1"/><rect x="18" y="39" width="6" height="13" rx="1"/>
+              <rect x="42" y="39" width="6" height="13" rx="1"/><rect x="54" y="39" width="6" height="13" rx="1"/>
+              <rect x="6" y="0" width="54" height="39" rx="3"/>
+            </g>
+            <rect x="12" y="13" width="6" height="6.5" rx="1" fill="#000"/><rect x="48" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+          </svg>
+          <span class="tag-text active">Claude 提问 · 多选</span>
+        </div>
+        <div class="right"><span style="font-size:10px;color:#555;">pty-claude</span></div>
+      </div>
+      <div class="notch-body">
+        <div class="auq-section">
+          <div class="auq-chip"><span class="chip-num">1</span> 测试工具 <span class="auq-hint">多选</span></div>
+          <div class="auq-question">Select testing tools for the project.</div>
+          <div class="auq-options">
+            <div class="auq-option selected">
+              <div class="opt-check"></div>
+              <div class="opt-body"><div class="opt-label">Vitest <span class="opt-recommend">推荐</span></div><div class="opt-desc">Vite 原生，速度快</div></div>
+            </div>
+            <div class="auq-option selected">
+              <div class="opt-check"></div>
+              <div class="opt-body"><div class="opt-label">Playwright</div><div class="opt-desc">端到端，多浏览器</div></div>
+            </div>
+            <div class="auq-option">
+              <div class="opt-check"></div>
+              <div class="opt-body"><div class="opt-label">Cypress</div><div class="opt-desc">E2E，体验好</div></div>
+            </div>
+          </div>
+          <div class="auq-custom">
+            <input type="text" placeholder="或补充自定义工具...">
+            <span class="custom-badge">自定义</span>
+          </div>
+        </div>
+        <div class="notch-actions" style="padding-top:8px;">
+          <button class="btn-deny" style="max-width:70px;">跳过</button>
+          <button class="btn-submit">确认 (2)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 多问题 -->
+<div style="margin-top:20px;">
+  <div style="font-size:11px;color:#555;margin-bottom:6px;">多问题 — 2 问，各有选项 + 自定义输入</div>
+  <div class="scene fullscreen" style="width:440px;height:560px;">
+    <div class="notch open" style="position:relative;width:400px;max-height:580px;border-radius:19px 19px 24px 24px;box-shadow:0 0 0 1px rgba(255,255,255,0.06),0 8px 32px rgba(0,0,0,0.7);">
+      <div class="notch-header">
+        <div class="left">
+          <svg class="crab-svg running" width="20" height="16" viewBox="0 0 66 52">
+            <g class="crab-fill">
+              <rect x="0" y="13" width="6" height="13" rx="1"/><rect x="60" y="13" width="6" height="13" rx="1"/>
+              <rect x="6" y="39" width="6" height="13" rx="1"/><rect x="18" y="39" width="6" height="13" rx="1"/>
+              <rect x="42" y="39" width="6" height="13" rx="1"/><rect x="54" y="39" width="6" height="13" rx="1"/>
+              <rect x="6" y="0" width="54" height="39" rx="3"/>
+            </g>
+            <rect x="12" y="13" width="6" height="6.5" rx="1" fill="#000"/><rect x="48" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+          </svg>
+          <span class="tag-text active">Claude 提问 · 2 问</span>
+        </div>
+        <div class="right"><span style="font-size:10px;color:#555;">pty-claude</span></div>
+      </div>
+      <div class="notch-body">
+        <!-- 问题 1：单选 -->
+        <div class="auq-section">
+          <div class="auq-chip"><span class="chip-num">1</span> 实现方式</div>
+          <div class="auq-question">Notification delivery mechanism?</div>
+          <div class="auq-options">
+            <div class="auq-option selected">
+              <div class="opt-radio"></div>
+              <div class="opt-body"><div class="opt-label">WebSocket <span class="opt-recommend">推荐</span></div><div class="opt-desc">实时推送，延迟最低</div></div>
+            </div>
+            <div class="auq-option">
+              <div class="opt-radio"></div>
+              <div class="opt-body"><div class="opt-label">SSE</div><div class="opt-desc">单向流式，浏览器原生</div></div>
+            </div>
+          </div>
+          <div class="auq-custom">
+            <input type="text" placeholder="或输入自定义...">
+            <span class="custom-badge">自定义</span>
+          </div>
+        </div>
+
+        <!-- 问题 2：多选 -->
+        <div class="auq-section">
+          <div class="auq-chip"><span class="chip-num">2</span> 平台 <span class="auq-hint">多选</span></div>
+          <div class="auq-question">Target platforms?</div>
+          <div class="auq-options">
+            <div class="auq-option selected">
+              <div class="opt-check"></div>
+              <div class="opt-body"><div class="opt-label">Windows</div></div>
+            </div>
+            <div class="auq-option selected">
+              <div class="opt-check"></div>
+              <div class="opt-body"><div class="opt-label">macOS</div></div>
+            </div>
+            <div class="auq-option">
+              <div class="opt-check"></div>
+              <div class="opt-body"><div class="opt-label">Linux</div></div>
+            </div>
+          </div>
+          <div class="auq-custom">
+            <input type="text" placeholder="或补充...">
+            <span class="custom-badge">自定义</span>
+          </div>
+        </div>
+
+        <div class="notch-actions" style="padding-top:8px;">
+          <button class="btn-deny" style="max-width:70px;">跳过全部</button>
+          <button class="btn-submit">提交回答</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ 4. 纯自定义 ═══════════════════════ -->
+<h3>纯自定义回答 — 不选选项，直接打字</h3>
+<div class="scene fullscreen" style="width:440px;height:240px;">
+  <div class="notch open" style="position:relative;width:400px;max-height:580px;border-radius:19px 19px 24px 24px;box-shadow:0 0 0 1px rgba(255,255,255,0.06),0 8px 32px rgba(0,0,0,0.7);">
+    <div class="notch-header">
+      <div class="left">
+        <svg class="crab-svg running" width="20" height="16" viewBox="0 0 66 52">
+          <g class="crab-fill">
+            <rect x="0" y="13" width="6" height="13" rx="1"/><rect x="60" y="13" width="6" height="13" rx="1"/>
+            <rect x="6" y="39" width="6" height="13" rx="1"/><rect x="18" y="39" width="6" height="13" rx="1"/>
+            <rect x="42" y="39" width="6" height="13" rx="1"/><rect x="54" y="39" width="6" height="13" rx="1"/>
+            <rect x="6" y="0" width="54" height="39" rx="3"/>
+          </g>
+          <rect x="12" y="13" width="6" height="6.5" rx="1" fill="#000"/><rect x="48" y="13" width="6" height="6.5" rx="1" fill="#000"/>
+        </svg>
+        <span class="tag-text active">Claude 提问</span>
+      </div>
+      <div class="right"><span style="font-size:10px;color:#555;">pty-claude</span></div>
+    </div>
+    <div class="notch-body">
+      <div class="auq-section">
+        <div class="auq-chip"><span class="chip-num">1</span> 架构偏好</div>
+        <div class="auq-question">你有什么其他想法或建议？</div>
+        <div class="auq-custom">
+          <input type="text" placeholder="输入自定义回答..." value="我希望用 tRPC 而不是 REST，因为已经有类型共享基础设施" style="color:#ccc;">
+          <span class="custom-badge" style="opacity:1;">自定义</span>
+        </div>
+      </div>
+      <div class="notch-actions" style="padding-top:8px;">
+        <button class="btn-deny" style="max-width:70px;">跳过</button>
+        <button class="btn-submit">确认</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ 5. Token ═══════════════════════ -->
+<h3>设计 Token</h3>
+<div style="display:flex;gap:32px;flex-wrap:wrap;justify-content:center;font-size:11px;color:#777;">
+  <div style="display:flex;flex-direction:column;gap:3px;">
+    <div><span style="color:#D97857;">●</span> Claude 橙 — 运行/品牌</div>
+    <div><span style="color:#66BF73;">●</span> 绿 — 等待输入</div>
+    <div><span style="color:#FFB300;">●</span> 琥珀 — 权限/警告</div>
+    <div><span style="color:#FF4D4D;">●</span> 红 — 错误</div>
+    <div><span style="color:#a78bfa;">●</span> 紫 — AUQ 交互</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:3px;">
+    <div>闭口: 240×34 · r=6/6/14/14</div>
+    <div>开口: 400×auto · r=19/19/24/24</div>
+    <div>螃蟹: 66×52 viewBox pixel-art</div>
+    <div>AUQ: 选项 + 自定义输入框</div>
+    <div>自定义 = 覆盖选项回答</div>
+  </div>
+</div>
+
+<div style="height:60px;"></div>
+<div style="font-size:12px;color:#555;text-align:center;max-width:500px;line-height:1.6;">
+  螃蟹 = vibe-notch <span style="color:#D97857;">ClaudeCrabIcon</span> 1:1 还原
+  · AUQ 每个问题底部都有<span style="color:#a78bfa;">自定义输入框</span>
+  · 填写自定义时显示紫色「自定义」badge
+  · 自定义内容优先于选项
+</div>
+<div style="height:40px;"></div>
+
+</body>
+</html>

@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lynel Desktop - 红蓝主题 UI v2</title>
+<style>
+:root {
+  --brand-blue: #1e5af5;
+  --brand-blue-dark: #1749cc;
+  --brand-blue-soft: #e8f0fe;
+  --brand-red: #e63946;
+  --brand-red-dark: #c92a37;
+  --brand-red-soft: #fff0f0;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --ink: #0d1321;
+  --muted: #6b7280;
+  --line: #eef1f5;
+  --success: #10b981;
+  --success-soft: #ecfdf5;
+  --warning: #f59e0b;
+  --terminal-bg: #1a1f2e;
+  --terminal-header: #232a3d;
+  --terminal-text: #d1d5db;
+  --terminal-dim: #9ca3af;
+  --terminal-green: #4ade80;
+  --terminal-blue: #60a5fa;
+  --terminal-yellow: #fbbf24;
+  --terminal-red: #f87171;
+  --shadow: 0 22px 70px rgba(13, 24, 41, 0.12);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #e5e8ed;
+  color: var(--ink);
+  font-family: "PingFang SC", "Microsoft YaHei", Inter, Arial, sans-serif;
+}
+button { cursor: pointer; border: none; background: none; font: inherit; color: inherit; }
+
+.app {
+  width: 100%;
+  height: 100vh;
+  padding: clamp(0px, 1.5vw, 18px);
+}
+
+.window {
+  width: 100%;
+  height: 100%;
+  max-width: 1480px;
+  margin: 0 auto;
+  border: 1px solid #d7dde6;
+  border-radius: 18px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.windowbar {
+  height: 44px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.96);
+  flex-shrink: 0;
+}
+.lights { display: flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
+.lights i:nth-child(2) { background: #febc2e; }
+.lights i:nth-child(3) { background: #28c840; }
+.windowbar b {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.topbar {
+  height: 56px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.96);
+  flex-shrink: 0;
+}
+.appbrand { display: flex; align-items: center; }
+.logo-text {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: -0.3px;
+}
+.logo-text span {
+  font-weight: 500;
+  color: #9ca3af;
+}
+.states { margin-left: 24px; display: flex; gap: 8px; }
+.pill {
+  height: 28px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 650;
+}
+.pill i { width: 6px; height: 6px; border-radius: 50%; }
+.pill.online { border: 1px solid #bfdbfe; background: var(--brand-blue-soft); color: #1d4ed8; }
+.pill.online i { background: var(--brand-blue); }
+.pill.run { border: 1px solid #a7f3d0; background: var(--success-soft); color: #047857; }
+.pill.run i { background: var(--success); }
+.topactions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.iconbtn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: white;
+  color: #6b7280;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+}
+.account { display: flex; align-items: center; gap: 8px; margin-left: 8px; padding-left: 12px; border-left: 1px solid var(--line); }
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: white;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 800;
+}
+.account span { font-size: 10px; color: #6b7280; }
+.account b { display: block; font-size: 11px; color: var(--ink); }
+
+.main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 270px minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar {
+  padding: 12px;
+  border-right: 1px solid var(--line);
+  background: #f8f9fb;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.newcc {
+  width: 100%;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--brand-blue);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.search {
+  margin-top: 12px;
+  position: relative;
+}
+.search input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px 0 30px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: white;
+  font-size: 12px;
+  outline: none;
+}
+.search input:focus { border-color: var(--brand-blue); }
+.search::before {
+  content: "🔍";
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  opacity: 0.5;
+}
+.filters {
+  margin-top: 10px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.filters button {
+  padding: 4px 9px;
+  border-radius: 7px;
+  background: white;
+  border: 1px solid var(--line);
+  font-size: 10px;
+  font-weight: 600;
+  color: #6b7280;
+}
+.filters button.active { background: var(--brand-blue-soft); color: var(--brand-blue); border-color: #bfdbfe; }
+.sidehead {
+  margin: 14px 4px 8px;
+  display: flex;
+  justify-content: space-between;
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 700;
+}
+.sessionlist { flex: 1; overflow: auto; }
+.session {
+  width: 100%;
+  padding: 11px;
+  margin-bottom: 6px;
+  border-radius: 11px;
+  background: transparent;
+  text-align: left;
+  transition: background 0.12s;
+}
+.session:hover { background: #eef1f5; }
+.session.active {
+  background: var(--brand-blue-soft);
+  box-shadow: inset 4px 0 0 var(--brand-red);
+}
+.sline { display: flex; align-items: center; gap: 8px; }
+.sicon {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--brand-blue-soft);
+  color: var(--brand-blue);
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 800;
+}
+.sname { min-width: 0; flex: 1; }
+.sname strong { display: block; font-size: 12px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sname span { display: block; margin-top: 3px; font-size: 10px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge {
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-weight: 750;
+}
+.badge.run { background: var(--brand-blue-soft); color: var(--brand-blue); }
+.badge.wait { background: var(--brand-red-soft); color: var(--brand-red); }
+.badge.done { background: var(--success-soft); color: #047857; }
+.session .event { margin: 7px 0 0; font-size: 10px; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session .event b { font-weight: 600; color: var(--ink); }
+
+.terminal-wrap {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--terminal-bg);
+  position: relative;
+}
+.thead {
+  height: 48px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #2d3447;
+  background: var(--terminal-header);
+  flex-shrink: 0;
+}
+.ttitle { min-width: 0; }
+.ttitle h2 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 14px; color: #f3f4f6; }
+.ttitle h2 span { padding: 3px 7px; border-radius: 6px; font-size: 9px; font-weight: 700; }
+.ttitle h2 span.run { background: rgba(74, 222, 128, 0.15); color: var(--terminal-green); }
+.ttitle h2 span.wait { background: rgba(248, 113, 113, 0.15); color: var(--terminal-red); }
+.ttitle p { margin: 4px 0 0; font-size: 10px; color: var(--terminal-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.terminal {
+  flex: 1;
+  padding: 16px 18px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--terminal-text);
+}
+.terminal .prompt { color: var(--terminal-green); }
+.terminal .cmd { color: #f3f4f6; }
+.terminal .output { color: var(--terminal-dim); }
+.terminal .info { color: var(--terminal-blue); }
+.terminal .warn { color: var(--terminal-yellow); }
+.terminal .cursor { display: inline-block; width: 8px; height: 16px; background: var(--terminal-green); animation: blink 1s step-end infinite; vertical-align: middle; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* 权限弹窗 */
+.permission-overlay {
+  position: absolute;
+  inset: 48px 0 0;
+  background: rgba(13, 19, 33, 0.65);
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+  z-index: 10;
+}
+.permission-box {
+  width: min(440px, calc(100% - 40px));
+  padding: 20px;
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 25px 80px rgba(13, 24, 41, 0.28);
+  border: 1px solid #f5b0b5;
+}
+.permission-box small {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--brand-red);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+.permission-box h3 { margin: 0 0 8px; font-size: 15px; color: var(--ink); }
+.permission-box p { margin: 0 0 16px; font-size: 12px; color: #6b7280; line-height: 1.6; }
+.permission-meta {
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #f8f9fb;
+  margin-bottom: 16px;
+}
+.permission-meta .row { display: flex; justify-content: space-between; font-size: 11px; margin-top: 6px; }
+.permission-meta .row:first-child { margin-top: 0; }
+.permission-meta .row span { color: #9ca3af; }
+.permission-meta .row b { color: var(--ink); font-weight: 600; }
+.permission-actions { display: flex; gap: 8px; }
+.permission-actions button {
+  flex: 1;
+  height: 38px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.permission-actions .allow { background: var(--brand-blue); color: white; }
+.permission-actions .deny { border: 1px solid var(--brand-red); background: white; color: var(--brand-red); }
+
+@media (max-width: 720px) {
+  .main { grid-template-columns: 0 minmax(0, 1fr); }
+  .sidebar { display: none; }
+}
+</style>
+</head>
+<body>
+<main class="app">
+  <section class="window">
+    <div class="windowbar">
+      <span class="lights"><i></i><i></i><i></i></span>
+      <b>Lynel Desktop</b>
+    </div>
+
+    <header class="topbar">
+      <div class="appbrand">
+        <span class="logo-text">Lynel <span>Desktop</span></span>
+      </div>
+      <div class="states">
+        <span class="pill online"><i></i>Claude Code 在线</span>
+        <span class="pill run"><i></i>1 个 Session 运行中</span>
+      </div>
+      <div class="topactions">
+        <button class="iconbtn">⚙</button>
+        <div class="account">
+          <span class="avatar">PL</span>
+          <span><b>piratelin</b>本地</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="main">
+      <aside class="sidebar">
+        <button class="newcc">＋ 新建 Session</button>
+        <div class="search"><input type="text" placeholder="搜索会话…"></div>
+        <div class="filters">
+          <button class="active">全部</button>
+          <button>运行中</button>
+          <button>待授权</button>
+          <button>已完成</button>
+        </div>
+        <div class="sidehead">会话列表 <span>4</span></div>
+        <div class="sessionlist">
+          <button class="session active">
+            <div class="sline">
+              <span class="sicon">CC</span>
+              <span class="sname">
+                <strong>登录页白屏修复</strong>
+                <span>agentgo-app · 刚刚</span>
+              </span>
+              <span class="badge wait">待授权</span>
+            </div>
+            <div class="event"><b>PermissionRequest</b> · Bash: npm install</div>
+          </button>
+          <button class="session">
+            <div class="sline">
+              <span class="sicon">CC</span>
+              <span class="sname">
+                <strong>订单页补充单元测试</strong>
+                <span>checkout-web · 3 分钟</span>
+              </span>
+              <span class="badge run">运行中</span>
+            </div>
+            <div class="event"><b>ToolUse</b> · TestRunner: npm test -- checkout</div>
+          </button>
+          <button class="session">
+            <div class="sline">
+              <span class="sicon">CC</span>
+              <span class="sname">
+                <strong>优化移动端任务卡片</strong>
+                <span>agentgo-app · 16:42</span>
+              </span>
+              <span class="badge done">已完成</span>
+            </div>
+            <div class="event"><b>ResponseComplete</b> · 4 个文件已修改</div>
+          </button>
+          <button class="session">
+            <div class="sline">
+              <span class="sicon">CC</span>
+              <span class="sname">
+                <strong>升级项目依赖版本</strong>
+                <span>portal-web · 7月8日</span>
+              </span>
+              <span class="badge done">已完成</span>
+            </div>
+            <div class="event"><b>ResponseComplete</b> · 依赖升级完成</div>
+          </button>
+        </div>
+      </aside>
+
+      <section class="terminal-wrap">
+        <header class="thead">
+          <div class="ttitle">
+            <h2>登录页白屏修复 <span class="wait">等待授权</span></h2>
+            <p>agentgo-app · Session 8F21 · 由终端创建</p>
+          </div>
+        </header>
+        <main class="terminal">
+          <div><span class="prompt">$</span> <span class="cmd">claude --session-id 8F21-A92B-4C3D</span></div>
+          <div class="output">✓ 已连接到本地 Claude Code</div>
+          <div class="output">✓ 项目上下文加载完成：agentgo-app</div>
+          <div class="info">ℹ 开始分析问题…</div>
+          <div class="output">检查登录页路由和认证回调…</div>
+          <div>&nbsp;</div>
+          <div><span class="prompt">$</span> <span class="cmd">curl -I http://localhost:3000/auth/callback</span></div>
+          <div class="output">HTTP/1.1 400 Bad Request</div>
+          <div class="output">content-type: text/html; charset=UTF-8</div>
+          <div>&nbsp;</div>
+          <div class="warn">⚠ 需要授权：安装依赖并更新 lockfile</div>
+          <div class="output">将修改 package.json 和 package-lock.json，并访问 npm 网络。</div>
+          <div>&nbsp;</div>
+          <div><span class="prompt">$</span> <span class="cmd">npm install</span> <span class="cursor"></span></div>
+        </main>
+
+        <div class="permission-overlay">
+          <div class="permission-box">
+            <small>需要你的授权</small>
+            <h3>安装依赖并更新 lockfile</h3>
+            <p>将修改当前项目依赖并访问 npm 网络，不会读取项目外文件。</p>
+            <div class="permission-meta">
+              <div class="row"><span>工具</span><b>Bash</b></div>
+              <div class="row"><span>命令</span><b>npm install</b></div>
+              <div class="row"><span>影响范围</span><b>当前项目</b></div>
+            </div>
+            <div class="permission-actions">
+              <button class="deny">拒绝</button>
+              <button class="allow">允许</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </section>
+</main>
+</body>
+</html>

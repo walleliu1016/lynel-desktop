@@ -1,11 +1,14 @@
 <template>
   <div class="home">
-    <TitleBar />
+    <TitleBar :username="username" @settings="goSettings" />
     <div class="layout">
       <aside class="left">
-        <SessionList :list="sessions.list" :active-id="sessions.activeId"
-                     @create="showNew = true" @select="selectSession" />
-        <UserBar :username="username" :version="version" @settings="goSettings" />
+        <SessionList
+          :list="sessions.list"
+          :active-id="sessions.activeId"
+          @create="showNew = true"
+          @select="selectSession"
+        />
       </aside>
       <main class="right">
         <template v-if="sessions.active">
@@ -36,10 +39,17 @@
               @ready="onTerminalReady(session.id)"
               @data="onTerminalData(session.id, $event)"
             />
+            <PermissionToast
+              :tool-name="permissionToastName"
+              :tool-input="permissionToolInput"
+              :session-id="sessions.activeId || ''"
+              :request-id="permissionRequestId"
+              @navigate="navigateToSession"
+            />
           </div>
         </template>
         <div v-else class="empty">
-          <div class="empty-text">选择左侧会话，或点击 + 创建新会话</div>
+          <div class="empty-text">选择左侧会话，或点击「打开 Session」</div>
         </div>
       </main>
     </div>
@@ -48,12 +58,7 @@
       :loading="sessions.creating"
       @close="showNew = false"
       @create="onCreate"
-    />
-    <PermissionToast
-      :tool-name="permissionToastName"
-      :session-id="sessions.activeId || ''"
-      :request-id="permissionRequestId"
-      @navigate="navigateToSession"
+      @open-recent="onOpenRecent"
     />
   </div>
 </template>
@@ -63,13 +68,13 @@ import { onMounted, ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import SessionList from '../components/SessionList.vue'
-import UserBar from '../components/UserBar.vue'
 import ToolBar from '../components/ToolBar.vue'
 import XtermTerminal from '../components/XtermTerminal.vue'
 import NewSessionDialog from '../components/NewSessionDialog.vue'
 import PermissionToast from '../components/PermissionToast.vue'
 import { useSessionsStore } from '../stores/sessions'
-import { WriteTerminalInput, GetAppInfo } from '../composables/useElectron'
+import type { RecentSession } from '../types/recent'
+import { WriteTerminalInput, GetAppInfo, AdoptSession, OpenSessionTerminal } from '../composables/useElectron'
 import { useEventStream } from '../composables/useEventStream'
 
 const router = useRouter()
@@ -82,6 +87,7 @@ const version = ref('')
 type OpenedTerminal = { id: string; workdir: string }
 const openedTerminals = ref<OpenedTerminal[]>([])
 const terminalLoading = ref<Record<string, boolean>>({})
+
 const activeTerminalLoading = computed(() => {
   const id = sessions.activeId
   return !!id && !!terminalLoading.value[id]
@@ -96,7 +102,6 @@ watch(() => [sessions.activeId, sessions.list.length], () => {
 }, { immediate: true })
 
 onMounted(async () => {
-  await sessions.refresh()
   try {
     const info = await GetAppInfo()
     username.value = info.username
@@ -117,6 +122,12 @@ const permissionRequestId = computed(() => {
   if (!sessions.activeId) return ''
   const req = sessions.hookPermissions[sessions.activeId]
   return req?.requestId || ''
+})
+
+const permissionToolInput = computed(() => {
+  if (!sessions.activeId) return undefined
+  const req = sessions.hookPermissions[sessions.activeId]
+  return req?.toolInput as Record<string, unknown> | undefined
 })
 
 async function selectSession(id: string) {
@@ -149,6 +160,19 @@ async function onCreate(workdir: string, prompt: string, extraArgs: string[] = [
     showNew.value = false
   } catch (e: any) {
     alert('创建失败：' + (e?.message ?? e))
+  }
+}
+
+async function onOpenRecent(item: RecentSession) {
+  try {
+    sessions.open(item)
+    terminalLoading.value = { ...terminalLoading.value, [item.sessionId]: true }
+    await AdoptSession(item.sessionId, item.workdir)
+    await OpenSessionTerminal(item.sessionId, item.workdir)
+    showNew.value = false
+  } catch (e: any) {
+    console.error('[home] open recent failed:', e?.message || e)
+    alert('打开最近会话失败：' + (e?.message || e))
   }
 }
 

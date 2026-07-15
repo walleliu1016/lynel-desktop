@@ -5,7 +5,7 @@ import { GetSettings, UpdateSettings } from '../composables/useElectron'
 
 function defaultSettings(): Settings {
   return {
-    theme: 'oled-dark',
+    theme: 'light-pro',
     claude_path: '',
     auto_allow_bash: false,
     log_enabled: false,

@@ -1,15 +1,11 @@
 <template>
   <div class="login">
-    <TitleBar />
+    <TitleBar :username="username" @settings="goSettings" />
     <div class="login-body">
       <div class="login-head">
         <div class="login-logo">L</div>
         <div class="login-title-row">
           <span class="login-title">登录 Lynel Desktop</span>
-          <button class="settings-btn" title="设置" @click="goSettings">
-            <Icon name="settings" :size="11" />
-            <span class="settings-label">设置</span>
-          </button>
         </div>
       </div>
 
@@ -129,7 +125,7 @@ async function onSubmit() {
   // 进入主页前先把窗口切到主布局，避免 HomeView 挂载后闪现小窗口再变大
   try { await win.applyHomeLayout() } catch {}
   try { WindowCenter() } catch {}
-  router.push('/home')
+  router.push('/welcome')
 }
 
 async function goSettings() {

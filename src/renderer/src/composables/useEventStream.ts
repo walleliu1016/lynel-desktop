@@ -16,12 +16,17 @@ export function useEventStream() {
       console.error('[fatal]', msg)
     }))
 
-    // 后端 fsnotify 监听 jsonl 变化后推送 → 刷新列表 + 重载当前 session 消息。
+    // 后端 fsnotify 监听 jsonl 变化后推送 → 重载当前 session 消息。
     cleanups.push(EventsOn('sessions:list:changed', () => {
-      void sessions.refresh({ sort: false })
       if (sessions.activeId) {
         void sessions.reloadFromJsonl(sessions.activeId)
       }
+    }))
+
+    // 主进程会话状态变化实时同步到 store，保证标题栏运行中数量准确。
+    cleanups.push(EventsOn('sessions:state:changed', (id: string, st: string) => {
+      const normalized = st === 'running' ? 'waiting' : st
+      sessions.state = { ...sessions.state, [id]: normalized as any }
     }))
 
     cleanups.push(EventsOn('permission:request', (payload: string) => {

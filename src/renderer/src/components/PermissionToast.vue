@@ -1,21 +1,38 @@
 <template>
-  <div v-if="visible" class="perm-toast">
-    <Icon name="warning" :size="16" />
-    <span class="perm-text">Claude 请求权限：{{ toolName }}</span>
-    <div class="perm-actions">
-      <button class="perm-deny" @click.stop="onDeny">拒绝</button>
-      <button class="perm-allow" @click.stop="onAllow">允许</button>
+  <div v-if="visible" class="permission-overlay">
+    <div class="permission-box">
+      <small class="permission-label">需要你的授权</small>
+      <h3 class="permission-title">{{ displayTitle }}</h3>
+      <p class="permission-desc">{{ displayDesc }}</p>
+      <div class="permission-meta">
+        <div class="meta-row">
+          <span>工具</span>
+          <b>{{ toolName || 'Unknown' }}</b>
+        </div>
+        <div v-if="command" class="meta-row">
+          <span>命令</span>
+          <b>{{ command }}</b>
+        </div>
+        <div class="meta-row">
+          <span>影响范围</span>
+          <b>{{ impactScope }}</b>
+        </div>
+      </div>
+      <div class="permission-actions">
+        <button class="perm-deny" @click.stop="onDeny">拒绝</button>
+        <button class="perm-allow" @click.stop="onAllow">允许</button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import Icon from './Icon.vue'
+import { ref, watch, computed } from 'vue'
 import { ResolvePermission } from '../composables/useElectron'
 
 const props = defineProps<{
   toolName: string
+  toolInput?: Record<string, unknown>
   sessionId: string
   requestId: string
 }>()
@@ -27,10 +44,31 @@ const emit = defineEmits<{
 const visible = ref(false)
 
 watch(() => props.toolName, (name) => {
-  if (name) {
-    visible.value = true
-  }
+  visible.value = !!name
 }, { immediate: true })
+
+const displayTitle = computed(() => {
+  if (props.toolName === 'Bash') return '执行 Bash 命令'
+  if (props.toolName === 'Read') return '读取文件'
+  if (props.toolName === 'Write') return '写入文件'
+  if (props.toolName === 'Edit') return '编辑文件'
+  if (props.toolName === 'MultiEdit') return '批量编辑文件'
+  return `调用 ${props.toolName || '工具'}`
+})
+
+const command = computed(() => {
+  const input = props.toolInput
+  if (!input || typeof input !== 'object') return ''
+  return String(input.command || input.file_path || input.pattern || input.url || input.query || '')
+})
+
+const displayDesc = computed(() => {
+  if (props.toolName === 'Bash') return '将执行系统命令，可能修改当前项目文件或访问网络。'
+  if (['Read', 'Write', 'Edit', 'MultiEdit'].includes(props.toolName)) return '将访问或修改当前项目内的文件。'
+  return 'Claude 请求执行此工具，请确认是否允许。'
+})
+
+const impactScope = computed(() => '当前项目')
 
 function onAllow() {
   if (props.requestId) {
@@ -48,30 +86,91 @@ function onDeny() {
 </script>
 
 <style scoped>
-.perm-toast {
-  position: fixed;
-  bottom: 20px; right: 20px;
-  background: var(--status-warn);
-  color: #000;
-  padding: 10px 16px;
-  border-radius: 8px;
+.permission-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(13, 19, 33, 0.65);
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+  animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.permission-box {
+  width: min(440px, calc(100% - 40px));
+  padding: 20px;
+  border-radius: 16px;
+  background: white;
+  border: 1px solid #f5b0b5;
+  box-shadow: 0 25px 80px rgba(13, 24, 41, 0.28);
+}
+.permission-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--status-error);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+.permission-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+.permission-desc {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.permission-meta {
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--bg-primary);
+  margin-bottom: 16px;
+}
+.meta-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-  z-index: 1000;
-  animation: slideUp 0.3s ease;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
 }
-@keyframes slideUp { from { transform: translateY(20px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
-.perm-text { flex: 1; min-width: 0; }
-.perm-actions { display: flex; gap: 6px; flex-shrink: 0; }
-.perm-actions button {
-  padding: 4px 12px; border: none; border-radius: 4px;
-  font-size: 12px; font-weight: 600; cursor: pointer;
+.meta-row:first-child { margin-top: 0; }
+.meta-row span { font-size: 11px; color: var(--text-tertiary); }
+.meta-row b {
+  font-size: 11px;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: right;
+  word-break: break-all;
 }
-.perm-deny { background: rgba(0,0,0,0.15); color: #333; }
-.perm-deny:hover { background: rgba(0,0,0,0.25); }
-.perm-allow { background: #22C55E; color: #fff; }
-.perm-allow:hover { background: #16a34a; }
+.permission-actions {
+  display: flex;
+  gap: 8px;
+}
+.permission-actions button {
+  flex: 1;
+  height: 38px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.perm-allow {
+  border: none;
+  background: var(--accent);
+  color: white;
+}
+.perm-allow:hover { background: var(--accent-deep); }
+.perm-deny {
+  border: 1px solid var(--status-error);
+  background: transparent;
+  color: var(--status-error);
+}
+.perm-deny:hover { background: var(--status-error-soft); }
 </style>
