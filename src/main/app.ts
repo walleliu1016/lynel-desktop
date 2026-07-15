@@ -122,6 +122,7 @@ interface RecentSessionRecord {
   project: string;
   aiTitle: string;
   firstPrompt: string;
+  userTitle?: string;
   lastOpenedAt: number;
   state: string;
 }
@@ -162,6 +163,7 @@ async function generateRecentFromProjects(): Promise<RecentSessionRecord[]> {
         project: s.project,
         aiTitle: s.ai_title || '',
         firstPrompt: s.first_prompt || '',
+        userTitle: s.user_title,
         lastOpenedAt: lastOpened,
         state: 'idle',
       });
@@ -209,6 +211,8 @@ export class App {
   private wecomChannel = new WeComChannel({ enabled: false });
   private localFileChannel = new LocalFileChannel();
   private ptyCleanups = new Map<string, (() => void) | null>();
+  private recentSessionsLock = false;
+  private aiTitleRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.dispatcher.register(this.sseChannel);
@@ -271,6 +275,7 @@ export class App {
     });
     await this.ensureHookServer();
     this.watchJsonl();
+    this.startAiTitleRefresh();
     this.registerIpcHandlers();
   }
 
@@ -547,6 +552,64 @@ export class App {
     return realId;
   }
 
+  private withRecentLock<T>(fn: () => T): T {
+    while (this.recentSessionsLock) {
+      // spin-wait; Node is single-threaded so this only blocks async interleaving
+    }
+    this.recentSessionsLock = true;
+    try {
+      return fn();
+    } finally {
+      this.recentSessionsLock = false;
+    }
+  }
+
+  private startAiTitleRefresh(): void {
+    const FIVE_MIN = 5 * 60 * 1000;
+    this.aiTitleRefreshTimer = setInterval(() => {
+      void this.refreshAiTitles();
+    }, FIVE_MIN);
+  }
+
+  private async refreshAiTitles(): Promise<void> {
+    const list = this.withRecentLock(() => readRecentSessions());
+    let changed = false;
+    for (const record of list) {
+      if (record.aiTitle || record.userTitle) continue;
+      try {
+        const filePath = jsonl.getSessionJsonlPath(record.sessionId, record.workdir);
+        const aiTitle = await jsonl.scanFileAiTitle(filePath);
+        if (aiTitle) {
+          record.aiTitle = aiTitle;
+          changed = true;
+          getBus().emit('session:title:changed', record.sessionId, aiTitle, 'ai');
+          getLogger().info(`[aiTitle] found for sid=${record.sessionId.slice(0, 8)}: ${aiTitle.slice(0, 40)}`);
+        }
+      } catch {
+        // file may not exist yet
+      }
+    }
+    if (changed) {
+      this.withRecentLock(() => writeRecentSessions(list));
+    }
+  }
+
+  private mergeRecentTitles(raw: jsonl.SessionMeta[]): jsonl.SessionMeta[] {
+    const recents = this.withRecentLock(() => readRecentSessions());
+    const map = new Map(recents.map((r) => [r.sessionId, r]));
+    return raw.map((s) => {
+      const r = map.get(s.id);
+      if (!r) return s;
+      if (r.userTitle) {
+        return { ...s, user_title: r.userTitle, title_source: 'user' as jsonl.TitleSource };
+      }
+      if (r.aiTitle) {
+        return { ...s, ai_title: r.aiTitle, title_source: 'ai' as jsonl.TitleSource };
+      }
+      return s;
+    });
+  }
+
   private watchJsonl(): void {
     jsonl.watchProjects(() => {
       getBus().emit('sessions:list:changed');
@@ -591,9 +654,10 @@ export class App {
 
     ipcMain.handle('app:listSessions', async (_event, workDir?: string) => {
       const all = await jsonl.scanAll();
-      if (!workDir) return all;
+      const merged = this.mergeRecentTitles(all);
+      if (!workDir) return merged;
       const normalized = path.normalize(workDir).toLowerCase();
-      return all.filter((s) => path.normalize(s.workdir).toLowerCase() === normalized);
+      return merged.filter((s) => path.normalize(s.workdir).toLowerCase() === normalized);
     });
 
     ipcMain.handle('app:getSessionMessages', (_event, id: string, workDir: string, offset: number, limit: number) => {
@@ -683,11 +747,53 @@ export class App {
       return states;
     });
 
-    ipcMain.handle('app:adoptSession', (_event, id: string, workDir: string) => {
+    ipcMain.handle('app:adoptSession', async (_event, id: string, workDir: string) => {
       if (!session.lookup(id)) {
         session.register(session.newSession(id, workDir));
         getLogger().info(`[app:adoptSession] adopted sid=${id} workDir=${workDir}`);
       }
+      const list = this.withRecentLock(() => readRecentSessions());
+      const record = list.find((r) => r.sessionId === id);
+      if (record) {
+        const source: jsonl.TitleSource = record.userTitle ? 'user' : (record.aiTitle ? 'ai' : 'first_prompt');
+        const title = record.userTitle || record.aiTitle || record.firstPrompt || id.slice(0, 8);
+        return { title, source };
+      }
+      return null;
+    });
+
+    ipcMain.handle('app:renameSession', async (_event, id: string, workDir: string, title: string) => {
+      const trimmed = (title || '').trim();
+      if (!trimmed) throw new Error('title cannot be empty');
+      this.withRecentLock(() => {
+        const list = readRecentSessions();
+        const record = list.find((r) => r.sessionId === id);
+        if (record) {
+          record.userTitle = trimmed;
+        } else {
+          list.unshift({
+            sessionId: id,
+            workdir: workDir,
+            project: workDir.split(/[\\/]/).filter(Boolean).pop() || workDir,
+            aiTitle: '',
+            firstPrompt: '',
+            userTitle: trimmed,
+            lastOpenedAt: Date.now(),
+            state: 'idle',
+          });
+        }
+        writeRecentSessions(list);
+      });
+      getBus().emit('session:title:changed', id, trimmed, 'user');
+      getLogger().info(`[app:renameSession] sid=${id.slice(0, 8)} title=${trimmed}`);
+    });
+
+    ipcMain.handle('app:getSessionTitle', async (_event, id: string, _workDir: string) => {
+      const list = this.withRecentLock(() => readRecentSessions());
+      const r = list.find((x) => x.sessionId === id);
+      if (!r) return null;
+      const source: jsonl.TitleSource = r.userTitle ? 'user' : (r.aiTitle ? 'ai' : 'first_prompt');
+      return { title: r.userTitle || r.aiTitle || r.firstPrompt || id.slice(0, 8), source };
     });
 
     ipcMain.handle('app:openSessionTerminal', (_event, id: string, workDir: string) => {

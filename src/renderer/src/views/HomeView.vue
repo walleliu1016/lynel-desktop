@@ -73,7 +73,7 @@ import SessionTabContent from '../components/SessionTabContent.vue'
 import SettingsTab from '../components/SettingsTab.vue'
 import OpenFolderDialog from '../components/OpenFolderDialog.vue'
 import NewSessionDialog from '../components/NewSessionDialog.vue'
-import { useSessionsStore } from '../stores/sessions'
+import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useTabsStore } from '../stores/tabs'
 import type { RecentSession } from '../types/recent'
 import type { SessionState } from '../types/session'
@@ -151,7 +151,7 @@ async function onCloseTab(id: string) {
 async function onSelectSession(id: string) {
   const meta = sessions.list.find((s) => s.id === id)
   if (!meta) return
-  tabsStore.openSession(id, meta.workdir, meta.ai_title || meta.first_prompt)
+  tabsStore.openSession(id, meta.workdir, sessionDisplayTitle(meta))
   await sessions.select(id)
 }
 
@@ -160,7 +160,7 @@ async function onCreate(workdir: string, prompt: string, extraArgs: string[] = [
     const id = await sessions.create(workdir, prompt, extraArgs)
     const meta = sessions.list.find((s) => s.id === id)
     if (meta) {
-      tabsStore.openSession(id, meta.workdir, meta.ai_title || meta.first_prompt || prompt)
+      tabsStore.openSession(id, meta.workdir, sessionDisplayTitle(meta) || prompt)
     }
   } catch (e: any) {
     alert('创建失败：' + (e?.message ?? e))
@@ -180,7 +180,12 @@ async function onCreateFromSession(workdir: string, prompt: string, extraArgs: s
 async function onOpenRecent(item: RecentSession) {
   try {
     sessions.open(item)
-    tabsStore.openSession(item.sessionId, item.workdir, item.aiTitle || item.firstPrompt)
+    tabsStore.openSession(item.sessionId, item.workdir, sessionDisplayTitle({
+      id: item.sessionId,
+      user_title: item.userTitle,
+      ai_title: item.aiTitle,
+      first_prompt: item.firstPrompt,
+    }))
     await AdoptSession(item.sessionId, item.workdir)
     await OpenSessionTerminal(item.sessionId, item.workdir)
     showNewSession.value = false
@@ -196,13 +201,13 @@ function openSettingsTab() {
 
 // 当 session 元信息加载后，同步更新对应 Tab 标题
 watch(
-  () => sessions.list.map((s) => `${s.id}:${s.ai_title}:${s.first_prompt}`).join('|'),
+  () => sessions.list.map((s) => `${s.id}:${s.user_title}:${s.ai_title}:${s.first_prompt}:${s.title_source}`).join('|'),
   () => {
     for (const s of sessions.list) {
       const tabId = `session-${s.id}`
       const tab = tabsStore.tabs.find((t) => t.id === tabId)
       if (tab) {
-        const newTitle = s.ai_title || s.first_prompt || s.id.slice(0, 8)
+        const newTitle = sessionDisplayTitle(s)
         if (tab.title !== newTitle) {
           tab.title = newTitle
         }

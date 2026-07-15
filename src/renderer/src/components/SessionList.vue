@@ -84,7 +84,7 @@ const filteredList = computed(() => {
   if (!q) return props.list
   return props.list.filter((s) => {
     const pn = s.project.toLowerCase()
-    const title = (s.first_prompt || s.ai_title || '').toLowerCase()
+    const title = (s.user_title || s.first_prompt || s.ai_title || '').toLowerCase()
     const sid = s.id.toLowerCase()
     return pn.includes(q) || title.includes(q) || sid.includes(q)
   })

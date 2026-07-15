@@ -23,7 +23,11 @@ export interface SessionMeta {
   ai_title: string
   size: number
   lastEvent?: { type: string; summary: string }
+  user_title?: string
+  title_source?: 'user' | 'ai' | 'first_prompt'
 }
+
+export type TitleSource = 'user' | 'ai' | 'first_prompt'
 
 import type { ContentBlock } from './blocks'
 

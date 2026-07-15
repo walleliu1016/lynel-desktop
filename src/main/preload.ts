@@ -29,6 +29,10 @@ const api = {
   getSessionStates: () => ipcRenderer.invoke('app:getSessionStates'),
   adoptSession: (id: string, workDir: string) =>
     ipcRenderer.invoke('app:adoptSession', id, workDir),
+  renameSession: (id: string, workDir: string, title: string) =>
+    ipcRenderer.invoke('app:renameSession', id, workDir, title),
+  getSessionTitle: (id: string, workDir: string) =>
+    ipcRenderer.invoke('app:getSessionTitle', id, workDir),
   openSessionTerminal: (id: string, workDir: string) =>
     ipcRenderer.invoke('app:openSessionTerminal', id, workDir),
   openSessionTerminalSized: (id: string, workDir: string, cols: number, rows: number) =>

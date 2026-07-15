@@ -37,7 +37,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import Icon from './Icon.vue'
-import { useSessionsStore } from '../stores/sessions'
+import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import type { Tab } from '../types/tab'
 
 const props = defineProps<{
@@ -79,7 +79,7 @@ function tooltipFor(tab: Tab) {
   const meta = sessions.list.find((s) => s.id === sid)
   const state = sessions.state[sid] || 'idle'
   return [
-    meta?.ai_title || meta?.first_prompt || sid.slice(0, 8),
+    sessionDisplayTitle(meta ?? { id: sid }),
     `项目：${meta?.project || meta?.workdir || '未知'}`,
     `Session：${sid}`,
     `状态：${state}`,

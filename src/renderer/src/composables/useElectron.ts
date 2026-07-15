@@ -36,6 +36,8 @@ export const GetHookServerPort = () => api().getHookServerPort();
 export const CheckAndFixHooks = () => api().checkAndFixHooks();
 export const GetSessionStates = () => api().getSessionStates();
 export const AdoptSession = (id: string, workDir: string) => api().adoptSession(id, workDir);
+export const RenameSession = (id: string, workDir: string, title: string) => api().renameSession(id, workDir, title);
+export const GetSessionTitle = (id: string, workDir: string) => api().getSessionTitle(id, workDir);
 export const OpenSessionTerminal = (id: string, workDir: string) => api().openSessionTerminal(id, workDir);
 export const OpenSessionTerminalSized = (id: string, workDir: string, cols: number, rows: number) => api().openSessionTerminalSized(id, workDir, cols, rows);
 export const WriteTerminalInput = (id: string, data: string) => api().writeTerminalInput(id, data);

@@ -29,6 +29,11 @@ export function useEventStream() {
       sessions.state = { ...sessions.state, [id]: normalized as any }
     }))
 
+    // 标题变化（ai-title / custom-title / 用户 rename）实时同步到 store。
+    cleanups.push(EventsOn('session:title:changed', (id: string, title: string, source: 'user' | 'ai' | 'first_prompt') => {
+      sessions.applyTitleChange(id, title, source)
+    }))
+
     cleanups.push(EventsOn('permission:request', (payload: string) => {
       let req: any
       try { req = JSON.parse(payload) } catch { return }

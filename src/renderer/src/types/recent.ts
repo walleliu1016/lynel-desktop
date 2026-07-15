@@ -4,6 +4,7 @@ export interface RecentSession {
   project: string
   aiTitle: string
   firstPrompt: string
+  userTitle?: string
   lastOpenedAt: number
   state: string
 }

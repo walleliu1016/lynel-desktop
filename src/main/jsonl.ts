@@ -14,7 +14,11 @@ export interface SessionMeta {
   first_prompt: string;
   ai_title: string;
   size: number;
+  user_title?: string;
+  title_source?: 'user' | 'ai' | 'first_prompt';
 }
+
+export type TitleSource = 'user' | 'ai' | 'first_prompt';
 
 export interface JsonlMessage {
   role: string;
@@ -144,6 +148,8 @@ interface RawLine {
   type?: string;
   message?: unknown;
   ai_title?: string;
+  aiTitle?: string;
+  title?: string;
   cwd?: string;
   timestamp?: string;
   attachment?: RawAttachment;
@@ -264,6 +270,28 @@ function truncate(s: string, max: number): string {
   if (!s) return '';
   if (s.length <= max) return s;
   return s.slice(0, max) + `…(+${s.length - max})`;
+}
+
+export async function scanFileAiTitle(filePath: string): Promise<string> {
+  try {
+    const stream = fsSync.createReadStream(filePath, { encoding: 'utf-8' });
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    for await (const line of rl) {
+      const parsed = safeParseLine(line);
+      if (!parsed) continue;
+      // LovStudio-style ai-title event
+      if (parsed.type === 'ai-title' && typeof parsed.aiTitle === 'string' && parsed.aiTitle) {
+        return parsed.aiTitle;
+      }
+      // legacy ai_title field
+      if (typeof parsed.ai_title === 'string' && parsed.ai_title) {
+        return parsed.ai_title;
+      }
+    }
+  } catch {
+    // ignore read errors
+  }
+  return '';
 }
 
 export function watchProjects(onChange: () => void): () => void {

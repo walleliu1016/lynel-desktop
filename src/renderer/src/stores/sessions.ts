@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import type { SessionMeta, ChatMessage, SessionState } from '../types/session'
 import type { RecentSession } from '../types/recent'
 import type { ContentBlock, ToolResultBlock, RawContent } from '../types/blocks'
-import { CreateSession, SendMessage, GetSessionMessages, AdoptSession } from '../composables/useElectron'
+import { CreateSession, SendMessage, GetSessionMessages, AdoptSession, RenameSession } from '../composables/useElectron'
 
 export interface HookPermissionRequest {
   requestId: string
@@ -118,8 +118,30 @@ export const useSessionsStore = defineStore('sessions', () => {
   const hookPermissions = ref<Record<string, HookPermissionRequest | null>>({})
   const opened = ref<Record<string, boolean>>({})
   const loading = ref(false)
+  const userTitles = ref<Record<string, string>>({})
+  const titleSources = ref<Record<string, 'user' | 'ai' | 'first_prompt'>>({})
 
   const active = computed(() => list.value.find((s) => s.id === activeId.value) ?? null)
+
+  function applyTitleChange(id: string, title: string, source: 'user' | 'ai' | 'first_prompt') {
+    titleSources.value = { ...titleSources.value, [id]: source }
+    if (source === 'user') {
+      userTitles.value = { ...userTitles.value, [id]: title }
+    }
+    const idx = list.value.findIndex((s) => s.id === id)
+    if (idx >= 0) {
+      const updated = { ...list.value[idx] }
+      if (source === 'user') {
+        updated.user_title = title
+      } else if (source === 'ai') {
+        updated.ai_title = title
+      } else if (source === 'first_prompt') {
+        updated.first_prompt = title
+      }
+      updated.title_source = source
+      list.value = [...list.value.slice(0, idx), updated, ...list.value.slice(idx + 1)]
+    }
+  }
 
   function toolInputSummary(name: string, input: Record<string, unknown>): string {
     if (!input || typeof input !== 'object') return ''
@@ -181,8 +203,10 @@ export const useSessionsStore = defineStore('sessions', () => {
         list.value = [{
           id, workdir, project, mtime: Math.floor(Date.now() / 1000), msg_count: 0,
           first_prompt: prompt, ai_title: '', size: 0,
+          user_title: undefined, title_source: prompt ? 'first_prompt' : 'first_prompt',
         }, ...list.value]
       }
+      titleSources.value = { ...titleSources.value, [id]: prompt ? 'first_prompt' : 'first_prompt' }
       activeId.value = id
       await select(id)
       return id
@@ -193,6 +217,7 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   function open(record: RecentSession) {
     if (!list.value.find((s) => s.id === record.sessionId)) {
+      const source: 'user' | 'ai' | 'first_prompt' = record.userTitle ? 'user' : (record.aiTitle ? 'ai' : 'first_prompt')
       list.value = [{
         id: record.sessionId,
         workdir: record.workdir,
@@ -202,12 +227,22 @@ export const useSessionsStore = defineStore('sessions', () => {
         first_prompt: record.firstPrompt,
         ai_title: record.aiTitle,
         size: 0,
+        user_title: record.userTitle,
+        title_source: source,
       }, ...list.value]
     }
     activeId.value = record.sessionId
     opened.value = { ...opened.value, [record.sessionId]: true }
     const st = record.state === 'running' ? 'waiting' : (record.state || 'idle')
     state.value = { ...state.value, [record.sessionId]: st as SessionState }
+    if (record.userTitle) {
+      userTitles.value = { ...userTitles.value, [record.sessionId]: record.userTitle }
+      titleSources.value = { ...titleSources.value, [record.sessionId]: 'user' }
+    } else if (record.aiTitle) {
+      titleSources.value = { ...titleSources.value, [record.sessionId]: 'ai' }
+    } else {
+      titleSources.value = { ...titleSources.value, [record.sessionId]: 'first_prompt' }
+    }
   }
 
   async function select(id: string) {
@@ -215,7 +250,10 @@ export const useSessionsStore = defineStore('sessions', () => {
     opened.value = { ...opened.value, [id]: true }
     const meta = list.value.find((s) => s.id === id)
     if (!meta) return
-    await AdoptSession(id, meta.workdir)
+    const titleInfo = await AdoptSession(id, meta.workdir) as { title: string; source: 'user' | 'ai' | 'first_prompt' } | undefined
+    if (titleInfo) {
+      applyTitleChange(id, titleInfo.title, titleInfo.source)
+    }
     if (!messages.value[id]) {
       const total = meta.msg_count
       await loadHistory(id, meta.workdir, Math.max(0, total - PAGE_SIZE), PAGE_SIZE, true)
@@ -330,6 +368,8 @@ export const useSessionsStore = defineStore('sessions', () => {
     drafts.value = omit(drafts.value, id)
     hookPermissions.value = omit(hookPermissions.value, id)
     opened.value = omit(opened.value, id)
+    userTitles.value = omit(userTitles.value, id)
+    titleSources.value = omit(titleSources.value, id)
   }
 
   function setDraft(sid: string, text: string) {
@@ -353,8 +393,23 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
+  async function renameSession(id: string, title: string) {
+    const meta = list.value.find((s) => s.id === id)
+    if (!meta) throw new Error('session not found')
+    const trimmed = title.trim()
+    if (!trimmed) throw new Error('title cannot be empty')
+    await RenameSession(id, meta.workdir, trimmed)
+    applyTitleChange(id, trimmed, 'user')
+  }
+
   return { list, activeId, active, messages, streaming, state,
     hasMore, creating, loading, adopted, drafts, hookPermissions, opened,
+    userTitles, titleSources,
     setDraft, create, open, select, send, setHookPermission,
-    reloadFromJsonl, handleHookEvent, loadMore, remove }
+    reloadFromJsonl, handleHookEvent, loadMore, remove, renameSession, applyTitleChange }
 })
+
+export function sessionDisplayTitle(meta?: { id?: string; user_title?: string; ai_title?: string; first_prompt?: string } | null): string {
+  if (!meta) return '新会话'
+  return meta.user_title || meta.ai_title || meta.first_prompt || meta.id?.slice(0, 8) || '新会话'
+}

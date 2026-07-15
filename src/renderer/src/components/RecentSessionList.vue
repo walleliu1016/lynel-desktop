@@ -28,6 +28,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { sessionDisplayTitle } from '../stores/sessions'
 import type { RecentSession } from '../types/recent'
 
 const props = withDefaults(defineProps<{ list: RecentSession[]; limit?: number }>(), {
@@ -44,7 +45,12 @@ const visibleList = computed(() => {
 })
 
 function displayTitle(item: RecentSession) {
-  return item.aiTitle || item.firstPrompt || item.project
+  return sessionDisplayTitle({
+    id: item.sessionId,
+    user_title: item.userTitle,
+    ai_title: item.aiTitle,
+    first_prompt: item.firstPrompt,
+  }) || item.project
 }
 
 function metaTitle(item: RecentSession) {

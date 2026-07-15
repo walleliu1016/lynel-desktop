@@ -13,6 +13,10 @@
       <div class="value">{{ meta.workdir }}</div>
     </div>
     <div class="divider" />
+    <div class="section" v-if="meta.user_title">
+      <div class="label">用户标题</div>
+      <div class="value">{{ meta.user_title }}</div>
+    </div>
     <div class="section" v-if="meta.ai_title">
       <div class="label">AI 标题</div>
       <div class="value">{{ meta.ai_title }}</div>

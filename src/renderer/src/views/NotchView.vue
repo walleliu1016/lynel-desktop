@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
+import { sessionDisplayTitle } from '../stores/sessions'
 import { EventsOn, ResolvePermission, SetNotchSize, ListSessions, GetSessionStates } from '../composables/useElectron'
 
 interface PermissionReq {
@@ -470,7 +471,7 @@ onBeforeUnmount(() => {
             :class="getPhaseClass(s.id)"
           >
             <span class="sess-dot" :class="getPhaseClass(s.id)" />
-            <span class="sess-name">{{ s.project || s.first_prompt || s.id.slice(0, 8) }}</span>
+            <span class="sess-name">{{ sessionDisplayTitle(s) }}</span>
             <span v-if="getPhaseLabel(s.id)" class="sess-phase">{{ getPhaseLabel(s.id) }}</span>
             <span class="sess-meta">{{ s.msg_count }} msgs</span>
           </div>
@@ -492,7 +493,7 @@ onBeforeUnmount(() => {
               class="session-row phase-idle"
             >
               <span class="sess-dot phase-idle" />
-              <span class="sess-name">{{ s.project || s.first_prompt || s.id.slice(0, 8) }}</span>
+              <span class="sess-name">{{ sessionDisplayTitle(s) }}</span>
               <span class="sess-meta">{{ s.msg_count }} msgs</span>
             </div>
           </div>

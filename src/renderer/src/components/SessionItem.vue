@@ -5,12 +5,22 @@
     @click="$emit('select')"
     @mouseenter="onEnter"
     @mouseleave="onLeave"
+    @contextmenu.prevent="onContextMenu"
     ref="itemEl"
   >
     <div class="cc-icon">CC</div>
     <div class="body">
       <div class="row1">
-        <span class="title" :title="title">{{ title }}</span>
+        <input
+          v-if="editing"
+          ref="inputEl"
+          v-model="editValue"
+          class="title-input"
+          @blur="commitRename"
+          @keydown.enter="commitRename"
+          @keydown.escape="cancelRename"
+        />
+        <span v-else class="title" :title="title">{{ title }}</span>
         <span v-if="stateLabel" class="state-tag" :class="state">{{ stateLabel }}</span>
       </div>
       <div class="row2">
@@ -20,6 +30,17 @@
     </div>
   </div>
   <Teleport to="body">
+    <div
+      v-if="menuOpen"
+      class="context-menu-overlay"
+      @click="closeMenu"
+      @contextmenu.prevent="closeMenu"
+    >
+      <div class="context-menu" :style="menuStyle" @click.stop>
+        <button class="menu-item" @click="startRename">重命名</button>
+        <button class="menu-item" @click="copySessionId">复制 Session ID</button>
+      </div>
+    </div>
     <SessionTooltip
       v-if="showTip"
       :meta="meta"
@@ -31,9 +52,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, nextTick } from 'vue'
 import SessionTooltip from './SessionTooltip.vue'
-import { useSessionsStore } from '../stores/sessions'
+import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import type { SessionMeta } from '../types/session'
 
 const props = defineProps<{ meta: SessionMeta; isActive: boolean; dup?: boolean }>()
@@ -44,6 +65,13 @@ const showTip = ref(false)
 const itemEl = ref<HTMLElement | null>(null)
 const tipAnchor = ref({ x: 0, y: 0 })
 let hideTimer: ReturnType<typeof setTimeout> | null = null
+
+const editing = ref(false)
+const editValue = ref('')
+const inputEl = ref<HTMLInputElement | null>(null)
+
+const menuOpen = ref(false)
+const menuStyle = ref({ top: '0px', left: '0px' })
 
 function onEnter() {
   if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
@@ -56,17 +84,55 @@ function onEnter() {
 function onLeave() {
   hideTimer = setTimeout(() => { showTip.value = false }, 150)
 }
+
+function closeMenu() {
+  menuOpen.value = false
+}
 function cancelHide() {
   if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
 }
 
-const title = computed(() => props.meta.ai_title || props.meta.first_prompt || props.meta.id?.slice(0, 8) || '新会话')
+function onContextMenu(e: MouseEvent) {
+  e.preventDefault()
+  menuOpen.value = true
+  menuStyle.value = { top: `${e.clientY}px`, left: `${e.clientX}px` }
+}
+
+function startRename() {
+  menuOpen.value = false
+  editing.value = true
+  editValue.value = sessionDisplayTitle(props.meta)
+  void nextTick(() => inputEl.value?.focus())
+}
+
+async function commitRename() {
+  if (!editing.value) return
+  const trimmed = editValue.value.trim()
+  editing.value = false
+  if (!trimmed || trimmed === sessionDisplayTitle(props.meta)) return
+  try {
+    await sessions.renameSession(props.meta.id, trimmed)
+  } catch (e: any) {
+    alert('重命名失败：' + (e?.message ?? e))
+  }
+}
+
+function cancelRename() {
+  editing.value = false
+}
+
+function copySessionId() {
+  menuOpen.value = false
+  void navigator.clipboard.writeText(props.meta.id)
+}
+
+const title = computed(() => sessionDisplayTitle(props.meta))
 
 const eventText = computed(() => {
   if (props.meta.lastEvent) {
     return `${props.meta.lastEvent.type} · ${props.meta.lastEvent.summary}`
   }
-  return props.meta.ai_title || props.meta.first_prompt || ''
+  return sessionDisplayTitle(props.meta)
 })
 
 const projectName = computed(() => {
@@ -143,6 +209,16 @@ const stateLabel = computed(() => {
   font-size: 12px; color: var(--text-primary); font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.title-input {
+  flex: 1; min-width: 0;
+  font-size: 12px; font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 2px 6px;
+  outline: none;
+}
 .state-tag {
   font-size: 9px; font-weight: 700; white-space: nowrap;
   padding: 2px 6px; border-radius: 6px; flex-shrink: 0;
@@ -170,4 +246,32 @@ const stateLabel = computed(() => {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .event :deep(b), .event b { font-weight: 600; color: var(--text-primary); }
+.context-menu-overlay {
+  position: fixed; inset: 0; z-index: 999;
+}
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+  padding: 4px;
+  min-width: 140px;
+}
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.menu-item:hover {
+  background: var(--session-item-hover-bg);
+}
 </style>
