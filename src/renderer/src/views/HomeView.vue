@@ -2,15 +2,15 @@
   <div class="home">
     <TitleBar :username="username" @settings="openSettingsTab" />
     <div class="layout">
-      <aside class="left">
+      <aside class="left" :class="{ collapsed: sidebarCollapsed }">
         <SessionList
-          v-if="tabsStore.activeType === 'welcome' || tabsStore.activeType === 'session'"
           :list="sessions.list"
           :active-id="activeSessionId"
+          :collapsed="sidebarCollapsed"
           @create="showNewSession = true"
           @select="onSelectSession"
+          @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
         />
-        <SettingsSidebar v-else-if="tabsStore.activeType === 'settings'" />
       </aside>
       <main class="right">
         <GlobalTabs
@@ -68,7 +68,6 @@ import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import GlobalTabs from '../components/GlobalTabs.vue'
 import SessionList from '../components/SessionList.vue'
-import SettingsSidebar from '../components/SettingsSidebar.vue'
 import WelcomeTab from '../components/WelcomeTab.vue'
 import SessionTabContent from '../components/SessionTabContent.vue'
 import SettingsTab from '../components/SettingsTab.vue'
@@ -89,6 +88,7 @@ useEventStream()
 const showOpenFolder = ref(false)
 const showNewSession = ref(false)
 const username = ref('')
+const sidebarCollapsed = ref(false)
 
 const activeTab = computed(() => tabsStore.activeTab)
 const activeSessionId = computed(() => {
@@ -221,7 +221,9 @@ watch(
   box-shadow: var(--shadow-panel);
   min-height: 0; overflow: hidden;
   z-index: 1;
+  transition: width 0.2s ease;
 }
+.left.collapsed { width: 44px; }
 .right { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-primary); }
 .content { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; position: relative; }
 .empty { flex: 1; display: flex; align-items: center; justify-content: center; }

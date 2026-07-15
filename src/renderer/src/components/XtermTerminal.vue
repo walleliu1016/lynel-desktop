@@ -232,7 +232,6 @@ function fitAndResize(): boolean {
 }
 
 watch(() => props.visible, (visible) => {
-  console.warn('[XTERM VISIBLE CHANGE]', visible)
   if (!visible) return
   nextTick(async () => {
     if (!term) {
@@ -245,21 +244,6 @@ watch(() => props.visible, (visible) => {
     lastRows = 0
     fitAddon?.fit()
     if (term && terminalEl.value && term.cols > 0 && term.rows > 0) {
-      const core = (term as any)._core
-      const viewport = terminalEl.value.querySelector('.xterm-viewport') as HTMLElement | null
-      const scrollable = viewport?.querySelector('.xterm-scrollable-element') as HTMLElement | null
-      console.warn('[XTERM REVEAL DIAGNOSTIC]', {
-        cols: term.cols,
-        rows: term.rows,
-        clientWidth: terminalEl.value.clientWidth,
-        clientHeight: terminalEl.value.clientHeight,
-        cssCanvasHeight: core?._renderService?.dimensions?.css?.canvas?.height,
-        bufferLines: core?._bufferService?.buffer?.lines?.length,
-        viewportHeight: viewport?.clientHeight,
-        viewportScrollHeight: viewport?.scrollHeight,
-        scrollableHeight: scrollable?.clientHeight,
-        scrollableScrollHeight: scrollable?.scrollHeight,
-      })
       term.refresh(0, term.rows - 1)
       lastCols = term.cols
       lastRows = term.rows

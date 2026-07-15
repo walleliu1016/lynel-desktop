@@ -1,48 +1,63 @@
 <template>
-  <div class="session-list">
-    <button class="open-session" @click="$emit('create')">
-      <Icon name="folder-open" :size="14" />
-      <span>打开 Session</span>
-    </button>
-    <div class="search-bar">
-      <Icon name="message-square" :size="12" class="search-icon" />
-      <input
-        v-model="search"
-        class="search-input"
-        placeholder="搜索会话…"
-        @keydown.escape="search = ''"
-      />
-      <button v-if="search" class="search-clear" aria-label="清除搜索" title="清除搜索" @click="search = ''">
-        <Icon name="close" :size="12" />
+  <div class="session-list" :class="{ collapsed: props.collapsed }">
+    <div class="header">
+      <button
+        v-if="!props.collapsed"
+        class="open-session"
+        @click="$emit('create')"
+      >
+        <Icon name="folder-open" :size="14" />
+        <span>打开 Session</span>
+      </button>
+      <button
+        class="toggle-btn"
+        :title="props.collapsed ? '展开会话列表' : '收起会话列表'"
+        @click="$emit('toggle-collapse')"
+      >
+        <Icon :name="props.collapsed ? 'chevron-right' : 'chevron-left'" :size="14" />
       </button>
     </div>
-    <div class="sidehead">
-      <span>会话列表</span>
-      <span class="count">{{ filteredList.length }}</span>
-    </div>
-    <div class="items">
-      <template v-if="sessions.loading && !list.length">
-        <div v-for="i in 6" :key="i" class="skeleton-item">
-          <div class="skeleton-icon" />
-          <div class="skeleton-lines">
-            <div class="skeleton-line short" />
-            <div class="skeleton-line" />
-          </div>
-        </div>
-      </template>
-      <template v-else>
-        <SessionItem
-          v-for="s in filteredList"
-          :key="s.id"
-          :meta="s"
-          :is-active="s.id === activeId"
-          :dup="dupProjects.has(s.project)"
-          @select="$emit('select', s.id)"
+    <div v-if="!props.collapsed" class="content">
+      <div class="search-bar">
+        <Icon name="message-square" :size="12" class="search-icon" />
+        <input
+          v-model="search"
+          class="search-input"
+          placeholder="搜索会话…"
+          @keydown.escape="search = ''"
         />
-        <div v-if="!filteredList.length" class="empty">
-          {{ search ? '无匹配结果' : '暂无会话' }}
-        </div>
-      </template>
+        <button v-if="search" class="search-clear" aria-label="清除搜索" title="清除搜索" @click="search = ''">
+          <Icon name="close" :size="12" />
+        </button>
+      </div>
+      <div class="sidehead">
+        <span>会话列表</span>
+        <span class="count">{{ filteredList.length }}</span>
+      </div>
+      <div class="items">
+        <template v-if="sessions.loading && !list.length">
+          <div v-for="i in 6" :key="i" class="skeleton-item">
+            <div class="skeleton-icon" />
+            <div class="skeleton-lines">
+              <div class="skeleton-line short" />
+              <div class="skeleton-line" />
+            </div>
+          </div>
+        </template>
+        <template v-else>
+          <SessionItem
+            v-for="s in filteredList"
+            :key="s.id"
+            :meta="s"
+            :is-active="s.id === activeId"
+            :dup="dupProjects.has(s.project)"
+            @select="$emit('select', s.id)"
+          />
+          <div v-if="!filteredList.length" class="empty">
+            {{ search ? '无匹配结果' : '暂无会话' }}
+          </div>
+        </template>
+      </div>
     </div>
   </div>
 </template>
@@ -54,10 +69,11 @@ import Icon from './Icon.vue'
 import { useSessionsStore } from '../stores/sessions'
 import type { SessionMeta } from '../types/session'
 
-const props = defineProps<{ list: SessionMeta[]; activeId: string | null }>()
+const props = defineProps<{ list: SessionMeta[]; activeId: string | null; collapsed?: boolean }>()
 defineEmits<{
   (e: 'create'): void
   (e: 'select', id: string): void
+  (e: 'toggle-collapse'): void
 }>()
 
 const sessions = useSessionsStore()
@@ -85,8 +101,22 @@ const dupProjects = computed(() => {
 
 <style scoped>
 .session-list { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 12px; }
+.session-list.collapsed { padding: 8px 4px; align-items: center; }
+.session-list.collapsed .content { display: none; }
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.session-list.collapsed .header {
+  flex-direction: column;
+  width: 100%;
+}
+
 .open-session {
-  width: 100%; height: 40px; border-radius: 11px;
+  flex: 1; height: 40px; border-radius: 11px;
   background: var(--accent); color: white;
   font-size: 13px; font-weight: 700;
   display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -94,6 +124,23 @@ const dupProjects = computed(() => {
   transition: background 0.15s;
 }
 .open-session:hover { background: var(--accent-deep); }
+
+.toggle-btn {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.toggle-btn:hover {
+  background: var(--bg-input);
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .search-bar {
   position: relative; margin-top: 12px;
   flex-shrink: 0;
