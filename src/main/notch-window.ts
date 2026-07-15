@@ -20,9 +20,13 @@ export function getNotchWindow(): BrowserWindow | null {
   return notchWin;
 }
 
-export function createNotchWindow(isDev: boolean, devUrl: string, preloadPath: string): BrowserWindow {
+export function createNotchWindow(isDev: boolean, devUrl: string, preloadPath: string, visible = true): BrowserWindow {
   if (notchWin && !notchWin.isDestroyed()) {
-    notchWin.show();
+    if (visible) {
+      notchWin.show();
+    } else {
+      notchWin.hide();
+    }
     return notchWin;
   }
 
@@ -66,12 +70,14 @@ export function createNotchWindow(isDev: boolean, devUrl: string, preloadPath: s
   });
 
   notchWin.once('ready-to-show', () => {
-    notchWin?.show();
-    logger.info('[notch-window] ready-to-show, shown');
+    if (visible) {
+      notchWin?.show();
+    }
+    logger.info('[notch-window] ready-to-show, visible=%s', visible);
   });
 
   setTimeout(() => {
-    if (notchWin && !notchWin.isDestroyed() && !notchWin.isVisible()) {
+    if (notchWin && !notchWin.isDestroyed() && !notchWin.isVisible() && visible) {
       notchWin.show();
       logger.info('[notch-window] fallback show after timeout');
     }

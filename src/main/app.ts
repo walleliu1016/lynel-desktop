@@ -17,7 +17,7 @@ import { WeComChannel, WeComChannelConfig } from './channels/wecom-channel.js';
 import { LocalFileChannel } from './channels/localfile-channel.js';
 import { makeHookEvent, ProxyStageKind } from './channels/channel.js';
 import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
-import { setNotchMousePassthrough, resizeNotchWindow, getNotchWindow } from './notch-window.js';
+import { setNotchMousePassthrough, resizeNotchWindow, showNotchWindow, hideNotchWindow, getNotchWindow } from './notch-window.js';
 import { startProxy } from './apiproxy.js';
 import { start as startPty, PtyMode, PtySize } from './pty.js';
 
@@ -627,6 +627,12 @@ export class App {
     ipcMain.handle('app:getSettings', () => this.settingsStore.store);
     ipcMain.handle('app:updateSettings', (_event, cfg: any) => {
       this.settingsStore.set(cfg);
+      const notchEnabled = (cfg?.notch_enabled ?? true) as boolean;
+      if (notchEnabled) {
+        showNotchWindow();
+      } else {
+        hideNotchWindow();
+      }
     });
 
     ipcMain.handle('app:getWeComConfig', () => {
@@ -770,6 +776,13 @@ export class App {
     });
     ipcMain.on('notch:setSize', (_event, w: number, h: number) => {
       resizeNotchWindow(w, h);
+    });
+    ipcMain.on('notch:setVisibility', (_event, visible: boolean) => {
+      if (visible) {
+        showNotchWindow();
+      } else {
+        hideNotchWindow();
+      }
     });
 
     // Window controls

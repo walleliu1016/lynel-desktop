@@ -51,6 +51,8 @@ const api = {
     ipcRenderer.send('notch:setPassthrough', passthrough),
   setNotchSize: (w: number, h: number) =>
     ipcRenderer.send('notch:setSize', w, h),
+  setNotchVisibility: (visible: boolean) =>
+    ipcRenderer.send('notch:setVisibility', visible),
 
   eventsOn: (channel: string, callback: (...args: any[]) => void) => {
     const handler = (_event: IpcRendererEvent, ...args: any[]) => callback(...args);

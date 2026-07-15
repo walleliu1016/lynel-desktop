@@ -50,6 +50,7 @@ export const IsPermissionPending = (id: string) => api().isPermissionPending(id)
 
 export const SetNotchPassthrough = (passthrough: boolean) => api().setNotchPassthrough(passthrough);
 export const SetNotchSize = (w: number, h: number) => api().setNotchSize(w, h);
+export const SetNotchVisibility = (visible: boolean) => api().setNotchVisibility(visible);
 
 export const EventsOn = (channel: string, cb: (...args: any[]) => void) => api().eventsOn(channel, cb);
 

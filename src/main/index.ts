@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { App } from './app.js';
 import { createNotchWindow } from './notch-window.js';
+import { getStore } from './store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -111,7 +112,9 @@ if (!gotTheLock) {
 
     // 创建灵动岛浮动窗口
     const devUrl = mainWindow?.webContents.getURL() || 'http://localhost:5173/';
-    createNotchWindow(isDev, devUrl, path.join(__dirname, 'preload.js'));
+    const settingsStore = getStore('settings');
+    const notchEnabled = settingsStore.get('notch_enabled', true) as boolean;
+    createNotchWindow(isDev, devUrl, path.join(__dirname, 'preload.js'), notchEnabled);
   });
 
   app.on('before-quit', () => {

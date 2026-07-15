@@ -48,6 +48,10 @@
           <span class="switch-label">启动时最小化</span>
           <Switch v-model="cfg.minimize_on_start" @change="markDirty" />
         </label>
+        <label class="switch-row">
+          <span class="switch-label">显示灵动岛</span>
+          <Switch v-model="cfg.notch_enabled" @change="markDirty" />
+        </label>
       </div>
     </div>
 
@@ -76,6 +80,7 @@ const cfg = computed(() => settings.cfg ?? (settings.cfg = {
   auto_lock_minutes: 5,
   auto_start: false,
   minimize_on_start: false,
+  notch_enabled: true,
   cloud_service_enabled: false,
   cloud_service_url: '',
   cloud_service_token: '',
