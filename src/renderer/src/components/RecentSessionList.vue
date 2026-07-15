@@ -75,6 +75,7 @@ function duration(lastOpenedAt: number) {
   transition: background 0.15s;
 }
 .recent-item:hover { background: var(--session-item-hover-bg); }
+.recent-item:active { background: var(--session-item-hover-bg); transform: scale(0.995); }
 .status-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--text-tertiary); flex-shrink: 0; margin-top: 6px;

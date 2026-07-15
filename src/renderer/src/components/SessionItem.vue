@@ -120,10 +120,11 @@ const stateLabel = computed(() => {
   transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
 .session-item:hover { background: var(--session-item-hover-bg); }
+.session-item:active { background: var(--session-item-hover-bg); transform: scale(0.995); }
 .session-item.active {
   background: var(--session-item-active-bg);
   border-color: var(--accent-soft-border);
-  box-shadow: inset 4px 0 0 var(--status-error);
+  box-shadow: inset 4px 0 0 var(--accent);
 }
 .cc-icon {
   width: 30px; height: 30px; border-radius: 9px;
@@ -159,8 +160,8 @@ const stateLabel = computed(() => {
 }
 .state-tag.done,
 .state-tag.ended {
-  color: #047857;
-  background: #ecfdf5;
+  color: var(--status-success);
+  background: var(--status-success-soft);
 }
 .row2 { margin-top: 2px; }
 .meta { font-size: 10px; color: var(--text-tertiary); }

@@ -82,6 +82,9 @@ function select(t: Tab) {
   background: var(--bg-input);
   color: var(--text-primary);
 }
+.tab:active {
+  background: var(--border);
+}
 .tab.active {
   background: var(--accent-soft-bg);
   color: var(--accent-light);

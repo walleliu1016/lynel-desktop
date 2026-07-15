@@ -1,26 +1,5 @@
-html {
-    background-color: rgba(27, 38, 54, 1);
-    text-align: center;
-    color: white;
-}
-
-body {
-    margin: 0;
-    color: white;
-    font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
-    "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
-}
-
-@font-face {
-    font-family: "Nunito";
-    font-style: normal;
-    font-weight: 400;
-    src: local(""),
-    url("assets/fonts/nunito-v16-latin-regular.woff2") format("woff2");
-}
-
-#app {
-    height: 100vh;
-    text-align: center;
+/* 仅保留 Vite 入口所需的最小兜底样式，主题与排版由 reset.css / theme.css 接管 */
+html, body, #app {
+  height: 100%;
+  margin: 0;
 }

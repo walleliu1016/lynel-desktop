@@ -26,8 +26,10 @@
   --text-inverse: #FFFFFF;
 
   --status-success: #34D399;
+  --status-success-soft: rgba(52, 211, 153, 0.12);
   --status-warn: #FBBF24;
   --status-error: #FB7185;
+  --status-error-soft: rgba(251, 113, 133, 0.12);
   --status-warn-bg: rgba(251, 191, 36, 0.12);
   --status-warn-border: rgba(251, 191, 36, 0.35);
 
@@ -132,8 +134,10 @@
   --text-inverse: #FFFFFF;
 
   --status-success: #34D399;
+  --status-success-soft: rgba(52, 211, 153, 0.12);
   --status-warn: #FBBF24;
   --status-error: #EF4444;
+  --status-error-soft: rgba(239, 68, 68, 0.12);
   --status-warn-bg: rgba(251, 191, 36, 0.12);
   --status-warn-border: rgba(251, 191, 36, 0.35);
 

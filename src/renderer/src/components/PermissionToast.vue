@@ -104,8 +104,8 @@ function onDeny() {
   width: min(440px, calc(100% - 40px));
   padding: 20px;
   border-radius: 16px;
-  background: white;
-  border: 1px solid #f5b0b5;
+  background: var(--bg-panel);
+  border: 1px solid var(--status-error-soft);
   box-shadow: 0 25px 80px rgba(13, 24, 41, 0.28);
 }
 .permission-label {

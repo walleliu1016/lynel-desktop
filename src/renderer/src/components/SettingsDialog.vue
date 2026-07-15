@@ -3,7 +3,7 @@
     <div class="dialog">
       <div class="head">
         <h2>设置</h2>
-        <button class="close" @click="$emit('close')">
+        <button class="close" aria-label="关闭" title="关闭" @click="$emit('close')">
           <Icon name="close" :size="14" />
         </button>
       </div>

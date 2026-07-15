@@ -12,7 +12,7 @@
         placeholder="搜索会话…"
         @keydown.escape="search = ''"
       />
-      <button v-if="search" class="search-clear" @click="search = ''">
+      <button v-if="search" class="search-clear" aria-label="清除搜索" title="清除搜索" @click="search = ''">
         <Icon name="close" :size="12" />
       </button>
     </div>
@@ -113,10 +113,11 @@ const dupProjects = computed(() => {
 .search-input::placeholder { color: var(--text-tertiary); }
 .search-clear {
   position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
-  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
   color: var(--text-tertiary); font-size: 12px; border-radius: 50%;
 }
 .search-clear:hover { background: var(--border); color: var(--text-primary); }
+.search-clear:active { background: var(--text-tertiary); color: var(--bg-panel); }
 .sidehead {
   margin: 14px 4px 8px;
   display: flex; justify-content: space-between; align-items: center;

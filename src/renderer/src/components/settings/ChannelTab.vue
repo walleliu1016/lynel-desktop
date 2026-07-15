@@ -3,7 +3,7 @@
     <aside class="channel-sidebar">
       <div class="list-header">
         <span>通道</span>
-        <button class="add-btn" @click="showAddDialog = true" title="新增通道">
+        <button class="add-btn" aria-label="新增通道" title="新增通道" @click="showAddDialog = true">
           <Icon name="plus" :size="14" />
         </button>
       </div>
@@ -202,6 +202,7 @@ function onAddChannel(type: string) {
   color: var(--text-secondary);
 }
 .channel-item:hover { background: var(--bg-input); }
+.channel-item:active { background: var(--border); }
 .channel-item.active { background: var(--accent-soft-bg); border-color: var(--accent-soft-border); color: var(--accent-light); }
 .ch-icon { flex-shrink: 0; }
 .ch-info { flex: 1; min-width: 0; }

@@ -3,7 +3,7 @@
     <aside class="provider-list">
       <div class="list-header">
         <span>模型供应商</span>
-        <button class="add-btn" @click="onAdd" title="新增供应商">
+        <button class="add-btn" aria-label="新增供应商" title="新增供应商" @click="onAdd">
           <Icon name="plus" :size="14" />
         </button>
       </div>
@@ -186,6 +186,7 @@ async function onTest() {
   border: 1px solid transparent;
 }
 .provider-item:hover { background: var(--bg-input); }
+.provider-item:active { background: var(--border); }
 .provider-item.active { background: var(--accent-soft-bg); border-color: var(--accent-soft-border); }
 .provider-item .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
 .provider-item.current .dot { background: var(--status-success); box-shadow: 0 0 6px var(--status-success); }

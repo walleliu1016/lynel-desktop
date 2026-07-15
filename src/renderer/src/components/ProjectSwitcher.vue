@@ -1,6 +1,6 @@
 <template>
   <div ref="triggerRef" class="project-switcher">
-    <button class="action-btn" title="切换项目" @click="toggle">
+    <button class="action-btn" aria-label="切换项目" title="切换项目" @click="toggle">
       <Icon name="chevron-down" :size="13" />
     </button>
   </div>

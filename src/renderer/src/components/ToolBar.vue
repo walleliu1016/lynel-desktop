@@ -68,8 +68,8 @@ const stateLabel = computed(() => {
 }
 .state-badge.done,
 .state-badge.ended {
-  color: #047857;
-  background: #ecfdf5;
+  color: var(--status-success);
+  background: var(--status-success-soft);
 }
 .subtitle {
   font-size: 10px; color: var(--text-tertiary);

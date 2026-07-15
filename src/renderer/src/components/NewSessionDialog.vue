@@ -3,7 +3,7 @@
     <div class="dialog">
       <div class="head">
         <h2>打开 Session</h2>
-        <button class="close" @click="$emit('close')">
+        <button class="close" aria-label="关闭" title="关闭" @click="$emit('close')">
           <Icon name="close" :size="14" />
         </button>
       </div>
@@ -160,8 +160,10 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
   padding: 6px 10px; border-radius: var(--radius-md);
   font-size: 12px; font-weight: 600; color: var(--text-secondary);
   background: transparent; border: none;
+  transition: background 0.15s, color 0.15s;
 }
 .tab:hover { color: var(--text-primary); background: var(--bg-input); }
+.tab:active { background: var(--border); }
 .tab.active { color: var(--accent); background: var(--accent-soft-bg); }
 .body {
   flex: 1; min-height: 0; overflow-y: auto;

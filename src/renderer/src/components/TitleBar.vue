@@ -7,24 +7,24 @@
       </div>
     </div>
     <div class="titlebar-right">
-      <button class="iconbtn" title="设置" @click="$emit('settings')">
+      <button class="iconbtn" aria-label="设置" title="设置" @click="$emit('settings')">
         <Icon name="settings" :size="14" />
       </button>
       <div class="account">
-        <span class="avatar">{{ avatar }}</span>
+        <span class="avatar" aria-hidden="true">{{ avatar }}</span>
         <div class="info">
           <b>{{ username }}</b>
           <span>本地</span>
         </div>
       </div>
       <div class="win-btns">
-        <button class="win-btn" @click="minimize" title="最小化">
+        <button class="win-btn" aria-label="最小化" title="最小化" @click="minimize">
           <Icon name="minimize" :size="14" />
         </button>
-        <button class="win-btn" :title="isMaximized ? '还原' : '最大化'" @click="toggleMaximize">
+        <button class="win-btn" :aria-label="isMaximized ? '还原' : '最大化'" :title="isMaximized ? '还原' : '最大化'" @click="toggleMaximize">
           <Icon :name="isMaximized ? 'restore' : 'maximize'" :size="14" />
         </button>
-        <button class="win-btn close" @click="hide" title="隐藏到托盘">
+        <button class="win-btn close" aria-label="隐藏到托盘" title="隐藏到托盘" @click="hide">
           <Icon name="close" :size="14" />
         </button>
       </div>
@@ -61,7 +61,7 @@ const runningCount = computed(() => {
 <style scoped>
 .titlebar {
   height: 56px;
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--bg-titlebar);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -111,13 +111,16 @@ const runningCount = computed(() => {
 .info span { font-size: 10px; color: var(--text-tertiary); }
 .win-btns { display: flex; align-items: center; gap: 2px; margin-left: 8px; }
 .win-btn {
-  width: 28px; height: 20px; border-radius: 3px;
+  width: 32px; height: 26px; border-radius: 4px;
   display: flex; align-items: center; justify-content: center;
   color: var(--text-secondary);
   background: transparent;
   border: none;
   cursor: pointer;
+  transition: background 0.15s, color 0.15s;
 }
 .win-btn:hover { background: rgba(0,0,0,0.06); }
+.win-btn:active { background: rgba(0,0,0,0.10); }
 .win-btn.close:hover { background: var(--status-error); color: white; }
+.win-btn.close:active { background: var(--status-error); filter: brightness(0.9); }
 </style>

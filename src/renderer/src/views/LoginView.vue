@@ -172,9 +172,9 @@ async function closeSettings() {
 .form { flex: 1; display: flex; flex-direction: column; }
 .form-group { margin-bottom: 6px; }
 .form-label {
-  display: block; font-size: 9px; color: var(--text-secondary);
-  text-transform: uppercase; letter-spacing: 0.8px;
-  margin-bottom: 3px; font-weight: 600;
+  display: block; font-size: 11px; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.6px;
+  margin-bottom: 4px; font-weight: 600;
 }
 .form-input {
   width: 100%;
@@ -189,11 +189,14 @@ async function closeSettings() {
 .login-btn {
   width: 100%;
   background: linear-gradient(135deg, var(--accent), var(--accent-deep));
-  color: white; padding: 7px; border-radius: var(--radius-md);
-  font-size: 12px; font-weight: 500;
+  color: white; padding: 8px; border-radius: var(--radius-md);
+  font-size: 13px; font-weight: 500;
   box-shadow: var(--shadow-accent);
-  margin-top: 4px;
+  margin-top: 6px;
+  transition: filter 0.15s, box-shadow 0.15s;
 }
+.login-btn:hover:not(:disabled) { filter: brightness(1.05); }
+.login-btn:active:not(:disabled) { filter: brightness(0.95); }
 .login-btn:disabled { opacity: 0.4; box-shadow: none; }
-.login-footer { font-size: 9px; color: var(--text-tertiary); text-align: center; margin-top: 10px; }
+.login-footer { font-size: 11px; color: var(--text-tertiary); text-align: center; margin-top: 10px; }
 </style>
