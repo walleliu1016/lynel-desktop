@@ -80,7 +80,7 @@ onMounted(() => {
   margin-bottom: 24px;
 }
 .brand-lynel { color: var(--accent); }
-.brand-desktop { color: var(--text-tertiary); font-weight: 500; }
+.brand-desktop { color: var(--status-error); font-weight: 500; }
 .start-section { margin-bottom: 22px; }
 .recent-section {
   flex: 1;

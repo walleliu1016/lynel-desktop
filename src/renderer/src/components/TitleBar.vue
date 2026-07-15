@@ -10,7 +10,7 @@
       <button class="iconbtn" aria-label="设置" title="设置" @click="$emit('settings')">
         <Icon name="settings" :size="14" />
       </button>
-      <div class="account">
+      <div v-if="props.username" class="account">
         <span class="avatar" aria-hidden="true">{{ avatar }}</span>
         <div class="info">
           <b>{{ username }}</b>
@@ -79,7 +79,7 @@ const runningCount = computed(() => {
 }
 .titlebar-left { gap: 24px; }
 .brand-name { font-weight: 800; font-size: 18px; color: var(--accent); letter-spacing: -0.3px; }
-.brand-desktop { font-weight: 500; color: var(--text-tertiary); }
+.brand-desktop { font-weight: 500; color: var(--status-error); }
 .states { display: flex; align-items: center; gap: 8px; }
 .pill {
   height: 28px; padding: 0 10px;
@@ -102,7 +102,7 @@ const runningCount = computed(() => {
 }
 .avatar {
   width: 28px; height: 28px; border-radius: 8px;
-  background: var(--text-primary); color: white;
+  background: var(--accent); color: white;
   display: flex; align-items: center; justify-content: center;
   font-size: 10px; font-weight: 800;
 }

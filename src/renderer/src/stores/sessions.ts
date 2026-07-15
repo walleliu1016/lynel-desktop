@@ -99,6 +99,11 @@ function parseToolResultContent(raw: any): ToolResultBlock[] {
 
 const PAGE_SIZE = 100
 
+function omit<T extends Record<string, any>>(obj: T, key: string): T {
+  const { [key]: _, ...rest } = obj
+  return rest as T
+}
+
 export const useSessionsStore = defineStore('sessions', () => {
   const list = ref<SessionMeta[]>([])
   const activeId = ref<string | null>(null)
@@ -311,6 +316,22 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
+  function remove(id: string) {
+    list.value = list.value.filter((s) => s.id !== id)
+    if (activeId.value === id) {
+      activeId.value = null
+    }
+    messages.value = omit(messages.value, id)
+    streaming.value = omit(streaming.value, id)
+    state.value = omit(state.value, id)
+    historyOffset.value = omit(historyOffset.value, id)
+    hasMore.value = omit(hasMore.value, id)
+    adopted.value = omit(adopted.value, id)
+    drafts.value = omit(drafts.value, id)
+    hookPermissions.value = omit(hookPermissions.value, id)
+    opened.value = omit(opened.value, id)
+  }
+
   function setDraft(sid: string, text: string) {
     drafts.value = { ...drafts.value, [sid]: text }
   }
@@ -335,5 +356,5 @@ export const useSessionsStore = defineStore('sessions', () => {
   return { list, activeId, active, messages, streaming, state,
     hasMore, creating, loading, adopted, drafts, hookPermissions, opened,
     setDraft, create, open, select, send, setHookPermission,
-    reloadFromJsonl, handleHookEvent, loadMore }
+    reloadFromJsonl, handleHookEvent, loadMore, remove }
 })

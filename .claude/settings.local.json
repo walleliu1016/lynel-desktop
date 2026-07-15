@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(go build *)",
-      "Bash(go list *)"
+      "Bash(go list *)",
+      "Bash(: *)",
+      "Bash(npx vue-tsc *)"
     ]
   }
 }

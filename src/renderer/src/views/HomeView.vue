@@ -142,6 +142,7 @@ async function onCloseTab(id: string) {
     } catch (e: any) {
       console.error('[home] close session failed:', e?.message || e)
     }
+    sessions.remove(sid)
   }
 
   tabsStore.close(id)
