@@ -100,6 +100,14 @@ export function useEventStream() {
       sessions.setHookPermission(req.sessionId, req)
     }))
 
+    // 权限在其他渠道（终端/企业微信/灵动岛）被处理后，清除本地权限 UI 与等待状态。
+    cleanups.push(EventsOn('permission:cancelled', (payload: string) => {
+      let data: any
+      try { data = JSON.parse(payload) } catch { return }
+      if (!data?.sessionId) return
+      sessions.setHookPermission(data.sessionId, null)
+    }))
+
     watch(
       () => sessions.activeId,
       (newId, oldId) => {

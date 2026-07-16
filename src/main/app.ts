@@ -530,9 +530,11 @@ export class App {
         this.dispatcher.dispatch(makeHookEvent('PermissionResolved', sessionId, workDir, { id, decision, source, toolName }));
       } catch {}
     });
-    permissionBroker.onCancel((id) => {
+    permissionBroker.onCancel((id, sessionId, toolName) => {
       try {
-        this.dispatcher.dispatch(makeHookEvent('PermissionResolved', '', '', { id, decision: 'deny', source: 'timeout' }));
+        // 带真实 sessionId 派发，StateChannel 才能清除 pendingPermission 并恢复状态
+        const workDir = session.lookup(sessionId)?.workDir ?? '';
+        this.dispatcher.dispatch(makeHookEvent('PermissionResolved', sessionId, workDir, { id, decision: 'allow', source: 'terminal', toolName }));
       } catch {}
     });
 

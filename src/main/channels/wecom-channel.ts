@@ -611,21 +611,21 @@ export class WeComChannel implements OutputChannel {
           '| `/status` | 查看当前绑定状态 |\n' +
           '| `/unbind` `/close` | 解绑当前聊天 |\n' +
           '| `/to <sessionId/序号> <消息>` | 临时发送消息到指定会话 |\n' +
-          '| `/allow [序号]` `/允许` `/y` | 批准权限请求（省略序号则处理最近一条） |\n' +
-          '| `/deny [序号]` `/拒绝` `/n` | 拒绝权限请求（省略序号则处理最近一条） |\n' +
+          '| `/allow [会话序号/sessionId]` `/允许` `/y` | 批准权限请求（省略则处理最近一条） |\n' +
+          '| `/deny [会话序号/sessionId]` `/拒绝` `/n` | 拒绝权限请求（省略则处理最近一条） |\n' +
           '| `/pending` | 查看待处理权限/提问 |\n' +
-          '| `/answer <序号> <答案>` `/回答` | 回答 Claude 提问 |\n' +
+          '| `/answer <会话序号/sessionId> <答案>` `/回答` | 回答 Claude 提问 |\n' +
           '| `/help` | 显示此帮助信息 |\n\n' +
           '**使用示例**\n\n' +
           '1. 查看会话并绑定\n' +
           '```\n/list\n/bind 1\n```\n\n' +
           '2. 创建新会话\n' +
           '```\n/create /home/user/project 帮我优化代码\n```\n\n' +
-          '3. 批准权限请求\n' +
+          '3. 批准会话 3 的权限请求\n' +
           '```\n/allow 3\n```\n' +
           '或直接回复（处理最近一条）：\n' +
           '```\n/y\n```\n\n' +
-          '4. 回答 Claude 提问（单选 / 多选 / 自定义）\n' +
+          '4. 回答会话 3 的 Claude 提问（单选 / 多选 / 自定义）\n' +
           '```\n/answer 3 1\n/answer 3 1,2\n/answer 3 我的自定义回答\n```\n\n' +
           '5. 临时向第 2 个会话发送消息\n' +
           '```\n/to 2 帮我优化这段代码\n```',
@@ -644,22 +644,18 @@ export class WeComChannel implements OutputChannel {
 
   private async handleAllowDeny(chatId: string, isAllow: boolean, arg?: string): Promise<void> {
     if (arg) {
-      const seq = parseInt(arg, 10);
-      if (!isNaN(seq) && seq > 0) {
-        const ok = permissionBroker.resolveBySeq(seq, isAllow ? 'allow' : 'deny', 'wecom');
-        if (ok) {
-          await this.sendWeComReply(chatId, `已${isAllow ? '批准' : '拒绝'}权限请求 #${seq}`);
-        } else {
-          await this.sendWeComReply(chatId, `权限请求 #${seq} 不存在或已被处理。`);
-        }
+      // 参数是会话序号（/list 中的编号）或 sessionId（前缀），定位到该会话的待处理请求
+      const resolved = resolveSessionArg(arg);
+      if ('error' in resolved) {
+        await this.sendWeComReply(chatId, resolved.error);
         return;
       }
-      // 非数字参数按 UUID 处理
-      const ok = permissionBroker.resolve(arg, isAllow ? 'allow' : 'deny', 'wecom');
+      const label = this.getSessionListIndex(resolved.id);
+      const ok = permissionBroker.resolveBySession(resolved.id, isAllow ? 'allow' : 'deny', 'wecom');
       if (ok) {
-        await this.sendWeComReply(chatId, `已${isAllow ? '批准' : '拒绝'}权限请求 ${arg.slice(0, 8)}...`);
+        await this.sendWeComReply(chatId, `已${isAllow ? '批准' : '拒绝'} ${label} 的权限请求`);
       } else {
-        await this.sendWeComReply(chatId, `权限请求 ${arg.slice(0, 8)}... 不存在或已被处理。`);
+        await this.sendWeComReply(chatId, `${label} 当前没有待处理的权限请求。`);
       }
       return;
     }
@@ -674,12 +670,13 @@ export class WeComChannel implements OutputChannel {
       await this.sendWeComReply(chatId, '当前没有待处理的权限请求。');
       return;
     }
-    const seq = pending[0].seq;
-    const ok = permissionBroker.resolveBySeq(seq, isAllow ? 'allow' : 'deny', 'wecom');
+    const target = pending[0];
+    const label = this.getSessionListIndex(target.request.sessionId);
+    const ok = permissionBroker.resolve(target.id, isAllow ? 'allow' : 'deny', 'wecom');
     if (!ok) {
-      await this.sendWeComReply(chatId, `权限请求 #${seq} 不存在或已被处理。`);
+      await this.sendWeComReply(chatId, `${label} 的权限请求已被处理。`);
     } else {
-      await this.sendWeComReply(chatId, `已${isAllow ? '批准' : '拒绝'}权限请求 #${seq}`);
+      await this.sendWeComReply(chatId, `已${isAllow ? '批准' : '拒绝'} ${label} 的权限请求`);
     }
   }
 
@@ -690,39 +687,32 @@ export class WeComChannel implements OutputChannel {
     if (spaceIdx === -1) {
       await this.sendWeComReply(
         chatId,
-        '用法：/answer <序号> <答案>\n例如：/answer 3 A  或  /answer 3 A,B',
+        '用法：/answer <会话序号> <答案>\n例如：/answer 3 A  或  /answer 3 A,B',
       );
       return;
     }
 
-    const seqStr = rest.slice(0, spaceIdx).trim();
+    const sessArg = rest.slice(0, spaceIdx).trim();
     const answerText = rest.slice(spaceIdx + 1).trim();
-    const seq = parseInt(seqStr, 10);
-    if (isNaN(seq) || seq <= 0) {
-      await this.sendWeComReply(chatId, `序号 "${seqStr}" 无效。`);
+    // 参数是会话序号（/list 中的编号）或 sessionId（前缀）
+    const resolved = resolveSessionArg(sessArg);
+    if ('error' in resolved) {
+      await this.sendWeComReply(chatId, resolved.error);
       return;
     }
+    const label = this.getSessionListIndex(resolved.id);
 
-    logger.info(`[wecom-channel] handleAnswerCommand seq=${seq} answerText=${answerText}`);
-    const pendingSummary = permissionBroker.listPending().map((p) => `#${p.seq}:${p.request.toolName}`);
-    logger.info(`[wecom-channel] handleAnswerCommand pending=[${pendingSummary.join(', ')}]`);
+    logger.info(`[wecom-channel] handleAnswerCommand session=${resolved.id.slice(0, 8)} answerText=${answerText}`);
 
-    const id = permissionBroker.getIdBySeq(seq);
-    if (!id) {
-      logger.info(`[wecom-channel] handleAnswerCommand seq=${seq} not found in broker`);
-      await this.sendWeComReply(chatId, `权限请求 #${seq} 不存在或已被处理。当前待处理：${pendingSummary.join(', ') || '无'}`);
-      return;
-    }
-
-    const entry = permissionBroker.listPending().find((p) => p.id === id);
+    const entry = permissionBroker.getPendingBySession(resolved.id);
     if (!entry) {
-      await this.sendWeComReply(chatId, `权限请求 #${seq} 已被处理。`);
+      await this.sendWeComReply(chatId, `${label} 当前没有待处理的权限请求或提问。`);
       return;
     }
 
     if (entry.request.toolName !== 'AskUserQuestion') {
-      permissionBroker.resolveBySeq(seq, 'allow', 'wecom');
-      await this.sendWeComReply(chatId, `已批准权限请求 #${seq}`);
+      permissionBroker.resolve(entry.id, 'allow', 'wecom');
+      await this.sendWeComReply(chatId, `已批准 ${label} 的权限请求`);
       return;
     }
 
@@ -733,8 +723,8 @@ export class WeComChannel implements OutputChannel {
       return;
     }
 
-    permissionBroker.resolveBySeq(seq, 'allow', 'wecom', result.answers);
-    await this.sendWeComReply(chatId, `已提交回答 #${seq}`);
+    permissionBroker.resolve(entry.id, 'allow', 'wecom', result.answers);
+    await this.sendWeComReply(chatId, `已提交 ${label} 的回答`);
   }
 
   private async handlePendingCommand(chatId: string): Promise<void> {
@@ -749,12 +739,12 @@ export class WeComChannel implements OutputChannel {
     const lines = filtered.map((p) => {
       const isAsk = p.request.toolName === 'AskUserQuestion';
       const preview = isAsk ? 'Claude 提问' : this.formatToolInputPreview(p.request.toolInput);
-      return `| #${p.seq} | ${p.request.toolName} | ${preview || '-'} |`;
+      return `| ${this.getSessionListIndex(p.request.sessionId)} | ${p.request.toolName} | ${preview || '-'} |`;
     });
     await this.sendWeComReply(
       chatId,
       '**待处理权限/提问**\n\n' +
-      '| 序号 | 类型 | 内容 |\n' +
+      '| 会话 | 类型 | 内容 |\n' +
       '|------|------|------|\n' +
       lines.join('\n'),
     );
@@ -829,6 +819,13 @@ export class WeComChannel implements OutputChannel {
     return idx >= 0 ? `会话#${idx + 1}` : '?';
   }
 
+  // 生成 /allow /deny /answer 的命令参数：优先会话序号，找不到时用 sessionId 前缀
+  private getSessionCmdArg(sessionId: string): string {
+    const all = session.list();
+    const idx = all.findIndex((s) => s.id === sessionId);
+    return idx >= 0 ? String(idx + 1) : sessionId.slice(0, 8);
+  }
+
   private formatHeader(event: ProxyStageEvent, msgSeq: number): string {
     const project = path.basename(event.workDir);
     const sid = event.sessionId.slice(0, 8);
@@ -868,7 +865,7 @@ export class WeComChannel implements OutputChannel {
       case 'PermissionRequest': {
         const toolName = p?.toolName || 'unknown';
         const input = p?.toolInput;
-        const reqId = p?.seq ?? p?.id?.slice(0, 8) ?? '';
+        const reqId = this.getSessionCmdArg(event.sessionId);
         if (toolName === 'AskUserQuestion') {
           return this.formatAskUserQuestion(header, input, reqId);
         }

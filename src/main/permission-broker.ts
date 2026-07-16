@@ -28,7 +28,7 @@ class PermissionBroker {
   private nextSeq = 1;
   private onRaiseHandlers: Array<(req: PermissionRequest) => void> = [];
   private onResolveHandlers: Array<(id: string, decision: 'allow' | 'deny', source: string, sessionId: string, toolName: string) => void> = [];
-  private onCancelHandlers: Array<(id: string) => void> = [];
+  private onCancelHandlers: Array<(id: string, sessionId: string, toolName: string) => void> = [];
 
   async wait(request: PermissionRequest): Promise<PermissionResult> {
     return new Promise<PermissionResult>((resolve) => {
@@ -66,19 +66,32 @@ class PermissionBroker {
     return true;
   }
 
-  resolveBySeq(seq: number, decision: 'allow' | 'deny', source: string, answers?: Record<string, string | string[]>): boolean {
-    const id = this.seqToId.get(seq);
-    if (!id) return false;
-    return this.resolve(id, decision, source, answers);
+  // 按 sessionId 查找该会话最新一条待处理请求（PTY 串行阻塞，正常同时最多一条，取 seq 最大兜底）
+  getPendingBySession(sessionId: string): { seq: number; id: string; request: PermissionRequest } | undefined {
+    let latest: { seq: number; id: string; request: PermissionRequest } | undefined;
+    for (const [id, entry] of this.pending) {
+      if (entry.request.sessionId !== sessionId) continue;
+      const seq = this.idToSeq.get(id);
+      if (seq === undefined) continue;
+      if (!latest || seq > latest.seq) latest = { seq, id, request: entry.request };
+    }
+    return latest;
+  }
+
+  resolveBySession(sessionId: string, decision: 'allow' | 'deny', source: string, answers?: Record<string, string | string[]>): boolean {
+    const entry = this.getPendingBySession(sessionId);
+    if (!entry) return false;
+    return this.resolve(entry.id, decision, source, answers);
   }
 
   cancel(id: string): void {
     const entry = this.pending.get(id);
     if (!entry) return;
+    const { sessionId, toolName } = entry.request;
     this.cleanupEntry(id, entry);
     logger.info(`[cancel] #${this.idToSeq.get(id)} ${id.slice(0, 8)}`);
     for (const h of this.onCancelHandlers) {
-      try { h(id); } catch {}
+      try { h(id, sessionId, toolName); } catch {}
     }
   }
 
@@ -111,14 +124,6 @@ class PermissionBroker {
     }
   }
 
-  getSeq(id: string): number | undefined {
-    return this.idToSeq.get(id);
-  }
-
-  getIdBySeq(seq: number): string | undefined {
-    return this.seqToId.get(seq);
-  }
-
   listPending(): Array<{ seq: number; id: string; request: PermissionRequest }> {
     const result: Array<{ seq: number; id: string; request: PermissionRequest }> = [];
     for (const [id, entry] of this.pending) {
@@ -146,7 +151,7 @@ class PermissionBroker {
     this.onResolveHandlers.push(handler);
   }
 
-  onCancel(handler: (id: string) => void): void {
+  onCancel(handler: (id: string, sessionId: string, toolName: string) => void): void {
     this.onCancelHandlers.push(handler);
   }
 }
