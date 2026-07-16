@@ -38,6 +38,10 @@ function setEnabled(v: boolean) {
       <label class="form-label">Secret</label>
       <input class="form-input" type="password" v-model="cfg.secret" placeholder="企业微信机器人 Secret" :disabled="disabled" />
     </div>
+
+    <div class="notice">
+      注意：配置完成后，需要先在企业微信中主动与 Bot 对话一次（任意内容即可），否则 Bot 无法向你推送消息。
+    </div>
   </div>
 </template>
 
@@ -55,4 +59,15 @@ function setEnabled(v: boolean) {
 .form-input:disabled { opacity: 0.6; }
 .form-input[type="password"] { font-family: var(--font-mono); }
 .form-hint { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
+.notice {
+  margin-top: 4px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--status-warn);
+  background: var(--status-warn-bg);
+  border: 1px solid var(--status-warn-border);
+  border-radius: var(--radius-md);
+}
 </style>
