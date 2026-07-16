@@ -51,6 +51,10 @@ export const useTabsStore = defineStore('tabs', () => {
     return open({ type: 'settings', title: '设置' })
   }
 
+  function openGuide() {
+    return open({ type: 'guide', title: '使用指南' })
+  }
+
   function close(id: string) {
     const idx = tabs.value.findIndex((t) => t.id === id)
     if (idx === -1) return
@@ -85,6 +89,7 @@ export const useTabsStore = defineStore('tabs', () => {
     openWelcome,
     openSession,
     openSettings,
+    openGuide,
     close,
     updateTitle,
   }
