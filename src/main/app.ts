@@ -213,6 +213,8 @@ export class App {
   private ptyCleanups = new Map<string, (() => void) | null>();
   private recentSessionsLock = false;
   private aiTitleRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  private apiProxies: import('./apiproxy.js').Proxy[] = [];
+  private watchCleanup: (() => void) | null = null;
 
   constructor() {
     this.dispatcher.register(this.sseChannel);
@@ -277,6 +279,51 @@ export class App {
     this.watchJsonl();
     this.startAiTitleRefresh();
     this.registerIpcHandlers();
+  }
+
+  async shutdown(): Promise<void> {
+    getLogger().info('[app] shutdown begin');
+    // 1. 停止 AI title 定时轮询
+    if (this.aiTitleRefreshTimer) {
+      clearInterval(this.aiTitleRefreshTimer);
+      this.aiTitleRefreshTimer = null;
+    }
+    // 2. 关闭所有 Claude PTY 进程
+    for (const s of session.list()) {
+      try {
+        session.close(s.id, 'SIGTERM');
+        getLogger().info(`[app] shutdown closed session sid=${s.id.slice(0, 8)}`);
+      } catch (err: any) {
+        getLogger().error(`[app] shutdown close session failed sid=${s.id.slice(0, 8)}: ${err.message}`);
+      }
+    }
+    // 3. 关闭所有 API 代理
+    for (const proxy of this.apiProxies) {
+      try {
+        proxy.close();
+      } catch { /* ignore */ }
+    }
+    this.apiProxies = [];
+    // 4. 关闭 hook server
+    if (this.hookServer) {
+      try {
+        await this.hookServer.stop();
+        getLogger().info('[app] shutdown hook server stopped');
+      } catch (err: any) {
+        getLogger().error(`[app] shutdown hook server stop failed: ${err.message}`);
+      }
+    }
+    // 5. 停止文件 watcher
+    if (this.watchCleanup) {
+      try {
+        this.watchCleanup();
+      } catch { /* ignore */ }
+      this.watchCleanup = null;
+    }
+    // 6. 关闭 channels
+    try { await this.wecomChannel.close?.(); } catch { /* ignore */ }
+    try { this.localFileChannel.close?.(); } catch { /* ignore */ }
+    getLogger().info('[app] shutdown complete');
   }
 
   private applyChannelConfigs(): void {
@@ -524,6 +571,7 @@ export class App {
     const realId = randomUUID();
     const upstream = resolveAnthropicBaseUrl();
     const proxy = await startProxy(workDir, realId, this.dispatcher, upstream);
+    this.apiProxies.push(proxy);
     const proxyUrl = `http://127.0.0.1:${proxy.port}`;
     const { args, cleanup } = createSettingsOverrideFile(proxyUrl);
     const allArgs = [...args, ...extraArgs];
@@ -611,7 +659,7 @@ export class App {
   }
 
   private watchJsonl(): void {
-    jsonl.watchProjects(() => {
+    this.watchCleanup = jsonl.watchProjects(() => {
       getBus().emit('sessions:list:changed');
     });
   }
@@ -965,6 +1013,7 @@ export class App {
     }
     const upstream = resolveAnthropicBaseUrl();
     startProxy(workDir, id, this.dispatcher, upstream).then((proxy) => {
+      this.apiProxies.push(proxy);
       const proxyUrl = `http://127.0.0.1:${proxy.port}`;
       const { args, cleanup } = createSettingsOverrideFile(proxyUrl);
       getLogger().info(`[app:openSessionTerminal] proxyUrl=${proxyUrl} upstream=${upstream} sid=${id}`);

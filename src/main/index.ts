@@ -2,13 +2,14 @@ import { app, BrowserWindow, Tray, Menu, nativeImage } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { App } from './app.js';
-import { createNotchWindow } from './notch-window.js';
+import { createNotchWindow, closeNotchWindow } from './notch-window.js';
 import { getStore } from './store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+let appInstance: App | null = null;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -102,7 +103,7 @@ if (!gotTheLock) {
     createWindow();
     createTray();
 
-    const appInstance = new App();
+    appInstance = new App();
     appInstance.setWindow(mainWindow!);
     try {
       await appInstance.init();
@@ -117,7 +118,15 @@ if (!gotTheLock) {
     createNotchWindow(isDev, devUrl, path.join(__dirname, 'preload.js'), notchEnabled);
   });
 
-  app.on('before-quit', () => {
+  app.on('before-quit', async () => {
+    closeNotchWindow();
+    if (appInstance) {
+      try {
+        await appInstance.shutdown();
+      } catch (err) {
+        console.error('[main] shutdown failed:', err);
+      }
+    }
     if (tray) {
       tray.destroy();
       tray = null;

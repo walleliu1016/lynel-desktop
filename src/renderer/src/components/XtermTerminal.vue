@@ -354,7 +354,7 @@ onBeforeUnmount(() => {
   border: 3px solid var(--border);
   border-top-color: var(--accent);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: term-spin 0.8s linear infinite;
 }
 
 .loading-text {
@@ -390,10 +390,6 @@ onBeforeUnmount(() => {
 }
 .exited-btn:hover { background: var(--accent-deep); }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 .xterm-container :deep(.xterm-cursor),
 .xterm-container :deep(.xterm-cursor-layer) {
   display: none !important;
@@ -414,6 +410,10 @@ onBeforeUnmount(() => {
 </style>
 
 <style>
+@keyframes term-spin {
+  to { transform: rotate(360deg); }
+}
+
 .term-ctx-overlay { position: fixed; inset: 0; z-index: 999; }
 .term-ctx-menu {
   position: fixed; z-index: 1000;

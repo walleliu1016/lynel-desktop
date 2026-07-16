@@ -416,7 +416,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     reloadFromJsonl, handleHookEvent, loadMore, remove, renameSession, applyTitleChange }
 })
 
-export function sessionDisplayTitle(meta?: { id?: string; user_title?: string; ai_title?: string; first_prompt?: string } | null): string {
+export function sessionDisplayTitle(meta?: { id?: string; user_title?: string; ai_title?: string; first_prompt?: string; project?: string } | null): string {
   if (!meta) return '新会话'
-  return meta.user_title || meta.ai_title || meta.first_prompt || meta.id?.slice(0, 8) || '新会话'
+  return meta.user_title || meta.ai_title || meta.first_prompt || meta.project || meta.id?.slice(0, 8) || '新会话'
 }

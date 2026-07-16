@@ -36,6 +36,7 @@ export function lookup(id: string): Session | undefined {
 }
 
 export function remove(id: string): void {
+  close(id);
   sessions.delete(id);
   onRemoveCallback?.(id);
 }
