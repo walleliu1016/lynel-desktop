@@ -768,14 +768,7 @@ export class WeComChannel implements OutputChannel {
     logger.info(`[wecom-channel] /to from ${chatId}, forward to session ${resolved.id.slice(0, 8)}...`);
     try {
       session.send(resolved.id, message);
-      await this.sendWeComReply(
-        chatId,
-        '**已临时发送**\n\n' +
-        `| 项目 | 值 |\n` +
-        `|------|------|\n` +
-        `| 目标会话 | \`${resolved.id.slice(0, 8)}\` |\n` +
-        `| 内容 | ${message} |`,
-      );
+      // 不发送成功提示，避免与 Claude 的回复消息重复
     } catch (err) {
       logger.error('[wecom-channel] failed to forward /to message to session:', err);
       await this.sendWeComReply(chatId, `发送失败：${err instanceof Error ? err.message : String(err)}`);
