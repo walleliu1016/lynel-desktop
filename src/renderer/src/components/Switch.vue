@@ -35,7 +35,7 @@ function toggle() {
   position: absolute;
   cursor: pointer;
   inset: 0;
-  background: var(--border);
+  background: var(--switch-track, var(--border));
   border-radius: 11px;
   transition: 0.2s;
 }
@@ -46,9 +46,10 @@ function toggle() {
   width: 16px;
   left: 3px;
   top: 3px;
-  background: white;
+  background: var(--switch-knob, #FFFFFF);
   border-radius: 50%;
   transition: 0.2s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 .switch-control input:checked + .slider {
   background: var(--accent);

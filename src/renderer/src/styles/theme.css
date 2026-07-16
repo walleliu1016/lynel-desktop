@@ -35,6 +35,8 @@
 
   --border: #27272A;
   --border-focus: var(--accent);
+  --switch-track: #3F3F46;
+  --switch-knob: #FFFFFF;
 
   --scrollbar-track: transparent;
   --scrollbar-thumb: #3f3f46;
@@ -143,6 +145,8 @@
 
   --border: #475569;
   --border-focus: var(--accent);
+  --switch-track: #64748B;
+  --switch-knob: #FFFFFF;
 
   --scrollbar-track: transparent;
   --scrollbar-thumb: #475569;
@@ -245,6 +249,8 @@
   --border: #eef1f5;
   --border-strong: #e2e8f0;
   --border-focus: var(--accent);
+  --switch-track: #D1D5DB;
+  --switch-knob: #FFFFFF;
 
   --scrollbar-track: transparent;
   --scrollbar-thumb: #d1d5db;
