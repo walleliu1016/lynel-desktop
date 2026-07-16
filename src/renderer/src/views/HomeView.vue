@@ -1,6 +1,6 @@
 <template>
   <div class="home">
-    <TitleBar :username="username" @settings="openSettingsTab" />
+    <TitleBar :username="username" show-guide @settings="openSettingsTab" @guide="openGuideTab" />
     <div class="layout">
       <aside class="left" :class="{ collapsed: sidebarCollapsed }">
         <SessionList
@@ -48,6 +48,9 @@
           <div v-show="tabsStore.activeType === 'settings'" class="content-pane">
             <SettingsTab />
           </div>
+          <div v-show="tabsStore.activeType === 'guide'" class="content-pane">
+            <GuideTab />
+          </div>
         </div>
       </main>
     </div>
@@ -76,6 +79,7 @@ import SessionList from '../components/SessionList.vue'
 import WelcomeTab from '../components/WelcomeTab.vue'
 import SessionTabContent from '../components/SessionTabContent.vue'
 import SettingsTab from '../components/SettingsTab.vue'
+import GuideTab from '../components/GuideTab.vue'
 import OpenFolderDialog from '../components/OpenFolderDialog.vue'
 import NewSessionDialog from '../components/NewSessionDialog.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
@@ -202,6 +206,10 @@ async function onOpenRecent(item: RecentSession) {
 
 function openSettingsTab() {
   tabsStore.openSettings()
+}
+
+function openGuideTab() {
+  tabsStore.openGuide()
 }
 
 // 当 session 元信息加载后，同步更新对应 Tab 标题
