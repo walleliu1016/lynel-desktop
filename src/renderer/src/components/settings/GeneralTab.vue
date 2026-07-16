@@ -5,7 +5,6 @@
     <div class="form-group">
       <label class="form-label">主题</label>
       <select class="form-select" v-model="cfg.theme" @change="onThemeChange">
-        <option value="oled-dark">OLED 暗色</option>
         <option value="dark-pro">深色专业</option>
         <option value="light-pro">浅色（红蓝）</option>
       </select>

@@ -1,4 +1,4 @@
-export type Theme = 'dark-pro' | 'light-pro' | 'oled-dark'
+export type Theme = 'dark-pro' | 'light-pro'
 
 export interface Settings {
   theme: Theme

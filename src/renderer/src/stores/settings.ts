@@ -25,6 +25,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function load() {
     const raw = (await GetSettings()) as Partial<Settings> | null
+    // OLED 暗色主题已下线，迁移到默认浅色主题
+    if (raw && (raw.theme as string) === 'oled-dark') {
+      raw.theme = 'light-pro'
+    }
     cfg.value = { ...defaultSettings(), ...(raw || {}) }
     dirty.value = false
   }
