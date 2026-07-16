@@ -66,10 +66,10 @@ class PermissionBroker {
     return true;
   }
 
-  resolveBySeq(seq: number, decision: 'allow' | 'deny', source: string): boolean {
+  resolveBySeq(seq: number, decision: 'allow' | 'deny', source: string, answers?: Record<string, string | string[]>): boolean {
     const id = this.seqToId.get(seq);
     if (!id) return false;
-    return this.resolve(id, decision, source);
+    return this.resolve(id, decision, source, answers);
   }
 
   cancel(id: string): void {
@@ -113,6 +113,21 @@ class PermissionBroker {
 
   getSeq(id: string): number | undefined {
     return this.idToSeq.get(id);
+  }
+
+  getIdBySeq(seq: number): string | undefined {
+    return this.seqToId.get(seq);
+  }
+
+  listPending(): Array<{ seq: number; id: string; request: PermissionRequest }> {
+    const result: Array<{ seq: number; id: string; request: PermissionRequest }> = [];
+    for (const [id, entry] of this.pending) {
+      const seq = this.idToSeq.get(id);
+      if (seq !== undefined) {
+        result.push({ seq, id, request: entry.request });
+      }
+    }
+    return result;
   }
 
   /** 预分配序号，在 dispatcher.dispatch 之前调用，确保 WeCom 消息中展示的是序号而非 UUID */

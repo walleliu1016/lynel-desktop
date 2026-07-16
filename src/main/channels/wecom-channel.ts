@@ -33,6 +33,18 @@ interface WeComRoutingEntry {
   updatedAt: number;
 }
 
+interface AskOption {
+  label: string;
+  description?: string;
+}
+
+interface AskQuestion {
+  header?: string;
+  question: string;
+  multiSelect?: boolean;
+  options: AskOption[];
+}
+
 const routingStore = getStore('wecom-routing');
 
 function getMapping(chatId: string): WeComRoutingEntry | undefined {
@@ -162,10 +174,16 @@ export class WeComChannel implements OutputChannel {
       this.disconnect();
       return;
     }
-    // 预连接 websocket，避免第一次发送消息时才阻塞连接
+    // 预加载插件并预连接 websocket，避免第一次发送消息时才阻塞
     if (this.cfg.botId && this.cfg.secret) {
-      this.ensureWebSocket().catch((err) => logger.error('[wecom-channel] proactive connect failed:', err));
+      this.preconnect().catch((err) => logger.error('[wecom-channel] proactive init failed:', err));
     }
+  }
+
+  private async preconnect(): Promise<void> {
+    logger.info('[wecom-channel] preconnect start');
+    await Promise.all([loadWecomPlugin(), this.ensureWebSocket()]);
+    logger.info('[wecom-channel] preconnect done');
   }
 
   async close(): Promise<void> {
@@ -209,6 +227,10 @@ export class WeComChannel implements OutputChannel {
       logger.info('[wecom-channel] empty content, skip');
       return;
     }
+    if (event.kind === 'PermissionRequest') {
+      const p = event.payload as any;
+      logger.info(`[wecom-channel] PermissionRequest seq=${p?.seq} toolName=${p?.toolName} msgSeq=${msgSeq}`);
+    }
     logger.info(`[wecom-channel] formatted content: ${content.slice(0, 80)}...`);
 
     // 记录会话路由关系，方便企业微信入站消息找到对应 session
@@ -226,14 +248,11 @@ export class WeComChannel implements OutputChannel {
   }
 
   private async sendContent(content: string, _sessionId: string): Promise<void> {
-    const plugin = await loadWecomPlugin();
+    const [plugin] = await Promise.all([loadWecomPlugin(), this.ensureWebSocket()]);
     if (!plugin?.outbound?.sendText) {
       logger.warn('[wecom-channel] plugin outbound.sendText not available');
       return;
     }
-
-    logger.info('[wecom-channel] ensuring websocket...');
-    await this.ensureWebSocket();
 
     const cfg = {
       channels: {
@@ -456,13 +475,20 @@ export class WeComChannel implements OutputChannel {
           return;
         }
         setMapping(chatId, resolved.id, resolved.workDir);
-        await this.sendWeComReply(chatId, `已绑定到会话 ${resolved.id.slice(0, 8)}...\n工作目录：${resolved.workDir}`);
+        await this.sendWeComReply(
+          chatId,
+          '**已绑定会话**\n\n' +
+          '| 项目 | 值 |\n' +
+          '|------|------|\n' +
+          `| 会话ID | \`${resolved.id.slice(0, 8)}\` |\n` +
+          `| 工作目录 | ${resolved.workDir} |`,
+        );
         return;
       }
       case '/unbind':
       case '/close': {
         deleteMapping(chatId);
-        await this.sendWeComReply(chatId, '已解绑当前聊天与会话的关联。');
+        await this.sendWeComReply(chatId, '**已解绑**\n\n当前聊天不再关联任何会话。');
         return;
       }
       case '/status': {
@@ -475,7 +501,12 @@ export class WeComChannel implements OutputChannel {
         const state = s?.state ?? 'unknown';
         await this.sendWeComReply(
           chatId,
-          `当前绑定会话：${mapping.sessionId.slice(0, 8)}...\n状态：${state}\n工作目录：${mapping.workDir}`,
+          '**当前绑定状态**\n\n' +
+          '| 项目 | 值 |\n' +
+          '|------|------|\n' +
+          `| 会话ID | \`${mapping.sessionId.slice(0, 8)}\` |\n` +
+          `| 状态 | ${state} |\n` +
+          `| 工作目录 | ${mapping.workDir} |`,
         );
         return;
       }
@@ -493,32 +524,39 @@ export class WeComChannel implements OutputChannel {
             return;
           }
           setMapping(chatId, result.id, result.workDir);
-          await this.sendWeComReply(chatId, `已创建并绑定到新会话 ${result.id.slice(0, 8)}...\n工作目录：${result.workDir}`);
+          await this.sendWeComReply(
+            chatId,
+            '**已创建并绑定新会话**\n\n' +
+            '| 项目 | 值 |\n' +
+            '|------|------|\n' +
+            `| 会话ID | \`${result.id.slice(0, 8)}\` |\n` +
+            `| 工作目录 | ${result.workDir} |`,
+          );
         } catch (err: any) {
           await this.sendWeComReply(chatId, `创建失败：${err.message}`);
         }
         return;
       }
       case '/allow':
-      case '/deny': {
-        const isAllow = cmd === '/allow';
-        if (!arg) {
-          await this.sendWeComReply(chatId, `用法：${cmd} <序号>`);
-          return;
-        }
-        // 尝试数字序号匹配，再尝试 UUID 匹配
-        const seq = parseInt(arg, 10);
-        let ok: boolean;
-        if (!isNaN(seq) && seq > 0) {
-          ok = permissionBroker.resolveBySeq(seq, isAllow ? 'allow' : 'deny', 'wecom');
-        } else {
-          ok = permissionBroker.resolve(arg, isAllow ? 'allow' : 'deny', 'wecom');
-        }
-        if (!ok) {
-          await this.sendWeComReply(chatId, `权限请求 ${arg} 不存在或已被处理。`);
-        } else {
-          await this.sendWeComReply(chatId, `已${isAllow ? '批准' : '拒绝'}权限请求 ${arg}`);
-        }
+      case '/allowed':
+      case '/允许':
+      case '/y': {
+        await this.handleAllowDeny(chatId, true, arg);
+        return;
+      }
+      case '/deny':
+      case '/拒绝':
+      case '/n': {
+        await this.handleAllowDeny(chatId, false, arg);
+        return;
+      }
+      case '/answer':
+      case '/回答': {
+        await this.handleAnswerCommand(chatId, text);
+        return;
+      }
+      case '/pending': {
+        await this.handlePendingCommand(chatId);
         return;
       }
       case '/list': {
@@ -527,24 +565,49 @@ export class WeComChannel implements OutputChannel {
           await this.sendWeComReply(chatId, '当前没有可用会话。请先在 Lynel Desktop 中创建或打开一个会话。');
           return;
         }
-        const lines = sessions.map((s, i) => `${i + 1}. ${s.id} [${s.state}] ${s.workDir}`);
-        await this.sendWeComReply(chatId, '可用会话：\n' + lines.join('\n'));
+        const lines = sessions.map((s, i) => {
+          const project = path.basename(s.workDir);
+          return `| ${i + 1} | \`${s.id.slice(0, 8)}\` | ${s.state} | ${project} |`;
+        });
+        await this.sendWeComReply(
+          chatId,
+          '**可用会话**\n\n' +
+          '| 序号 | 会话ID | 状态 | 项目 |\n' +
+          '|------|--------|------|------|\n' +
+          lines.join('\n'),
+        );
         return;
       }
       case '/help': {
         await this.sendWeComReply(
           chatId,
-          '可用命令：\n' +
-          '/list - 查看可用会话列表\n' +
-          '/create (/new) - 创建新会话\n' +
-          '/bind <sessionId/序号> - 绑定会话\n' +
-          '/switch <sessionId/序号> - 切换绑定\n' +
-          '/status - 查看当前绑定状态\n' +
-          '/unbind (/close) - 解绑会话\n' +
-          '/to <sessionId/序号> <消息> - 临时发送到指定会话\n' +
-          '/allow <序号> - 批准权限请求\n' +
-          '/deny <序号> - 拒绝权限请求\n' +
-          '/help - 显示此帮助信息',
+          '**Lynel 企业微信助手**\n\n' +
+          '**可用命令**\n\n' +
+          '| 命令 | 说明 |\n' +
+          '|------|------|\n' +
+          '| `/list` | 查看可用会话列表 |\n' +
+          '| `/create` `/new` | 创建新会话 |\n' +
+          '| `/bind <sessionId/序号>` | 绑定会话到当前聊天 |\n' +
+          '| `/switch <sessionId/序号>` | 切换绑定会话 |\n' +
+          '| `/status` | 查看当前绑定状态 |\n' +
+          '| `/unbind` `/close` | 解绑当前聊天 |\n' +
+          '| `/to <sessionId/序号> <消息>` | 临时发送消息到指定会话 |\n' +
+          '| `/allow [序号]` `/允许` `/y` | 批准权限请求（省略序号则处理最近一条） |\n' +
+          '| `/deny [序号]` `/拒绝` `/n` | 拒绝权限请求（省略序号则处理最近一条） |\n' +
+          '| `/pending` | 查看待处理权限/提问 |\n' +
+          '| `/answer <序号> <答案>` `/回答` | 回答 Claude 提问 |\n' +
+          '| `/help` | 显示此帮助信息 |\n\n' +
+          '**使用示例**\n\n' +
+          '1. 查看会话并绑定\n' +
+          '```\n/list\n/bind 1\n```\n\n' +
+          '2. 批准权限请求\n' +
+          '```\n/allow 3\n```\n' +
+          '或直接回复（处理最近一条）：\n' +
+          '```\n/y\n```\n\n' +
+          '3. 回答 Claude 提问（单选 / 多选 / 自定义）\n' +
+          '```\n/answer 3 1\n/answer 3 1,2\n/answer 3 我的自定义回答\n```\n\n' +
+          '4. 临时向第 2 个会话发送消息\n' +
+          '```\n/to 2 帮我优化这段代码\n```',
         );
         return;
       }
@@ -556,6 +619,124 @@ export class WeComChannel implements OutputChannel {
         return;
       }
     }
+  }
+
+  private async handleAllowDeny(chatId: string, isAllow: boolean, arg?: string): Promise<void> {
+    if (arg) {
+      const seq = parseInt(arg, 10);
+      if (!isNaN(seq) && seq > 0) {
+        const ok = permissionBroker.resolveBySeq(seq, isAllow ? 'allow' : 'deny', 'wecom');
+        if (ok) {
+          await this.sendWeComReply(chatId, `已${isAllow ? '批准' : '拒绝'}权限请求 #${seq}`);
+        } else {
+          await this.sendWeComReply(chatId, `权限请求 #${seq} 不存在或已被处理。`);
+        }
+        return;
+      }
+      // 非数字参数按 UUID 处理
+      const ok = permissionBroker.resolve(arg, isAllow ? 'allow' : 'deny', 'wecom');
+      if (ok) {
+        await this.sendWeComReply(chatId, `已${isAllow ? '批准' : '拒绝'}权限请求 ${arg.slice(0, 8)}...`);
+      } else {
+        await this.sendWeComReply(chatId, `权限请求 ${arg.slice(0, 8)}... 不存在或已被处理。`);
+      }
+      return;
+    }
+
+    // 没有参数时，取当前绑定会话的最近一条待处理权限
+    const mapping = getMapping(chatId);
+    const pending = permissionBroker
+      .listPending()
+      .filter((p) => (mapping ? p.request.sessionId === mapping.sessionId : true))
+      .sort((a, b) => b.seq - a.seq);
+    if (pending.length === 0) {
+      await this.sendWeComReply(chatId, '当前没有待处理的权限请求。');
+      return;
+    }
+    const seq = pending[0].seq;
+    const ok = permissionBroker.resolveBySeq(seq, isAllow ? 'allow' : 'deny', 'wecom');
+    if (!ok) {
+      await this.sendWeComReply(chatId, `权限请求 #${seq} 不存在或已被处理。`);
+    } else {
+      await this.sendWeComReply(chatId, `已${isAllow ? '批准' : '拒绝'}权限请求 #${seq}`);
+    }
+  }
+
+  private async handleAnswerCommand(chatId: string, text: string): Promise<void> {
+    const cmd = text.trim().split(/\s+/)[0].toLowerCase();
+    const rest = text.slice(cmd.length).trim();
+    const spaceIdx = rest.search(/\s/);
+    if (spaceIdx === -1) {
+      await this.sendWeComReply(
+        chatId,
+        '用法：/answer <序号> <答案>\n例如：/answer 3 A  或  /answer 3 A,B',
+      );
+      return;
+    }
+
+    const seqStr = rest.slice(0, spaceIdx).trim();
+    const answerText = rest.slice(spaceIdx + 1).trim();
+    const seq = parseInt(seqStr, 10);
+    if (isNaN(seq) || seq <= 0) {
+      await this.sendWeComReply(chatId, `序号 "${seqStr}" 无效。`);
+      return;
+    }
+
+    logger.info(`[wecom-channel] handleAnswerCommand seq=${seq} answerText=${answerText}`);
+    const pendingSummary = permissionBroker.listPending().map((p) => `#${p.seq}:${p.request.toolName}`);
+    logger.info(`[wecom-channel] handleAnswerCommand pending=[${pendingSummary.join(', ')}]`);
+
+    const id = permissionBroker.getIdBySeq(seq);
+    if (!id) {
+      logger.info(`[wecom-channel] handleAnswerCommand seq=${seq} not found in broker`);
+      await this.sendWeComReply(chatId, `权限请求 #${seq} 不存在或已被处理。当前待处理：${pendingSummary.join(', ') || '无'}`);
+      return;
+    }
+
+    const entry = permissionBroker.listPending().find((p) => p.id === id);
+    if (!entry) {
+      await this.sendWeComReply(chatId, `权限请求 #${seq} 已被处理。`);
+      return;
+    }
+
+    if (entry.request.toolName !== 'AskUserQuestion') {
+      permissionBroker.resolveBySeq(seq, 'allow', 'wecom');
+      await this.sendWeComReply(chatId, `已批准权限请求 #${seq}`);
+      return;
+    }
+
+    const questions = this.parseAskQuestions(entry.request.toolInput);
+    const result = this.parseAskAnswer(questions, answerText);
+    if ('error' in result) {
+      await this.sendWeComReply(chatId, `回答格式错误：${result.error}`);
+      return;
+    }
+
+    permissionBroker.resolveBySeq(seq, 'allow', 'wecom', result.answers);
+    await this.sendWeComReply(chatId, `已提交回答 #${seq}`);
+  }
+
+  private async handlePendingCommand(chatId: string): Promise<void> {
+    const mapping = getMapping(chatId);
+    const pending = permissionBroker.listPending();
+    const filtered = mapping ? pending.filter((p) => p.request.sessionId === mapping.sessionId) : pending;
+    if (filtered.length === 0) {
+      await this.sendWeComReply(chatId, '当前没有待处理的权限请求或提问。');
+      return;
+    }
+
+    const lines = filtered.map((p) => {
+      const isAsk = p.request.toolName === 'AskUserQuestion';
+      const preview = isAsk ? 'Claude 提问' : this.formatToolInputPreview(p.request.toolInput);
+      return `| #${p.seq} | ${p.request.toolName} | ${preview || '-'} |`;
+    });
+    await this.sendWeComReply(
+      chatId,
+      '**待处理权限/提问**\n\n' +
+      '| 序号 | 类型 | 内容 |\n' +
+      '|------|------|------|\n' +
+      lines.join('\n'),
+    );
   }
 
   private async handleToCommand(chatId: string, text: string): Promise<void> {
@@ -587,7 +768,14 @@ export class WeComChannel implements OutputChannel {
     logger.info(`[wecom-channel] /to from ${chatId}, forward to session ${resolved.id.slice(0, 8)}...`);
     try {
       session.send(resolved.id, message);
-      await this.sendWeComReply(chatId, `已临时发送到会话 ${resolved.id.slice(0, 8)}...`);
+      await this.sendWeComReply(
+        chatId,
+        '**已临时发送**\n\n' +
+        `| 项目 | 值 |\n` +
+        `|------|------|\n` +
+        `| 目标会话 | \`${resolved.id.slice(0, 8)}\` |\n` +
+        `| 内容 | ${message} |`,
+      );
     } catch (err) {
       logger.error('[wecom-channel] failed to forward /to message to session:', err);
       await this.sendWeComReply(chatId, `发送失败：${err instanceof Error ? err.message : String(err)}`);
@@ -666,14 +854,11 @@ export class WeComChannel implements OutputChannel {
       case 'PermissionRequest': {
         const toolName = p?.toolName || 'unknown';
         const input = p?.toolInput;
-        let inputPreview = '';
-        if (input?.command) {
-          inputPreview = `\n\`\`\`\n${String(input.command).slice(0, 200)}\n\`\`\``;
-        } else if (input?.file_path || input?.path) {
-          inputPreview = `\n📄 ${input.file_path || input.path}`;
+        const reqId = p?.seq ?? p?.id?.slice(0, 8) ?? '';
+        if (toolName === 'AskUserQuestion') {
+          return this.formatAskUserQuestion(header, input, reqId);
         }
-        const reqId = p?.seq || p?.id?.slice(0, 8) || '';
-        return `${header}\n🔒 **权限请求: ${toolName}**${inputPreview}\n回复 /allow ${reqId} 批准，/deny ${reqId} 拒绝`;
+        return this.formatPermissionRequest(header, toolName, input, reqId);
       }
       case 'PermissionResolved': {
         const src = p?.source === 'wecom' ? '企业微信' : p?.source === 'notch' ? '桌面端' : '终端';
@@ -688,5 +873,150 @@ export class WeComChannel implements OutputChannel {
       default:
         return '';
     }
+  }
+
+  private formatToolInputPreview(input: unknown): string {
+    const p = input as Record<string, any> | undefined;
+    if (!p || typeof p !== 'object') return '';
+    if (p.command) {
+      const cmd = String(p.command);
+      return cmd.length > 80 ? cmd.slice(0, 80) + '...' : cmd;
+    }
+    if (p.file_path || p.path) {
+      return String(p.file_path || p.path);
+    }
+    return '';
+  }
+
+  private formatPermissionRequest(header: string, toolName: string, input: unknown, reqId: string | number): string {
+    const preview = this.formatToolInputPreview(input);
+    const inputBlock = preview ? `\n\`\`\`\n${preview}\n\`\`\`` : '';
+    return `${header}\n\n**权限请求：${toolName}**${inputBlock}\n\n操作：\`/allow ${reqId}\` 或 \`/deny ${reqId}\``;
+  }
+
+  private formatAskUserQuestion(header: string, input: unknown, reqId: string | number): string {
+    const questions = this.parseAskQuestions(input);
+    if (questions.length === 0) {
+      return `${header}\n\n**Claude 向你提问**\n\n操作：\`/answer ${reqId} <你的回答>\``;
+    }
+
+    const lines: string[] = ['', '**Claude 向你提问：**', ''];
+    questions.forEach((q, idx) => {
+      lines.push(`${idx + 1}. ${q.header || q.question}`);
+      if (q.question && q.header && q.header !== q.question) {
+        lines.push(`   ${q.question}`);
+      }
+      q.options.forEach((opt, optIdx) => {
+        const num = optIdx + 1;
+        const desc = opt.description ? ` (${opt.description})` : '';
+        lines.push(`   ${num}. ${opt.label}${desc}`);
+      });
+      if (q.multiSelect) {
+        lines.push('   *多选，用逗号分隔*');
+      }
+      lines.push('');
+    });
+
+    lines.push('**回复示例：**');
+    lines.push(`- \`/answer ${reqId} 1\`  单选`);
+    lines.push(`- \`/answer ${reqId} 1,2\`  多选`);
+    lines.push(`- \`/answer ${reqId} 自定义回答\`  自由输入`);
+    if (questions.length > 1) {
+      lines.push(`- \`/answer ${reqId} 1;2,3\`  多个问题用分号分隔`);
+    }
+
+    return `${header}\n${lines.join('\n')}`;
+  }
+
+  private parseAskQuestions(input: unknown): AskQuestion[] {
+    const p = input as Record<string, any> | undefined;
+    if (!p || typeof p !== 'object') return [];
+    const raw = p.questions;
+    if (!Array.isArray(raw)) return [];
+    return raw.map((q: any) => ({
+      header: typeof q.header === 'string' ? q.header : undefined,
+      question: typeof q.question === 'string' ? q.question : '',
+      multiSelect: !!q.multiSelect,
+      options: Array.isArray(q.options)
+        ? q.options.map((o: any) => ({
+            label: typeof o.label === 'string' ? o.label : '',
+            description: typeof o.description === 'string' ? o.description : undefined,
+          }))
+        : [],
+    }));
+  }
+
+  private parseAskAnswer(questions: AskQuestion[], text: string): { answers: Record<string, string | string[]> } | { error: string } {
+    if (questions.length === 0) {
+      return { error: '没有问题可回答' };
+    }
+
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return { error: '答案不能为空' };
+    }
+
+    if (questions.length === 1) {
+      const answer = this.parseSingleQuestionAnswer(questions[0], trimmed);
+      if ('error' in answer) return answer;
+      return { answers: { [questions[0].question]: answer.value } };
+    }
+
+    const parts = trimmed.split(';').map((s) => s.trim());
+    if (parts.length !== questions.length) {
+      return { error: `该提问包含 ${questions.length} 个问题，请用分号分隔答案，例如：/answer 1 1;2,3` };
+    }
+
+    const answers: Record<string, string | string[]> = {};
+    for (let i = 0; i < questions.length; i++) {
+      const answer = this.parseSingleQuestionAnswer(questions[i], parts[i]);
+      if ('error' in answer) return answer;
+      answers[questions[i].question] = answer.value;
+    }
+    return { answers };
+  }
+
+  private parseSingleQuestionAnswer(
+    question: AskQuestion,
+    text: string,
+  ): { value: string | string[] } | { error: string } {
+    const parts = text
+      .split(/[,，]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (parts.length === 0) {
+      return { error: '答案不能为空' };
+    }
+
+    const labels: string[] = [];
+    for (const part of parts) {
+      // 优先按选项 label 精确匹配
+      const labelMatch = question.options.find((o) => o.label === part);
+      if (labelMatch) {
+        labels.push(labelMatch.label);
+        continue;
+      }
+
+      // 再按数字序号匹配
+      const num = parseInt(part, 10);
+      if (!isNaN(num) && num >= 1 && num <= question.options.length) {
+        labels.push(question.options[num - 1].label);
+        continue;
+      }
+
+      // 有一个部分无法识别，则整体视为自定义文本
+      if (parts.length === 1) {
+        return { value: text.trim() };
+      }
+      return { error: `选项 "${part}" 不存在，可用选项为 1-${question.options.length}` };
+    }
+
+    if (question.multiSelect) {
+      return { value: labels };
+    }
+    if (labels.length > 1) {
+      return { error: '该问题为单选，只能选择一个答案' };
+    }
+    return { value: labels[0] };
   }
 }
