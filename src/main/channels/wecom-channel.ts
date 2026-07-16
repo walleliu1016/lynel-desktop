@@ -872,6 +872,10 @@ export class WeComChannel implements OutputChannel {
         return this.formatPermissionRequest(header, toolName, input, reqId);
       }
       case 'PermissionResolved': {
+        // 终端自行处理时不知道实际决策，只提示已处理
+        if (p?.source === 'terminal') {
+          return `${header}\n✅ **权限已在终端处理**`;
+        }
         const src = p?.source === 'wecom' ? '企业微信' : p?.source === 'notch' ? '桌面端' : '终端';
         return `${header}\n✅ **权限已处理: ${p?.decision}** (${src})`;
       }

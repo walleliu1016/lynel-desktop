@@ -534,7 +534,7 @@ export class App {
       try {
         // 带真实 sessionId 派发，StateChannel 才能清除 pendingPermission 并恢复状态
         const workDir = session.lookup(sessionId)?.workDir ?? '';
-        this.dispatcher.dispatch(makeHookEvent('PermissionResolved', sessionId, workDir, { id, decision: 'allow', source: 'terminal', toolName }));
+        this.dispatcher.dispatch(makeHookEvent('PermissionResolved', sessionId, workDir, { id, source: 'terminal', toolName }));
       } catch {}
     });
 
