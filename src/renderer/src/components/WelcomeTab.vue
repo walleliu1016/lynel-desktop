@@ -2,8 +2,14 @@
   <div class="welcome-tab">
     <div class="card">
       <div class="brand">
-        <span class="brand-lynel">Lynel</span>
-        <span class="brand-desktop">Desktop</span>
+        <div class="brand-name">
+          <span class="brand-lynel">Lynel</span>
+          <span class="brand-desktop">Desktop</span>
+        </div>
+        <button class="guide-btn" @click="$emit('guide')">
+          <Icon name="help" :size="15" />
+          <span>使用指南</span>
+        </button>
       </div>
       <div class="start-section">
         <div class="section-title">Start</div>
@@ -40,6 +46,7 @@ const recent = useRecentStore()
 
 defineEmits<{
   create: []
+  guide: []
   'open-recent': [item: RecentSession]
 }>()
 
@@ -74,10 +81,15 @@ onMounted(() => {
 .brand {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.brand-name {
+  display: flex;
+  align-items: center;
   gap: 6px;
   font-size: 20px;
   font-weight: 700;
-  margin-bottom: 24px;
 }
 .brand-lynel { color: var(--accent); }
 .brand-desktop { color: var(--status-error); font-weight: 500; }
@@ -122,6 +134,21 @@ onMounted(() => {
   background: var(--accent-soft-bg);
   color: var(--accent);
 }
+.guide-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--text-inverse);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.guide-btn:hover { background: var(--accent-deep); }
 .count {
   font-size: 10px;
   font-weight: 700;

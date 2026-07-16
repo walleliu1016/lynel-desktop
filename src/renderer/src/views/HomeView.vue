@@ -24,6 +24,7 @@
           <div v-show="tabsStore.activeType === 'welcome'" class="content-pane">
             <WelcomeTab
               @create="showOpenFolder = true"
+              @guide="openGuideTab"
               @open-recent="onOpenRecent"
             />
           </div>
