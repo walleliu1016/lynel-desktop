@@ -219,6 +219,13 @@ export class WeComChannel implements OutputChannel {
       return;
     }
 
+    // prompt 会同时来自 hook（UserPromptSubmit，seq=0）和 apiproxy（实际 API 请求，seq>0），
+    // 只保留 apiproxy 来源，避免企业微信里同一条用户消息出现两次。
+    if (event.kind === 'prompt' && event.seq === 0) {
+      logger.info('[wecom-channel] skip hook-sourced prompt (will be sent via apiproxy)');
+      return;
+    }
+
     const msgSeq = (this.sessionSeqCounters.get(event.sessionId) ?? 0) + 1;
     this.sessionSeqCounters.set(event.sessionId, msgSeq);
 
