@@ -238,7 +238,6 @@ async function initializeTerminal() {
   try {
     emit('starting')
     await fitWithRetry()
-    // 强制刷新 viewport 滚动条
     await new Promise((resolve) => requestAnimationFrame(resolve))
     forceViewportSync()
     await OpenSessionTerminalSized(props.sessionId, props.workdir, term.cols, term.rows)
@@ -282,17 +281,27 @@ function waitForSize(): Promise<void> {
   return new Promise((resolve) => {
     const el = terminalEl.value
     if (!el) return resolve()
-    const rect = el.getBoundingClientRect()
-    if (rect.width > 0 && rect.height > 0) return resolve()
-
-    const ro = new ResizeObserver((entries) => {
-      const cr = entries[0]?.contentRect
-      if (cr && cr.width > 0 && cr.height > 0) {
-        ro.disconnect()
-        resolve()
+    let lastW = 0
+    let lastH = 0
+    let stable = 0
+    function check() {
+      if (!terminalEl.value) return resolve()
+      const w = terminalEl.value.clientWidth
+      const h = terminalEl.value.clientHeight
+      if (w > 0 && h > 0) {
+        if (w === lastW && h === lastH) {
+          stable++
+          // 连续 3 帧尺寸不变 → 布局已稳定
+          if (stable >= 3) return resolve()
+        } else {
+          stable = 0
+          lastW = w
+          lastH = h
+        }
       }
-    })
-    ro.observe(el)
+      requestAnimationFrame(check)
+    }
+    requestAnimationFrame(check)
   })
 }
 
@@ -331,9 +340,8 @@ watch(() => props.visible, (visible) => {
       return
     }
     // 等待 IntersectionObserver 触发，让 xterm.js renderer 退出暂停状态
-    // 否则 fit() 时 _isPaused 仍为 true，canvas resize 被延迟，导致 viewport 滚动条尺寸不正确
     await new Promise((resolve) => requestAnimationFrame(resolve))
-    // 等容器恢复实际尺寸后再 fit，避免 0 尺寸损坏 viewport 滚动状态
+    // 等容器恢复到非零尺寸，避免 fit() 用 0 尺寸破坏 viewport
     await waitForSize()
     lastCols = 0
     lastRows = 0
@@ -344,7 +352,7 @@ watch(() => props.visible, (visible) => {
       lastRows = term.rows
       ResizeTerminal(props.sessionId, term.cols, term.rows).catch(() => {})
     }
-    // 强制刷新 viewport 滚动条
+    // 等待浏览器完成布局后再强制刷新 viewport 滚动条
     await new Promise((resolve) => requestAnimationFrame(resolve))
     forceViewportSync()
     term?.focus()

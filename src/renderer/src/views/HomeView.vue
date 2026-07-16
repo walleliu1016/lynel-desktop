@@ -21,27 +21,32 @@
           @create="onCreateTab"
         />
         <div class="content">
-          <WelcomeTab
-            v-if="tabsStore.activeType === 'welcome'"
-            @create="showOpenFolder = true"
-            @open-recent="onOpenRecent"
-          />
-          <template v-else-if="tabsStore.activeType === 'session'">
-            <SessionTabContent
-              v-for="tab in sessionTabs"
-              :key="tab.payload?.sessionId as string"
-              v-show="activeSessionId === tab.payload?.sessionId"
-              :session-id="tab.payload?.sessionId as string"
-              :workdir="tab.payload?.workdir as string"
-              :visible="activeSessionId === tab.payload?.sessionId"
+          <div v-show="tabsStore.activeType === 'welcome'" class="content-pane">
+            <WelcomeTab
+              @create="showOpenFolder = true"
+              @open-recent="onOpenRecent"
             />
-            <div v-if="!activeSessionId" class="empty">
+          </div>
+          <div v-show="tabsStore.activeType === 'session'" class="content-pane">
+            <template v-if="sessionTabs.length > 0">
+              <SessionTabContent
+                v-for="tab in sessionTabs"
+                :key="tab.payload?.sessionId as string"
+                v-show="activeSessionId === tab.payload?.sessionId"
+                :session-id="tab.payload?.sessionId as string"
+                :workdir="tab.payload?.workdir as string"
+                :visible="activeSessionId === tab.payload?.sessionId"
+              />
+              <div v-if="!activeSessionId" class="empty">
+                <div class="empty-text">未选择会话</div>
+              </div>
+            </template>
+            <div v-else class="empty">
               <div class="empty-text">未选择会话</div>
             </div>
-          </template>
-          <SettingsTab v-else-if="tabsStore.activeType === 'settings'" />
-          <div v-else class="empty">
-            <div class="empty-text">未知页面</div>
+          </div>
+          <div v-show="tabsStore.activeType === 'settings'" class="content-pane">
+            <SettingsTab />
           </div>
         </div>
       </main>
@@ -231,6 +236,7 @@ watch(
 .left.collapsed { width: 44px; }
 .right { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-primary); }
 .content { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; position: relative; }
+.content-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .empty { flex: 1; display: flex; align-items: center; justify-content: center; }
 .empty-text { color: var(--text-tertiary); font-size: 12px; }
 </style>
