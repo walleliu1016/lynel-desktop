@@ -55,6 +55,7 @@
 import { computed, ref, nextTick } from 'vue'
 import SessionTooltip from './SessionTooltip.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
+import { showToast } from '../composables/useToast'
 import type { SessionMeta } from '../types/session'
 
 const props = defineProps<{ meta: SessionMeta; isActive: boolean; dup?: boolean }>()
@@ -123,7 +124,9 @@ function cancelRename() {
 
 function copySessionId() {
   menuOpen.value = false
-  void navigator.clipboard.writeText(props.meta.id)
+  void navigator.clipboard.writeText(props.meta.id).then(() => {
+    showToast('已复制', 'success')
+  })
 }
 
 const title = computed(() => sessionDisplayTitle(props.meta))
