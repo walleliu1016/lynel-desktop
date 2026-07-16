@@ -65,6 +65,7 @@ const sessions = useSessionsStore()
 const showTip = ref(false)
 const itemEl = ref<HTMLElement | null>(null)
 const tipAnchor = ref({ x: 0, y: 0 })
+let showTimer: ReturnType<typeof setTimeout> | null = null
 let hideTimer: ReturnType<typeof setTimeout> | null = null
 
 const editing = ref(false)
@@ -76,13 +77,16 @@ const menuStyle = ref({ top: '0px', left: '0px' })
 
 function onEnter() {
   if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
-  showTip.value = true
-  if (itemEl.value) {
-    const r = itemEl.value.getBoundingClientRect()
-    tipAnchor.value = { x: r.right + 8, y: r.top }
-  }
+  showTimer = setTimeout(() => {
+    showTip.value = true
+    if (itemEl.value) {
+      const r = itemEl.value.getBoundingClientRect()
+      tipAnchor.value = { x: r.right + 8, y: r.top }
+    }
+  }, 3000)
 }
 function onLeave() {
+  if (showTimer) { clearTimeout(showTimer); showTimer = null }
   hideTimer = setTimeout(() => { showTip.value = false }, 150)
 }
 
@@ -90,6 +94,7 @@ function closeMenu() {
   menuOpen.value = false
 }
 function cancelHide() {
+  if (showTimer) { clearTimeout(showTimer); showTimer = null }
   if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
 }
 

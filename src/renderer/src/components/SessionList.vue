@@ -176,6 +176,8 @@ const dupProjects = computed(() => {
   font-size: 10px; color: var(--text-tertiary);
 }
 .items { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; }
+
+.content { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .empty { color: var(--text-tertiary); font-size: 12px; text-align: center; padding: 20px; }
 
 .skeleton-item {
