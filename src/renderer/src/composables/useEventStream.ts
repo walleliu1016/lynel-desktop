@@ -1,6 +1,7 @@
 import { onMounted, onBeforeUnmount, watch } from 'vue'
 import { EventsOn } from './useElectron'
-import { useSessionsStore } from '../stores/sessions'
+import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
+import { useTabsStore } from '../stores/tabs'
 import { showToast } from './useToast'
 import type { SessionState } from '../types/session'
 
@@ -22,6 +23,30 @@ export function useEventStream() {
       if (sessions.activeId) {
         void sessions.reloadFromJsonl(sessions.activeId)
       }
+    }))
+
+    // 企业微信 /create 等外部入口创建会话后，同步到会话列表并自动打开。
+    cleanups.push(EventsOn('session:created', (payload: string) => {
+      try {
+        const data = JSON.parse(payload)
+        if (sessions.list.find((s) => s.id === data.id)) return
+        const meta = {
+          id: data.id,
+          workdir: data.workDir,
+          project: data.project,
+          mtime: Math.floor(Date.now() / 1000),
+          msg_count: 0,
+          first_prompt: data.prompt || '',
+          ai_title: '',
+          size: 0,
+          title_source: 'first_prompt' as const,
+        }
+        sessions.list = [meta, ...sessions.list]
+        sessions.activeId = data.id
+        const tabs = useTabsStore()
+        tabs.openSession(data.id, data.workDir, sessionDisplayTitle(meta))
+        void sessions.select(data.id)
+      } catch {}
     }))
 
     const ACTIVITY_PHASE_TO_STATE: Record<string, SessionState> = {

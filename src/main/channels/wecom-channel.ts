@@ -1,5 +1,6 @@
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
+import os from 'node:os';
 import { OutputChannel, ProxyStageEvent } from './channel.js';
 import * as session from '../session.js';
 import { getStore } from '../store.js';
@@ -151,13 +152,13 @@ export class WeComChannel implements OutputChannel {
   private chatIdToSession = new Map<string, string>();
   private lastActiveSession = new Map<string, string>();
   private sessionSeqCounters = new Map<string, number>();
-  private createSessionCallback: (() => Promise<{ id: string; workDir: string } | { error: string }>) | null = null;
+  private createSessionCallback: ((workDir: string, prompt: string) => Promise<{ id: string; workDir: string } | { error: string }>) | null = null;
 
   constructor(cfg: WeComChannelConfig) {
     this.cfg = cfg;
   }
 
-  setCreateSessionHandler(handler: () => Promise<{ id: string; workDir: string } | { error: string }>): void {
+  setCreateSessionHandler(handler: (workDir: string, prompt: string) => Promise<{ id: string; workDir: string } | { error: string }>): void {
     this.createSessionCallback = handler;
   }
 
@@ -523,21 +524,32 @@ export class WeComChannel implements OutputChannel {
           await this.sendWeComReply(chatId, '创建会话功能暂不可用。');
           return;
         }
+        const rest = text.trim().slice(cmd.length).trim();
+        if (!rest) {
+          await this.sendWeComReply(chatId, '用法：`/create <工作目录> [提示词]`\n\n示例：\n```\n/create /home/user/project 帮我优化代码\n```');
+          return;
+        }
+        const args = rest.split(/\s+/);
+        const workDir = args[0].replace(/^~(?=[\/\\]|$)/, os.homedir());
+        const prompt = args.slice(1).join(' ').trim();
         await this.sendWeComReply(chatId, '正在创建新会话…');
         try {
-          const result = await this.createSessionCallback();
+          const result = await this.createSessionCallback(workDir, prompt);
           if ('error' in result) {
             await this.sendWeComReply(chatId, `创建失败：${result.error}`);
             return;
           }
           setMapping(chatId, result.id, result.workDir);
+          const seq = session.list().length; // 新创建的在末尾，序号即总数
           await this.sendWeComReply(
             chatId,
             '**已创建并绑定新会话**\n\n' +
             '| 项目 | 值 |\n' +
             '|------|------|\n' +
+            `| 序号 | ${seq} |\n` +
             `| 会话ID | \`${result.id.slice(0, 8)}\` |\n` +
-            `| 工作目录 | ${result.workDir} |`,
+            `| 工作目录 | ${result.workDir} |` +
+            (prompt ? `\n| 提示词 | ${prompt} |` : ''),
           );
         } catch (err: any) {
           await this.sendWeComReply(chatId, `创建失败：${err.message}`);
@@ -593,7 +605,7 @@ export class WeComChannel implements OutputChannel {
           '| 命令 | 说明 |\n' +
           '|------|------|\n' +
           '| `/list` | 查看可用会话列表 |\n' +
-          '| `/create` `/new` | 创建新会话 |\n' +
+          '| `/create <工作目录> [提示词]` `/new ...` | 创建新会话 |\n' +
           '| `/bind <sessionId/序号>` | 绑定会话到当前聊天 |\n' +
           '| `/switch <sessionId/序号>` | 切换绑定会话 |\n' +
           '| `/status` | 查看当前绑定状态 |\n' +
@@ -607,13 +619,15 @@ export class WeComChannel implements OutputChannel {
           '**使用示例**\n\n' +
           '1. 查看会话并绑定\n' +
           '```\n/list\n/bind 1\n```\n\n' +
-          '2. 批准权限请求\n' +
+          '2. 创建新会话\n' +
+          '```\n/create /home/user/project 帮我优化代码\n```\n\n' +
+          '3. 批准权限请求\n' +
           '```\n/allow 3\n```\n' +
           '或直接回复（处理最近一条）：\n' +
           '```\n/y\n```\n\n' +
-          '3. 回答 Claude 提问（单选 / 多选 / 自定义）\n' +
+          '4. 回答 Claude 提问（单选 / 多选 / 自定义）\n' +
           '```\n/answer 3 1\n/answer 3 1,2\n/answer 3 我的自定义回答\n```\n\n' +
-          '4. 临时向第 2 个会话发送消息\n' +
+          '5. 临时向第 2 个会话发送消息\n' +
           '```\n/to 2 帮我优化这段代码\n```',
         );
         return;

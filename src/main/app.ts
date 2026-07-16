@@ -281,11 +281,19 @@ export class App {
   async init(): Promise<void> {
     this.applyChannelConfigs();
     session.setOnRemove((id) => this.wecomChannel.clearSessionMappings(id));
-    this.wecomChannel.setCreateSessionHandler(async () => {
-      const projects = await jsonl.scanAll();
-      const workDir = projects.length > 0 ? projects[0].workdir : process.cwd();
+    this.wecomChannel.setCreateSessionHandler(async (workDir, prompt) => {
       try {
-        const id = await this.createSessionInternal(workDir, '');
+        const stat = await fs.promises.stat(workDir);
+        if (!stat.isDirectory()) {
+          return { error: `路径不是目录：${workDir}` };
+        }
+      } catch (err: any) {
+        return { error: `目录不存在或无法访问：${workDir}` };
+      }
+      try {
+        const id = await this.createSessionInternal(workDir, prompt, [], true);
+        const project = workDir.split(/[\\/]/).filter(Boolean).pop() || workDir;
+        getBus().emit('session:created', JSON.stringify({ id, workDir, project, prompt }));
         return { id, workDir };
       } catch (err: any) {
         return { error: err.message };
@@ -659,7 +667,7 @@ export class App {
     }
   }
 
-  private async createSessionInternal(workDir: string, prompt: string, extraArgs: string[] = []): Promise<string> {
+  private async createSessionInternal(workDir: string, prompt: string, extraArgs: string[] = [], autoTrust = false): Promise<string> {
     const realId = randomUUID();
     const upstream = resolveAnthropicBaseUrl();
     const proxy = await startProxy(workDir, realId, this.dispatcher, upstream);
@@ -678,7 +686,44 @@ export class App {
     proc.onExit(() => cleanup());
 
     getLogger().info(`[app:createSession] session created id=${realId} workDir=${workDir}`);
-    if (prompt) session.send(realId, prompt);
+    // autoTrust：监听 PTY 输出，出现工作区信任确认时回车接受默认选项；
+    // 等输入框就绪（"? for shortcuts"）再发提示词。提示词与回车分开写入，
+    // 避免同一 chunk 被 ink 粘贴检测吞掉回车导致不执行。
+    if (autoTrust) {
+      let trusted = false;
+      let promptSent = !prompt;
+      let buffer = '';
+      const sendPrompt = () => {
+        if (promptSent) return;
+        promptSent = true;
+        try {
+          proc.write(prompt);
+          setTimeout(() => {
+            try { proc.write('\r'); } catch { /* pty 已退出 */ }
+          }, 300);
+        } catch (err: any) {
+          getLogger().error(`[app:createSession] autoTrust send prompt failed: ${err.message}`);
+        }
+      };
+      // 兜底：15s 内没检测到就绪标志也强制发送，避免提示词丢失
+      const fallback = setTimeout(sendPrompt, 15000);
+      proc.onData((data) => {
+        if (trusted && promptSent) return;
+        buffer = (buffer + data).slice(-4000);
+        if (!trusted && /trust the files|Do you trust/i.test(buffer)) {
+          trusted = true;
+          buffer = '';
+          try { proc.write('\r'); } catch { /* pty 已退出 */ }
+          return;
+        }
+        if (!promptSent && /\? for shortcuts/.test(buffer)) {
+          clearTimeout(fallback);
+          sendPrompt();
+        }
+      });
+    } else if (prompt) {
+      session.send(realId, prompt);
+    }
     const project = workDir.split(/[\\/]/).filter(Boolean).pop() || workDir;
     await addRecentSession({
       sessionId: realId,
