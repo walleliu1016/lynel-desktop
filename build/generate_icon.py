@@ -1,4 +1,4 @@
-"""生成 Lynel Desktop 方案 B 的 appicon.png"""
+"""生成 Lynel Desktop 红蓝主题图标"""
 from PIL import Image, ImageDraw
 import math
 import struct
@@ -111,11 +111,11 @@ def bubble_outline_mask(size, cx, cy, w, h, tail_dir, stroke):
 # 主画布
 img = Image.new('RGBA', (SIZE, SIZE), (0, 0, 0, 0))
 
-# 品牌渐变背景
+# 品牌渐变背景（红蓝主题）
 brand_grad = linear_gradient(SIZE, SIZE, [
-    (0.0, (124, 58, 237, 255)),
+    (0.0, (239, 68, 68, 255)),
     (0.55, (59, 130, 246, 255)),
-    (1.0, (6, 182, 212, 255))
+    (1.0, (29, 78, 216, 255))
 ], angle=45)
 bg_mask = Image.new('L', (SIZE, SIZE), 0)
 ImageDraw.Draw(bg_mask).rounded_rectangle((0, 0, SIZE, SIZE), radius=RADIUS, fill=255)
@@ -183,17 +183,17 @@ print('build/windows/icon.ico generated with sizes:', ico_sizes)
 
 
 def generate_tray_icon():
-    """生成高对比度托盘图标：紫色渐变圆角底 + 白色简化 L / 气泡，
-    在 Windows 暗色/亮色任务栏都能看清。"""
+    """生成高对比度托盘图标：红蓝渐变圆角底 + 白色简化 L / 气泡，
+    在 Windows / macOS / Linux 暗色/亮色任务栏都能看清。"""
     size = 64
     radius = 14
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
 
-    # 背景：品牌渐变圆角矩形
+    # 背景：品牌渐变圆角矩形（红蓝主题）
     bg_grad = linear_gradient(size, size, [
-        (0.0, (124, 58, 237, 255)),
+        (0.0, (239, 68, 68, 255)),
         (0.55, (59, 130, 246, 255)),
-        (1.0, (6, 182, 212, 255)),
+        (1.0, (29, 78, 216, 255)),
     ], angle=45)
     bg_mask = Image.new('L', (size, size), 0)
     ImageDraw.Draw(bg_mask).rounded_rectangle((0, 0, size, size), radius=radius, fill=255)
@@ -210,11 +210,33 @@ def generate_tray_icon():
     draw.rounded_rectangle((38, 16, 50, 28), radius=5, fill=(255, 255, 255, 255))
     draw.polygon([(38, 26), (34, 32), (42, 28)], fill=(255, 255, 255, 255))
 
+    # 通用托盘图标
     img.save(os.path.join(BUILD_DIR, 'trayicon.png'))
+
+    # Windows 多尺寸 ICO
     tray_sizes = [16, 24, 32, 48, 64]
     tray_ico_images = [img.resize((s, s), Image.Resampling.LANCZOS) for s in tray_sizes]
     write_ico(os.path.join(BUILD_DIR, 'windows', 'trayicon.ico'), tray_ico_images)
-    print('build/trayicon.png and build/windows/trayicon.ico generated')
+
+    # macOS 与 Linux 托盘 PNG（统一外观）
+    os.makedirs(os.path.join(BUILD_DIR, 'darwin'), exist_ok=True)
+    os.makedirs(os.path.join(BUILD_DIR, 'linux'), exist_ok=True)
+    img.save(os.path.join(BUILD_DIR, 'darwin', 'trayicon.png'))
+    img.save(os.path.join(BUILD_DIR, 'linux', 'trayicon.png'))
+
+    print('build/trayicon.png generated')
+    print('build/windows/trayicon.ico generated with sizes:', tray_sizes)
+    print('build/darwin/trayicon.png generated')
+    print('build/linux/trayicon.png generated')
+
+
+def generate_linux_app_icon():
+    """生成 Linux/Ubuntu 应用图标（供 electron-builder 使用）。"""
+    os.makedirs(os.path.join(BUILD_DIR, 'linux'), exist_ok=True)
+    linux_icon_path = os.path.join(BUILD_DIR, 'linux', 'icon.png')
+    img.save(linux_icon_path)
+    print('build/linux/icon.png generated (1024x1024)')
 
 
 generate_tray_icon()
+generate_linux_app_icon()

@@ -13,6 +13,30 @@ let appInstance: App | null = null;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
+function getBuildAssetPath(...segments: string[]): string {
+  return path.join(app.getAppPath(), 'build', ...segments);
+}
+
+function getWindowIconPath(): string {
+  if (process.platform === 'win32') {
+    return getBuildAssetPath('windows', 'icon.ico');
+  }
+  if (process.platform === 'linux') {
+    return getBuildAssetPath('linux', 'icon.png');
+  }
+  return getBuildAssetPath('appicon.png');
+}
+
+function getTrayIconPath(): string {
+  if (process.platform === 'win32') {
+    return getBuildAssetPath('windows', 'trayicon.ico');
+  }
+  if (process.platform === 'darwin') {
+    return getBuildAssetPath('darwin', 'trayicon.png');
+  }
+  return getBuildAssetPath('linux', 'trayicon.png');
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -22,6 +46,7 @@ function createWindow(): void {
     frame: false,
     show: false,
     backgroundColor: '#0A0A0A',
+    icon: getWindowIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -66,7 +91,7 @@ function createWindow(): void {
 }
 
 function createTray(): void {
-  const iconPath = path.join(__dirname, '../../build/windows/trayicon.ico');
+  const iconPath = getTrayIconPath();
   const icon = nativeImage.createFromPath(iconPath);
   tray = new Tray(icon.resize({ width: 16, height: 16 }));
   tray.setToolTip('Lynel Desktop');
