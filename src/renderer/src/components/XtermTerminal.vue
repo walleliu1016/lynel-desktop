@@ -4,6 +4,7 @@
       ref="terminalEl"
       class="xterm-container"
       @click="focusTerminal"
+      @contextmenu.prevent="onTermCtx"
     />
     <div
       v-if="loading"
@@ -21,6 +22,15 @@
       <button class="exited-btn" @click="reconnect">重新进入</button>
     </div>
   </div>
+  <Teleport to="body">
+    <div v-if="ctxOpen" class="term-ctx-overlay" @click="closeTermCtx" @contextmenu.prevent="closeTermCtx">
+      <div class="term-ctx-menu" :style="ctxStyle" @click.stop>
+        <button v-if="hasTermSelection" class="menu-item" @click="copyTermSelection">复制</button>
+        <button class="menu-item" @click="pasteTerm">粘贴</button>
+        <button class="menu-item" @click="selectAllTerm">全选</button>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -30,6 +40,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { EventsOn, ResizeTerminal, OpenSessionTerminalSized } from '../composables/useElectron'
+import { showToast } from '../composables/useToast'
 
 function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#000'
@@ -72,8 +83,47 @@ let fallbackTimer: ReturnType<typeof setTimeout> | null = null
 let lastCols = 0
 let lastRows = 0
 
+const ctxOpen = ref(false)
+const ctxStyle = ref({ top: '0px', left: '0px' })
+const hasTermSelection = ref(false)
+
 function focusTerminal() {
   term?.focus()
+}
+
+function onTermCtx(e: MouseEvent) {
+  hasTermSelection.value = !!(term?.hasSelection())
+  ctxOpen.value = true
+  ctxStyle.value = { top: `${e.clientY}px`, left: `${e.clientX}px` }
+}
+
+function closeTermCtx() {
+  ctxOpen.value = false
+}
+
+function copyTermSelection() {
+  const text = term?.getSelection()
+  if (text) {
+    void navigator.clipboard.writeText(text).then(() => {
+      showToast('已复制', 'success')
+    })
+  }
+  closeTermCtx()
+}
+
+function pasteTerm() {
+  void navigator.clipboard.readText().then((text) => {
+    if (text && term) {
+      term.focus()
+      term.paste(text)
+    }
+  }).catch(() => {})
+  closeTermCtx()
+}
+
+function selectAllTerm() {
+  term?.selectAll()
+  closeTermCtx()
 }
 
 async function reconnect() {
@@ -361,4 +411,23 @@ onBeforeUnmount(() => {
 .xterm-container :deep(.xterm-viewport)::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
+</style>
+
+<style>
+.term-ctx-overlay { position: fixed; inset: 0; z-index: 999; }
+.term-ctx-menu {
+  position: fixed; z-index: 1000;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+  padding: 4px; min-width: 100px;
+}
+.term-ctx-menu .menu-item {
+  display: block; width: 100%; text-align: left;
+  padding: 6px 10px; border-radius: var(--radius-sm);
+  font-size: 12px; color: var(--text-primary);
+  background: transparent; border: none; cursor: pointer;
+}
+.term-ctx-menu .menu-item:hover { background: var(--session-item-hover-bg); }
 </style>
