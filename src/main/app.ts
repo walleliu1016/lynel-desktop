@@ -15,7 +15,7 @@ import { ChannelDispatcher } from './channels/registry.js';
 import { SSEChannel } from './channels/sse-channel.js';
 import { WeComChannel, WeComChannelConfig } from './channels/wecom-channel.js';
 import { LocalFileChannel } from './channels/localfile-channel.js';
-import { makeHookEvent, ProxyStageKind } from './channels/channel.js';
+import { makeHookEvent, ProxyStageKind, OutputChannel } from './channels/channel.js';
 import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
 import { setNotchMousePassthrough, resizeNotchWindow, showNotchWindow, hideNotchWindow, getNotchWindow } from './notch-window.js';
 import { startProxy } from './apiproxy.js';
@@ -210,6 +210,11 @@ export class App {
   private sseChannel = new SSEChannel();
   private wecomChannel = new WeComChannel({ enabled: false });
   private localFileChannel = new LocalFileChannel();
+  // type → singleton 通道实例；与 settingsStore.channels 的 key 对齐（key === type）
+  private channelInstances = new Map<string, OutputChannel>([
+    ['wecom', this.wecomChannel],
+    ['localfile', this.localFileChannel],
+  ]);
   private ptyCleanups = new Map<string, (() => void) | null>();
   private recentSessionsLock = false;
   private aiTitleRefreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -328,18 +333,93 @@ export class App {
 
   private applyChannelConfigs(): void {
     const channels = (this.settingsStore.get('channels', {}) || {}) as Record<string, any>;
-    if (channels.wecom) {
-      this.wecomChannel.updateConfig(channels.wecom);
-    }
-    if (channels.localfile) {
-      this.localFileChannel.updateConfig(channels.localfile);
+    let migrated = false;
+    for (const [id, val] of Object.entries(channels)) {
+      const norm = this.normalizeChannelInstance(id, val);
+      if (!norm) continue;
+      if (norm !== val) {
+        channels[id] = norm;
+        migrated = true;
+      }
+      this.applyChannelConfigToInstance(norm);
     }
     if (!channels.wecom) {
-      const legacy = this.settingsStore.get('wecom', {}) as WeComChannelConfig;
-      if (legacy?.enabled) {
-        this.wecomChannel.updateConfig(legacy);
+      const legacy = this.settingsStore.get('wecom', null) as WeComChannelConfig | null;
+      if (legacy) {
+        const wrapper = this.normalizeChannelInstance('wecom', legacy);
+        if (wrapper) {
+          channels.wecom = wrapper;
+          this.applyChannelConfigToInstance(wrapper);
+          migrated = true;
+          getLogger().info('[app] migrated legacy wecom config to channels');
+        }
       }
     }
+    if (migrated) {
+      this.settingsStore.set('channels', channels);
+    }
+  }
+
+  /** 把 ChannelInstance 规范化成 {id, type, name, enabled, config}；旧的内联 config 格式会被包装 */
+  private normalizeChannelInstance(id: string, raw: any): Record<string, any> | null {
+    if (!raw || typeof raw !== 'object') return null;
+    if (typeof raw.type === 'string' && raw.config && typeof raw.config === 'object') {
+      return {
+        id: raw.id ?? id,
+        type: raw.type,
+        name: raw.name ?? raw.type,
+        enabled: !!raw.enabled,
+        config: raw.config,
+      };
+    }
+    // 旧格式：直接是 config 对象（可能含 enabled）
+    return {
+      id,
+      type: id,
+      name: id,
+      enabled: !!raw.enabled,
+      config: raw,
+    };
+  }
+
+  /** 把 wrapper.enabled 合并进内层 config，再喂给 channel instance */
+  private applyChannelConfigToInstance(wrapper: Record<string, any>): void {
+    const instance = this.channelInstances.get(wrapper.id);
+    if (!instance?.updateConfig) return;
+    const inner = { ...(wrapper.config ?? {}), enabled: !!wrapper.enabled };
+    try {
+      instance.updateConfig(inner);
+    } catch (err) {
+      getLogger().error(`[app] channel ${wrapper.id} updateConfig failed:`, err);
+    }
+  }
+
+  /** 从 ~/.claude/settings.json 读取已有 env 配置，构建默认供应商 */
+  private readDefaultProviderFromSettings(): Record<string, any> {
+    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+    let env: Record<string, string> = {};
+    try {
+      const raw = fs.readFileSync(settingsPath, 'utf8');
+      if (raw.trim()) {
+        const data = JSON.parse(raw);
+        if (data.env && typeof data.env === 'object') {
+          env = data.env;
+        }
+      }
+    } catch {
+      // settings.json 不存在或格式错误，用空 env
+    }
+    return {
+      id: 'default',
+      name: '默认',
+      base_url: env.ANTHROPIC_BASE_URL || '',
+      auth_token: env.ANTHROPIC_AUTH_TOKEN || '',
+      default_model: env.ANTHROPIC_MODEL || '',
+      default_haiku_model: env.ANTHROPIC_DEFAULT_HAIKU_MODEL || '',
+      default_sonnet_model: env.ANTHROPIC_DEFAULT_SONNET_MODEL || '',
+      default_opus_model: env.ANTHROPIC_DEFAULT_OPUS_MODEL || '',
+      reasoning_model: env.ANTHROPIC_REASONING_MODEL || '',
+    };
   }
 
   private async ensureHookServer(): Promise<void> {
@@ -757,27 +837,78 @@ export class App {
 
     ipcMain.handle('app:getChannelsConfig', () => {
       const channels = (this.settingsStore.get('channels', {}) || {}) as Record<string, any>;
-      if (!channels.wecom) {
-        const legacy = this.settingsStore.get('wecom', null) as WeComChannelConfig | null;
-        if (legacy) {
-          channels.wecom = { enabled: legacy.enabled, chatId: legacy.chatId || '', botId: legacy.botId || '', secret: legacy.secret || '' };
-          this.settingsStore.set('channels', channels);
-          getLogger().info('[app] migrated legacy wecom config to channels');
+      let migrated = false;
+      const result: Record<string, any> = {};
+      for (const [id, val] of Object.entries(channels)) {
+        const norm = this.normalizeChannelInstance(id, val);
+        if (!norm) continue;
+        result[id] = norm;
+        if (norm !== val) {
+          channels[id] = norm;
+          migrated = true;
         }
       }
-      return channels;
+      if (!result.wecom) {
+        const legacy = this.settingsStore.get('wecom', null) as WeComChannelConfig | null;
+        if (legacy) {
+          const wrapper = this.normalizeChannelInstance('wecom', legacy);
+          if (wrapper) {
+            result.wecom = wrapper;
+            channels.wecom = wrapper;
+            migrated = true;
+            getLogger().info('[app] migrated legacy wecom config to channels');
+          }
+        }
+      }
+      if (migrated) {
+        this.settingsStore.set('channels', channels);
+      }
+      return result;
     });
 
-    ipcMain.handle('app:updateChannelConfig', (_event, id: string, config: any) => {
-      const channels = (this.settingsStore.get('channels', {}) || {}) as Record<string, any>;
-      channels[id] = config;
-      this.settingsStore.set('channels', channels);
-      if (id === 'wecom') {
-        this.wecomChannel.updateConfig(config);
-      } else if (id === 'localfile') {
-        this.localFileChannel.updateConfig(config);
+    ipcMain.handle('app:updateChannelConfig', (_event, id: string, wrapper: any) => {
+      if (!id || typeof id !== 'string') {
+        throw new Error('channel id is required');
       }
+      const norm = this.normalizeChannelInstance(id, wrapper);
+      if (!norm) {
+        throw new Error(`invalid channel payload for ${id}`);
+      }
+      const channels = (this.settingsStore.get('channels', {}) || {}) as Record<string, any>;
+      channels[id] = norm;
+      this.settingsStore.set('channels', channels);
+      this.applyChannelConfigToInstance(norm);
       getLogger().info(`[app] channel config updated: ${id}`);
+    });
+
+    ipcMain.handle('app:deleteChannelConfig', (_event, id: string) => {
+      if (!id || typeof id !== 'string') return { ok: false, error: 'invalid id' };
+      const channels = (this.settingsStore.get('channels', {}) || {}) as Record<string, any>;
+      if (!channels[id]) {
+        getLogger().info(`[app] channel delete skipped (not present): ${id}`);
+        return { ok: true };
+      }
+      delete channels[id];
+      this.settingsStore.set('channels', channels);
+      // 重置通道实例：置 disabled + 关闭连接，避免 dispatcher 继续派发
+      const instance = this.channelInstances.get(id);
+      if (instance) {
+        if (instance.updateConfig) {
+          try {
+            instance.updateConfig({ enabled: false });
+          } catch (err) {
+            getLogger().error(`[app] channel ${id} updateConfig(reset) failed:`, err);
+          }
+        }
+        const closeResult = instance.close?.();
+        if (closeResult && typeof (closeResult as Promise<void>).catch === 'function') {
+          (closeResult as Promise<void>).catch((err: unknown) =>
+            getLogger().warn(`[app] channel ${id} close failed:`, err),
+          );
+        }
+      }
+      getLogger().info(`[app] channel deleted: ${id}`);
+      return { ok: true };
     });
 
     ipcMain.handle('app:getSessionStates', async () => {
@@ -889,8 +1020,16 @@ export class App {
 
     ipcMain.handle('app:getProvidersConfig', () => {
       const cfg = (this.providersStore.get('config', {}) as Record<string, any>) || {};
-      if (!Array.isArray(cfg.providers)) {
-        cfg.providers = [];
+      if (!Array.isArray(cfg.providers) || cfg.providers.length === 0) {
+        // 首次使用：从 ~/.claude/settings.json 读取已有 env 配置作为默认供应商
+        const defaultProvider = this.readDefaultProviderFromSettings();
+        const newCfg = {
+          active_provider_id: defaultProvider.id,
+          providers: [defaultProvider],
+        };
+        this.providersStore.set('config', newCfg);
+        getLogger().info('[app] auto-created default provider from settings.json');
+        return newCfg;
       }
       return cfg;
     });

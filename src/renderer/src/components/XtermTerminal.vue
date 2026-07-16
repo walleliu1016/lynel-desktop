@@ -11,7 +11,7 @@
       data-testid="terminal-loading"
       class="terminal-loading"
     >
-      <div class="spinner" />
+      <div ref="spinnerEl" class="spinner-static" />
       <div class="loading-text">正在启动 Claude 会话…</div>
     </div>
     <div
@@ -71,6 +71,33 @@ const emit = defineEmits<{
 const terminalEl = ref<HTMLElement | null>(null)
 const loading = ref(true)
 const exited = ref(false)
+const spinnerEl = ref<HTMLElement | null>(null)
+let spinnerRaf = 0
+
+function runSpinner() {
+  if (!spinnerEl.value) return
+  let deg = 0
+  const step = () => {
+    if (!spinnerEl.value) return
+    deg = (deg + 6) % 360
+    spinnerEl.value.style.transform = `rotate(${deg}deg)`
+    spinnerRaf = requestAnimationFrame(step)
+  }
+  step()
+}
+
+function killSpinner() {
+  if (spinnerRaf) { cancelAnimationFrame(spinnerRaf); spinnerRaf = 0 }
+}
+
+watch(loading, (v) => {
+  if (v) {
+    killSpinner()
+    requestAnimationFrame(() => runSpinner())
+  } else {
+    killSpinner()
+  }
+})
 
 let term: Terminal | null = null
 let fitAddon: FitAddon | null = null
@@ -211,6 +238,9 @@ async function initializeTerminal() {
   try {
     emit('starting')
     await fitWithRetry()
+    // 强制刷新 viewport 滚动条
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    forceViewportSync()
     await OpenSessionTerminalSized(props.sessionId, props.workdir, term.cols, term.rows)
   } catch (e: any) {
     revealTerminal()
@@ -281,6 +311,18 @@ function fitAndResize(): boolean {
   return true
 }
 
+// 直接调用 xterm.js 内部的 viewport._sync()，强制刷新滚动条尺寸。
+// 这是最可靠的修复：绕过 ResizeObserver/FitAddon 的尺寸变化检测。
+function forceViewportSync(): void {
+  if (!term) return
+  const core = (term as any)._core
+  const viewport = core?.viewport
+  if (viewport) {
+    viewport._latestYDisp = undefined
+    viewport._sync()
+  }
+}
+
 watch(() => props.visible, (visible) => {
   if (!visible) return
   nextTick(async () => {
@@ -288,6 +330,9 @@ watch(() => props.visible, (visible) => {
       await initializeTerminal()
       return
     }
+    // 等待 IntersectionObserver 触发，让 xterm.js renderer 退出暂停状态
+    // 否则 fit() 时 _isPaused 仍为 true，canvas resize 被延迟，导致 viewport 滚动条尺寸不正确
+    await new Promise((resolve) => requestAnimationFrame(resolve))
     // 等容器恢复实际尺寸后再 fit，避免 0 尺寸损坏 viewport 滚动状态
     await waitForSize()
     lastCols = 0
@@ -299,16 +344,27 @@ watch(() => props.visible, (visible) => {
       lastRows = term.rows
       ResizeTerminal(props.sessionId, term.cols, term.rows).catch(() => {})
     }
+    // 强制刷新 viewport 滚动条
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    forceViewportSync()
     term?.focus()
   })
 })
 
 onBeforeUnmount(() => {
+  killSpinner()
   cleanupEvents?.()
   resizeObserver?.disconnect()
   themeObserver?.disconnect()
   renderDisposer?.dispose()
   term?.dispose()
+  term = null
+  fitAddon = null
+  cleanupEvents = null
+  resizeObserver = null
+  renderDisposer = null
+  lastCols = 0
+  lastRows = 0
   if (resizeTimer) {
     clearTimeout(resizeTimer)
     resizeTimer = null
@@ -346,15 +402,6 @@ onBeforeUnmount(() => {
   color: var(--text-secondary);
   background: var(--bg-terminal-loading);
   pointer-events: none;
-}
-
-.spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: term-spin 0.8s linear infinite;
 }
 
 .loading-text {
@@ -410,8 +457,12 @@ onBeforeUnmount(() => {
 </style>
 
 <style>
-@keyframes term-spin {
-  to { transform: rotate(360deg); }
+.spinner-static {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
 }
 
 .term-ctx-overlay { position: fixed; inset: 0; z-index: 999; }

@@ -156,13 +156,19 @@ async function onCancel() {
   }
 }
 
-function onDelete() {
+async function onDelete() {
   if (!selected.value) return
   if (!confirm(`确定删除通道「${selected.value.name}」吗？`)) return
   const id = selected.value.id
   selectedId.value = store.list.find(c => c.id !== id)?.id ?? ''
-  store.removeChannel(id)
-  store.saveAll().catch(() => {})
+  try {
+    await store.removeChannel(id)
+    showToast('已删除')
+  } catch (e: any) {
+    showToast('删除失败：' + (e?.message ?? e), 'error')
+    await store.load()
+    selectedId.value = id
+  }
 }
 
 function onAddChannel(type: string) {

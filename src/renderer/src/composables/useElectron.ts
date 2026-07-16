@@ -27,6 +27,7 @@ export const GetWeComConfig = () => api().getWeComConfig();
 export const UpdateWeComConfig = (cfg: any) => api().updateWeComConfig(cfg);
 export const GetChannelsConfig = () => api().getChannelsConfig();
 export const UpdateChannelConfig = (id: string, cfg: any) => api().updateChannelConfig(id, cfg);
+export const DeleteChannelConfig = (id: string) => api().deleteChannelConfig(id);
 export const GetSessionMessages = (id: string, workDir: string, offset: number, limit: number) => api().getSessionMessages(id, workDir, offset, limit);
 export const PickDirectory = () => api().pickDirectory();
 export const GetRecentSessions = () => api().getRecentSessions();

@@ -17,14 +17,15 @@ function newProvider(): Provider {
   }
 }
 
+/** 仅在主进程返回异常空数据时作为最后兜底；正常流程主进程会自动从 settings.json 生成默认供应商 */
 function defaultConfig(): ProvidersConfig {
   return {
-    active_provider_id: 'anthropic-official',
+    active_provider_id: 'default',
     providers: [
       {
-        id: 'anthropic-official',
-        name: 'Anthropic 官方',
-        base_url: 'https://api.anthropic.com',
+        id: 'default',
+        name: '默认',
+        base_url: '',
         auth_token: '',
         default_model: '',
         default_haiku_model: '',
@@ -58,15 +59,16 @@ export const useProvidersStore = defineStore('providers', () => {
 
   function markDirty() { dirty.value = true }
 
-  function addProvider(): string {
+  async function addProvider(): Promise<string> {
     if (!cfg.value) cfg.value = defaultConfig()
     const p = newProvider()
     cfg.value.providers.push(p)
-    dirty.value = true
+    dirty.value = false
+    await SaveProvidersConfig(JSON.parse(JSON.stringify(cfg.value)))
     return p.id
   }
 
-  function removeProvider(id: string): string {
+  async function removeProvider(id: string): Promise<string> {
     if (!cfg.value) return ''
     const idx = cfg.value.providers.findIndex(p => p.id === id)
     if (idx === -1) return cfg.value.active_provider_id
@@ -78,14 +80,17 @@ export const useProvidersStore = defineStore('providers', () => {
     } else if (cfg.value.active_provider_id === id) {
       cfg.value.active_provider_id = cfg.value.providers[0].id
     }
-    dirty.value = true
+    dirty.value = false
+    await SaveProvidersConfig(JSON.parse(JSON.stringify(cfg.value)))
     return cfg.value.active_provider_id
   }
 
-  function setActive(id: string) {
+  async function setActive(id: string) {
     if (!cfg.value) return
     cfg.value.active_provider_id = id
-    dirty.value = true
+    dirty.value = false
+    // save 会触发主进程 applyActiveProvider，立即写入 ~/.claude/settings.json
+    await SaveProvidersConfig(JSON.parse(JSON.stringify(cfg.value)))
   }
 
   return { cfg, dirty, load, save, markDirty, addProvider, removeProvider, setActive }

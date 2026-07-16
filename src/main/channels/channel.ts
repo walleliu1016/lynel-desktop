@@ -37,4 +37,6 @@ export interface OutputChannel {
   isEnabled(): boolean;
   send(event: ProxyStageEvent): Promise<void> | void;
   close?(): Promise<void> | void;
+  /** 由主进程调用以同步最新配置；不实现的通道视为不可配置（如 SSE） */
+  updateConfig?(cfg: any): void;
 }

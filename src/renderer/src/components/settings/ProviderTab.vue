@@ -86,7 +86,7 @@
 import { onMounted, ref, computed } from 'vue'
 import Icon from '../../components/Icon.vue'
 import { useProvidersStore } from '../../stores/providers'
-import { TestProviderConnection, ApplyActiveProvider } from '../../composables/useElectron'
+import { TestProviderConnection } from '../../composables/useElectron'
 import { showToast } from '../../composables/useToast'
 
 const store = useProvidersStore()
@@ -107,22 +107,29 @@ onMounted(async () => {
 
 function markDirty() { store.markDirty() }
 
-function onAdd() {
-  selectedId.value = store.addProvider()
+async function onAdd() {
+  try {
+    selectedId.value = await store.addProvider()
+  } catch (e: any) {
+    showToast('新增失败：' + (e?.message ?? e), 'error')
+  }
 }
 
-function onDelete() {
+async function onDelete() {
   if (!provider.value) return
   if (!confirm(`确定删除供应商「${provider.value.name || '未命名'}」吗？`)) return
-  selectedId.value = store.removeProvider(selectedId.value)
+  try {
+    selectedId.value = await store.removeProvider(selectedId.value)
+    showToast('已删除')
+  } catch (e: any) {
+    showToast('删除失败：' + (e?.message ?? e), 'error')
+  }
 }
 
 async function onSetActive() {
   if (!provider.value) return
-  store.setActive(provider.value.id)
   try {
-    await store.save()
-    await ApplyActiveProvider()
+    await store.setActive(provider.value.id)
     showToast('已切换为当前供应商')
   } catch (e: any) {
     showToast('切换失败：' + (e?.message ?? e), 'error')

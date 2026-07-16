@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, toRaw } from 'vue'
 import type { ChannelInstance, ChannelsData } from '../types/channels'
 import { CHANNEL_TYPES, defaultConfigForType } from '../types/channels'
-import { GetChannelsConfig, UpdateChannelConfig } from '../composables/useElectron'
+import { GetChannelsConfig, UpdateChannelConfig, DeleteChannelConfig } from '../composables/useElectron'
 
 export const useChannelsStore = defineStore('channels', () => {
   const data = ref<ChannelsData>({})
@@ -30,7 +30,9 @@ export const useChannelsStore = defineStore('channels', () => {
 
   async function saveAll() {
     for (const id of Object.keys(data.value)) {
-      await UpdateChannelConfig(id, { ...data.value[id] })
+      const raw = toRaw(data.value[id])
+      const clone = JSON.parse(JSON.stringify(raw))
+      await UpdateChannelConfig(id, clone)
     }
     dirty.value = false
   }
@@ -38,8 +40,11 @@ export const useChannelsStore = defineStore('channels', () => {
   function markDirty() { dirty.value = true }
 
   function addChannel(type: string): string {
-    const id = crypto.randomUUID()
+    // 同类型只能存在一份；如果已有，直接返回已有 id（避免无限累积 UUID 条目）
+    const existing = list.value.find(c => c.type === type)
+    if (existing) return existing.id
     const info = CHANNEL_TYPES.find(t => t.type === type)
+    const id = type // key === type，与主进程 channelInstances 对齐
     data.value[id] = {
       id,
       type,
@@ -51,9 +56,18 @@ export const useChannelsStore = defineStore('channels', () => {
     return id
   }
 
-  function removeChannel(id: string) {
+  async function removeChannel(id: string) {
+    if (!data.value[id]) return
+    // 先通知主进程删除（settingsStore + 重置 channel instance），
+    // 再清本地 Pinia state，保证两端一致
+    try {
+      await DeleteChannelConfig(id)
+    } catch (err) {
+      // 即使主进程失败，也清本地并重新 load 以对齐
+      console.error('[channels] deleteChannelConfig failed:', err)
+    }
     delete data.value[id]
-    dirty.value = true
+    dirty.value = false
   }
 
   async function setActive(id: string) {

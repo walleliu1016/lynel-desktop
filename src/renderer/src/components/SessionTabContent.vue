@@ -1,7 +1,7 @@
 <template>
   <div class="session-tab-content">
     <div v-if="loading" class="terminal-area-loading">
-      <div class="spinner" />
+      <div ref="spinnerEl" class="spinner-static" />
       <div class="loading-text">正在启动 Claude 会话…</div>
     </div>
     <XtermTerminal
@@ -22,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import XtermTerminal from './XtermTerminal.vue'
 import PermissionToast from './PermissionToast.vue'
 import { useSessionsStore } from '../stores/sessions'
@@ -38,6 +38,35 @@ const props = withDefaults(defineProps<{
 
 const sessions = useSessionsStore()
 const loading = ref(false)
+const spinnerEl = ref<HTMLElement | null>(null)
+let spinnerRaf = 0
+
+function runSpinner() {
+  if (!spinnerEl.value) return
+  let deg = 0
+  const step = () => {
+    if (!spinnerEl.value) return
+    deg = (deg + 6) % 360
+    spinnerEl.value.style.transform = `rotate(${deg}deg)`
+    spinnerRaf = requestAnimationFrame(step)
+  }
+  step()
+}
+
+function killSpinner() {
+  if (spinnerRaf) { cancelAnimationFrame(spinnerRaf); spinnerRaf = 0 }
+}
+
+watch(loading, (v) => {
+  if (v) {
+    killSpinner()
+    requestAnimationFrame(() => runSpinner())
+  } else {
+    killSpinner()
+  }
+})
+
+onBeforeUnmount(() => killSpinner())
 
 const permissionToastName = computed(() => {
   const req = sessions.hookPermissions[props.sessionId]
@@ -86,14 +115,15 @@ async function onTerminalData(data: string) {
   background: var(--bg-terminal-loading);
   pointer-events: none;
 }
-.spinner {
+.loading-text { font-size: 12px; }
+</style>
+
+<style>
+.spinner-static {
   width: 28px;
   height: 28px;
   border: 3px solid var(--border);
   border-top-color: var(--accent);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
 }
-.loading-text { font-size: 12px; }
-@keyframes spin { to { transform: rotate(360deg); } }
 </style>
