@@ -7,6 +7,9 @@
       </div>
     </div>
     <div class="titlebar-right">
+      <button v-if="props.showGuide" class="iconbtn" aria-label="使用指南" title="使用指南" @click="$emit('guide')">
+        <Icon name="help" :size="14" />
+      </button>
       <button class="iconbtn" aria-label="设置" title="设置" @click="$emit('settings')">
         <Icon name="settings" :size="14" />
       </button>
@@ -38,8 +41,8 @@ import { useWindowState } from '../composables/useWindowState'
 import { useSessionsStore } from '../stores/sessions'
 import Icon from './Icon.vue'
 
-const props = defineProps<{ username?: string }>()
-defineEmits<{ (e: 'settings'): void }>()
+const props = defineProps<{ username?: string; showGuide?: boolean }>()
+defineEmits<{ (e: 'settings'): void; (e: 'guide'): void }>()
 
 const { isMaximized, minimize, toggleMaximize, hide } = useWindowState()
 const sessions = useSessionsStore()

@@ -14,6 +14,7 @@
         <span class="tab-icon">
           <Icon v-if="tab.type === 'welcome'" name="bot" :size="12" />
           <Icon v-else-if="tab.type === 'settings'" name="settings" :size="12" />
+          <Icon v-else-if="tab.type === 'guide'" name="help" :size="12" />
           <Icon v-else-if="isRunning(tab.id)" name="loader" :size="12" class="spin" />
           <Icon v-else-if="isAwaitingPermission(tab.id)" name="warning" :size="12" class="pulse-icon" />
           <Icon v-else name="terminal" :size="12" />
