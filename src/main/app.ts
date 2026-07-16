@@ -752,14 +752,30 @@ export class App {
         session.register(session.newSession(id, workDir));
         getLogger().info(`[app:adoptSession] adopted sid=${id} workDir=${workDir}`);
       }
-      const list = this.withRecentLock(() => readRecentSessions());
-      const record = list.find((r) => r.sessionId === id);
-      if (record) {
-        const source: jsonl.TitleSource = record.userTitle ? 'user' : (record.aiTitle ? 'ai' : 'first_prompt');
-        const title = record.userTitle || record.aiTitle || record.firstPrompt || id.slice(0, 8);
-        return { title, source };
-      }
-      return null;
+      let title: string | null = null;
+      let source: jsonl.TitleSource = 'first_prompt';
+      this.withRecentLock(() => {
+        const list = readRecentSessions();
+        const record = list.find((r) => r.sessionId === id);
+        if (record) {
+          record.lastOpenedAt = Date.now();
+          source = record.userTitle ? 'user' : (record.aiTitle ? 'ai' : 'first_prompt');
+          title = record.userTitle || record.aiTitle || record.firstPrompt || id.slice(0, 8);
+        } else {
+          const project = workDir.split(/[\\/]/).filter(Boolean).pop() || workDir;
+          list.unshift({
+            sessionId: id,
+            workdir: workDir,
+            project,
+            aiTitle: '',
+            firstPrompt: '',
+            lastOpenedAt: Date.now(),
+            state: 'idle',
+          });
+        }
+        writeRecentSessions(list);
+      });
+      return title ? { title, source } : null;
     });
 
     ipcMain.handle('app:renameSession', async (_event, id: string, workDir: string, title: string) => {

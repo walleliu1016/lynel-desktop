@@ -104,6 +104,13 @@ function omit<T extends Record<string, any>>(obj: T, key: string): T {
   return rest as T
 }
 
+// lastOpenedAt 可能被旧代码写成秒级时间戳，统一归一化为毫秒
+function normalizeLastOpenedAt(v: number | undefined): number {
+  if (!v || v <= 0) return Date.now()
+  // 秒级时间戳 < 1e10（约 2286 年），毫秒级 > 1e12
+  return v < 10_000_000_000 ? v * 1000 : v
+}
+
 export const useSessionsStore = defineStore('sessions', () => {
   const list = ref<SessionMeta[]>([])
   const activeId = ref<string | null>(null)
@@ -222,7 +229,7 @@ export const useSessionsStore = defineStore('sessions', () => {
         id: record.sessionId,
         workdir: record.workdir,
         project: record.project,
-        mtime: Math.floor(record.lastOpenedAt / 1000),
+        mtime: Math.floor((normalizeLastOpenedAt(record.lastOpenedAt)) / 1000),
         msg_count: 0,
         first_prompt: record.firstPrompt,
         ai_title: record.aiTitle,

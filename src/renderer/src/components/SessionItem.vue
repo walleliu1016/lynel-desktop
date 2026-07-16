@@ -24,7 +24,7 @@
         <span v-if="stateLabel" class="state-tag" :class="state">{{ stateLabel }}</span>
       </div>
       <div class="row2">
-        <span class="meta" :title="`${projectName} · ${duration}`">{{ projectName }} · {{ duration }}</span>
+        <span class="meta" :title="`${projectName} · ${msgCount} · ${duration}`">{{ projectName }} · {{ msgCount }} · {{ duration }}</span>
       </div>
       <div v-if="eventText" class="event">{{ eventText }}</div>
     </div>
@@ -131,11 +131,16 @@ function copySessionId() {
 
 const title = computed(() => sessionDisplayTitle(props.meta))
 
+const msgCount = computed(() => {
+  const n = props.meta.msg_count || 0
+  return n ? `${n} 条消息` : '暂无消息'
+})
+
 const eventText = computed(() => {
   if (props.meta.lastEvent) {
     return `${props.meta.lastEvent.type} · ${props.meta.lastEvent.summary}`
   }
-  return sessionDisplayTitle(props.meta)
+  return ''
 })
 
 const projectName = computed(() => {
@@ -147,18 +152,22 @@ const projectName = computed(() => {
 })
 
 const duration = computed(() => {
+  const mtime = props.meta.mtime
+  if (!mtime || mtime <= 0) return '刚刚'
   const now = Date.now()
-  const ms = now - props.meta.mtime * 1000
+  const ms = now - mtime * 1000
+  if (ms < 0) return '刚刚'
   const sec = Math.floor(ms / 1000)
   if (sec < 60) return '刚刚'
   const min = Math.floor(sec / 60)
-  if (min < 60) return `${min}m 前`
+  if (min < 60) return `${min}m`
   const hr = Math.floor(min / 60)
-  if (hr < 24) return `${hr}h 前`
+  if (hr < 24) return `${hr}h`
   const day = Math.floor(hr / 24)
-  if (day < 30) return `${day}d 前`
+  if (day < 30) return `${day}d`
   const mon = Math.floor(day / 30)
-  return `${mon}mo 前`
+  if (mon > 12) return '很久以前'
+  return `${mon}mo`
 })
 
 const state = computed(() => sessions.state[props.meta.id] || 'idle')
