@@ -107,7 +107,7 @@ function selectChapter(key: string) {
   font-size: 13px;
   padding: 24px;
 }
-.markdown { max-width: 760px; color: var(--text-primary); font-size: 14px; line-height: 1.7; }
+.markdown { color: var(--text-primary); font-size: 14px; line-height: 1.7; }
 .markdown :deep(h1) { font-size: 22px; font-weight: 700; margin: 0 0 16px; }
 .markdown :deep(h2) { font-size: 17px; font-weight: 700; margin: 24px 0 10px; }
 .markdown :deep(h3) { font-size: 15px; font-weight: 650; margin: 18px 0 8px; }
@@ -148,4 +148,11 @@ function selectChapter(key: string) {
 }
 .markdown :deep(th) { background: var(--bg-panel); }
 .markdown :deep(hr) { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+.markdown :deep(img) {
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 4px 0 12px;
+  display: block;
+}
 </style>
