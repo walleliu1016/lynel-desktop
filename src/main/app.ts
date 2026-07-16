@@ -15,6 +15,7 @@ import { ChannelDispatcher } from './channels/registry.js';
 import { SSEChannel } from './channels/sse-channel.js';
 import { WeComChannel, WeComChannelConfig } from './channels/wecom-channel.js';
 import { LocalFileChannel } from './channels/localfile-channel.js';
+import { StateChannel } from './channels/state-channel.js';
 import { makeHookEvent, ProxyStageKind, OutputChannel } from './channels/channel.js';
 import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
 import { setNotchMousePassthrough, resizeNotchWindow, showNotchWindow, hideNotchWindow, getNotchWindow } from './notch-window.js';
@@ -80,6 +81,7 @@ function mapHookToKind(name: string): ProxyStageKind | null {
     case 'SessionStart': return 'session_start';
     case 'SessionEnd': return 'SessionEnd';
     case 'UserPromptSubmit': return 'prompt';
+    case 'Stop': return 'session_idle';
     default: return null;
   }
 }
@@ -210,6 +212,11 @@ export class App {
   private sseChannel = new SSEChannel();
   private wecomChannel = new WeComChannel({ enabled: false });
   private localFileChannel = new LocalFileChannel();
+  private stateChannel = new StateChannel({
+    onStableState: (id, state, persist = true) => this.setSessionState(id, state, persist),
+    onActivity: (id, activity) =>
+      getBus().emit('sessions:activity', JSON.stringify({ sessionId: id, ...activity })),
+  });
   // type → singleton 通道实例；与 settingsStore.channels 的 key 对齐（key === type）
   private channelInstances = new Map<string, OutputChannel>([
     ['wecom', this.wecomChannel],
@@ -225,6 +232,7 @@ export class App {
     this.dispatcher.register(this.sseChannel);
     this.dispatcher.register(this.wecomChannel);
     this.dispatcher.register(this.localFileChannel);
+    this.dispatcher.register(this.stateChannel);
   }
 
   setWindow(win: BrowserWindow): void {
@@ -253,8 +261,11 @@ export class App {
     this.settingsStore.set('lockout.until', 0);
   }
 
-  private setSessionState(id: string, state: string): void {
-    this.instanceStore.set(`sessions.${id}.state`, state);
+  private setSessionState(id: string, state: string, persist = true): void {
+    if (persist) {
+      this.instanceStore.set(`sessions.${id}.state`, state);
+    }
+    session.setState(id, state as import('./session.js').SessionState);
     getBus().emit('sessions:state:changed', id, state);
   }
 
@@ -507,7 +518,8 @@ export class App {
       // 通知灵动岛关闭权限 UI
       getBus().emit('permission:cancelled', JSON.stringify({ sessionId, toolName }));
       try {
-        this.dispatcher.dispatch(makeHookEvent('PermissionResolved', '', '', { id, decision, source }));
+        const workDir = session.lookup(sessionId)?.workDir ?? '';
+        this.dispatcher.dispatch(makeHookEvent('PermissionResolved', sessionId, workDir, { id, decision, source, toolName }));
       } catch {}
     });
     permissionBroker.onCancel((id) => {

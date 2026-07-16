@@ -1,7 +1,7 @@
 <template>
   <div
     class="session-item"
-    :class="{ active: isActive }"
+    :class="{ active: isActive, awaiting: state === 'awaiting_permission' }"
     @click="$emit('select')"
     @mouseenter="onEnter"
     @mouseleave="onLeave"
@@ -204,6 +204,16 @@ const stateLabel = computed(() => {
   border-color: var(--accent-soft-border);
   box-shadow: inset 4px 0 0 var(--accent);
 }
+.session-item.awaiting {
+  border-color: var(--status-error);
+  background: var(--status-error-soft);
+}
+.session-item.awaiting.active {
+  box-shadow: inset 4px 0 0 var(--status-error);
+}
+.session-item.awaiting .state-tag.awaiting_permission {
+  animation: pulse-opacity 1.2s ease-in-out infinite;
+}
 .cc-icon {
   width: 30px; height: 30px; border-radius: 9px;
   background: var(--accent-soft-bg);
@@ -285,5 +295,9 @@ const stateLabel = computed(() => {
 }
 .menu-item:hover {
   background: var(--session-item-hover-bg);
+}
+@keyframes pulse-opacity {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 </style>

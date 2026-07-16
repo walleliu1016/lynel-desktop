@@ -2,6 +2,7 @@ import { onMounted, onBeforeUnmount, watch } from 'vue'
 import { EventsOn } from './useElectron'
 import { useSessionsStore } from '../stores/sessions'
 import { showToast } from './useToast'
+import type { SessionState } from '../types/session'
 
 export function useEventStream() {
   const sessions = useSessionsStore()
@@ -23,10 +24,39 @@ export function useEventStream() {
       }
     }))
 
+    const ACTIVITY_PHASE_TO_STATE: Record<string, SessionState> = {
+      thinking: 'thinking',
+      working: 'running_tool',
+      streaming: 'streaming',
+      awaiting_permission: 'awaiting_permission',
+      idle: 'idle',
+    }
+
+    function isActiveGranularState(s: SessionState | undefined): boolean {
+      return s === 'thinking' || s === 'streaming' || s === 'running_tool'
+    }
+
+    // 主进程会话活动实时同步到 store，提供 thinking/streaming/running_tool 等粒度状态。
+    cleanups.push(EventsOn('sessions:activity', (payload: string) => {
+      try {
+        const data = JSON.parse(payload)
+        const mapped = ACTIVITY_PHASE_TO_STATE[data.phase]
+        if (mapped && data.sessionId) {
+          sessions.state = { ...sessions.state, [data.sessionId]: mapped }
+        }
+      } catch { /* 忽略格式错误 */ }
+    }))
+
     // 主进程会话状态变化实时同步到 store，保证标题栏运行中数量准确。
     cleanups.push(EventsOn('sessions:state:changed', (id: string, st: string) => {
-      const normalized = st === 'running' ? 'waiting' : st
-      sessions.state = { ...sessions.state, [id]: normalized as any }
+      const current = sessions.state[id]
+      let normalized: SessionState
+      if (st === 'running') {
+        normalized = isActiveGranularState(current) ? current! : 'waiting'
+      } else {
+        normalized = st as SessionState
+      }
+      sessions.state = { ...sessions.state, [id]: normalized }
     }))
 
     // 标题变化（ai-title / custom-title / 用户 rename）实时同步到 store。

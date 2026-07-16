@@ -5,7 +5,7 @@
         v-for="tab in tabs"
         :key="tab.id"
         class="tab"
-        :class="{ active: tab.id === activeId }"
+        :class="{ active: tab.id === activeId, awaiting: isAwaitingPermission(tab.id) }"
         @click="$emit('select', tab.id)"
         @mousedown="onMouseDown($event, tab.id)"
         @mouseenter="hoverId = tab.id"
@@ -15,7 +15,7 @@
           <Icon v-if="tab.type === 'welcome'" name="bot" :size="12" />
           <Icon v-else-if="tab.type === 'settings'" name="settings" :size="12" />
           <Icon v-else-if="isRunning(tab.id)" name="loader" :size="12" class="spin" />
-          <Icon v-else-if="isAwaitingPermission(tab.id)" name="shield-alert" :size="12" />
+          <Icon v-else-if="isAwaitingPermission(tab.id)" name="warning" :size="12" class="pulse-icon" />
           <Icon v-else name="terminal" :size="12" />
         </span>
         <span class="tab-title" :title="tooltipFor(tab)">{{ tab.title }}</span>
@@ -235,5 +235,26 @@ function onMouseDown(e: MouseEvent, id: string) {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.tab.awaiting .tab-icon {
+  color: var(--status-error);
+}
+
+.tab.awaiting:not(.active) {
+  background: var(--status-error-soft);
+}
+
+.tab.active.awaiting::before {
+  background: var(--status-error);
+}
+
+.pulse-icon {
+  animation: pulse-opacity 1s ease-in-out infinite;
+}
+
+@keyframes pulse-opacity {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 </style>
