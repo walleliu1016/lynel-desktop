@@ -37,11 +37,15 @@ export function useEventStream() {
     }
 
     // 主进程会话活动实时同步到 store，提供 thinking/streaming/running_tool 等粒度状态。
+    // 权限等待状态下不允许 activity 事件覆盖（PreToolUse/Notification 等 hook 可能
+    // 在 PermissionRequest 之后到达，通过 EventBus 直接发 activity，不走 ChannelDispatcher）。
     cleanups.push(EventsOn('sessions:activity', (payload: string) => {
       try {
         const data = JSON.parse(payload)
         const mapped = ACTIVITY_PHASE_TO_STATE[data.phase]
         if (mapped && data.sessionId) {
+          const current = sessions.state[data.sessionId]
+          if (current === 'awaiting_permission' && mapped !== 'awaiting_permission') return
           sessions.state = { ...sessions.state, [data.sessionId]: mapped }
         }
       } catch { /* 忽略格式错误 */ }

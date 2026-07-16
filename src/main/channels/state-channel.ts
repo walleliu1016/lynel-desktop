@@ -20,6 +20,9 @@ export class StateChannel implements OutputChannel {
   readonly id = 'state';
   readonly name = 'Session State';
 
+  // 跟踪各 session 当前是否有待处理权限，防止 response_complete 覆盖 awaiting_permission
+  private pendingPermission = new Set<string>();
+
   constructor(private callbacks: StateChannelCallbacks) {}
 
   isEnabled(): boolean {
@@ -48,7 +51,7 @@ export class StateChannel implements OutputChannel {
         this.callbacks.onActivity(sessionId, {
           phase: 'working',
           tool,
-          toolInput: input.command || input.file_path || input.pattern || input.url || input.query || '',
+          toolInput: String(input.command || input.file_path || input.pattern || input.url || input.query || ''),
         });
         break;
       }
@@ -57,11 +60,15 @@ export class StateChannel implements OutputChannel {
         break;
       case 'response_complete':
       case 'session_idle':
-      case 'SessionEnd':
+      case 'SessionEnd': {
+        // 如果有待处理的权限请求，不覆盖为 idle，保持 awaiting_permission
+        if (this.pendingPermission.has(sessionId)) break;
         this.callbacks.onStableState(sessionId, 'idle', true);
         this.callbacks.onActivity(sessionId, { phase: 'idle' });
         break;
+      }
       case 'PermissionRequest': {
+        this.pendingPermission.add(sessionId);
         const p = (payload || {}) as Record<string, unknown>;
         const tool = String(p.toolName || '');
         const input = typeof p.toolInput === 'object' && p.toolInput !== null ? (p.toolInput as Record<string, unknown>) : {};
@@ -69,11 +76,12 @@ export class StateChannel implements OutputChannel {
         this.callbacks.onActivity(sessionId, {
           phase: 'awaiting_permission',
           tool,
-          toolInput: input.command || input.file_path || input.pattern || input.url || input.query || '',
+          toolInput: String(input.command || input.file_path || input.pattern || input.url || input.query || ''),
         });
         break;
       }
       case 'PermissionResolved':
+        this.pendingPermission.delete(sessionId);
         this.callbacks.onStableState(sessionId, 'running', true);
         this.callbacks.onActivity(sessionId, { phase: 'thinking' });
         break;
