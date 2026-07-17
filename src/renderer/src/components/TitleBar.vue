@@ -83,7 +83,7 @@ const runningCount = computed(() => {
   -webkit-app-region: no-drag;
 }
 .titlebar-left { gap: 24px; }
-.brand-name { font-weight: 800; font-size: 18px; color: var(--accent); letter-spacing: -0.3px; }
+.brand-name { font-weight: 800; font-size: 18px; color: var(--accent); letter-spacing: -0.3px; transform: translateY(5px); }
 .brand-desktop { font-weight: 500; color: var(--status-error); }
 .states { display: flex; align-items: center; gap: 8px; }
 .pill {

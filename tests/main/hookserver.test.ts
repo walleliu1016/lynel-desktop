@@ -6,7 +6,7 @@ describe('hookserver', () => {
 
   beforeEach(async () => {
     server = new HookServer();
-    await server.start();
+    await server.start(0);
   });
 
   afterEach(async () => {

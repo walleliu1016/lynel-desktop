@@ -57,9 +57,9 @@ export class HookServer {
     this.onPermissionHandler = handler;
   }
 
-  start(): Promise<number> {
+  start(port = 17527): Promise<number> {
     return new Promise((resolve, reject) => {
-      const server = this.app.listen(17527, '127.0.0.1', () => {
+      const server = this.app.listen(port, '127.0.0.1', () => {
         const addr = server.address();
         this.port = typeof addr === 'object' && addr ? addr.port : 0;
         getLogger().info(`[hookserver] listening on http://127.0.0.1:${this.port}/hook`);
