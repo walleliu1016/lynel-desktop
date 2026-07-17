@@ -571,7 +571,7 @@ export class App {
 
     const hookTypes: Record<string, number> = {
       Notification: 120,
-      PermissionRequest: 300,
+      PermissionRequest: 7200,
       PreToolUse: 5,
       PostToolUse: 5,
       PostToolUseFailure: 5,
@@ -586,7 +586,7 @@ export class App {
 
     const hooksObj: Record<string, any> = {};
     for (const [name, timeout] of Object.entries(hookTypes)) {
-      hooksObj[name] = [{ hooks: [{ type: 'http', url: hookURL, timeout }] }];
+      hooksObj[name] = { hooks: [{ type: 'http', url: hookURL, timeout }] };
     }
 
     // 检查是否已正确配置，避免重复写入
