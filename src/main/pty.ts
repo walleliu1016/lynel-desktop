@@ -1,4 +1,4 @@
-import * as pty from 'node:pty';
+import * as pty from 'node-pty';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
