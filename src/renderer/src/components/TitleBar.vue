@@ -1,17 +1,6 @@
 <template>
   <div class="titlebar" :class="{ 'is-mac': isMac }">
     <div class="titlebar-left">
-      <div v-if="isMac" class="win-btns mac-btns">
-        <button class="win-btn mac-close" aria-label="隐藏到托盘" title="隐藏到托盘" @click="hide">
-          <Icon name="close" :size="12" />
-        </button>
-        <button class="win-btn mac-minimize" aria-label="最小化" title="最小化" @click="minimize">
-          <Icon name="minimize" :size="12" />
-        </button>
-        <button class="win-btn mac-maximize" :aria-label="isMaximized ? '还原' : '最大化'" :title="isMaximized ? '还原' : '最大化'" @click="toggleMaximize">
-          <Icon :name="isMaximized ? 'restore' : 'maximize'" :size="12" />
-        </button>
-      </div>
       <span class="brand-name"><span class="brand-lynel">Lynel</span> <span class="brand-desktop">Desktop</span></span>
       <div v-if="runningCount > 0" class="states">
         <span class="pill run"><i />{{ runningCount }} 个 Session 运行中</span>
@@ -139,14 +128,5 @@ const runningCount = computed(() => {
 .win-btn:active { background: rgba(0,0,0,0.10); }
 .win-btn.close:hover { background: var(--status-error); color: white; }
 .win-btn.close:active { background: var(--status-error); filter: brightness(0.9); }
-.is-mac .titlebar-left { gap: 16px; }
-.is-mac .mac-btns { gap: 8px; margin-right: 4px; }
-.is-mac .mac-btns .win-btn { width: 12px; height: 12px; border-radius: 50%; transition: transform 0.15s; color: rgba(0,0,0,0.35); }
-.is-mac .mac-btns .win-btn:hover { transform: scale(1.1); }
-.is-mac .mac-close { background: #ff5f57; }
-.is-mac .mac-close:hover { background: #ff5f57; color: rgba(0,0,0,0.65); }
-.is-mac .mac-minimize { background: #febc2e; }
-.is-mac .mac-minimize:hover { background: #febc2e; color: rgba(0,0,0,0.65); }
-.is-mac .mac-maximize { background: #28c840; }
-.is-mac .mac-maximize:hover { background: #28c840; color: rgba(0,0,0,0.65); }
+.is-mac .titlebar { padding-left: 80px; }
 </style>
