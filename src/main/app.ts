@@ -575,18 +575,14 @@ export class App {
       PreToolUse: 5,
       PostToolUse: 5,
       PostToolUseFailure: 5,
-      PostCompact: 5,
-      PreCompact: 5,
       SessionEnd: 5,
       Stop: 5,
-      SubagentStart: 5,
-      SubagentStop: 5,
       UserPromptSubmit: 5,
     };
 
     const hooksObj: Record<string, any> = {};
     for (const [name, timeout] of Object.entries(hookTypes)) {
-      hooksObj[name] = { hooks: [{ type: 'http', url: hookURL, timeout }] };
+      hooksObj[name] = [{ hooks: [{ type: 'http', url: hookURL, timeout }] }];
     }
 
     // 检查是否已正确配置，避免重复写入
