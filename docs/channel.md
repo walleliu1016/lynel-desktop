@@ -59,14 +59,14 @@ Claude PTY → apiproxy → ChannelDispatcher → WeComChannel
 
 inbound 消息按以下优先级选择目标 session：
 
-1. **显式绑定**：若该 `chatId` 通过 `#bind` / `#switch` 绑定过 session，且 session 仍存在、工作目录未变更，则路由到该 session。
+1. **显式绑定**：若该 `chatId` 通过 `/bind` / `/switch` 绑定过 session，且 session 仍存在、工作目录未变更，则路由到该 session。
 2. **最近 outbound**：若该 `chatId` 有过 outbound 发送记录（Claude 回复推送到企业微信），则路由到该 session。
 3. **最近活跃**：若以上都没有，则路由到该 `chatId` 最后产生过阶段事件的 session。
-4. 都没有时，回复企业微信提示未绑定，并指引使用 `#list` / `#bind`。
+4. 都没有时，回复企业微信提示未绑定，并指引使用 `/list` / `/bind`。
 
 ## 企业微信命令
 
-在企业微信聊天中发送 `#` 开头命令管理本地 session，详见 [`wecom-commands.md`](wecom-commands.md)。
+在企业微信聊天中发送 `/` 开头命令管理本地 session，详见 [`wecom-commands.md`](wecom-commands.md)。
 
 ## 实现文件
 
