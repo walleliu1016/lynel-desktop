@@ -874,12 +874,8 @@ export class App {
     ipcMain.handle('app:getSettings', () => this.settingsStore.store);
     ipcMain.handle('app:updateSettings', (_event, cfg: any) => {
       this.settingsStore.set(cfg);
-      const notchEnabled = (cfg?.notch_enabled ?? false) as boolean;
-      if (notchEnabled) {
-        showNotchWindow();
-      } else {
-        hideNotchWindow();
-      }
+      // 灵动岛开关已隐藏，强制保持关闭
+      hideNotchWindow();
     });
 
     ipcMain.handle('app:getWeComConfig', () => {

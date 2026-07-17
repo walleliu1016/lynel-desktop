@@ -140,7 +140,8 @@ if (!gotTheLock) {
     // 创建灵动岛浮动窗口
     const devUrl = mainWindow?.webContents.getURL() || 'http://localhost:5173/';
     const settingsStore = getStore('settings');
-    const notchEnabled = settingsStore.get('notch_enabled', false) as boolean;
+    // 灵动岛开关临时隐藏并强制关闭，避免设置异常导致窗口自动弹出
+    const notchEnabled = false;
     createNotchWindow(isDev, devUrl, path.join(__dirname, 'preload.js'), notchEnabled);
   });
 

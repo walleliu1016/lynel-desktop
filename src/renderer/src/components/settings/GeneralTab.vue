@@ -47,7 +47,7 @@
           <span class="switch-label">启动时最小化</span>
           <Switch v-model="cfg.minimize_on_start" @change="markDirty" />
         </label>
-        <label class="switch-row">
+        <label v-if="false" class="switch-row">
           <span class="switch-label">显示灵动岛</span>
           <Switch v-model="cfg.notch_enabled" @change="markDirty" />
         </label>
