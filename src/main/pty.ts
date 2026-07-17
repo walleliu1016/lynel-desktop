@@ -1,5 +1,8 @@
-import * as pty from 'node-pty';
+import * as pty from 'node:pty';
 import os from 'node:os';
+import path from 'node:path';
+import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { getLogger } from './log.js';
 
 export enum PtyMode {
@@ -20,6 +23,57 @@ export interface PtyProcess {
   write: (data: string) => void;
   resize: (cols: number, rows: number) => void;
   kill: (signal?: string) => void;
+}
+
+// macOS GUI 应用从 Finder 启动时 PATH 不完整，这里用用户的 login shell 解析完整环境变量，
+// 确保能找到通过 npm/homebrew 安装的 claude。
+let cachedDarwinEnv: Record<string, string> | null = null;
+
+function resolveShellEnv(): Record<string, string> {
+  if (os.platform() !== 'darwin') return {};
+  if (cachedDarwinEnv) return cachedDarwinEnv;
+
+  const shell = process.env.SHELL || '/bin/zsh';
+  const logger = getLogger();
+  logger.info(`[pty] resolving darwin shell env via ${shell}`);
+
+  try {
+    const out = execFileSync(shell, ['-ilc', 'env'], {
+      encoding: 'utf8',
+      timeout: 5000,
+      maxBuffer: 1024 * 1024,
+    });
+    const env: Record<string, string> = {};
+    for (const line of out.split('\n')) {
+      const idx = line.indexOf('=');
+      if (idx > 0) {
+        env[line.slice(0, idx)] = line.slice(idx + 1);
+      }
+    }
+    cachedDarwinEnv = env;
+    logger.info(`[pty] resolved PATH=${env.PATH?.slice(0, 120)}...`);
+    return env;
+  } catch (err: any) {
+    logger.warn('[pty] failed to resolve darwin shell env:', err?.message || err);
+    return {};
+  }
+}
+
+// 如果 bin 是相对路径（如 'claude'），在解析后的 PATH 中查找绝对路径，
+// 避免 node-pty 因 PATH 不完整找不到命令而直接退出。
+function resolveBin(bin: string, env: Record<string, string>): string {
+  if (path.isAbsolute(bin) || bin.includes(path.sep)) return bin;
+  const pathEnv = env.PATH || process.env.PATH || '';
+  for (const dir of pathEnv.split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir, bin);
+    try {
+      if (fs.statSync(candidate).isFile()) return candidate;
+    } catch {
+      // continue searching
+    }
+  }
+  return bin;
 }
 
 function buildCommand(
@@ -60,22 +114,39 @@ export function start(
   size: PtySize = { cols: 80, rows: 24 },
   extraArgs: string[] = [],
 ): PtyProcess {
-  const { file, args } = buildCommand(bin, sessionId, mode, env, extraArgs);
+  const darwinEnv = resolveShellEnv();
+  const resolvedBin = resolveBin(bin, darwinEnv);
+  const { file, args } = buildCommand(resolvedBin, sessionId, mode, env, extraArgs);
+  const mergedEnv = { ...process.env, ...darwinEnv, ...env } as { [key: string]: string };
 
-  getLogger().info(`[pty] spawn ${file} ${args.map((a) => `"${a}"`).join(' ')} (cwd=${cwd})`);
+  const logger = getLogger();
+  logger.info(`[pty] spawn ${file} ${args.map((a) => `"${a}"`).join(' ')} (cwd=${cwd})`);
 
   const proc = pty.spawn(file, args, {
     name: 'xterm-256color',
     cols: size.cols,
     rows: size.rows,
     cwd,
-    env: { ...process.env, ...env } as { [key: string]: string },
+    env: mergedEnv,
   });
+
+  let firstData: string | null = null;
 
   return {
     pid: proc.pid,
-    onData: (cb) => proc.onData(cb),
-    onExit: (cb) => proc.onExit(({ exitCode }) => cb(exitCode ?? 0)),
+    onData: (cb) => {
+      proc.onData((data) => {
+        if (firstData === null) {
+          firstData = data;
+          logger.info(`[pty] first data (sid=${sessionId.slice(0, 8)}...): ${data.slice(0, 200)}`);
+        }
+        cb(data);
+      });
+    },
+    onExit: (cb) => proc.onExit(({ exitCode }) => {
+      logger.info(`[pty] exited sid=${sessionId.slice(0, 8)}... code=${exitCode ?? 0} firstData=${firstData ? firstData.slice(0, 120) : 'none'}`);
+      cb(exitCode ?? 0);
+    }),
     write: (data) => proc.write(data),
     resize: (cols, rows) => proc.resize(cols, rows),
     kill: (signal) => {
