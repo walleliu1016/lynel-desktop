@@ -306,6 +306,39 @@ lynel-desktop/
 
 ---
 
+## 下载与安装
+
+### macOS
+
+由于应用未进行 Apple 代码签名，首次安装后 macOS 可能会提示「无法打开『Lynel Desktop』，因为无法验证开发者」或「文件已损坏」。这是预期行为，并非安装包损坏。
+
+解决方法：
+
+```bash
+# 移除 App 的隔离属性
+xattr -cr /Applications/Lynel\ Desktop.app
+```
+
+或者通过图形界面：
+
+1. 将 `Lynel Desktop.app` 拖入「应用程序」文件夹。
+2. 首次打开时若被拦截，进入「系统设置 → 隐私与安全性」。
+3. 在「安全性」下找到「已阻止使用『Lynel Desktop』」，点击「仍要打开」。
+
+之后即可正常启动，无需重复执行。
+
+### Windows / Linux
+
+- Windows：运行 `.exe` 安装程序，按向导完成安装。
+- Linux：下载 `.AppImage`，赋予可执行权限后双击运行：
+
+```bash
+chmod +x lynel-desktop-<version>-x64.AppImage
+./lynel-desktop-<version>-x64.AppImage
+```
+
+---
+
 ## 开发
 
 ### 前置依赖
