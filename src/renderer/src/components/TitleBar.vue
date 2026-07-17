@@ -1,7 +1,7 @@
 <template>
-  <div class="titlebar" :class="{ 'is-mac': isMac }">
+  <div class="titlebar" :class="{ 'is-mac': isMac, center: props.center }">
     <div class="titlebar-left">
-      <span class="brand-name"><span class="brand-lynel">Lynel</span> <span class="brand-desktop">Desktop</span></span>
+      <span v-if="!props.center" class="brand-name"><span class="brand-lynel">Lynel</span> <span class="brand-desktop">Desktop</span></span>
       <div v-if="runningCount > 0" class="states">
         <span class="pill run"><i />{{ runningCount }} 个 Session 运行中</span>
       </div>
@@ -32,6 +32,9 @@
         </button>
       </div>
     </div>
+    <span v-if="props.center" class="titlebar-brand-center">
+      <span class="brand-lynel">Lynel</span> <span class="brand-desktop">Desktop</span>
+    </span>
   </div>
 </template>
 
@@ -41,7 +44,7 @@ import { useWindowState } from '../composables/useWindowState'
 import { useSessionsStore } from '../stores/sessions'
 import Icon from './Icon.vue'
 
-const props = defineProps<{ username?: string; showGuide?: boolean }>()
+const props = defineProps<{ username?: string; showGuide?: boolean; center?: boolean }>()
 defineEmits<{ (e: 'settings'): void; (e: 'guide'): void }>()
 
 const { isMaximized, minimize, toggleMaximize, hide } = useWindowState()
@@ -65,25 +68,26 @@ const runningCount = computed(() => {
 
 <style scoped>
 .titlebar {
-  height: 56px;
+  height: 64px;
   background: var(--bg-titlebar);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 18px;
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
   --wails-draggable: drag;
   user-select: none;
+  position: relative;
 }
 .titlebar-left, .titlebar-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   -webkit-app-region: no-drag;
 }
-.titlebar-left { gap: 24px; }
-.brand-name { font-weight: 800; font-size: 18px; color: var(--accent); letter-spacing: -0.3px; transform: translateY(5px); }
+.titlebar-left { gap: 16px; }
+.brand-name { font-weight: 800; font-size: 18px; color: var(--accent); letter-spacing: -0.3px; transform: translateY(10px); }
 .brand-desktop { font-weight: 500; color: var(--status-error); }
 .states { display: flex; align-items: center; gap: 8px; }
 .pill {
@@ -128,5 +132,20 @@ const runningCount = computed(() => {
 .win-btn:active { background: rgba(0,0,0,0.10); }
 .win-btn.close:hover { background: var(--status-error); color: white; }
 .win-btn.close:active { background: var(--status-error); filter: brightness(0.9); }
-.is-mac .titlebar { padding-left: 80px; }
+.is-mac .titlebar { padding-left: 90px; }
+.titlebar.center .titlebar-left { visibility: hidden; }
+.titlebar-brand-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  margin-top: 10px;
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: -0.3px;
+  pointer-events: none;
+  user-select: none;
+}
+.titlebar-brand-center .brand-lynel { color: var(--accent); }
+.titlebar-brand-center .brand-desktop { font-weight: 500; color: var(--status-error); }
 </style>
