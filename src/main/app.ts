@@ -878,7 +878,7 @@ export class App {
     ipcMain.handle('app:getSettings', () => this.settingsStore.store);
     ipcMain.handle('app:updateSettings', (_event, cfg: any) => {
       this.settingsStore.set(cfg);
-      const notchEnabled = (cfg?.notch_enabled ?? true) as boolean;
+      const notchEnabled = (cfg?.notch_enabled ?? false) as boolean;
       if (notchEnabled) {
         showNotchWindow();
       } else {

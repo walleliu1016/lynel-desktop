@@ -139,7 +139,7 @@ if (!gotTheLock) {
     // 创建灵动岛浮动窗口
     const devUrl = mainWindow?.webContents.getURL() || 'http://localhost:5173/';
     const settingsStore = getStore('settings');
-    const notchEnabled = settingsStore.get('notch_enabled', true) as boolean;
+    const notchEnabled = settingsStore.get('notch_enabled', false) as boolean;
     createNotchWindow(isDev, devUrl, path.join(__dirname, 'preload.js'), notchEnabled);
   });
 
