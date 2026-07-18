@@ -46,7 +46,7 @@ export class WeComCardStore {
    */
   resolve(requestId: string, decision: 'allow' | 'deny', answers?: Record<string, string | string[]>): void {
     const state = this.states.get(requestId);
-    if (!state) return;
+    if (!state || state.status !== 'pending') return;
 
     state.status = 'resolved';
     state.decision = decision;
@@ -60,7 +60,7 @@ export class WeComCardStore {
    */
   cancel(requestId: string): void {
     const state = this.states.get(requestId);
-    if (!state) return;
+    if (!state || state.status !== 'pending') return;
 
     state.status = 'cancelled';
   }

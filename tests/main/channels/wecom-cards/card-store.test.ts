@@ -25,6 +25,16 @@ describe('WeComCardStore', () => {
     expect(store.get('unknown')).toBeUndefined();
   });
 
+  it('does not throw when resolving unknown request', () => {
+    expect(() => store.resolve('unknown', 'allow')).not.toThrow();
+    expect(store.get('unknown')).toBeUndefined();
+  });
+
+  it('does not throw when cancelling unknown request', () => {
+    expect(() => store.cancel('unknown')).not.toThrow();
+    expect(store.get('unknown')).toBeUndefined();
+  });
+
   it('marks resolved with decision and answers', () => {
     store.save('req-1', 1, 'chat-1', 'msgid-1');
     store.resolve('req-1', 'allow', { q1: 'A' });
