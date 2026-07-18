@@ -158,6 +158,13 @@ export class WeComChannel implements OutputChannel {
   private createSessionCallback: ((workDir: string, prompt: string) => Promise<{ id: string; workDir: string } | { error: string }>) | null = null;
   private cardStore = new WeComCardStore();
   private cardEventHandler?: WeComCardEventHandler;
+  private sessionTitleResolver: ((sessionId: string) => string) | null = null;
+  /** 多问题场景：暂存待发送的卡片数据 */
+  private pendingQuestionCards = new Map<string, {
+    cards: unknown[];
+    sessionId: string;
+    seq: number;
+  }>();
 
   constructor(cfg: WeComChannelConfig) {
     this.cfg = cfg;
@@ -165,6 +172,19 @@ export class WeComChannel implements OutputChannel {
 
   setCreateSessionHandler(handler: (workDir: string, prompt: string) => Promise<{ id: string; workDir: string } | { error: string }>): void {
     this.createSessionCallback = handler;
+  }
+
+  setSessionTitleResolver(resolver: (sessionId: string) => string): void {
+    this.sessionTitleResolver = resolver;
+  }
+
+  private getSessionTitle(sessionId: string): string | undefined {
+    if (!this.sessionTitleResolver) return undefined;
+    try {
+      return this.sessionTitleResolver(sessionId);
+    } catch {
+      return undefined;
+    }
   }
 
   isEnabled(): boolean {
@@ -322,7 +342,8 @@ export class WeComChannel implements OutputChannel {
       toolInput: p.toolInput,
     };
     const seq = p.seq ?? msgSeq;
-    const card = buildPermissionCard(req, seq);
+    const sessionTitle = this.getSessionTitle(event.sessionId);
+    const card = buildPermissionCard(req, seq, sessionTitle);
     const ok = await this.sendTemplateCard(card, event.sessionId, req.id, seq);
     if (!ok) {
       const content = this.formatPermissionRequest(
@@ -340,8 +361,10 @@ export class WeComChannel implements OutputChannel {
     const seq = p.seq ?? msgSeq;
     const input = p.toolInput as any;
     const reqId = p.id;
-    const card = buildAskQuestionCard(seq, input, reqId);
-    if (card === null) {
+    const questions = (input?.questions ?? []) as AskQuestion[];
+    const sessionTitle = this.getSessionTitle(event.sessionId);
+    const cards = buildAskQuestionCard(seq, input, reqId, sessionTitle, questions.length);
+    if (cards.length === 0) {
       // 问题列表为空，直接降级为 Markdown
       const content = this.formatAskUserQuestion(
         this.formatHeader(event, msgSeq),
@@ -351,8 +374,40 @@ export class WeComChannel implements OutputChannel {
       await this.sendContent(content, event.sessionId);
       return;
     }
-    const ok = await this.sendTemplateCard(card, event.sessionId, reqId, seq);
+
+    // 单问题：直接发送卡片
+    if (cards.length === 1) {
+      const ok = await this.sendTemplateCard(cards[0], event.sessionId, reqId, seq, 0);
+      if (!ok) {
+        const content = this.formatAskUserQuestion(
+          this.formatHeader(event, msgSeq),
+          input,
+          this.getSessionCmdArg(event.sessionId),
+        );
+        await this.sendContent(content, event.sessionId);
+      }
+      return;
+    }
+
+    // 多问题：先发文字预告（含选项），再发第一张卡片，其余等用户作答后依次发送
+    const header = this.formatHeader(event, msgSeq);
+    const questionsList = questions
+      .map((q, i) => {
+        const opts = q.options
+          .map((o) => `- ${o.label}${o.description ? ` - ${o.description}` : ''}`)
+          .join('\n');
+        return `**${i + 1}. ${q.question}**${q.multiSelect ? '（多选）' : ''}\n${opts}`;
+      })
+      .join('\n');
+    const intro = `${header}\n\n**Claude 向你提了 ${questions.length} 个问题：**\n${questionsList}\n\n将逐一发送卡片，请依次作答。`;
+    await this.sendContent(intro, event.sessionId);
+
+    // 暂存剩余卡片，发送第一张
+    this.pendingQuestionCards.set(reqId, { cards, sessionId: event.sessionId, seq });
+    logger.info('[wecom-channel] multi-question: stored %d pending cards for reqId=%s', cards.length, reqId);
+    const ok = await this.sendTemplateCard(cards[0], event.sessionId, reqId, seq, 0);
     if (!ok) {
+      this.pendingQuestionCards.delete(reqId);
       const content = this.formatAskUserQuestion(
         this.formatHeader(event, msgSeq),
         input,
@@ -367,19 +422,40 @@ export class WeComChannel implements OutputChannel {
     sessionId: string,
     requestId: string,
     seq: number,
+    qIdx?: number,
   ): Promise<boolean> {
     try {
+      logger.info('[wecom-channel] sendTemplateCard start: wsConnected=%s, chatId=%s, cardType=%s',
+        String(this.wsClient?.isConnected ?? false), this.cfg.chatId || '<none>',
+        (card as any)?.card_type);
       await this.ensureWebSocket();
-      if (!this.wsClient?.isConnected || !this.cfg.chatId) return false;
+      logger.info('[wecom-channel] sendTemplateCard after ensure: wsConnected=%s',
+        String(this.wsClient?.isConnected ?? false));
+      if (!this.wsClient?.isConnected || !this.cfg.chatId) {
+        logger.warn('[wecom-channel] sendTemplateCard abort: ws=%s chatId=%s',
+          String(this.wsClient?.isConnected ?? false), String(this.cfg.chatId));
+        return false;
+      }
 
-      const result = await this.wsClient.sendMessage(this.cfg.chatId, {
-        msgtype: 'template_card',
+      const body = {
+        msgtype: 'template_card' as const,
         template_card: card,
-      });
+      };
+      logger.info('[wecom-channel] sendTemplateCard sending to chatId=%s', this.cfg.chatId);
+      const result = await this.wsClient.sendMessage(this.cfg.chatId, body);
+      logger.info('[wecom-channel] sendTemplateCard result: %s', JSON.stringify(result).slice(0, 200));
 
       const msgid = result?.body?.msgid ?? result?.headers?.req_id;
       if (msgid) {
-        this.cardStore.save(requestId, seq, this.cfg.chatId, msgid, sessionId);
+        if (qIdx !== undefined) {
+          // 多卡片场景：第一张卡片初始化 state，后续追加 msgid
+          if (qIdx === 0) {
+            this.cardStore.save(requestId, seq, this.cfg.chatId, msgid, sessionId);
+          }
+          this.cardStore.addQuestionMsgid(requestId, qIdx, msgid);
+        } else {
+          this.cardStore.save(requestId, seq, this.cfg.chatId, msgid, sessionId);
+        }
       }
       return true;
     } catch (err) {
@@ -473,6 +549,26 @@ export class WeComChannel implements OutputChannel {
         async (frame: TemplateCardEventFrame, card: unknown) => {
           if (!this.wsClient) throw new Error('WSClient 未连接');
           await this.wsClient.updateTemplateCard(frame, card);
+        },
+        {
+          onQuestionProgress: async (requestId, nextQIdx, chatId) => {
+            logger.info('[wecom-channel] onQuestionProgress: reqId=%s nextQIdx=%d', requestId, nextQIdx);
+            const pending = this.pendingQuestionCards.get(requestId);
+            if (!pending) {
+              logger.warn('[wecom-channel] onQuestionProgress: no pending cards for reqId=%s', requestId);
+              return;
+            }
+            if (nextQIdx >= pending.cards.length) {
+              logger.warn('[wecom-channel] onQuestionProgress: nextQIdx=%d >= cards.length=%d', nextQIdx, pending.cards.length);
+              return;
+            }
+            logger.info('[wecom-channel] onQuestionProgress: sending card %d/%d', nextQIdx + 1, pending.cards.length);
+            await this.sendTemplateCard(pending.cards[nextQIdx], pending.sessionId, requestId, pending.seq, nextQIdx);
+          },
+          onAllQuestionsDone: async (requestId, chatId) => {
+            this.pendingQuestionCards.delete(requestId);
+            await this.sendWeComReply(chatId, '已收集全部回答，已回复 Claude。');
+          },
         },
       );
     }

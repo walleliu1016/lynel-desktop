@@ -172,7 +172,9 @@ describe('WeComChannel template cards', () => {
         chatid: 'chat-1',
         event: {
           eventtype: 'template_card_event',
-          event_key: 'wecom:allow:req-listener',
+          template_card_event: {
+            event_key: 'wecom:allow:req-listener',
+          },
         },
       },
     });

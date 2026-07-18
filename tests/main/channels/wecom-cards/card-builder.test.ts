@@ -28,6 +28,7 @@ describe('buildPermissionCard', () => {
         desc: 'BashCommand（会话#3）',
       },
       sub_title_text: '命令/路径：ls',
+      task_id: 'req-1',
       button_list: [
         { text: '允许', style: 1, key: 'wecom:allow:req-1' },
         { text: '拒绝', style: 4, key: 'wecom:deny:req-1' },
@@ -69,16 +70,31 @@ describe('buildPermissionCard', () => {
     expect(buildPermissionCard(makePermissionRequest(undefined), 1).sub_title_text).toBeUndefined();
     expect(buildPermissionCard(makePermissionRequest(null), 1).sub_title_text).toBeUndefined();
   });
+
+  it('传入 sessionTitle 时 source.desc 使用会话标题', () => {
+    const req = makePermissionRequest({ command: 'ls' });
+    const card = buildPermissionCard(req, 3, '项目优化讨论');
+    expect(card).toMatchObject({
+      source: { desc: '项目优化讨论', desc_color: 0 },
+    });
+  });
+
+  it('未传 sessionTitle 时 source.desc 默认为 Lynel', () => {
+    const card = buildPermissionCard(makePermissionRequest({ command: 'ls' }), 3);
+    expect(card).toMatchObject({
+      source: { desc: 'Lynel', desc_color: 0 },
+    });
+  });
 });
 
 describe('buildAskQuestionCard', () => {
-  it('questions 为空数组时返回 null', () => {
-    expect(buildAskQuestionCard(3, { questions: [] })).toBeNull();
-    expect(buildAskQuestionCard(3, {})).toBeNull();
+  it('questions 为空数组时返回空数组', () => {
+    expect(buildAskQuestionCard(3, { questions: [] })).toEqual([]);
+    expect(buildAskQuestionCard(3, {})).toEqual([]);
   });
 
-  it('单问题单选构建 vote_interaction，并包含完整的 checkbox 与提交按钮结构', () => {
-    const card = buildAskQuestionCard(3, {
+  it('单问题单选构建 vote_interaction，标题为问题文本，描述含单选标识', () => {
+    const cards = buildAskQuestionCard(3, {
       questions: [
         {
           header: '框架选择',
@@ -89,13 +105,15 @@ describe('buildAskQuestionCard', () => {
       ],
     });
 
-    expect(card).toMatchObject({
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
       card_type: 'vote_interaction',
       source: { desc: 'Lynel', desc_color: 0 },
       main_title: {
-        title: '框架选择',
-        desc: '用哪个测试框架？',
+        title: '用哪个测试框架？',
+        desc: '单选',
       },
+      task_id: 'seq-3-0',
       checkbox: {
         question_key: 'wecom:answer:seq-3:0',
         mode: 0,
@@ -111,8 +129,8 @@ describe('buildAskQuestionCard', () => {
     });
   });
 
-  it('多选问题构建 multiple_interaction，select_list 结构正确', () => {
-    const card = buildAskQuestionCard(3, {
+  it('单问题多选构建 vote_interaction，mode=1，标题为问题文本', () => {
+    const cards = buildAskQuestionCard(3, {
       questions: [
         {
           header: '依赖选择',
@@ -123,19 +141,23 @@ describe('buildAskQuestionCard', () => {
       ],
     });
 
-    expect(card).toMatchObject({
-      card_type: 'multiple_interaction',
-      main_title: { title: '依赖选择' },
-      select_list: [
-        {
-          question_key: 'wecom:answer:seq-3:0',
-          title: '依赖选择',
-          option_list: [
-            { id: 'wecom:opt:seq-3:0:0', text: 'eslint' },
-            { id: 'wecom:opt:seq-3:0:1', text: 'prettier' },
-          ],
-        },
-      ],
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
+      card_type: 'vote_interaction',
+      source: { desc: 'Lynel', desc_color: 0 },
+      main_title: {
+        title: '安装哪些依赖？',
+        desc: '多选',
+      },
+      task_id: 'seq-3-0',
+      checkbox: {
+        question_key: 'wecom:answer:seq-3:0',
+        mode: 1,
+        option_list: [
+          { id: 'wecom:opt:seq-3:0:0', text: 'eslint' },
+          { id: 'wecom:opt:seq-3:0:1', text: 'prettier' },
+        ],
+      },
       submit_button: {
         text: '提交',
         key: 'wecom:submit:seq-3',
@@ -143,40 +165,31 @@ describe('buildAskQuestionCard', () => {
     });
   });
 
-  it('多个问题构建 multiple_interaction，标题使用默认文案', () => {
-    const card = buildAskQuestionCard(3, {
+  it('多个问题构建多张 vote_interaction 卡片，每问题一张', () => {
+    const cards = buildAskQuestionCard(3, {
       questions: [
         { question: 'Q1', multiSelect: false, options: [{ label: 'A' }, { label: 'B' }] },
         { question: 'Q2', multiSelect: true, options: [{ label: 'C' }, { label: 'D' }] },
       ],
-    });
+    }, undefined, undefined, 2);
 
-    expect(card).toMatchObject({
-      card_type: 'multiple_interaction',
-      main_title: { title: 'Claude 提问（2个问题）' },
-      select_list: [
-        {
-          question_key: 'wecom:answer:seq-3:0',
-          title: 'Q1',
-          option_list: [
-            { id: 'wecom:opt:seq-3:0:0', text: 'A' },
-            { id: 'wecom:opt:seq-3:0:1', text: 'B' },
-          ],
-        },
-        {
-          question_key: 'wecom:answer:seq-3:1',
-          title: 'Q2',
-          option_list: [
-            { id: 'wecom:opt:seq-3:1:0', text: 'C' },
-            { id: 'wecom:opt:seq-3:1:1', text: 'D' },
-          ],
-        },
-      ],
+    expect(cards).toHaveLength(2);
+    // 第一张：单选 mode=0，标题带"问题 1/2"前缀
+    expect(cards[0]).toMatchObject({
+      card_type: 'vote_interaction',
+      main_title: { title: '问题 1/2：Q1', desc: '单选' },
+      checkbox: { question_key: 'wecom:answer:seq-3:0', mode: 0 },
+    });
+    // 第二张：多选 mode=1，标题带"问题 2/2"前缀
+    expect(cards[1]).toMatchObject({
+      card_type: 'vote_interaction',
+      main_title: { title: '问题 2/2：Q2', desc: '多选' },
+      checkbox: { question_key: 'wecom:answer:seq-3:1', mode: 1 },
     });
   });
 
   it('传入 requestId 时所有 key 使用 requestId 替代 seq', () => {
-    const card = buildAskQuestionCard(3, {
+    const cards = buildAskQuestionCard(3, {
       questions: [
         {
           header: '确认',
@@ -187,8 +200,10 @@ describe('buildAskQuestionCard', () => {
       ],
     }, 'custom-req-123');
 
-    expect(card).toMatchObject({
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
       card_type: 'vote_interaction',
+      task_id: 'custom-req-123-0',
       checkbox: {
         question_key: 'wecom:answer:custom-req-123:0',
         option_list: [
@@ -200,5 +215,31 @@ describe('buildAskQuestionCard', () => {
         key: 'wecom:submit:custom-req-123',
       },
     });
+  });
+
+  it('传入 sessionTitle 时单问题卡片 source.desc 使用会话标题', () => {
+    const cards = buildAskQuestionCard(3, {
+      questions: [
+        { question: 'Q1', multiSelect: false, options: [{ label: 'A' }] },
+      ],
+    }, undefined, '我的会话');
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
+      source: { desc: '我的会话', desc_color: 0 },
+    });
+  });
+
+  it('传入 sessionTitle 时多问题每张卡片 source.desc 都使用会话标题', () => {
+    const cards = buildAskQuestionCard(3, {
+      questions: [
+        { question: 'Q1', multiSelect: false, options: [{ label: 'A' }] },
+        { question: 'Q2', multiSelect: false, options: [{ label: 'B' }] },
+      ],
+    }, undefined, '项目讨论');
+
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toMatchObject({ source: { desc: '项目讨论' } });
+    expect(cards[1]).toMatchObject({ source: { desc: '项目讨论' } });
   });
 });

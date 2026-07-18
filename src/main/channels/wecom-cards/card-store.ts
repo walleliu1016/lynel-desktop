@@ -8,10 +8,14 @@ export interface CardState {
   seq: number;
   chatId: string;
   msgid: string;
+  /** 多卡片场景下每道题的 msgid，按问题索引 */
+  questionMsgids?: string[];
   sessionId?: string;
   status: 'pending' | 'resolved' | 'cancelled';
   decision?: 'allow' | 'deny';
   answers?: Record<string, string | string[]>;
+  /** 多卡片场景下已收集到的部分答案（按问题索引） */
+  questionAnswers?: Map<number, string | string[]>;
   sentAt: number;
 }
 
@@ -21,7 +25,6 @@ export class WeComCardStore {
 
   /**
    * 保存新发送的卡片状态，初始为 pending。
-   * 若同一 requestId 已存在，将直接覆盖（调用方需保证 requestId 唯一）。
    */
   save(requestId: string, seq: number, chatId: string, msgid: string, sessionId?: string): void {
     this.states.set(requestId, {
@@ -33,6 +36,42 @@ export class WeComCardStore {
       status: 'pending',
       sentAt: Date.now(),
     });
+  }
+
+  /**
+   * 追加多卡片场景下某道题的 msgid（按问题索引）。
+   */
+  addQuestionMsgid(requestId: string, qIdx: number, msgid: string): void {
+    const state = this.states.get(requestId);
+    if (!state) return;
+    if (!state.questionMsgids) state.questionMsgids = [];
+    state.questionMsgids[qIdx] = msgid;
+  }
+
+  /**
+   * 记录某道题的部分答案。返回 true 表示所有问题均已作答。
+   */
+  recordAnswer(requestId: string, qIdx: number, totalQuestions: number, answer: string | string[]): boolean {
+    const state = this.states.get(requestId);
+    if (!state || state.status !== 'pending') return false;
+    if (!state.questionAnswers) state.questionAnswers = new Map();
+    state.questionAnswers.set(qIdx, answer);
+    return state.questionAnswers.size >= totalQuestions;
+  }
+
+  /**
+   * 获取累积的全部答案，将问题文本映射到答案值。
+   */
+  getAccumulatedAnswers(requestId: string, questions: Array<{ question: string }>): Record<string, string | string[]> {
+    const state = this.states.get(requestId);
+    const result: Record<string, string | string[]> = {};
+    if (!state?.questionAnswers) return result;
+    for (const [qIdx, answer] of state.questionAnswers) {
+      if (qIdx < questions.length) {
+        result[questions[qIdx].question] = answer;
+      }
+    }
+    return result;
   }
 
   /**

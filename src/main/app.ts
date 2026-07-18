@@ -281,6 +281,11 @@ export class App {
   async init(): Promise<void> {
     this.applyChannelConfigs();
     session.setOnRemove((id) => this.wecomChannel.clearSessionMappings(id));
+    this.wecomChannel.setSessionTitleResolver((sessionId: string) => {
+      const list = this.withRecentLock(() => readRecentSessions());
+      const r = list.find((x) => x.sessionId === sessionId);
+      return r ? (r.userTitle || r.aiTitle || r.firstPrompt || r.project || sessionId.slice(0, 8)) : sessionId.slice(0, 8);
+    });
     this.wecomChannel.setCreateSessionHandler(async (workDir, prompt) => {
       try {
         const stat = await fs.promises.stat(workDir);
