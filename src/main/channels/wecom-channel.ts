@@ -214,6 +214,12 @@ export class WeComChannel implements OutputChannel {
 
   send(event: ProxyStageEvent): void {
     logger.info(`[wecom-channel] receive event ${event.kind} (sid=${event.sessionId.slice(0, 8)}...)`);
+
+    // 无论频道是否启用，会话结束时都应清理该会话的卡片状态
+    if (event.kind === 'SessionEnd') {
+      this.cardStore.cancelBySession(event.sessionId);
+    }
+
     if (!this.isEnabled()) {
       logger.info('[wecom-channel] disabled, skip');
       return;
@@ -234,11 +240,6 @@ export class WeComChannel implements OutputChannel {
 
     const msgSeq = (this.sessionSeqCounters.get(event.sessionId) ?? 0) + 1;
     this.sessionSeqCounters.set(event.sessionId, msgSeq);
-
-    // 会话结束时清理该会话所有待处理的模板卡片状态，避免 stale 卡片残留
-    if (event.kind === 'SessionEnd') {
-      this.cardStore.cancelBySession(event.sessionId);
-    }
 
     // 权限请求/提问使用模板卡片，失败后再降级为 Markdown
     if (event.kind === 'PermissionRequest') {
