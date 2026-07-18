@@ -7,19 +7,19 @@ import type { PermissionRequest } from '../../permission-broker.js';
 
 export const EVENT_KEY_PREFIX = 'wecom';
 
-export interface AskOption {
+interface AskOption {
   label: string;
   description?: string;
 }
 
-export interface AskQuestion {
+interface AskQuestion {
   header?: string;
   question: string;
   multiSelect?: boolean;
   options: AskOption[];
 }
 
-export interface AskInput {
+interface AskInput {
   questions?: AskQuestion[];
 }
 
@@ -27,22 +27,24 @@ export interface AskInput {
  * 提取工具输入的预览文本，用于在权限卡片中展示命令或路径。
  */
 function formatToolInput(toolInput: unknown): string {
-  if (typeof toolInput !== 'object' || toolInput === null) {
+  if (toolInput === undefined || toolInput === null) {
     return '';
   }
 
-  const input = toolInput as Record<string, unknown>;
+  if (typeof toolInput === 'object') {
+    const input = toolInput as Record<string, unknown>;
 
-  if ('command' in input && input.command !== undefined) {
-    return String(input.command);
-  }
+    if ('command' in input && input.command !== undefined) {
+      return String(input.command);
+    }
 
-  if ('file_path' in input && input.file_path !== undefined) {
-    return String(input.file_path);
-  }
+    if ('file_path' in input && input.file_path !== undefined) {
+      return String(input.file_path);
+    }
 
-  if ('path' in input && input.path !== undefined) {
-    return String(input.path);
+    if ('path' in input && input.path !== undefined) {
+      return String(input.path);
+    }
   }
 
   return JSON.stringify(toolInput).slice(0, 200);
@@ -58,7 +60,7 @@ export function buildPermissionCard(req: PermissionRequest, seq: number): unknow
     card_type: 'button_interaction',
     source: { desc: 'Lynel', desc_color: 0 },
     main_title: {
-      title: '🔒 权限请求',
+      title: '权限请求',
       desc: `${req.toolName}（会话#${seq}）`,
     },
     sub_title_text: preview ? `命令/路径：${preview}` : undefined,
@@ -83,7 +85,7 @@ export function buildAskQuestionCard(seq: number, input: AskInput, requestId?: s
     return {
       card_type: 'vote_interaction',
       main_title: {
-        title: `❓ ${singleQuestion.header ?? 'Claude 提问（1个问题）'}`,
+        title: singleQuestion.header ?? 'Claude 提问（1个问题）',
         desc: singleQuestion.question,
       },
       checkbox: {
@@ -104,7 +106,7 @@ export function buildAskQuestionCard(seq: number, input: AskInput, requestId?: s
   return {
     card_type: 'multiple_interaction',
     main_title: {
-      title: `❓ ${singleQuestion?.header ?? `Claude 提问（${questions.length}个问题）`}`,
+      title: singleQuestion?.header ?? `Claude 提问（${questions.length}个问题）`,
     },
     select_list: questions.map((q, qIdx) => ({
       question_key: `${EVENT_KEY_PREFIX}:answer:${rid}:${qIdx}`,

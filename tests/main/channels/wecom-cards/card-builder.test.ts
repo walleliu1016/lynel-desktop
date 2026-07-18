@@ -5,26 +5,68 @@ import {
 } from '../../../../src/main/channels/wecom-cards/card-builder.js';
 import type { PermissionRequest } from '../../../../src/main/permission-broker.js';
 
+function makePermissionRequest(toolInput?: unknown): PermissionRequest {
+  return {
+    id: 'req-1',
+    sessionId: 'sid-1',
+    workDir: '/wd',
+    toolName: 'BashCommand',
+    toolInput,
+  };
+}
+
 describe('buildPermissionCard', () => {
-  it('builds button_interaction card with allow/deny keys', () => {
-    const req: PermissionRequest = {
-      id: 'req-1',
-      sessionId: 'sid-1',
-      workDir: '/wd',
-      toolName: 'BashCommand',
-      toolInput: { command: 'ls' },
-    };
+  it('构建 button_interaction 卡片，包含来源、标题、描述与允许/拒绝按钮', () => {
+    const req = makePermissionRequest({ command: 'ls' });
     const card = buildPermissionCard(req, 3);
-    expect(card.card_type).toBe('button_interaction');
-    expect(card.main_title?.title).toContain('权限请求');
-    expect(card.button_list).toHaveLength(2);
-    expect(card.button_list![0].key).toBe('wecom:allow:req-1');
-    expect(card.button_list![1].key).toBe('wecom:deny:req-1');
+
+    expect(card).toMatchObject({
+      card_type: 'button_interaction',
+      source: { desc: 'Lynel', desc_color: 0 },
+      main_title: {
+        title: '权限请求',
+        desc: 'BashCommand（会话#3）',
+      },
+      sub_title_text: '命令/路径：ls',
+      button_list: [
+        { text: '允许', style: 1, key: 'wecom:allow:req-1' },
+        { text: '拒绝', style: 4, key: 'wecom:deny:req-1' },
+      ],
+    });
+  });
+
+  it('toolInput 包含 file_path 时使用路径作为预览', () => {
+    const req = makePermissionRequest({ file_path: '/etc/hosts' });
+    const card = buildPermissionCard(req, 1);
+    expect(card.sub_title_text).toBe('命令/路径：/etc/hosts');
+  });
+
+  it('toolInput 包含 path 时使用路径作为预览', () => {
+    const req = makePermissionRequest({ path: '/tmp' });
+    const card = buildPermissionCard(req, 1);
+    expect(card.sub_title_text).toBe('命令/路径：/tmp');
+  });
+
+  it('toolInput 为普通对象且无命令/路径时回退为 JSON 预览', () => {
+    const req = makePermissionRequest({ args: ['-la'] });
+    const card = buildPermissionCard(req, 1);
+    expect(card.sub_title_text).toBe('命令/路径：{"args":["-la"]}');
+  });
+
+  it('toolInput 为非对象原始值时使用 JSON.stringify 作为预览', () => {
+    const req = makePermissionRequest('ls');
+    const card = buildPermissionCard(req, 1);
+    expect(card.sub_title_text).toBe('命令/路径："ls"');
+  });
+
+  it('toolInput 为 undefined 或 null 时不展示副标题', () => {
+    expect(buildPermissionCard(makePermissionRequest(undefined), 1).sub_title_text).toBeUndefined();
+    expect(buildPermissionCard(makePermissionRequest(null), 1).sub_title_text).toBeUndefined();
   });
 });
 
 describe('buildAskQuestionCard', () => {
-  it('builds vote_interaction for single-select single question', () => {
+  it('单问题单选构建 vote_interaction，并包含完整的 checkbox 与提交按钮结构', () => {
     const card = buildAskQuestionCard(3, {
       questions: [
         {
@@ -35,34 +77,116 @@ describe('buildAskQuestionCard', () => {
         },
       ],
     });
-    expect(card.card_type).toBe('vote_interaction');
-    expect(card.main_title?.title).toBe('❓ 框架选择');
-    expect(card.checkbox?.option_list).toHaveLength(2);
+
+    expect(card).toMatchObject({
+      card_type: 'vote_interaction',
+      main_title: {
+        title: '框架选择',
+        desc: '用哪个测试框架？',
+      },
+      checkbox: {
+        question_key: 'wecom:answer:seq-3:0',
+        mode: 0,
+        option_list: [
+          { id: 'wecom:opt:seq-3:0:0', text: 'Vitest' },
+          { id: 'wecom:opt:seq-3:0:1', text: 'Jest' },
+        ],
+      },
+      submit_button: {
+        text: '提交',
+        key: 'wecom:submit:seq-3',
+      },
+    });
   });
 
-  it('builds multiple_interaction for multi-select', () => {
+  it('多选问题构建 multiple_interaction，select_list 结构正确', () => {
     const card = buildAskQuestionCard(3, {
       questions: [
         {
+          header: '依赖选择',
           question: '安装哪些依赖？',
           multiSelect: true,
           options: [{ label: 'eslint' }, { label: 'prettier' }],
         },
       ],
     });
-    expect(card.card_type).toBe('multiple_interaction');
-    expect(card.select_list?.[0].option_list).toHaveLength(2);
-    expect(card.submit_button?.key).toBe('wecom:submit:seq-3');
+
+    expect(card).toMatchObject({
+      card_type: 'multiple_interaction',
+      main_title: { title: '依赖选择' },
+      select_list: [
+        {
+          question_key: 'wecom:answer:seq-3:0',
+          title: '依赖选择',
+          option_list: [
+            { id: 'wecom:opt:seq-3:0:0', text: 'eslint' },
+            { id: 'wecom:opt:seq-3:0:1', text: 'prettier' },
+          ],
+        },
+      ],
+      submit_button: {
+        text: '提交',
+        key: 'wecom:submit:seq-3',
+      },
+    });
   });
 
-  it('builds multiple_interaction for multiple questions', () => {
+  it('多个问题构建 multiple_interaction，标题使用默认文案', () => {
     const card = buildAskQuestionCard(3, {
       questions: [
         { question: 'Q1', multiSelect: false, options: [{ label: 'A' }, { label: 'B' }] },
         { question: 'Q2', multiSelect: true, options: [{ label: 'C' }, { label: 'D' }] },
       ],
     });
-    expect(card.card_type).toBe('multiple_interaction');
-    expect(card.select_list).toHaveLength(2);
+
+    expect(card).toMatchObject({
+      card_type: 'multiple_interaction',
+      main_title: { title: 'Claude 提问（2个问题）' },
+      select_list: [
+        {
+          question_key: 'wecom:answer:seq-3:0',
+          title: 'Q1',
+          option_list: [
+            { id: 'wecom:opt:seq-3:0:0', text: 'A' },
+            { id: 'wecom:opt:seq-3:0:1', text: 'B' },
+          ],
+        },
+        {
+          question_key: 'wecom:answer:seq-3:1',
+          title: 'Q2',
+          option_list: [
+            { id: 'wecom:opt:seq-3:1:0', text: 'C' },
+            { id: 'wecom:opt:seq-3:1:1', text: 'D' },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('传入 requestId 时所有 key 使用 requestId 替代 seq', () => {
+    const card = buildAskQuestionCard(3, {
+      questions: [
+        {
+          header: '确认',
+          question: '是否继续？',
+          multiSelect: false,
+          options: [{ label: '是' }, { label: '否' }],
+        },
+      ],
+    }, 'custom-req-123');
+
+    expect(card).toMatchObject({
+      card_type: 'vote_interaction',
+      checkbox: {
+        question_key: 'wecom:answer:custom-req-123:0',
+        option_list: [
+          { id: 'wecom:opt:custom-req-123:0:0' },
+          { id: 'wecom:opt:custom-req-123:0:1' },
+        ],
+      },
+      submit_button: {
+        key: 'wecom:submit:custom-req-123',
+      },
+    });
   });
 });
