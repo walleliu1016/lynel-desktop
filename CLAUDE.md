@@ -127,7 +127,10 @@ npm run dist:linux
 - `src/main/channels/channel.ts` 定义 `OutputChannel` 接口与 `ProxyStageEvent`（含 `PermissionRequest`、`PermissionResolved` 事件类型）。
 - `src/main/channels/registry.ts` 的 `ChannelDispatcher` 注册多个 channel，逐个 dispatch 并隔离错误；支持事件级分发。
 - `src/main/channels/sse-channel.ts`：向订阅了 session 的 Express Response 写 `text/event-stream`。
-- `src/main/channels/wecom-channel.ts`：动态加载 `@wecom/wecom-openclaw-plugin`，将阶段数据发送到企业微信；`tool_use` 消息展示命令/file_path 详情；处理 PermissionRequest 卡片推送与 `#allow/#deny` 命令。
+- `src/main/channels/wecom-channel.ts`：动态加载 `@wecom/wecom-openclaw-plugin`，将阶段数据发送到企业微信；`tool_use` 消息展示命令/file_path 详情；处理 PermissionRequest 模板卡片推送与 `#allow/#deny` 命令。
+- `src/main/channels/wecom-cards/card-builder.ts`：构造 WeCom `button_interaction` / `vote_interaction` 模板卡片；多问题场景每问题独立卡片，`task_id` 带 `-{qIdx}` 后缀确保唯一。
+- `src/main/channels/wecom-cards/card-store.ts`：卡片状态存储（`pending`/`resolved`/`cancelled`），支持多卡片 `questionMsgids` 与部分答案累积 `questionAnswers`。
+- `src/main/channels/wecom-cards/event-handler.ts`：解析 `template_card_event` 回调，驱动权限仲裁器完成审批或问答提交；多问题场景通过 `onQuestionProgress`/`onAllQuestionsDone` 回调实现逐题发送。
 - `src/main/channels/localfile-channel.ts`：将阶段事件写入本地 JSONL/JSON 文件，过滤流式 text/thinking 碎片。
 
 ### 9. 权限仲裁器与灵动岛
@@ -141,6 +144,61 @@ npm run dist:linux
 - 灵动岛窗口初始为鼠标穿透模式（`setIgnoreMouseEvents(true, {forward: true})`），hover 时关闭穿透展开面板，leave 后恢复穿透。
 - resize 后需强制重算鼠标命中区域：`setIgnoreMouseEvents(true, {forward: true})` → `setIgnoreMouseEvents(false)`。
 - 灵动岛通过 `SetNotchSize(w, h)` IPC 动态调整窗口尺寸，AskUserQuestion 场景下根据内容高度自适应。
+
+### 10. 企业微信模板卡片交互
+
+**卡片类型对应关系：**
+
+| 权限/提问类型 | WeCom 卡片类型 | 说明 |
+|---|---|---|
+| 普通权限请求 (Bash/Write/Read) | `button_interaction` | 允许/拒绝两个按钮，`event_key` 为 `wecom:allow:<id>` / `wecom:deny:<id>` |
+| AskUserQuestion 单选 | `vote_interaction` mode=0 | radio 单选，submit 提交 |
+| AskUserQuestion 多选 | `vote_interaction` mode=1 | checkbox 多选，submit 提交 |
+| 卡片更新 (已处理/已选择) | `text_notice` | 通过 `wsClient.updateTemplateCard` 更新原卡片 |
+
+**event_key 解析规则：**
+
+- 格式：`wecom:<action>:<requestId>`，`action` 为 `allow`/`deny`/`submit`/`answer`
+- `submit_button.key` 始终为 `wecom:submit:<requestId>`，问题索引从 `selected_items.question_key` 提取
+- `question_key` 格式：`wecom:answer:<requestId>:<qIdx>`
+- `option_id` 格式：`wecom:opt:<requestId>:<qIdx>:<optIdx>`
+
+**多问题逐题发送流程：**
+
+1. `sendAskQuestionCard` 检测 `questions.length > 1`：
+   - 先发 Markdown 文本预告（含所有问题与选项）
+   - 调用 `buildAskQuestionCard` 生成 N 张 `vote_interaction` 卡片（每张 `task_id` 带 `-{qIdx}` 后缀确保唯一）
+   - 将 N 张卡片存入 `pendingQuestionCards` Map
+   - 发送第一张 (qIdx=0)
+2. 用户提交第 i 张卡片 → `template_card_event` → `WeComCardEventHandler.handle()`
+3. `buildAnswers` 解析 `selected_items` 提取答案，`extractQuestionIndex` 提取 `qIdx`
+4. `cardStore.recordAnswer(requestId, qIdx, total, answer)` 累积部分答案
+5. 未收齐 → `onQuestionProgress(requestId, qIdx+1, chatId)` → `WeComChannel` 发送下一张卡片
+6. 全部收齐 → `onAllQuestionsDone(requestId, chatId)` → `permissionBroker.resolve` 累积答案 → 通知"已收集全部回答，已回复 Claude"
+
+**卡片降级策略：**
+
+- `sendTemplateCard` 失败 → 回退为 Markdown 文本发送
+- 单问题 `questions.length === 0` → 直接降级为 Markdown
+- `wsClient` 未连接或 `chatId` 缺失 → 返回 false，触发降级
+
+**重复点击防护：**
+
+- `WeComCardStore` 记录 requestId → status（`pending`/`resolved`/`cancelled`）
+- `handle()` 入口检查 `state.status !== 'pending'` → 回复"该请求已被处理"
+- `permissionBroker.resolve` Map 保护，重复 resolve 返回 false
+
+**会话标题注入：**
+
+- `WeComChannel.setSessionTitleResolver` 接受回调
+- `app.ts` 注入 `readRecentSessions()` 查找逻辑：`userTitle > aiTitle > firstPrompt > project > sessionId[:8]`
+- `card-builder` 的 `source.desc` 使用会话标题替代固定 "Lynel"
+
+**关键约束：**
+
+- `task_id` 全局唯一，多卡片必须追加 `-{qIdx}` 后缀（否则企业微信返回 42014）
+- `submit_button.key` 可跨卡片相同（仅用作 event_key 回调值）
+- `vote_interaction` 的 `question_key` / `option_id` 必须与 `submit_button.key` 共享同一 `EVENT_KEY_PREFIX`
 
 ---
 
