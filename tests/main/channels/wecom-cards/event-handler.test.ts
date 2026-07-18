@@ -43,6 +43,26 @@ describe('WeComCardEventHandler', () => {
     expect(store.get('req-1')?.decision).toBe('allow');
   });
 
+  it('ignores extra segments in event key', async () => {
+    const p = permissionBroker.wait({
+      id: 'req-1',
+      sessionId: 'sid-1',
+      workDir: '/wd',
+      toolName: 'BashCommand',
+      toolInput: {},
+    });
+    store.save('req-1', 1, 'chat-1', 'msgid-1', 'sid-1');
+
+    await handler.handle({
+      body: {
+        event: { eventtype: 'template_card_event', event_key: 'wecom:allow:req-1:extra' },
+        chatid: 'chat-1',
+      },
+    } as any);
+
+    await expect(p).resolves.toEqual({ decision: 'allow', answers: undefined });
+  });
+
   it('resolves deny decision', async () => {
     const p = permissionBroker.wait({
       id: 'req-1',

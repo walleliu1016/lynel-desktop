@@ -116,7 +116,7 @@ export class WeComCardEventHandler {
       return undefined;
     }
     const action = parts[1];
-    const requestId = parts.slice(2).join(':');
+    const requestId = parts[2];
     if (!action || !requestId) {
       return undefined;
     }
