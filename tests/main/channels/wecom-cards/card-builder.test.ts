@@ -47,6 +47,12 @@ describe('buildPermissionCard', () => {
     expect(card.sub_title_text).toBe('命令/路径：/tmp');
   });
 
+  it('command 为空字符串时回退为 JSON 预览', () => {
+    const req = makePermissionRequest({ command: '', args: ['-la'] });
+    const card = buildPermissionCard(req, 1);
+    expect(card.sub_title_text).toBe('命令/路径：{"command":"","args":["-la"]}');
+  });
+
   it('toolInput 为普通对象且无命令/路径时回退为 JSON 预览', () => {
     const req = makePermissionRequest({ args: ['-la'] });
     const card = buildPermissionCard(req, 1);
@@ -66,6 +72,11 @@ describe('buildPermissionCard', () => {
 });
 
 describe('buildAskQuestionCard', () => {
+  it('questions 为空数组时返回 null', () => {
+    expect(buildAskQuestionCard(3, { questions: [] })).toBeNull();
+    expect(buildAskQuestionCard(3, {})).toBeNull();
+  });
+
   it('单问题单选构建 vote_interaction，并包含完整的 checkbox 与提交按钮结构', () => {
     const card = buildAskQuestionCard(3, {
       questions: [

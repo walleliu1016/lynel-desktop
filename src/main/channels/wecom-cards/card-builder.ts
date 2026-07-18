@@ -34,16 +34,12 @@ function formatToolInput(toolInput: unknown): string {
   if (typeof toolInput === 'object') {
     const input = toolInput as Record<string, unknown>;
 
-    if ('command' in input && input.command !== undefined) {
+    if (input.command) {
       return String(input.command);
     }
 
-    if ('file_path' in input && input.file_path !== undefined) {
-      return String(input.file_path);
-    }
-
-    if ('path' in input && input.path !== undefined) {
-      return String(input.path);
+    if (input.file_path || input.path) {
+      return String(input.file_path || input.path);
     }
   }
 
@@ -78,6 +74,12 @@ export function buildPermissionCard(req: PermissionRequest, seq: number): unknow
 export function buildAskQuestionCard(seq: number, input: AskInput, requestId?: string): unknown {
   const rid = requestId ?? `seq-${seq}`;
   const questions = input.questions ?? [];
+
+  // 防护：questions 为空数组时构建的卡片无效，直接返回 null
+  if (questions.length === 0) {
+    return null;
+  }
+
   const singleQuestion = questions.length === 1 ? questions[0] : undefined;
   const isSingleVote = singleQuestion !== undefined && !singleQuestion.multiSelect;
 
