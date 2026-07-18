@@ -21,6 +21,7 @@ export class WeComCardStore {
 
   /**
    * 保存新发送的卡片状态，初始为 pending。
+   * 若同一 requestId 已存在，将直接覆盖（调用方需保证 requestId 唯一）。
    */
   save(requestId: string, seq: number, chatId: string, msgid: string, sessionId?: string): void {
     this.states.set(requestId, {
