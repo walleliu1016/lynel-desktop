@@ -8,7 +8,7 @@ import { getLogger } from '../log.js';
 import { permissionBroker, PermissionRequest } from '../permission-broker.js';
 import { buildPermissionCard, buildAskQuestionCard } from './wecom-cards/card-builder.js';
 import { WeComCardStore } from './wecom-cards/card-store.js';
-import { WeComCardEventHandler } from './wecom-cards/event-handler.js';
+import { WeComCardEventHandler, type TemplateCardEventFrame } from './wecom-cards/event-handler.js';
 
 const logger = getLogger().scope('wecom-channel');
 
@@ -441,13 +441,7 @@ export class WeComChannel implements OutputChannel {
         }
       });
 
-      wsClient.on('event.template_card_event', (frame: any) => {
-        try {
-          this.handleCardEvent(frame);
-        } catch (err) {
-          logger.error('[wecom-channel] failed to handle card event:', err);
-        }
-      });
+      this.registerCardEventListener(wsClient);
 
       wsClient.on('error', (err: any) => {
         clearTimeout(timer);
@@ -470,7 +464,7 @@ export class WeComChannel implements OutputChannel {
       this.cardEventHandler = new WeComCardEventHandler(
         this.cardStore,
         (chatId, text) => this.sendWeComReply(chatId, text),
-        async (frame, card) => {
+        async (frame: TemplateCardEventFrame, card: unknown) => {
           if (!this.wsClient) throw new Error('WSClient 未连接');
           await this.wsClient.updateTemplateCard(frame, card);
         },
@@ -479,9 +473,11 @@ export class WeComChannel implements OutputChannel {
     return this.cardEventHandler;
   }
 
-  private handleCardEvent(frame: any): void {
-    this.getCardEventHandler().handle(frame).catch((err) => {
-      logger.error('[wecom-channel] card event handler error:', err);
+  private registerCardEventListener(wsClient: any): void {
+    wsClient.on('event.template_card_event', (frame: any) => {
+      this.getCardEventHandler()
+        .handle(frame)
+        .catch((err) => logger.error('[wecom-channel] failed to handle card event:', err));
     });
   }
 

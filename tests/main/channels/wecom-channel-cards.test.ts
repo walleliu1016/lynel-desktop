@@ -137,4 +137,47 @@ describe('WeComChannel template cards', () => {
 
     expect(sendContentSpy).toHaveBeenCalledWith(expect.stringContaining('/allow'), expect.any(String));
   });
+
+  it('registers template_card_event listener and resolves allow decision', async () => {
+    const onMock = vi.fn();
+    const updateTemplateCardMock = vi.fn().mockResolvedValue(undefined);
+    (channel as any).wsClient = {
+      isConnected: true,
+      sendMessage: sendMessageMock,
+      updateTemplateCard: updateTemplateCardMock,
+      on: onMock,
+    };
+
+    // 触发 listener 注册
+    (channel as any).registerCardEventListener((channel as any).wsClient);
+
+    const templateCardHandler = onMock.mock.calls.find(
+      ([event]) => event === 'event.template_card_event',
+    )?.[1];
+    expect(templateCardHandler).toBeDefined();
+
+    const p = permissionBroker.wait({
+      id: 'req-listener',
+      sessionId: 'sid-1',
+      workDir: '/wd',
+      toolName: 'BashCommand',
+      toolInput: {},
+    });
+
+    // 模拟卡片已发送，手动写入 store 状态
+    (channel as any).cardStore.save('req-listener', 1, 'chat-1', 'msgid-listener', 'sid-1');
+
+    templateCardHandler({
+      body: {
+        chatid: 'chat-1',
+        event: {
+          eventtype: 'template_card_event',
+          event_key: 'wecom:allow:req-listener',
+        },
+      },
+    });
+
+    await expect(p).resolves.toEqual({ decision: 'allow', answers: undefined });
+    await vi.waitFor(() => expect(updateTemplateCardMock).toHaveBeenCalled());
+  });
 });

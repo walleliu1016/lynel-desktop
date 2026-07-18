@@ -50,7 +50,7 @@ export class WeComCardEventHandler {
   constructor(
     private store: WeComCardStore,
     private sendReply: (chatId: string, text: string) => Promise<void>,
-    private updateCard: (frame: any, card: any) => Promise<void>,
+    private updateCard: (frame: TemplateCardEventFrame, card: unknown) => Promise<void>,
   ) {}
 
   async handle(frame: TemplateCardEventFrame): Promise<void> {
