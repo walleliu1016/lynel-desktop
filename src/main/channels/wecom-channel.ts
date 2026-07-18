@@ -545,7 +545,7 @@ export class WeComChannel implements OutputChannel {
     if (!this.cardEventHandler) {
       this.cardEventHandler = new WeComCardEventHandler(
         this.cardStore,
-        (chatId, text) => this.sendWeComReply(chatId, text),
+        (chatId, text, requestId) => this.sendCardReplyWithHeader(chatId, text, requestId),
         async (frame: TemplateCardEventFrame, card: unknown) => {
           if (!this.wsClient) throw new Error('WSClient 未连接');
           await this.wsClient.updateTemplateCard(frame, card);
@@ -565,9 +565,16 @@ export class WeComChannel implements OutputChannel {
             logger.info('[wecom-channel] onQuestionProgress: sending card %d/%d', nextQIdx + 1, pending.cards.length);
             await this.sendTemplateCard(pending.cards[nextQIdx], pending.sessionId, requestId, pending.seq, nextQIdx);
           },
-          onAllQuestionsDone: async (requestId, chatId) => {
+          onAllQuestionsDone: async (requestId, chatId, answers, questions) => {
             this.pendingQuestionCards.delete(requestId);
-            await this.sendWeComReply(chatId, '已收集全部回答，已回复 Claude。');
+            const lines = questions.map((q) => {
+              const answer = answers[q.question];
+              const value = Array.isArray(answer) ? answer.join('、') : answer;
+              const tag = q.multiSelect ? '（多选）' : '';
+              return `- **${q.question}**${tag}：${value}`;
+            });
+            const summary = `已收集全部回答，已回复 Claude：\n${lines.join('\n')}`;
+            await this.sendCardReplyWithHeader(chatId, summary, requestId);
           },
         },
       );
@@ -624,19 +631,44 @@ export class WeComChannel implements OutputChannel {
       return;
     }
 
+    // 通过引用消息中的会话头部直接路由，无需 /to
+    const quoteRouting = this.resolveSessionFromQuote(body);
+    if (quoteRouting) {
+      if ('error' in quoteRouting) {
+        this.sendWeComReplyWithHeader(chatId, quoteRouting.error, quoteRouting.id).catch((err) =>
+          logger.error('[wecom-channel] failed to send reply:', err),
+        );
+        return;
+      }
+      const s = session.lookup(quoteRouting.id);
+      if (!s || !s.process) {
+        this.sendWeComReplyWithHeader(chatId, `引用的会话 ${quoteRouting.id.slice(0, 8)}... 不存在或未启动。`, quoteRouting.id).catch((err) =>
+          logger.error('[wecom-channel] failed to send reply:', err),
+        );
+        return;
+      }
+      logger.info(`[wecom-channel] inbound message from ${chatId}, routed by quote to session ${quoteRouting.id.slice(0, 8)}...`);
+      try {
+        session.send(quoteRouting.id, text);
+      } catch (err) {
+        logger.error('[wecom-channel] failed to forward quote-routed message to session:', err);
+      }
+      return;
+    }
+
     // 优先用持久化映射，其次内存映射，最后最近活跃 session
     const mapping = getMapping(chatId);
     let sessionId: string | undefined;
     if (mapping) {
       const s = session.lookup(mapping.sessionId);
       if (!s) {
-        this.sendWeComReply(chatId, '绑定的会话已不存在，请发送 /bind 重新绑定。').catch((err) =>
+        this.sendWeComReplyWithHeader(chatId, '绑定的会话已不存在，请发送 /bind 重新绑定。', mapping.sessionId).catch((err) =>
           logger.error('[wecom-channel] failed to send reply:', err),
         );
         return;
       }
       if (s.workDir !== mapping.workDir) {
-        this.sendWeComReply(chatId, '绑定会话的工作目录已变更，请发送 /bind 重新绑定。').catch((err) =>
+        this.sendWeComReplyWithHeader(chatId, '绑定会话的工作目录已变更，请发送 /bind 重新绑定。', mapping.sessionId).catch((err) =>
           logger.error('[wecom-channel] failed to send reply:', err),
         );
         return;
@@ -656,7 +688,7 @@ export class WeComChannel implements OutputChannel {
     const s = session.lookup(sessionId);
     if (!s || !s.process) {
       logger.info(`[wecom-channel] session ${sessionId.slice(0, 8)}... not found or no process`);
-      this.sendWeComReply(chatId, `会话 ${sessionId.slice(0, 8)}... 不存在或未启动，请重新绑定。`).catch((err) =>
+      this.sendWeComReplyWithHeader(chatId, `会话 ${sessionId.slice(0, 8)}... 不存在或未启动，请重新绑定。`, sessionId).catch((err) =>
         logger.error('[wecom-channel] failed to send reply:', err),
       );
       return;
@@ -684,6 +716,39 @@ export class WeComChannel implements OutputChannel {
       const joined = parts.join('\n').trim();
       return joined || undefined;
     }
+    return undefined;
+  }
+
+  /**
+   * 从引用消息内容中解析会话标识。
+   * 优先匹配完整头部格式，其次单独匹配会话序号。
+   */
+  private resolveSessionFromQuote(body: any): { id: string; workDir: string } | { error: string } | undefined {
+    const quoteText = body?.quote?.text?.content;
+    if (typeof quoteText !== 'string') {
+      return undefined;
+    }
+
+    // 优先匹配完整头部：> **project** · 会话#N · `xxxxxxxx`
+    const headerMatch = quoteText.match(/> \*\*[^*]+\*\* · 会话#(\d+) · `([a-z0-9]{8})`/);
+    if (headerMatch) {
+      const resolved = resolveSessionArg(headerMatch[1]);
+      if ('error' in resolved) {
+        return { error: `引用消息中的会话无效：${resolved.error}` };
+      }
+      return resolved;
+    }
+
+    // 兼容只引用到部分头部的情况
+    const idxMatch = quoteText.match(/会话#(\d+)/);
+    if (idxMatch) {
+      const resolved = resolveSessionArg(idxMatch[1]);
+      if ('error' in resolved) {
+        return { error: `引用消息中的会话无效：${resolved.error}` };
+      }
+      return resolved;
+    }
+
     return undefined;
   }
 
@@ -839,6 +904,8 @@ export class WeComChannel implements OutputChannel {
           '| `/pending` | 查看待处理权限/提问 |\n' +
           '| `/answer <会话序号/sessionId> <答案>` `/回答` | 回答 Claude 提问 |\n' +
           '| `/help` | 显示此帮助信息 |\n\n' +
+          '**快捷操作**\n\n' +
+          '引用任意一条机器人发送的消息并直接输入内容，会自动转发到该消息所属的会话，无需 `/to`。\n\n' +
           '**使用示例**\n\n' +
           '1. 查看会话并绑定\n' +
           '```\n/list\n/bind 1\n```\n\n' +
@@ -876,9 +943,9 @@ export class WeComChannel implements OutputChannel {
       const label = this.getSessionListIndex(resolved.id);
       const ok = permissionBroker.resolveBySession(resolved.id, isAllow ? 'allow' : 'deny', 'wecom');
       if (ok) {
-        await this.sendWeComReply(chatId, `已${isAllow ? '批准' : '拒绝'} ${label} 的权限请求`);
+        await this.sendWeComReplyWithHeader(chatId, `已${isAllow ? '批准' : '拒绝'} ${label} 的权限请求`, resolved.id);
       } else {
-        await this.sendWeComReply(chatId, `${label} 当前没有待处理的权限请求。`);
+        await this.sendWeComReplyWithHeader(chatId, `${label} 当前没有待处理的权限请求。`, resolved.id);
       }
       return;
     }
@@ -897,9 +964,9 @@ export class WeComChannel implements OutputChannel {
     const label = this.getSessionListIndex(target.request.sessionId);
     const ok = permissionBroker.resolve(target.id, isAllow ? 'allow' : 'deny', 'wecom');
     if (!ok) {
-      await this.sendWeComReply(chatId, `${label} 的权限请求已被处理。`);
+      await this.sendWeComReplyWithHeader(chatId, `${label} 的权限请求已被处理。`, target.request.sessionId);
     } else {
-      await this.sendWeComReply(chatId, `已${isAllow ? '批准' : '拒绝'} ${label} 的权限请求`);
+      await this.sendWeComReplyWithHeader(chatId, `已${isAllow ? '批准' : '拒绝'} ${label} 的权限请求`, target.request.sessionId);
     }
   }
 
@@ -929,25 +996,25 @@ export class WeComChannel implements OutputChannel {
 
     const entry = permissionBroker.getPendingBySession(resolved.id);
     if (!entry) {
-      await this.sendWeComReply(chatId, `${label} 当前没有待处理的权限请求或提问。`);
+      await this.sendWeComReplyWithHeader(chatId, `${label} 当前没有待处理的权限请求或提问。`, resolved.id);
       return;
     }
 
     if (entry.request.toolName !== 'AskUserQuestion') {
       permissionBroker.resolve(entry.id, 'allow', 'wecom');
-      await this.sendWeComReply(chatId, `已批准 ${label} 的权限请求`);
+      await this.sendWeComReplyWithHeader(chatId, `已批准 ${label} 的权限请求`, resolved.id);
       return;
     }
 
     const questions = this.parseAskQuestions(entry.request.toolInput);
     const result = this.parseAskAnswer(questions, answerText);
     if ('error' in result) {
-      await this.sendWeComReply(chatId, `回答格式错误：${result.error}`);
+      await this.sendWeComReplyWithHeader(chatId, `回答格式错误：${result.error}`, resolved.id);
       return;
     }
 
     permissionBroker.resolve(entry.id, 'allow', 'wecom', result.answers);
-    await this.sendWeComReply(chatId, `已提交 ${label} 的回答`);
+    await this.sendWeComReplyWithHeader(chatId, `已提交 ${label} 的回答`, resolved.id);
   }
 
   private async handlePendingCommand(chatId: string): Promise<void> {
@@ -995,7 +1062,7 @@ export class WeComChannel implements OutputChannel {
 
     const s = session.lookup(resolved.id);
     if (!s || !s.process) {
-      await this.sendWeComReply(chatId, `会话 ${resolved.id.slice(0, 8)}... 不存在或未启动。`);
+      await this.sendWeComReplyWithHeader(chatId, `会话 ${resolved.id.slice(0, 8)}... 不存在或未启动。`, resolved.id);
       return;
     }
 
@@ -1005,7 +1072,7 @@ export class WeComChannel implements OutputChannel {
       // 不发送成功提示，避免与 Claude 的回复消息重复
     } catch (err) {
       logger.error('[wecom-channel] failed to forward /to message to session:', err);
-      await this.sendWeComReply(chatId, `发送失败：${err instanceof Error ? err.message : String(err)}`);
+      await this.sendWeComReplyWithHeader(chatId, `发送失败：${err instanceof Error ? err.message : String(err)}`, resolved.id);
     }
   }
 
@@ -1036,6 +1103,19 @@ export class WeComChannel implements OutputChannel {
     }
   }
 
+  /** 发送卡片相关反馈，自动带上 requestId 对应会话的头部。 */
+  private async sendCardReplyWithHeader(chatId: string, text: string, requestId?: string): Promise<void> {
+    const sessionId = requestId ? this.cardStore.get(requestId)?.sessionId : undefined;
+    await this.sendWeComReplyWithHeader(chatId, text, sessionId);
+  }
+
+  /** 发送文本反馈，自动带上指定会话的头部（如果找得到会话）。 */
+  private async sendWeComReplyWithHeader(chatId: string, text: string, sessionId?: string): Promise<void> {
+    const header = sessionId ? this.formatSessionHeader(sessionId) : undefined;
+    const fullText = header ? `${header}\n${text}` : text;
+    await this.sendWeComReply(chatId, fullText);
+  }
+
   private getSessionListIndex(sessionId: string): string {
     const all = session.list();
     const idx = all.findIndex((s) => s.id === sessionId);
@@ -1049,11 +1129,17 @@ export class WeComChannel implements OutputChannel {
     return idx >= 0 ? String(idx + 1) : sessionId.slice(0, 8);
   }
 
-  private formatHeader(event: ProxyStageEvent, msgSeq: number): string {
-    const project = path.basename(event.workDir);
-    const sid = event.sessionId.slice(0, 8);
-    const sessionIdx = this.getSessionListIndex(event.sessionId);
-    return `> **${project}** · ${sessionIdx} · 第${msgSeq}轮 · \`${sid}\``;
+  private formatSessionHeader(sessionId: string): string | undefined {
+    const s = session.lookup(sessionId);
+    if (!s) return undefined;
+    const project = path.basename(s.workDir);
+    const sid = sessionId.slice(0, 8);
+    const sessionIdx = this.getSessionListIndex(sessionId);
+    return `> **${project}** · ${sessionIdx} · \`${sid}\``;
+  }
+
+  private formatHeader(event: ProxyStageEvent, _msgSeq: number): string {
+    return this.formatSessionHeader(event.sessionId) ?? '';
   }
 
   private formatToolInput(p: any): string {

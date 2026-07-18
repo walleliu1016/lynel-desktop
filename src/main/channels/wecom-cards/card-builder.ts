@@ -61,7 +61,7 @@ export function buildPermissionCard(
   sessionTitle?: string,
 ): unknown {
   const preview = formatToolInput(req.toolInput);
-  const sourceDesc = sessionTitle || 'Lynel';
+  const sourceDesc = sessionTitle ? `项目：${sessionTitle}` : 'Lynel';
 
   return {
     card_type: 'button_interaction',
@@ -95,7 +95,7 @@ export function buildAskQuestionCard(
 ): unknown[] {
   const rid = requestId ?? `seq-${seq}`;
   const questions = input.questions ?? [];
-  const sourceDesc = sessionTitle || 'Lynel';
+  const sourceDesc = sessionTitle ? `项目：${sessionTitle}` : 'Lynel';
   const count = total ?? questions.length;
 
   if (questions.length === 0) {

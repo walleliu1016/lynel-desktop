@@ -71,11 +71,11 @@ describe('buildPermissionCard', () => {
     expect(buildPermissionCard(makePermissionRequest(null), 1).sub_title_text).toBeUndefined();
   });
 
-  it('传入 sessionTitle 时 source.desc 使用会话标题', () => {
+  it('传入 sessionTitle 时 source.desc 使用项目前缀', () => {
     const req = makePermissionRequest({ command: 'ls' });
     const card = buildPermissionCard(req, 3, '项目优化讨论');
     expect(card).toMatchObject({
-      source: { desc: '项目优化讨论', desc_color: 0 },
+      source: { desc: '项目：项目优化讨论', desc_color: 0 },
     });
   });
 
@@ -217,7 +217,7 @@ describe('buildAskQuestionCard', () => {
     });
   });
 
-  it('传入 sessionTitle 时单问题卡片 source.desc 使用会话标题', () => {
+  it('传入 sessionTitle 时单问题卡片 source.desc 使用项目前缀', () => {
     const cards = buildAskQuestionCard(3, {
       questions: [
         { question: 'Q1', multiSelect: false, options: [{ label: 'A' }] },
@@ -226,11 +226,11 @@ describe('buildAskQuestionCard', () => {
 
     expect(cards).toHaveLength(1);
     expect(cards[0]).toMatchObject({
-      source: { desc: '我的会话', desc_color: 0 },
+      source: { desc: '项目：我的会话', desc_color: 0 },
     });
   });
 
-  it('传入 sessionTitle 时多问题每张卡片 source.desc 都使用会话标题', () => {
+  it('传入 sessionTitle 时多问题每张卡片 source.desc 都使用项目前缀', () => {
     const cards = buildAskQuestionCard(3, {
       questions: [
         { question: 'Q1', multiSelect: false, options: [{ label: 'A' }] },
@@ -239,7 +239,7 @@ describe('buildAskQuestionCard', () => {
     }, undefined, '项目讨论');
 
     expect(cards).toHaveLength(2);
-    expect(cards[0]).toMatchObject({ source: { desc: '项目讨论' } });
-    expect(cards[1]).toMatchObject({ source: { desc: '项目讨论' } });
+    expect(cards[0]).toMatchObject({ source: { desc: '项目：项目讨论' } });
+    expect(cards[1]).toMatchObject({ source: { desc: '项目：项目讨论' } });
   });
 });

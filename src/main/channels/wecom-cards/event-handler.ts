@@ -59,15 +59,15 @@ const HINT_NO_SELECTION = '未选择任何选项';
 
 export class WeComCardEventHandler {
   private onQuestionProgress?: (requestId: string, nextQIdx: number, chatId: string) => Promise<void>;
-  private onAllQuestionsDone?: (requestId: string, chatId: string) => Promise<void>;
+  private onAllQuestionsDone?: (requestId: string, chatId: string, answers: Record<string, string | string[]>, questions: AskQuestion[]) => Promise<void>;
 
   constructor(
     private store: WeComCardStore,
-    private sendReply: (chatId: string, text: string) => Promise<void>,
+    private sendReply: (chatId: string, text: string, requestId?: string) => Promise<void>,
     private updateCard: (frame: TemplateCardEventFrame, card: unknown) => Promise<void>,
     callbacks?: {
       onQuestionProgress?: (requestId: string, nextQIdx: number, chatId: string) => Promise<void>;
-      onAllQuestionsDone?: (requestId: string, chatId: string) => Promise<void>;
+      onAllQuestionsDone?: (requestId: string, chatId: string, answers: Record<string, string | string[]>, questions: AskQuestion[]) => Promise<void>;
     },
   ) {
     if (callbacks) {
@@ -97,7 +97,7 @@ export class WeComCardEventHandler {
       const { action, requestId } = parsed;
       const state = this.store.get(requestId);
       if (!state || state.status !== 'pending') {
-        await this.sendReply(chatId, HINT_ALREADY_HANDLED);
+        await this.sendReply(chatId, HINT_ALREADY_HANDLED, requestId);
         return;
       }
 
@@ -107,7 +107,7 @@ export class WeComCardEventHandler {
           this.store.resolve(requestId, action);
           await this.updateOrNotify(requestId, chatId, action, frame);
         } else {
-          await this.sendReply(chatId, HINT_ALREADY_HANDLED);
+          await this.sendReply(chatId, HINT_ALREADY_HANDLED, requestId);
         }
         return;
       }
@@ -115,13 +115,13 @@ export class WeComCardEventHandler {
       if (action === 'submit' || action === 'answer') {
         const pending = permissionBroker.listPending().find((p) => p.id === requestId);
         if (!pending) {
-          await this.sendReply(chatId, HINT_ALREADY_HANDLED);
+          await this.sendReply(chatId, HINT_ALREADY_HANDLED, requestId);
           return;
         }
 
         const answers = this.buildAnswers(requestId, pending.request, tce?.selected_items);
         if (answers instanceof Error) {
-          await this.sendReply(chatId, answers.message);
+          await this.sendReply(chatId, answers.message, requestId);
           return;
         }
 
@@ -142,7 +142,7 @@ export class WeComCardEventHandler {
               const ok = permissionBroker.resolve(requestId, 'allow', 'wecom', accumulated);
               if (ok) {
                 this.store.resolve(requestId, 'allow', accumulated);
-                await this.onAllQuestionsDone?.(requestId, chatId);
+                await this.onAllQuestionsDone?.(requestId, chatId, accumulated, questions);
               }
             } else {
               // 还有未答题目，通知发送下一张卡片
@@ -159,12 +159,12 @@ export class WeComCardEventHandler {
           this.store.resolve(requestId, 'allow', answers);
           await this.updateOrNotify(requestId, chatId, 'allow', frame);
         } else {
-          await this.sendReply(chatId, HINT_ALREADY_HANDLED);
+          await this.sendReply(chatId, HINT_ALREADY_HANDLED, requestId);
         }
         return;
       }
 
-      await this.sendReply(chatId, HINT_UNSUPPORTED_ACTION);
+      await this.sendReply(chatId, HINT_UNSUPPORTED_ACTION, requestId);
     } catch (err) {
       logger.error('[wecom-card-event-handler] 处理卡片事件失败:', err);
     }
@@ -303,7 +303,7 @@ export class WeComCardEventHandler {
         main_title: { title: text },
       });
     } catch {
-      await this.sendReply(chatId, text);
+      await this.sendReply(chatId, text, requestId);
     }
   }
 }

@@ -119,7 +119,7 @@ describe('WeComCardEventHandler', () => {
       event: { event_key: 'wecom:allow:req-1' },
     }) as any);
 
-    expect(replyFn).toHaveBeenCalledWith('chat-1', expect.stringContaining('已被处理'));
+    expect(replyFn).toHaveBeenCalledWith('chat-1', expect.stringContaining('已被处理'), expect.any(String));
     expect(updateCardFn).not.toHaveBeenCalled();
   });
 
@@ -128,7 +128,7 @@ describe('WeComCardEventHandler', () => {
       event: { event_key: 'wecom:allow:missing' },
     }) as any);
 
-    expect(replyFn).toHaveBeenCalledWith('chat-1', expect.stringContaining('已被处理'));
+    expect(replyFn).toHaveBeenCalledWith('chat-1', expect.stringContaining('已被处理'), expect.any(String));
   });
 
   it('resolves AskUserQuestion with selected options', async () => {
@@ -218,7 +218,7 @@ describe('WeComCardEventHandler', () => {
       },
     }) as any);
 
-    expect(replyFn).toHaveBeenCalledWith('chat-1', '未选择任何选项');
+    expect(replyFn).toHaveBeenCalledWith('chat-1', '未选择任何选项', expect.any(String));
     expect(updateCardFn).not.toHaveBeenCalled();
   });
 
@@ -282,7 +282,7 @@ describe('WeComCardEventHandler', () => {
       event: { event_key: 'wecom:unknown:req-1' },
     }) as any);
 
-    expect(replyFn).toHaveBeenCalledWith('chat-1', '不支持的卡片操作。');
+    expect(replyFn).toHaveBeenCalledWith('chat-1', '不支持的卡片操作。', expect.any(String));
   });
 
   it('falls back to sendReply when updateCard fails', async () => {
@@ -301,7 +301,7 @@ describe('WeComCardEventHandler', () => {
     }) as any);
 
     await expect(p).resolves.toEqual({ decision: 'allow', answers: undefined });
-    expect(replyFn).toHaveBeenCalledWith('chat-1', '已批准该权限请求。');
+    expect(replyFn).toHaveBeenCalledWith('chat-1', '已批准该权限请求。', expect.any(String));
   });
 
   it('多问题场景：第一张卡片提交后记录部分答案，不立即 resolve', async () => {
