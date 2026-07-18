@@ -5,6 +5,9 @@
 
 import { permissionBroker, type PermissionRequest } from '../../permission-broker.js';
 import { WeComCardStore } from './card-store.js';
+import { getLogger } from '../../log.js';
+
+const logger = getLogger().scope('wecom-card-event-handler');
 
 export interface TemplateCardEventFrame {
   body: {
@@ -105,8 +108,8 @@ export class WeComCardEventHandler {
       }
 
       await this.sendReply(chatId, HINT_UNSUPPORTED_ACTION);
-    } catch {
-      // 主进程未捕获异常会导致窗口白屏，事件处理失败应静默消化
+    } catch (err) {
+      logger.error('[wecom-card-event-handler] 处理卡片事件失败:', err);
     }
   }
 
