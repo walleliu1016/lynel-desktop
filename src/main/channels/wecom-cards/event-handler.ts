@@ -50,7 +50,7 @@ export class WeComCardEventHandler {
   constructor(
     private store: WeComCardStore,
     private sendReply: (chatId: string, text: string) => Promise<void>,
-    private updateCard: (msgid: string, card: unknown) => Promise<void>,
+    private updateCard: (frame: any, card: any) => Promise<void>,
   ) {}
 
   async handle(frame: TemplateCardEventFrame): Promise<void> {
@@ -77,7 +77,7 @@ export class WeComCardEventHandler {
         const ok = permissionBroker.resolve(requestId, action, 'wecom');
         if (ok) {
           this.store.resolve(requestId, action);
-          await this.updateOrNotify(requestId, chatId, action);
+          await this.updateOrNotify(requestId, chatId, action, frame);
         } else {
           await this.sendReply(chatId, HINT_ALREADY_HANDLED);
         }
@@ -100,7 +100,7 @@ export class WeComCardEventHandler {
         const ok = permissionBroker.resolve(requestId, 'allow', 'wecom', answers);
         if (ok) {
           this.store.resolve(requestId, 'allow', answers);
-          await this.updateOrNotify(requestId, chatId, 'allow');
+          await this.updateOrNotify(requestId, chatId, 'allow', frame);
         } else {
           await this.sendReply(chatId, HINT_ALREADY_HANDLED);
         }
@@ -180,7 +180,12 @@ export class WeComCardEventHandler {
     return Number.isNaN(parsed) ? defaultValue : parsed;
   }
 
-  private async updateOrNotify(requestId: string, chatId: string, decision: 'allow' | 'deny'): Promise<void> {
+  private async updateOrNotify(
+    requestId: string,
+    chatId: string,
+    decision: 'allow' | 'deny',
+    frame: TemplateCardEventFrame,
+  ): Promise<void> {
     const state = this.store.get(requestId);
     if (!state) {
       return;
@@ -188,7 +193,7 @@ export class WeComCardEventHandler {
 
     const text = decision === 'allow' ? '已批准该权限请求。' : '已拒绝该权限请求。';
     try {
-      await this.updateCard(state.msgid, {
+      await this.updateCard(frame, {
         card_type: 'text_notice',
         source: { desc: 'Lynel', desc_color: 0 },
         main_title: { title: text },

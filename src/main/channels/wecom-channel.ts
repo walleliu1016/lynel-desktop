@@ -8,6 +8,7 @@ import { getLogger } from '../log.js';
 import { permissionBroker, PermissionRequest } from '../permission-broker.js';
 import { buildPermissionCard, buildAskQuestionCard } from './wecom-cards/card-builder.js';
 import { WeComCardStore } from './wecom-cards/card-store.js';
+import { WeComCardEventHandler } from './wecom-cards/event-handler.js';
 
 const logger = getLogger().scope('wecom-channel');
 
@@ -156,6 +157,7 @@ export class WeComChannel implements OutputChannel {
   private sessionSeqCounters = new Map<string, number>();
   private createSessionCallback: ((workDir: string, prompt: string) => Promise<{ id: string; workDir: string } | { error: string }>) | null = null;
   private cardStore = new WeComCardStore();
+  private cardEventHandler?: WeComCardEventHandler;
 
   constructor(cfg: WeComChannelConfig) {
     this.cfg = cfg;
@@ -439,6 +441,14 @@ export class WeComChannel implements OutputChannel {
         }
       });
 
+      wsClient.on('event.template_card_event', (frame: any) => {
+        try {
+          this.handleCardEvent(frame);
+        } catch (err) {
+          logger.error('[wecom-channel] failed to handle card event:', err);
+        }
+      });
+
       wsClient.on('error', (err: any) => {
         clearTimeout(timer);
         reject(err);
@@ -453,6 +463,26 @@ export class WeComChannel implements OutputChannel {
       this.wsClient.disconnect();
       this.wsClient = null;
     }
+  }
+
+  private getCardEventHandler(): WeComCardEventHandler {
+    if (!this.cardEventHandler) {
+      this.cardEventHandler = new WeComCardEventHandler(
+        this.cardStore,
+        (chatId, text) => this.sendWeComReply(chatId, text),
+        async (frame, card) => {
+          if (!this.wsClient) throw new Error('WSClient 未连接');
+          await this.wsClient.updateTemplateCard(frame, card);
+        },
+      );
+    }
+    return this.cardEventHandler;
+  }
+
+  private handleCardEvent(frame: any): void {
+    this.getCardEventHandler().handle(frame).catch((err) => {
+      logger.error('[wecom-channel] card event handler error:', err);
+    });
   }
 
   private handleInboundMessage(frame: any): void {

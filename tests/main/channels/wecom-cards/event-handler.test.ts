@@ -81,11 +81,16 @@ describe('WeComCardEventHandler', () => {
     } as any);
 
     await expect(p).resolves.toEqual({ decision: 'deny', answers: undefined });
-    expect(updateCardFn).toHaveBeenCalledWith('msgid-1', {
-      card_type: 'text_notice',
-      source: { desc: 'Lynel', desc_color: 0 },
-      main_title: { title: '已拒绝该权限请求。' },
-    });
+    expect(updateCardFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({ chatid: 'chat-1' }),
+      }),
+      {
+        card_type: 'text_notice',
+        source: { desc: 'Lynel', desc_color: 0 },
+        main_title: { title: '已拒绝该权限请求。' },
+      },
+    );
   });
 
   it('replies hint when request already resolved', async () => {
