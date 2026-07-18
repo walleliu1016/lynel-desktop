@@ -6,6 +6,8 @@ import * as session from '../session.js';
 import { getStore } from '../store.js';
 import { getLogger } from '../log.js';
 import { permissionBroker } from '../permission-broker.js';
+import { buildPermissionCard, buildAskQuestionCard } from './wecom-cards/card-builder.js';
+import { WeComCardStore } from './wecom-cards/card-store.js';
 
 const logger = getLogger().scope('wecom-channel');
 
@@ -153,6 +155,7 @@ export class WeComChannel implements OutputChannel {
   private lastActiveSession = new Map<string, string>();
   private sessionSeqCounters = new Map<string, number>();
   private createSessionCallback: ((workDir: string, prompt: string) => Promise<{ id: string; workDir: string } | { error: string }>) | null = null;
+  private cardStore = new WeComCardStore();
 
   constructor(cfg: WeComChannelConfig) {
     this.cfg = cfg;
@@ -230,14 +233,31 @@ export class WeComChannel implements OutputChannel {
     const msgSeq = (this.sessionSeqCounters.get(event.sessionId) ?? 0) + 1;
     this.sessionSeqCounters.set(event.sessionId, msgSeq);
 
+    // 权限请求/提问使用模板卡片，失败后再降级为 Markdown
+    if (event.kind === 'PermissionRequest') {
+      const p = event.payload as any;
+      const toolName = p?.toolName || 'unknown';
+      if (toolName === 'AskUserQuestion') {
+        this.sendAskQuestionCard(event, msgSeq).catch((err) => logger.error('[wecom-channel] sendAskQuestionCard failed:', err));
+      } else {
+        this.sendPermissionCard(event, msgSeq).catch((err) => logger.error('[wecom-channel] sendPermissionCard failed:', err));
+      }
+      // 仍然记录路由关系
+      if (this.cfg.chatId) {
+        this.lastActiveSession.set(this.cfg.chatId, event.sessionId);
+        this.chatIdToSession.set(this.cfg.chatId, event.sessionId);
+        const s = session.lookup(event.sessionId);
+        if (s) {
+          setMapping(this.cfg.chatId, event.sessionId, s.workDir);
+        }
+      }
+      return;
+    }
+
     const content = this.formatMessage(event, msgSeq);
     if (!content) {
       logger.info('[wecom-channel] empty content, skip');
       return;
-    }
-    if (event.kind === 'PermissionRequest') {
-      const p = event.payload as any;
-      logger.info(`[wecom-channel] PermissionRequest seq=${p?.seq} toolName=${p?.toolName} msgSeq=${msgSeq}`);
     }
     logger.info(`[wecom-channel] formatted content: ${content.slice(0, 80)}...`);
 
@@ -283,6 +303,82 @@ export class WeComChannel implements OutputChannel {
       cfg,
     });
     logger.info('[wecom-channel] send success:', JSON.stringify(result));
+  }
+
+  private async sendPermissionCard(event: ProxyStageEvent, msgSeq: number): Promise<void> {
+    const p = event.payload as any;
+    const req = {
+      id: p.id,
+      sessionId: event.sessionId,
+      workDir: event.workDir,
+      toolName: p.toolName || 'unknown',
+      toolInput: p.toolInput,
+    };
+    const seq = p.seq ?? msgSeq;
+    const card = buildPermissionCard(req, seq);
+    const ok = await this.sendTemplateCard(card, event.sessionId, req.id, seq);
+    if (!ok) {
+      const content = this.formatPermissionRequest(
+        this.formatHeader(event, msgSeq),
+        p.toolName || 'unknown',
+        p.toolInput,
+        this.getSessionCmdArg(event.sessionId),
+      );
+      await this.sendContent(content, event.sessionId);
+    }
+  }
+
+  private async sendAskQuestionCard(event: ProxyStageEvent, msgSeq: number): Promise<void> {
+    const p = event.payload as any;
+    const seq = p.seq ?? msgSeq;
+    const input = p.toolInput as any;
+    const reqId = p.id;
+    const card = buildAskQuestionCard(seq, input, reqId);
+    if (card === null) {
+      // 问题列表为空，直接降级为 Markdown
+      const content = this.formatAskUserQuestion(
+        this.formatHeader(event, msgSeq),
+        input,
+        this.getSessionCmdArg(event.sessionId),
+      );
+      await this.sendContent(content, event.sessionId);
+      return;
+    }
+    const ok = await this.sendTemplateCard(card, event.sessionId, reqId, seq);
+    if (!ok) {
+      const content = this.formatAskUserQuestion(
+        this.formatHeader(event, msgSeq),
+        input,
+        this.getSessionCmdArg(event.sessionId),
+      );
+      await this.sendContent(content, event.sessionId);
+    }
+  }
+
+  private async sendTemplateCard(
+    card: unknown,
+    sessionId: string,
+    requestId: string,
+    seq: number,
+  ): Promise<boolean> {
+    try {
+      await this.ensureWebSocket();
+      if (!this.wsClient?.isConnected || !this.cfg.chatId) return false;
+
+      const result = await this.wsClient.sendMessage(this.cfg.chatId, {
+        msgtype: 'template_card',
+        template_card: card,
+      });
+
+      const msgid = result?.body?.msgid ?? result?.headers?.req_id;
+      if (msgid) {
+        this.cardStore.save(requestId, seq, this.cfg.chatId, msgid, sessionId);
+      }
+      return true;
+    } catch (err) {
+      logger.error('[wecom-channel] sendTemplateCard failed:', err);
+      return false;
+    }
   }
 
   private async ensureWebSocket(): Promise<void> {
