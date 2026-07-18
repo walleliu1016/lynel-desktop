@@ -5,7 +5,7 @@ import { OutputChannel, ProxyStageEvent } from './channel.js';
 import * as session from '../session.js';
 import { getStore } from '../store.js';
 import { getLogger } from '../log.js';
-import { permissionBroker } from '../permission-broker.js';
+import { permissionBroker, PermissionRequest } from '../permission-broker.js';
 import { buildPermissionCard, buildAskQuestionCard } from './wecom-cards/card-builder.js';
 import { WeComCardStore } from './wecom-cards/card-store.js';
 
@@ -244,12 +244,7 @@ export class WeComChannel implements OutputChannel {
       }
       // 仍然记录路由关系
       if (this.cfg.chatId) {
-        this.lastActiveSession.set(this.cfg.chatId, event.sessionId);
-        this.chatIdToSession.set(this.cfg.chatId, event.sessionId);
-        const s = session.lookup(event.sessionId);
-        if (s) {
-          setMapping(this.cfg.chatId, event.sessionId, s.workDir);
-        }
+        this.recordRouting(this.cfg.chatId, event.sessionId);
       }
       return;
     }
@@ -263,16 +258,20 @@ export class WeComChannel implements OutputChannel {
 
     // 记录会话路由关系，方便企业微信入站消息找到对应 session
     if (this.cfg.chatId) {
-      this.lastActiveSession.set(this.cfg.chatId, event.sessionId);
-      this.chatIdToSession.set(this.cfg.chatId, event.sessionId);
-      const s = session.lookup(event.sessionId);
-      if (s) {
-        setMapping(this.cfg.chatId, event.sessionId, s.workDir);
-      }
+      this.recordRouting(this.cfg.chatId, event.sessionId);
     }
 
     // 异步发送，不阻塞 dispatcher / 主进程事件循环
     this.sendContent(content, event.sessionId).catch((err) => logger.error('[wecom-channel] send failed:', err));
+  }
+
+  private recordRouting(chatId: string, sessionId: string): void {
+    this.lastActiveSession.set(chatId, sessionId);
+    this.chatIdToSession.set(chatId, sessionId);
+    const s = session.lookup(sessionId);
+    if (s) {
+      setMapping(chatId, sessionId, s.workDir);
+    }
   }
 
   private async sendContent(content: string, _sessionId: string): Promise<void> {
@@ -307,7 +306,7 @@ export class WeComChannel implements OutputChannel {
 
   private async sendPermissionCard(event: ProxyStageEvent, msgSeq: number): Promise<void> {
     const p = event.payload as any;
-    const req = {
+    const req: PermissionRequest = {
       id: p.id,
       sessionId: event.sessionId,
       workDir: event.workDir,
