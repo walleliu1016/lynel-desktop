@@ -59,12 +59,22 @@ onMounted(async () => {
   overflow: hidden;
 }
 .head {
-  display: flex; align-items: center; justify-content: space-between;
+  position: relative;
+  display: flex;
+  align-items: center;
   padding: 14px 16px; border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-h2 { font-size: 14px; color: var(--text-primary); font-weight: 600; }
-.close { color: var(--text-secondary); padding: 2px 6px; border-radius: var(--radius-sm); display: flex; align-items: center; }
+h2 {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 14px; color: var(--text-primary); font-weight: 600;
+  margin: 0;
+  pointer-events: none;
+}
+.close { margin-left: auto; color: var(--text-secondary); padding: 2px 6px; border-radius: var(--radius-sm); display: flex; align-items: center; }
 .close:hover { background: var(--bg-input); color: var(--text-primary); }
 .content { flex: 1; overflow-y: auto; min-width: 0; padding: 12px 16px; }
 .foot {

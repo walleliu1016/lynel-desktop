@@ -1,6 +1,6 @@
 <template>
   <div class="login">
-    <TitleBar @settings="goSettings" />
+    <TitleBar center @settings="goSettings" />
     <div class="login-body">
       <div class="login-head">
         <div class="login-logo">L</div>
