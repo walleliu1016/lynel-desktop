@@ -181,11 +181,13 @@ describe('WeComChannel template cards', () => {
     await vi.waitFor(() => expect(updateTemplateCardMock).toHaveBeenCalled());
   });
 
-  it('SessionEnd 时取消该会话所有 pending 的卡片状态', async () => {
+  it('SessionEnd 时仅取消当前会话 pending 的卡片状态', () => {
     vi.spyOn(channel as any, 'sendContent').mockResolvedValue(undefined);
     const store = (channel as any).cardStore;
     store.save('req-session', 1, 'chat-1', 'msgid-session', 'sid-1');
+    store.save('req-other', 2, 'chat-1', 'msgid-other', 'sid-2');
     expect(store.get('req-session')?.status).toBe('pending');
+    expect(store.get('req-other')?.status).toBe('pending');
 
     channel.send({
       seq: 1,
@@ -197,6 +199,7 @@ describe('WeComChannel template cards', () => {
       timestamp: Date.now(),
     });
 
-    await vi.waitFor(() => expect(store.get('req-session')?.status).toBe('cancelled'));
+    expect(store.get('req-session')?.status).toBe('cancelled');
+    expect(store.get('req-other')?.status).toBe('pending');
   });
 });

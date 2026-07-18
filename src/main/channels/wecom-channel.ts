@@ -235,6 +235,11 @@ export class WeComChannel implements OutputChannel {
     const msgSeq = (this.sessionSeqCounters.get(event.sessionId) ?? 0) + 1;
     this.sessionSeqCounters.set(event.sessionId, msgSeq);
 
+    // 会话结束时清理该会话所有待处理的模板卡片状态，避免 stale 卡片残留
+    if (event.kind === 'SessionEnd') {
+      this.cardStore.cancelBySession(event.sessionId);
+    }
+
     // 权限请求/提问使用模板卡片，失败后再降级为 Markdown
     if (event.kind === 'PermissionRequest') {
       const p = event.payload as any;
@@ -1005,8 +1010,6 @@ export class WeComChannel implements OutputChannel {
       case 'error':
         return `${header}\n❌ **错误: ${p?.message || 'unknown'}**`;
       case 'SessionEnd':
-        // 会话结束时清理该会话所有待处理的模板卡片状态，避免 stale 卡片残留
-        this.cardStore.cancelBySession(event.sessionId);
         return `${header}\n📌 **会话结束**`;
       default:
         return '';
