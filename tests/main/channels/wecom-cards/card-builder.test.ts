@@ -91,6 +91,7 @@ describe('buildAskQuestionCard', () => {
 
     expect(card).toMatchObject({
       card_type: 'vote_interaction',
+      source: { desc: 'Lynel', desc_color: 0 },
       main_title: {
         title: '框架选择',
         desc: '用哪个测试框架？',

@@ -86,6 +86,7 @@ export function buildAskQuestionCard(seq: number, input: AskInput, requestId?: s
   if (isSingleVote) {
     return {
       card_type: 'vote_interaction',
+      source: { desc: 'Lynel', desc_color: 0 },
       main_title: {
         title: singleQuestion.header ?? 'Claude 提问（1个问题）',
         desc: singleQuestion.question,
