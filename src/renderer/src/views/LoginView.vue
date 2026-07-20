@@ -1,6 +1,6 @@
 <template>
   <div class="login">
-    <TitleBar center @settings="goSettings" />
+    <TitleBar center hide-settings />
     <div class="login-body">
       <div class="login-head">
         <div class="login-logo">L</div>
@@ -44,7 +44,13 @@
         <button class="login-btn" type="submit" :disabled="locked || !canSubmit">
           登录
         </button>
-        <div class="login-footer">Lynel Desktop v{{ version }}</div>
+        <div class="login-footer">
+          <span>Lynel Desktop v{{ version }}</span>
+          <button class="footer-settings-btn" @click="goSettings">
+            <Icon name="settings" :size="11" />
+            设置
+          </button>
+        </div>
       </form>
     </div>
     <SettingsDialog v-if="showSettings" @close="closeSettings" />
@@ -198,5 +204,16 @@ async function closeSettings() {
 .login-btn:hover:not(:disabled) { filter: brightness(1.05); }
 .login-btn:active:not(:disabled) { filter: brightness(0.95); }
 .login-btn:disabled { opacity: 0.4; box-shadow: none; }
-.login-footer { font-size: 11px; color: var(--text-tertiary); text-align: center; margin-top: 10px; }
+.login-footer {
+  font-size: 11px; color: var(--text-tertiary); text-align: center; margin-top: 10px;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+}
+.footer-settings-btn {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 6px; border-radius: 4px;
+  color: var(--text-tertiary); font-size: 11px;
+  background: transparent; border: 1px solid var(--border);
+  cursor: pointer;
+}
+.footer-settings-btn:hover { color: var(--text-primary); border-color: var(--accent); }
 </style>
