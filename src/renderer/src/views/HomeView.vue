@@ -10,6 +10,7 @@
           @create="showNewSession = true"
           @select="onSelectSession"
           @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
+          @open-trace="onOpenTrace"
         />
       </aside>
       <main class="right">
@@ -52,6 +53,16 @@
           <div v-show="tabsStore.activeType === 'guide'" class="content-pane">
             <GuideTab />
           </div>
+          <div v-show="tabsStore.activeType === 'trace'" class="content-pane">
+            <template v-for="tab in traceTabs" :key="tab.id">
+              <TraceTab
+                v-if="tab.payload"
+                v-show="activeTraceId === tab.id"
+                :work-dir="(tab.payload.workdir as string)"
+                :session-id="(tab.payload.sessionId as string)"
+              />
+            </template>
+          </div>
         </div>
       </main>
     </div>
@@ -77,6 +88,7 @@ import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import GlobalTabs from '../components/GlobalTabs.vue'
 import SessionList from '../components/SessionList.vue'
+import TraceTab from '../components/trace/TraceTab.vue'
 import WelcomeTab from '../components/WelcomeTab.vue'
 import SessionTabContent from '../components/SessionTabContent.vue'
 import SettingsTab from '../components/SettingsTab.vue'
@@ -110,6 +122,11 @@ const activeSessionWorkdir = computed(() => {
   return (activeTab.value.payload?.workdir as string) ?? ''
 })
 const sessionTabs = computed(() => tabsStore.tabs.filter((t) => t.type === 'session'))
+const traceTabs = computed(() => tabsStore.tabs.filter((t) => t.type === 'trace'))
+const activeTraceId = computed(() => {
+  if (activeTab.value?.type !== 'trace') return null
+  return activeTab.value.id
+})
 
 onMounted(async () => {
   try {
@@ -162,7 +179,11 @@ async function onSelectSession(id: string) {
   const meta = sessions.list.find((s) => s.id === id)
   if (!meta) return
   tabsStore.openSession(id, meta.workdir, sessionDisplayTitle(meta))
-  await sessions.select(id)
+  void sessions.select(id)
+}
+
+function onOpenTrace(meta: { id: string; workdir: string }) {
+  tabsStore.openTrace(meta.id, meta.workdir)
 }
 
 async function onCreate(workdir: string, prompt: string, extraArgs: string[] = []) {

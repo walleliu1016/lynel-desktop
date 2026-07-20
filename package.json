@@ -17,7 +17,8 @@
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux",
     "test": "vitest run --dir tests/main",
-    "test:main": "vitest run --dir tests/main"
+    "test:main": "vitest run --dir tests/main",
+    "test:smoke": "npx tsx --test scripts/smoke-test.ts"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

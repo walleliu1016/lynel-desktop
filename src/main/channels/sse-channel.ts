@@ -1,5 +1,8 @@
-import { OutputChannel, ProxyStageEvent } from './channel.js';
-import { Response } from 'express';
+// SSEChannel: 把 LynelEnvelope 推送给 SSE 订阅者（App / 外部）
+
+import type { Response } from 'express';
+import type { OutputChannel } from './channel.js';
+import type { LynelEnvelope } from '../protocol/envelope.js';
 
 export class SSEChannel implements OutputChannel {
   readonly id = 'sse';
@@ -30,11 +33,28 @@ export class SSEChannel implements OutputChannel {
     this.clients.set(sessionId, list.filter((r) => r !== res));
   }
 
-  send(event: ProxyStageEvent): void {
+  send(event: LynelEnvelope): void {
+    if (!event.sessionId) return;
     const list = this.clients.get(event.sessionId) ?? [];
+    if (!list.length) return;
     const data = `data: ${JSON.stringify(event)}\n\n`;
     for (const res of list) {
-      res.write(data);
+      try {
+        res.write(data);
+      } catch (err) {
+        console.error('[sse-channel] write failed:', err);
+      }
     }
+  }
+
+  close(): void {
+    for (const list of this.clients.values()) {
+      for (const res of list) {
+        try {
+          res.end();
+        } catch { /* ignore */ }
+      }
+    }
+    this.clients.clear();
   }
 }

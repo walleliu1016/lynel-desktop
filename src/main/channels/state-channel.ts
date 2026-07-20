@@ -1,4 +1,8 @@
-import type { OutputChannel, ProxyStageEvent } from './channel.js';
+// StateChannel: 把 LynelEnvelope 映射为 session 状态/活动
+// 同时消费 hookserver 的 HookEvent
+
+import type { OutputChannel, HookChannel, HookEventLike } from './channel.js';
+import type { LynelEnvelope } from '../protocol/envelope.js';
 
 export interface StateChannelCallbacks {
   onStableState: (
@@ -16,11 +20,10 @@ export interface StateChannelCallbacks {
   ) => void;
 }
 
-export class StateChannel implements OutputChannel {
+export class StateChannel implements OutputChannel, HookChannel {
   readonly id = 'state';
   readonly name = 'Session State';
 
-  // 跟踪各 session 当前是否有待处理权限，防止 response_complete 覆盖 awaiting_permission
   private pendingPermission = new Set<string>();
 
   constructor(private callbacks: StateChannelCallbacks) {}
@@ -29,64 +32,134 @@ export class StateChannel implements OutputChannel {
     return true;
   }
 
-  send(event: ProxyStageEvent): void {
-    const { sessionId, kind, payload } = event;
-    if (!sessionId) return;
+  send(event: LynelEnvelope): void {
+    if (!event.sessionId) return;
+    const ev = event.ev;
 
-    switch (kind) {
-      case 'prompt':
-        this.callbacks.onStableState(sessionId, 'running', true);
-        this.callbacks.onActivity(sessionId, { phase: 'thinking' });
+    switch (ev.t) {
+      case 'text': {
+        if (event.role === 'user') {
+          this.callbacks.onStableState(event.sessionId, 'running', true);
+          this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
+        } else if (ev.thinking) {
+          this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
+        } else {
+          this.callbacks.onActivity(event.sessionId, { phase: 'streaming' });
+        }
         break;
-      case 'thinking':
-        this.callbacks.onActivity(sessionId, { phase: 'thinking' });
-        break;
-      case 'text':
-        this.callbacks.onActivity(sessionId, { phase: 'streaming' });
-        break;
-      case 'tool_use': {
-        const p = (payload || {}) as Record<string, unknown>;
-        const tool = String(p.name || '');
-        const input = typeof p.input === 'object' && p.input !== null ? (p.input as Record<string, unknown>) : {};
-        this.callbacks.onActivity(sessionId, {
+      }
+      case 'tool-call-start': {
+        const input = ev.args || {};
+        const toolInput = String(
+          (input as any).command ||
+          (input as any).file_path ||
+          (input as any).pattern ||
+          (input as any).url ||
+          (input as any).query ||
+          ''
+        );
+        this.callbacks.onActivity(event.sessionId, {
           phase: 'working',
-          tool,
-          toolInput: String(input.command || input.file_path || input.pattern || input.url || input.query || ''),
+          tool: ev.name,
+          toolInput,
         });
         break;
       }
-      case 'tool_result':
-        this.callbacks.onActivity(sessionId, { phase: 'thinking' });
+      case 'tool-call-end': {
+        this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
         break;
-      case 'response_complete':
-      case 'session_idle':
-      case 'SessionEnd': {
-        // 如果有待处理的权限请求，不覆盖为 idle，保持 awaiting_permission
-        if (this.pendingPermission.has(sessionId)) break;
-        this.callbacks.onStableState(sessionId, 'idle', true);
-        this.callbacks.onActivity(sessionId, { phase: 'idle' });
+      }
+      case 'service': {
+        this.callbacks.onActivity(event.sessionId, { phase: 'streaming' });
+        break;
+      }
+      case 'turn-end': {
+        if (this.pendingPermission.has(event.sessionId)) break;
+        this.callbacks.onStableState(event.sessionId, 'idle', true);
+        this.callbacks.onActivity(event.sessionId, { phase: 'idle' });
+        break;
+      }
+      case 'turn-start': {
+        this.callbacks.onStableState(event.sessionId, 'running', true);
+        this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
+        break;
+      }
+      case 'file':
+      case 'start':
+      case 'stop':
+      default:
+        break;
+    }
+  }
+
+  sendHook(event: HookEventLike): void {
+    if (!event.sessionId) return;
+    switch (event.kind) {
+      case 'SessionStart': {
+        this.callbacks.onStableState(event.sessionId, 'running', true);
+        this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
+        break;
+      }
+      case 'SessionEnd':
+      case 'Stop': {
+        if (this.pendingPermission.has(event.sessionId)) break;
+        this.callbacks.onStableState(event.sessionId, 'idle', true);
+        this.callbacks.onActivity(event.sessionId, { phase: 'idle' });
+        break;
+      }
+      case 'UserPromptSubmit': {
+        this.callbacks.onStableState(event.sessionId, 'running', true);
+        this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
+        break;
+      }
+      case 'PreToolUse': {
+        const tool = (event.payload.toolName as string) || '';
+        const input = (event.payload.toolInput as Record<string, unknown>) || {};
+        const toolInput = String(
+          (input as any).command ||
+          (input as any).file_path ||
+          (input as any).pattern ||
+          (input as any).url ||
+          (input as any).query ||
+          ''
+        );
+        this.callbacks.onActivity(event.sessionId, {
+          phase: 'working',
+          tool,
+          toolInput,
+        });
+        break;
+      }
+      case 'PostToolUse': {
+        this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
         break;
       }
       case 'PermissionRequest': {
-        this.pendingPermission.add(sessionId);
-        const p = (payload || {}) as Record<string, unknown>;
-        const tool = String(p.toolName || '');
-        const input = typeof p.toolInput === 'object' && p.toolInput !== null ? (p.toolInput as Record<string, unknown>) : {};
-        this.callbacks.onStableState(sessionId, 'awaiting_permission', false);
-        this.callbacks.onActivity(sessionId, {
+        this.pendingPermission.add(event.sessionId);
+        const tool = (event.payload.toolName as string) || '';
+        const input = (event.payload.toolInput as Record<string, unknown>) || {};
+        const toolInput = String(
+          (input as any).command ||
+          (input as any).file_path ||
+          (input as any).pattern ||
+          (input as any).url ||
+          (input as any).query ||
+          ''
+        );
+        this.callbacks.onStableState(event.sessionId, 'awaiting_permission', false);
+        this.callbacks.onActivity(event.sessionId, {
           phase: 'awaiting_permission',
           tool,
-          toolInput: String(input.command || input.file_path || input.pattern || input.url || input.query || ''),
+          toolInput,
         });
         break;
       }
-      case 'PermissionResolved':
-        this.pendingPermission.delete(sessionId);
-        this.callbacks.onStableState(sessionId, 'running', true);
-        this.callbacks.onActivity(sessionId, { phase: 'thinking' });
+      case 'PermissionResolved': {
+        this.pendingPermission.delete(event.sessionId);
+        this.callbacks.onStableState(event.sessionId, 'running', true);
+        this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
         break;
-      default:
-        break;
+      }
     }
   }
 }

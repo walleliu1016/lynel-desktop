@@ -1,4 +1,4 @@
-export type TabType = 'welcome' | 'session' | 'settings' | 'guide'
+export type TabType = 'welcome' | 'session' | 'settings' | 'guide' | 'trace'
 
 export interface Tab {
   id: string
@@ -8,6 +8,11 @@ export interface Tab {
 }
 
 export interface SessionTabPayload {
+  sessionId: string
+  workdir: string
+}
+
+export interface TraceTabPayload {
   sessionId: string
   workdir: string
 }

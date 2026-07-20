@@ -71,4 +71,20 @@ export const WindowSetMaxSize = (w: number, h: number) => api().windowSetMaxSize
 export const WindowCenter = () => api().windowCenter();
 export const WindowQuit = () => api().windowQuit();
 
+// trace / cost 面板
+export const ListTraceSessions = (workDir: string) => api().listTraceSessions(workDir);
+export const ListTraceRequests = (workDir: string, sessionId: string, modelFilter?: string) =>
+  api().listTraceRequests(workDir, sessionId, modelFilter);
+export const GetSessionTraceStats = (workDir: string, sessionId: string, modelFilter?: string) =>
+  api().getSessionTraceStats(workDir, sessionId, modelFilter);
+export const GetTraceRequest = (workDir: string, sessionId: string, seq: number) =>
+  api().getTraceRequest(workDir, sessionId, seq);
+export const DiffTraceRequests = (workDir: string, sessionId: string, seqA: number, seqB: number) =>
+  api().diffTraceRequests(workDir, sessionId, seqA, seqB);
+export const GetUsageSummary = () => api().getUsageSummary();
+export const ExportTraceRequest = (workDir: string, sessionId: string, seq: number, format: 'raw' | 'md' | 'json' | 'har') =>
+  api().exportTraceRequest(workDir, sessionId, seq, format);
+export const ListHappyEnvelopes = (workDir: string, sessionId: string) =>
+  api().listHappyEnvelopes(workDir, sessionId);
+
 export const isElectronDev = import.meta.env.DEV;

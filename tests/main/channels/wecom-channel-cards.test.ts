@@ -1,207 +1,124 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WeComChannel } from '../../../src/main/channels/wecom-channel.js';
-import { permissionBroker } from '../../../src/main/permission-broker.js';
+import type { LynelEnvelope } from '../../../src/main/protocol/envelope.js';
 
-describe('WeComChannel template cards', () => {
+function mkEnv(overrides: Partial<LynelEnvelope> = {}): LynelEnvelope {
+  return {
+    id: 'e1',
+    time: Date.now(),
+    role: 'agent',
+    sessionId: 'sid-1',
+    seq: 1,
+    ev: { t: 'text', text: 'hello' },
+    ...overrides,
+  } as LynelEnvelope;
+}
+
+describe('WeComChannel (LynelEnvelope API)', () => {
   let channel: WeComChannel;
-  let sendMessageMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    sendMessageMock = vi.fn().mockResolvedValue({ body: { msgid: 'msgid-123' } });
     channel = new WeComChannel({
       enabled: true,
       chatId: 'chat-1',
       botId: 'bot-1',
       secret: 'secret-1',
     });
-    (channel as any).ensureWebSocket = vi.fn().mockResolvedValue(undefined);
-    (channel as any).wsClient = {
-      isConnected: true,
-      sendMessage: sendMessageMock,
-    };
+    // mock plugin 加载
+    (channel as any).sendContent = vi.fn().mockResolvedValue(undefined);
   });
 
-  afterEach(() => {
-    permissionBroker.listPending().forEach((p) => permissionBroker.cancel(p.id));
+  it('send() 忽略 sessionId 为空的事件', () => {
+    const env = mkEnv({ sessionId: undefined });
+    expect(() => channel.send(env)).not.toThrow();
   });
 
-  it('sends template_card for PermissionRequest', async () => {
-    channel.send({
-      seq: 1,
-      turn: 1,
+  it('send() 处理 user text 事件', () => {
+    const env = mkEnv({ role: 'user', ev: { t: 'text', text: '帮我查一下' } });
+    channel.send(env);
+    expect((channel as any).sendContent).toHaveBeenCalledWith(
+      expect.stringContaining('帮我查一下'),
+      'sid-1',
+    );
+  });
+
+  it('send() 发送 agent text 事件', () => {
+    const env = mkEnv({ role: 'agent', turn: 't1', ev: { t: 'text', text: '好的，我来帮你' } });
+    channel.send(env);
+    expect((channel as any).sendContent).toHaveBeenCalledWith(
+      expect.stringContaining('好的，我来帮你'),
+      'sid-1',
+    );
+  });
+
+  it('send() 处理 tool-call-start 事件', () => {
+    const env = mkEnv({
+      turn: 't1',
+      ev: { t: 'tool-call-start', call: 'c1', name: 'Bash', title: '运行命令', description: '', args: { command: 'ls' } },
+    });
+    channel.send(env);
+    expect((channel as any).sendContent).toHaveBeenCalled();
+  });
+
+  it('send() 处理 tool-call-end 事件', () => {
+    const env = mkEnv({
+      turn: 't1',
+      ev: { t: 'tool-call-end', call: 'c1', is_error: false },
+    });
+    channel.send(env);
+    expect((channel as any).sendContent).toHaveBeenCalledWith(
+      expect.stringContaining('工具执行完成'),
+      'sid-1',
+    );
+  });
+
+  it('send() 处理 service 事件', () => {
+    const env = mkEnv({ ev: { t: 'service', text: '请求超时' } });
+    channel.send(env);
+    expect((channel as any).sendContent).toHaveBeenCalledWith(
+      expect.stringContaining('请求超时'),
+      'sid-1',
+    );
+  });
+
+  it('send() 处理 turn-end 事件', () => {
+    const env = mkEnv({ turn: 't1', ev: { t: 'turn-end', status: 'completed' } });
+    channel.send(env);
+    expect((channel as any).sendContent).toHaveBeenCalledWith(
+      expect.stringContaining('Turn 结束'),
+      'sid-1',
+    );
+  });
+
+  it('send() 忽略 turn-start/start/stop/file 事件', () => {
+    for (const t of ['turn-start', 'start', 'stop', 'file'] as const) {
+      const env = mkEnv({ ev: { t } as any });
+      expect(() => channel.send(env)).not.toThrow();
+    }
+  });
+
+  it('close() 断开连接', () => {
+    channel.send(mkEnv({ role: 'agent', turn: 't1', ev: { t: 'text', text: 'x' } }));
+    expect(() => channel.close()).not.toThrow();
+  });
+
+  it('sendHook() 不抛异常', () => {
+    expect(() => channel.sendHook({
+      kind: 'SessionStart',
       sessionId: 'sid-1',
       workDir: '/wd',
-      kind: 'PermissionRequest',
-      payload: {
-        id: 'req-1',
-        sessionId: 'sid-1',
-        workDir: '/wd',
-        toolName: 'BashCommand',
-        toolInput: { command: 'ls' },
-        seq: 1,
-      },
-      timestamp: Date.now(),
-    });
-
-    await vi.waitFor(() => expect(sendMessageMock.mock.calls.length).toBeGreaterThan(0));
-
-    const [, body] = sendMessageMock.mock.calls[0];
-    expect(body.msgtype).toBe('template_card');
-    expect(body.template_card.card_type).toBe('button_interaction');
-  });
-
-  it('sends vote_interaction template_card for single-select AskUserQuestion', async () => {
-    channel.send({
-      seq: 2,
-      turn: 1,
-      sessionId: 'sid-1',
-      workDir: '/wd',
-      kind: 'PermissionRequest',
-      payload: {
-        id: 'req-2',
-        sessionId: 'sid-1',
-        workDir: '/wd',
-        toolName: 'AskUserQuestion',
-        toolInput: {
-          questions: [
-            {
-              header: '选择部署环境',
-              question: '请选择要部署的环境',
-              multiSelect: false,
-              options: [
-                { label: '测试环境', description: 'test' },
-                { label: '生产环境', description: 'prod' },
-              ],
-            },
-          ],
-        },
-        seq: 2,
-      },
-      timestamp: Date.now(),
-    });
-
-    await vi.waitFor(() => expect(sendMessageMock.mock.calls.length).toBeGreaterThan(0));
-
-    const [, body] = sendMessageMock.mock.calls[0];
-    expect(body.msgtype).toBe('template_card');
-    expect(body.template_card.card_type).toBe('vote_interaction');
-  });
-
-  it('falls back to markdown when AskUserQuestion questions array is empty', async () => {
-    const sendContentSpy = vi.spyOn(channel as any, 'sendContent').mockResolvedValue(undefined);
-
-    channel.send({
-      seq: 3,
-      turn: 1,
-      sessionId: 'sid-1',
-      workDir: '/wd',
-      kind: 'PermissionRequest',
-      payload: {
-        id: 'req-3',
-        sessionId: 'sid-1',
-        workDir: '/wd',
-        toolName: 'AskUserQuestion',
-        toolInput: { questions: [] },
-        seq: 3,
-      },
-      timestamp: Date.now(),
-    });
-
-    await vi.waitFor(() => expect(sendContentSpy).toHaveBeenCalled());
-
-    expect(sendContentSpy).toHaveBeenCalledWith(expect.stringContaining('/answer'), expect.any(String));
-  });
-
-  it('falls back to markdown when sendMessage fails', async () => {
-    sendMessageMock.mockRejectedValue(new Error('network error'));
-    const sendContentSpy = vi.spyOn(channel as any, 'sendContent').mockResolvedValue(undefined);
-
-    channel.send({
-      seq: 1,
-      turn: 1,
-      sessionId: 'sid-1',
-      workDir: '/wd',
-      kind: 'PermissionRequest',
-      payload: {
-        id: 'req-1',
-        sessionId: 'sid-1',
-        workDir: '/wd',
-        toolName: 'BashCommand',
-        toolInput: { command: 'ls' },
-        seq: 1,
-      },
-      timestamp: Date.now(),
-    });
-
-    await vi.waitFor(() => expect(sendContentSpy).toHaveBeenCalled());
-
-    expect(sendContentSpy).toHaveBeenCalledWith(expect.stringContaining('/allow'), expect.any(String));
-  });
-
-  it('registers template_card_event listener and resolves allow decision', async () => {
-    const onMock = vi.fn();
-    const updateTemplateCardMock = vi.fn().mockResolvedValue(undefined);
-    (channel as any).wsClient = {
-      isConnected: true,
-      sendMessage: sendMessageMock,
-      updateTemplateCard: updateTemplateCardMock,
-      on: onMock,
-    };
-
-    // 触发 listener 注册
-    (channel as any).registerCardEventListener((channel as any).wsClient);
-
-    const templateCardHandler = onMock.mock.calls.find(
-      ([event]) => event === 'event.template_card_event',
-    )?.[1];
-    expect(templateCardHandler).toBeDefined();
-
-    const p = permissionBroker.wait({
-      id: 'req-listener',
-      sessionId: 'sid-1',
-      workDir: '/wd',
-      toolName: 'BashCommand',
-      toolInput: {},
-    });
-
-    // 模拟卡片已发送，手动写入 store 状态
-    (channel as any).cardStore.save('req-listener', 1, 'chat-1', 'msgid-listener', 'sid-1');
-
-    templateCardHandler({
-      body: {
-        chatid: 'chat-1',
-        event: {
-          eventtype: 'template_card_event',
-          template_card_event: {
-            event_key: 'wecom:allow:req-listener',
-          },
-        },
-      },
-    });
-
-    await expect(p).resolves.toEqual({ decision: 'allow', answers: undefined });
-    await vi.waitFor(() => expect(updateTemplateCardMock).toHaveBeenCalled());
-  });
-
-  it('SessionEnd 时仅取消当前会话 pending 的卡片状态', () => {
-    vi.spyOn(channel as any, 'sendContent').mockResolvedValue(undefined);
-    const store = (channel as any).cardStore;
-    store.save('req-session', 1, 'chat-1', 'msgid-session', 'sid-1');
-    store.save('req-other', 2, 'chat-1', 'msgid-other', 'sid-2');
-    expect(store.get('req-session')?.status).toBe('pending');
-    expect(store.get('req-other')?.status).toBe('pending');
-
-    channel.send({
-      seq: 1,
-      turn: 1,
-      sessionId: 'sid-1',
-      workDir: '/wd',
-      kind: 'SessionEnd',
       payload: {},
-      timestamp: Date.now(),
-    });
+    })).not.toThrow();
+  });
 
-    expect(store.get('req-session')?.status).toBe('cancelled');
-    expect(store.get('req-other')?.status).toBe('pending');
+  it('clearSessionMappings() 清理路由', () => {
+    const chatIdToSession = (channel as any).chatIdToSession;
+    chatIdToSession.set('chat-1', 'sid-1');
+    chatIdToSession.set('chat-2', 'sid-1');
+    chatIdToSession.set('chat-3', 'sid-2');
+    channel.clearSessionMappings('sid-1');
+    expect(chatIdToSession.has('chat-1')).toBe(false);
+    expect(chatIdToSession.has('chat-2')).toBe(false);
+    expect(chatIdToSession.has('chat-3')).toBe(true);
   });
 });

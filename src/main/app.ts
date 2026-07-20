@@ -16,11 +16,12 @@ import { SSEChannel } from './channels/sse-channel.js';
 import { WeComChannel, WeComChannelConfig } from './channels/wecom-channel.js';
 import { LocalFileChannel } from './channels/localfile-channel.js';
 import { StateChannel } from './channels/state-channel.js';
-import { makeHookEvent, ProxyStageKind, OutputChannel } from './channels/channel.js';
+import { OutputChannel, type HookEventLike } from './channels/channel.js';
 import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
 import { setNotchMousePassthrough, resizeNotchWindow, showNotchWindow, hideNotchWindow, getNotchWindow } from './notch-window.js';
 import { startProxy } from './apiproxy.js';
 import { start as startPty, PtyMode, PtySize } from './pty.js';
+import { registerTraceIpc } from './trace/ipc.js';
 
 const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
 
@@ -76,12 +77,12 @@ function createSettingsOverrideFile(proxyUrl: string): { args: string[]; cleanup
   }
 }
 
-function mapHookToKind(name: string): ProxyStageKind | null {
+function mapHookToKind(name: string): HookEventLike['kind'] | null {
   switch (name) {
-    case 'SessionStart': return 'session_start';
+    case 'SessionStart': return 'SessionStart';
     case 'SessionEnd': return 'SessionEnd';
-    case 'UserPromptSubmit': return 'prompt';
-    case 'Stop': return 'session_idle';
+    case 'UserPromptSubmit': return 'UserPromptSubmit';
+    case 'Stop': return 'Stop';
     default: return null;
   }
 }
@@ -233,6 +234,8 @@ export class App {
     this.dispatcher.register(this.wecomChannel);
     this.dispatcher.register(this.localFileChannel);
     this.dispatcher.register(this.stateChannel);
+    this.dispatcher.registerHook(this.stateChannel);
+    this.dispatcher.registerHook(this.wecomChannel);
   }
 
   setWindow(win: BrowserWindow): void {
@@ -286,7 +289,7 @@ export class App {
       const r = list.find((x) => x.sessionId === sessionId);
       return r ? (r.userTitle || r.aiTitle || r.firstPrompt || r.project || sessionId.slice(0, 8)) : sessionId.slice(0, 8);
     });
-    this.wecomChannel.setCreateSessionHandler(async (workDir, prompt) => {
+    this.wecomChannel.setCreateSessionHandler(async (workDir: string, prompt: string) => {
       try {
         const stat = await fs.promises.stat(workDir);
         if (!stat.isDirectory()) {
@@ -475,7 +478,7 @@ export class App {
         const s = session.lookup(sid);
         const workDir = s?.workDir ?? '';
         try {
-          this.dispatcher.dispatch(makeHookEvent(kind, sid, workDir, evt));
+          this.dispatcher.dispatchHook({ kind, sessionId: sid, workDir, payload: evt as Record<string, unknown> });
         } catch {}
       }
     });
@@ -509,7 +512,7 @@ export class App {
 
       // 通知所有通道展示审批 UI（带上预分配的 seq）
       try {
-        this.dispatcher.dispatch(makeHookEvent('PermissionRequest', sid, workDir, { ...req, seq }));
+        this.dispatcher.dispatchHook({ kind: 'PermissionRequest', sessionId: sid, workDir, payload: { ...req, seq } });
       } catch {}
 
       // 阻塞等待
@@ -532,14 +535,14 @@ export class App {
       getBus().emit('permission:cancelled', JSON.stringify({ sessionId, toolName }));
       try {
         const workDir = session.lookup(sessionId)?.workDir ?? '';
-        this.dispatcher.dispatch(makeHookEvent('PermissionResolved', sessionId, workDir, { id, decision, source, toolName }));
+        this.dispatcher.dispatchHook({ kind: 'PermissionResolved', sessionId, workDir, payload: { id, decision, source, toolName } });
       } catch {}
     });
     permissionBroker.onCancel((id, sessionId, toolName) => {
       try {
         // 带真实 sessionId 派发，StateChannel 才能清除 pendingPermission 并恢复状态
         const workDir = session.lookup(sessionId)?.workDir ?? '';
-        this.dispatcher.dispatch(makeHookEvent('PermissionResolved', sessionId, workDir, { id, source: 'terminal', toolName }));
+        this.dispatcher.dispatchHook({ kind: 'PermissionResolved', sessionId, workDir, payload: { id, source: 'terminal', toolName } });
       } catch {}
     });
 
@@ -673,7 +676,7 @@ export class App {
   private async createSessionInternal(workDir: string, prompt: string, extraArgs: string[] = [], autoTrust = false): Promise<string> {
     const realId = randomUUID();
     const upstream = resolveAnthropicBaseUrl();
-    const proxy = await startProxy(workDir, realId, this.dispatcher, upstream);
+    const proxy = await startProxy(workDir, realId, (env) => this.dispatcher.dispatch(env), undefined, upstream);
     this.apiProxies.push(proxy);
     const proxyUrl = `http://127.0.0.1:${proxy.port}`;
     const { args, cleanup } = createSettingsOverrideFile(proxyUrl);
@@ -805,6 +808,7 @@ export class App {
   }
 
   private registerIpcHandlers(): void {
+    registerTraceIpc();
     ipcMain.handle('app:isInitialized', () => {
       const hash = this.settingsStore.get('auth.hash', '');
       return auth.isInitialized(hash as string);
@@ -1207,7 +1211,7 @@ export class App {
       return;
     }
     const upstream = resolveAnthropicBaseUrl();
-    startProxy(workDir, id, this.dispatcher, upstream).then((proxy) => {
+    startProxy(workDir, id, (env) => this.dispatcher.dispatch(env), undefined, upstream).then((proxy) => {
       this.apiProxies.push(proxy);
       const proxyUrl = `http://127.0.0.1:${proxy.port}`;
       const { args, cleanup } = createSettingsOverrideFile(proxyUrl);

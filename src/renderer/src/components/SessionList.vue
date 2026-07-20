@@ -52,6 +52,7 @@
             :is-active="s.id === activeId"
             :dup="dupProjects.has(s.project)"
             @select="$emit('select', s.id)"
+            @open-trace="emit('open-trace', s)"
           />
           <div v-if="!filteredList.length" class="empty">
             {{ search ? '无匹配结果' : '暂无会话' }}
@@ -59,7 +60,7 @@
         </template>
       </div>
     </div>
-  </div>
+    </div>
 </template>
 
 <script setup lang="ts">
@@ -70,10 +71,11 @@ import { useSessionsStore } from '../stores/sessions'
 import type { SessionMeta } from '../types/session'
 
 const props = defineProps<{ list: SessionMeta[]; activeId: string | null; collapsed?: boolean }>()
-defineEmits<{
+const emit = defineEmits<{
   (e: 'create'): void
   (e: 'select', id: string): void
   (e: 'toggle-collapse'): void
+  (e: 'open-trace', session: SessionMeta): void
 }>()
 
 const sessions = useSessionsStore()
@@ -201,4 +203,5 @@ const dupProjects = computed(() => {
   0%, 100% { opacity: 0.45; }
   50% { opacity: 0.75; }
 }
+
 </style>

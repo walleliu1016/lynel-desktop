@@ -1,7 +1,8 @@
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
-import { OutputChannel, ProxyStageEvent } from './channel.js';
+import { OutputChannel, HookChannel, type HookEventLike } from './channel.js';
+import type { LynelEnvelope } from '../protocol/envelope.js';
 import * as session from '../session.js';
 import { getStore } from '../store.js';
 import { getLogger } from '../log.js';
@@ -146,7 +147,7 @@ async function getWSClientClass(): Promise<any> {
   return wsClientModule.WSClient;
 }
 
-export class WeComChannel implements OutputChannel {
+export class WeComChannel implements OutputChannel, HookChannel {
   readonly id = 'wecom';
   readonly name = 'WeCom';
   private cfg: WeComChannelConfig;
@@ -232,36 +233,79 @@ export class WeComChannel implements OutputChannel {
     });
   }
 
-  send(event: ProxyStageEvent): void {
-    logger.info(`[wecom-channel] receive event ${event.kind} (sid=${event.sessionId.slice(0, 8)}...)`);
+  send(event: LynelEnvelope): void {
+    if (!this.isEnabled()) return;
+    if (!event.sessionId) return;
 
+    // 记录路由
+    if (this.cfg.chatId) {
+      this.recordRouting(this.cfg.chatId, event.sessionId);
+    }
+
+    const ev = event.ev;
+    const header = this.formatSessionHeader(event.sessionId) ?? '';
+
+    switch (ev.t) {
+      case 'text': {
+        if (event.role === 'user') {
+          const content = `${header}\n👤 **用户**\n${ev.text}`;
+          this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] user text send failed:', e));
+        } else if (event.role === 'agent') {
+          const prefix = ev.thinking ? '💭 **思考**' : '🤖 **Claude**';
+          const content = `${header}\n${prefix}\n${ev.text}`;
+          this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] agent text send failed:', e));
+        }
+        break;
+      }
+      case 'tool-call-start': {
+        const title = ev.title || ev.name;
+        const argsStr = ev.args && Object.keys(ev.args).length
+          ? `\n\`\`\`json\n${JSON.stringify(ev.args, null, 2)}\n\`\`\``
+          : '';
+        const content = `${header}\n🔧 **${ev.name}**\n> ${title}${argsStr}`;
+        this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] tool-call-start send failed:', e));
+        break;
+      }
+      case 'tool-call-end': {
+        if (ev.is_error) {
+          const content = `${header}\n❌ **工具执行失败**：${ev.error ?? '未知错误'} (${ev.call})`;
+          this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] tool-call-end send failed:', e));
+        } else {
+          const content = `${header}\n✅ **工具执行完成** (${ev.call})`;
+          this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] tool-call-end send failed:', e));
+        }
+        break;
+      }
+      case 'turn-end': {
+        const content = `${header}\n📌 **Turn 结束** (${ev.status})`;
+        this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] turn-end send failed:', e));
+        break;
+      }
+      case 'service': {
+        const content = `${header}\n⚠️ **系统通知**\n${ev.text}`;
+        this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] service send failed:', e));
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  sendHook(event: HookEventLike): void {
     // 无论频道是否启用，会话结束时都应清理该会话的卡片状态
     if (event.kind === 'SessionEnd') {
       this.cardStore.cancelBySession(event.sessionId);
     }
 
     if (!this.isEnabled()) {
-      logger.info('[wecom-channel] disabled, skip');
-      return;
-    }
-
-    const outboundEvents = ['prompt', 'tool_use', 'response_complete', 'PermissionRequest', 'PermissionResolved', 'tool_result', 'SessionEnd', 'error'];
-    if (!outboundEvents.includes(event.kind)) {
-      logger.info(`[wecom-channel] event ${event.kind} not in outbound list, skip`);
-      return;
-    }
-
-    // prompt 会同时来自 hook（UserPromptSubmit，seq=0）和 apiproxy（实际 API 请求，seq>0），
-    // 只保留 apiproxy 来源，避免企业微信里同一条用户消息出现两次。
-    if (event.kind === 'prompt' && event.seq === 0) {
-      logger.info('[wecom-channel] skip hook-sourced prompt (will be sent via apiproxy)');
+      logger.info('[wecom-channel] hook disabled, skip');
       return;
     }
 
     const msgSeq = (this.sessionSeqCounters.get(event.sessionId) ?? 0) + 1;
     this.sessionSeqCounters.set(event.sessionId, msgSeq);
 
-    // 权限请求/提问使用模板卡片，失败后再降级为 Markdown
+    // 权限请求/提问使用模板卡片
     if (event.kind === 'PermissionRequest') {
       const p = event.payload as any;
       const toolName = p?.toolName || 'unknown';
@@ -270,27 +314,31 @@ export class WeComChannel implements OutputChannel {
       } else {
         this.sendPermissionCard(event, msgSeq).catch((err) => logger.error('[wecom-channel] sendPermissionCard failed:', err));
       }
-      // 仍然记录路由关系
       if (this.cfg.chatId) {
         this.recordRouting(this.cfg.chatId, event.sessionId);
       }
       return;
     }
 
-    const content = this.formatMessage(event, msgSeq);
-    if (!content) {
-      logger.info('[wecom-channel] empty content, skip');
+    // PermissionResolved 降级为 Markdown
+    if (event.kind === 'PermissionResolved') {
+      const p = event.payload as any;
+      const header = this.formatSessionHeader(event.sessionId) ?? '';
+      if (p?.source === 'terminal') {
+        this.sendContent(`${header}\n✅ **权限已在终端处理**`, event.sessionId).catch(() => {});
+      } else {
+        const src = p?.source === 'wecom' ? '企业微信' : p?.source === 'notch' ? '桌面端' : '终端';
+        this.sendContent(`${header}\n✅ **权限已处理: ${p?.decision}** (${src})`, event.sessionId).catch(() => {});
+      }
       return;
     }
-    logger.info(`[wecom-channel] formatted content: ${content.slice(0, 80)}...`);
 
-    // 记录会话路由关系，方便企业微信入站消息找到对应 session
-    if (this.cfg.chatId) {
-      this.recordRouting(this.cfg.chatId, event.sessionId);
+    // SessionEnd 降级为 Markdown
+    if (event.kind === 'SessionEnd') {
+      const header = this.formatSessionHeader(event.sessionId) ?? '';
+      this.sendContent(`${header}\n📌 **会话结束**`, event.sessionId).catch(() => {});
+      return;
     }
-
-    // 异步发送，不阻塞 dispatcher / 主进程事件循环
-    this.sendContent(content, event.sessionId).catch((err) => logger.error('[wecom-channel] send failed:', err));
   }
 
   private recordRouting(chatId: string, sessionId: string): void {
@@ -332,7 +380,7 @@ export class WeComChannel implements OutputChannel {
     logger.info('[wecom-channel] send success:', JSON.stringify(result));
   }
 
-  private async sendPermissionCard(event: ProxyStageEvent, msgSeq: number): Promise<void> {
+  private async sendPermissionCard(event: HookEventLike, msgSeq: number): Promise<void> {
     const p = event.payload as any;
     const req: PermissionRequest = {
       id: p.id,
@@ -356,7 +404,7 @@ export class WeComChannel implements OutputChannel {
     }
   }
 
-  private async sendAskQuestionCard(event: ProxyStageEvent, msgSeq: number): Promise<void> {
+  private async sendAskQuestionCard(event: HookEventLike, msgSeq: number): Promise<void> {
     const p = event.payload as any;
     const seq = p.seq ?? msgSeq;
     const input = p.toolInput as any;
@@ -1138,65 +1186,8 @@ export class WeComChannel implements OutputChannel {
     return `> **${project}** · ${sessionIdx} · \`${sid}\``;
   }
 
-  private formatHeader(event: ProxyStageEvent, _msgSeq: number): string {
+  private formatHeader(event: { sessionId: string }, _msgSeq: number): string {
     return this.formatSessionHeader(event.sessionId) ?? '';
-  }
-
-  private formatToolInput(p: any): string {
-    if (!p?.input || typeof p.input !== 'object') return '';
-    const input = p.input as Record<string, any>;
-    const keys = Object.keys(input);
-    if (keys.length === 0) return '';
-
-    if (input.command) {
-      const cmd = String(input.command);
-      return `\n\`\`\`\n${cmd.length > 300 ? cmd.slice(0, 300) + '...' : cmd}\n\`\`\``;
-    }
-    if (input.file_path || input.path) {
-      return `\n📄 ${input.file_path || input.path}`;
-    }
-    const firstKey = keys[0];
-    const val = typeof input[firstKey] === 'string' ? input[firstKey] : JSON.stringify(input[firstKey]);
-    const short = val.length > 100 ? val.slice(0, 100) + '...' : val;
-    return `\n${firstKey}: ${short}`;
-  }
-
-  private formatMessage(event: ProxyStageEvent, msgSeq: number): string {
-    const header = this.formatHeader(event, msgSeq);
-    const p = event.payload as any;
-    switch (event.kind) {
-      case 'prompt':
-        return `${header}\n👤 **用户**\n${p?.prompt || ''}`;
-      case 'tool_use':
-        return `${header}\n🔧 **工具调用: ${p?.name || 'unknown'}**${this.formatToolInput(p)}`;
-      case 'response_complete':
-        return `${header}\n🤖 **Claude**\n${p?.text || ''}`;
-      case 'PermissionRequest': {
-        const toolName = p?.toolName || 'unknown';
-        const input = p?.toolInput;
-        const reqId = this.getSessionCmdArg(event.sessionId);
-        if (toolName === 'AskUserQuestion') {
-          return this.formatAskUserQuestion(header, input, reqId);
-        }
-        return this.formatPermissionRequest(header, toolName, input, reqId);
-      }
-      case 'PermissionResolved': {
-        // 终端自行处理时不知道实际决策，只提示已处理
-        if (p?.source === 'terminal') {
-          return `${header}\n✅ **权限已在终端处理**`;
-        }
-        const src = p?.source === 'wecom' ? '企业微信' : p?.source === 'notch' ? '桌面端' : '终端';
-        return `${header}\n✅ **权限已处理: ${p?.decision}** (${src})`;
-      }
-      case 'tool_result':
-        return `${header}\n📋 **工具结果: ${p?.name || 'unknown'}**`;
-      case 'error':
-        return `${header}\n❌ **错误: ${p?.message || 'unknown'}**`;
-      case 'SessionEnd':
-        return `${header}\n📌 **会话结束**`;
-      default:
-        return '';
-    }
   }
 
   private formatToolInputPreview(input: unknown): string {

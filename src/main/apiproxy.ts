@@ -1,8 +1,19 @@
+// apiproxy.ts: 反向代理拦截 Claude API 流量
+// 实时通过 SessionAdapter 生成 LynelEnvelope，响应结束后写 raw archive + happy jsonl
+
 import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
-import { ChannelDispatcher } from './channels/registry.js';
-import { ProxyStageEvent } from './channels/channel.js';
+import os from 'node:os';
+import path from 'node:path';
+import { SessionAdapter, type SseEvent } from './adapter/sessionAdapter.js';
+import { anthropicAdapter } from './formats/anthropic.js';
+import type { FormatAdapter } from './formats/format.js';
+import { type LynelEnvelope } from './protocol/envelope.js';
+import { requestTiming, recordModel } from './trace/timing.js';
+import { costFromUsage, type CostBreakdown } from './cost/priceTable.js';
+import { HappyJsonlWriter } from './archive/happyJsonl.js';
+import { writeRawExchange, type RawExchangeInput } from './archive/rawArchive.js';
 
 export interface Proxy {
   port: number;
@@ -10,300 +21,224 @@ export interface Proxy {
   close(): void;
 }
 
-let seqCounter = 0;
-function nextSeq(): number {
-  return ++seqCounter;
+// 旧 ProxyStageEvent 已被 LynelEnvelope 替代
+
+interface SessionState {
+  workDir: string;
+  sessionDir: string;
+  adapter: SessionAdapter;
+  jsonl: HappyJsonlWriter;
+  // 每个 HTTP roundtrip 自增（与 envelope seq 独立）
+  roundtripSeq: number;
+  // 响应阶段累积
+  rawChunks: Buffer[];
+  sseCarry: string;
+  startedAt: number;
+  firstByteAt: number | null;
+  reqBody: Buffer | null;
+  reqHeaders: Record<string, string>;
+  resStatus: number;
+  resHeaders: Record<string, string | string[] | undefined>;
+  format: FormatAdapter;
+}
+
+const sessionStates = new Map<string, SessionState>();
+
+export function resolveProxySession(token: string): { sessionId: string; workDir: string } | undefined {
+  const s = sessionStates.get(token);
+  if (!s) return undefined;
+  return { sessionId: token, workDir: s.workDir };
 }
 
 export function newCallID(): string {
   return `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-const proxyStore = new Map<string, { sessionId: string; workDir: string }>();
-
-interface ResponseBuffer {
-  text: string;
-  sessionId: string;
-  sse: string;
-}
-const responseBuffers = new Map<string, ResponseBuffer>();
-
-export function resolveProxySession(token: string): { sessionId: string; workDir: string } | undefined {
-  return proxyStore.get(token);
+function sessionDirFromWorkDir(workDir: string): string {
+  const safe = workDir
+    .replace(/^[A-Za-z]:/, (m) => m.replace(':', '-'))
+    .replace(/[/\\]/g, '--')
+    .replace(/[<>:"|?*\x00-\x1f]/g, '_')
+    .replace(/^--+/, '');
+  return path.join(os.homedir(), '.lynel-desktop', 'projects', safe || 'root');
 }
 
-function getResponseBuffer(token: string, sessionId: string): ResponseBuffer {
-  const existing = responseBuffers.get(token);
-  if (existing) {
-    existing.sessionId = sessionId;
-    return existing;
-  }
-  const buffer: ResponseBuffer = { text: '', sessionId, sse: '' };
-  responseBuffers.set(token, buffer);
-  return buffer;
-}
-
-function appendResponseText(token: string, text: string): void {
-  const entry = resolveProxySession(token);
-  const sid = entry?.sessionId ?? token;
-  const existing = responseBuffers.get(token);
-  if (existing) {
-    existing.text += text;
-    existing.sessionId = sid;
-  } else {
-    responseBuffers.set(token, { text, sessionId: sid, sse: '' });
-  }
-}
-
-function flushResponseBuffer(token: string): ResponseBuffer | undefined {
-  const buffer = responseBuffers.get(token);
-  if (!buffer) return undefined;
-  responseBuffers.delete(token);
-  return buffer;
-}
-
-const pendingToolInput = new Map<string, { name: string; id: string; inputJson: string; index: number }>();
-
-function flushPendingToolUse(
+function dispatchEnvelopes(
   token: string,
-  sid: string,
-  dispatcher: ChannelDispatcher,
-  workDir: string,
+  envelopes: LynelEnvelope[],
+  emit: (env: LynelEnvelope) => void,
 ): void {
-  const pending = pendingToolInput.get(token);
-  if (!pending) return;
-  pendingToolInput.delete(token);
-  let input: any = {};
-  if (pending.inputJson) {
-    try { input = JSON.parse(pending.inputJson); } catch { /* partial JSON, ignore */ }
-  }
-  emitStage(dispatcher, sid, workDir, 'tool_use', {
-    type: 'tool_use',
-    id: pending.id,
-    name: pending.name,
-    input,
-  }, 1);
-}
-
-function processSSEData(
-  data: string,
-  token: string,
-  sid: string,
-  dispatcher: ChannelDispatcher,
-  workDir: string,
-): void {
-  if (data === '[DONE]') return;
-  try {
-    const parsed = JSON.parse(data);
-    const delta = parsed.delta;
-    if (delta?.text) {
-      appendResponseText(token, delta.text);
-      emitStage(dispatcher, sid, workDir, 'text', { text: delta.text }, 1);
-    }
-    if (parsed.type === 'content_block_start' && parsed.content_block?.type === 'tool_use') {
-      const block = parsed.content_block;
-      pendingToolInput.set(token, {
-        name: block.name || 'unknown',
-        id: block.id || '',
-        inputJson: '',
-        index: parsed.index ?? 0,
-      });
-    }
-    if (parsed.type === 'content_block_delta' && delta?.type === 'input_json_delta' && delta?.partial_json) {
-      const pending = pendingToolInput.get(token);
-      if (pending) {
-        pending.inputJson += delta.partial_json;
-      }
-    }
-    if (parsed.type === 'message_delta' && delta?.stop_reason === 'tool_use') {
-      flushPendingToolUse(token, sid, dispatcher, workDir);
-    }
-    if (parsed.type === 'content_block_stop') {
-      flushPendingToolUse(token, sid, dispatcher, workDir);
-    }
-  } catch {
-    // ignore parse errors
+  for (const env of envelopes) {
+    env.sessionId = token;
+    const s = sessionStates.get(token);
+    if (s) s.jsonl.append(env);
+    emit(env);
   }
 }
 
-function extractPromptText(content: unknown): string | undefined {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content
-      .filter((block: any) => block?.type === 'text')
-      .map((block: any) => block.text)
-      .join('\n');
-  }
-  return undefined;
-}
-
-// Claude Code 压缩恢复时注入的系统上下文，不应作为"用户输入"转发到通道
-function isSystemInjectedPrompt(text: string): boolean {
-  // 压缩恢复注入的 recap 提示词
-  if (/The user stepped away and is coming back/i.test(text)) return true;
-  if (/Recap in under \d+ words/i.test(text)) return true;
-  if (/Skip root-cause narrative/i.test(text)) return true;
-  // CLAUDE.md 自动生成提示
-  if (/^We created CLAUDE\.md for/i.test(text)) return true;
-  return false;
-}
-
-// 上一次发出的 prompt，用于去重（同一段系统上下文会在多次 API 请求中重复出现）
-const lastPromptPerSession = new Map<string, string>();
-
-function extractResponseText(parsed: any): string {
-  const parts: string[] = [];
-  if (Array.isArray(parsed.content)) {
-    for (const block of parsed.content) {
-      if (block?.type === 'text' && typeof block.text === 'string') {
-        parts.push(block.text);
-      }
+function parseSseChunk(text: string): { events: SseEvent[]; leftover: string } {
+  const lines = text.split('\n');
+  const leftover = lines.pop() ?? '';
+  const events: SseEvent[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) continue;
+    const data = trimmed.slice(5).trim();
+    if (!data || data === '[DONE]') continue;
+    try {
+      events.push(JSON.parse(data) as SseEvent);
+    } catch {
+      // 忽略半行/无法解析的
     }
   }
-  return parts.join('\n');
+  return { events, leftover };
 }
 
 export function startProxy(
   workDir: string,
   token: string,
-  dispatcher: ChannelDispatcher,
+  emit: (env: LynelEnvelope) => void,
+  format?: FormatAdapter,
   upstream = 'https://api.anthropic.com',
 ): Promise<Proxy> {
-  proxyStore.set(token, { sessionId: token, workDir });
   const up = new URL(upstream);
   const upstreamClient = up.protocol === 'http:' ? http : https;
+  const sessionDir = sessionDirFromWorkDir(workDir);
+  const jsonl = new HappyJsonlWriter(sessionDir);
+  jsonl.open();
+
+  const state: SessionState = {
+    workDir,
+    sessionDir,
+    adapter: new SessionAdapter(),
+    jsonl,
+    roundtripSeq: 0,
+    rawChunks: [],
+    sseCarry: '',
+    startedAt: 0,
+    firstByteAt: null,
+    reqBody: null,
+    reqHeaders: {},
+    resStatus: 0,
+    resHeaders: {},
+    format: format ?? anthropicAdapter,
+  };
+  sessionStates.set(token, state);
+
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const forwardPath = (up.pathname === '/' ? '' : up.pathname) + (req.url || '/');
-      console.log(`[apiproxy] ${req.method} ${forwardPath} (token=${token.slice(0, 8)}...) upstream=${upstream}`);
-
-      const forwardHeaders = { ...req.headers, host: up.host };
-      delete forwardHeaders['accept-encoding'];
-      const options: http.RequestOptions = {
-        protocol: up.protocol,
-        hostname: up.hostname,
-        port: up.port || (up.protocol === 'http:' ? 80 : 443),
-        path: forwardPath,
-        method: req.method,
-        headers: forwardHeaders,
-      };
 
       const chunks: Buffer[] = [];
-      req.on('data', (chunk) => { chunks.push(chunk); });
+      req.on('data', (chunk: Buffer) => chunks.push(chunk));
       req.on('end', () => {
         const bodyBuf = Buffer.concat(chunks);
+        const s = sessionStates.get(token);
+        if (!s) return;
+        s.reqBody = bodyBuf;
+        s.reqHeaders = req.headers as Record<string, string>;
+        s.startedAt = Date.now();
+        s.firstByteAt = null;
+        s.rawChunks = [];
+        s.sseCarry = '';
+        s.roundtripSeq += 1;
+
+        // handleRequest
         try {
           const json = JSON.parse(bodyBuf.toString('utf8'));
-          const rawContent = json.messages?.[json.messages.length - 1]?.content;
-          const prompt = extractPromptText(rawContent);
-          const entry = resolveProxySession(token);
-          const sid = entry?.sessionId ?? token;
-
-          // 截获 tool_result（携带 tool_use_id 以便关联）
-          if (Array.isArray(rawContent)) {
-            for (const block of rawContent) {
-              if (block?.type === 'tool_result') {
-                emitStage(dispatcher, sid, workDir, 'tool_result', {
-                  tool_use_id: block.tool_use_id,
-                  content: typeof block.content === 'string' ? block.content.slice(0, 500) : '',
-                }, 1);
-              }
-            }
-          }
-
-          if (prompt) {
-            responseBuffers.delete(token);
-            if (isSystemInjectedPrompt(prompt)) {
-              console.log(`[apiproxy] skip system prompt (sid=${sid.slice(0, 8)}...): ${prompt.slice(0, 80)}...`);
-            } else if (lastPromptPerSession.get(sid) === prompt) {
-              console.log(`[apiproxy] skip duplicate prompt (sid=${sid.slice(0, 8)}...): ${prompt.slice(0, 80)}...`);
-            } else {
-              lastPromptPerSession.set(sid, prompt);
-              console.log(`[apiproxy] prompt detected (sid=${sid.slice(0, 8)}...): ${prompt.slice(0, 80)}...`);
-              emitStage(dispatcher, sid, workDir, 'prompt', { prompt }, 1);
-            }
-          }
-        } catch (err) {
-          console.log('[apiproxy] request body is not JSON or missing messages:', err);
+          const envelopes = s.adapter.handleRequest(json);
+          dispatchEnvelopes(token, envelopes, emit);
+        } catch {
+          // 非 JSON 请求体（如 GET）忽略
         }
+
+        const forwardHeaders = { ...req.headers, host: up.host };
+        delete (forwardHeaders as Record<string, unknown>)['accept-encoding'];
+        const proxyReq = upstreamClient.request({
+          protocol: up.protocol,
+          hostname: up.hostname,
+          port: up.port || (up.protocol === 'http:' ? 80 : 443),
+          path: forwardPath,
+          method: req.method,
+          headers: forwardHeaders,
+        }, (proxyRes) => {
+          s.resStatus = proxyRes.statusCode || 0;
+          s.resHeaders = proxyRes.headers as Record<string, string | string[] | undefined>;
+          const contentType = (proxyRes.headers['content-type'] || '').toString();
+          const isStream = contentType.includes('text/event-stream');
+
+          res.writeHead(s.resStatus, proxyRes.headers);
+
+          if (isStream) {
+            proxyRes.on('data', (chunk: Buffer) => {
+              if (s.firstByteAt == null) s.firstByteAt = Date.now();
+              s.rawChunks.push(chunk);
+              res.write(chunk);
+              const combined = s.sseCarry + chunk.toString('utf8');
+              const { events, leftover } = parseSseChunk(combined);
+              s.sseCarry = leftover;
+              const allEnvs: LynelEnvelope[] = [];
+              for (const ev of events) {
+                allEnvs.push(...s.adapter.handleSseEvent(ev));
+              }
+              dispatchEnvelopes(token, allEnvs, emit);
+            });
+          } else {
+            proxyRes.on('data', (chunk: Buffer) => {
+              if (s.firstByteAt == null) s.firstByteAt = Date.now();
+              s.rawChunks.push(chunk);
+              res.write(chunk);
+            });
+          }
+
+          proxyRes.on('end', () => {
+            res.end();
+            // 处理 SSE 流末尾未完成行
+            if (isStream && s.sseCarry.trim()) {
+              const trimmed = s.sseCarry.trim();
+              if (trimmed.startsWith('data:')) {
+                try {
+                  const ev = JSON.parse(trimmed.slice(5).trim()) as SseEvent;
+                  const envs = s.adapter.handleSseEvent(ev);
+                  dispatchEnvelopes(token, envs, emit);
+                } catch { /* ignore */ }
+              }
+              s.sseCarry = '';
+            }
+            // HTTP 错误状态码（4xx/5xx）：生成 error envelope 推送到 channel
+            if (s.resStatus >= 400) {
+              const rawErr = Buffer.concat(s.rawChunks).toString('utf8');
+              const errMsg = s.format.parseHttpError(s.resStatus, rawErr);
+              const errEnvs = s.adapter.handleHttpError(errMsg);
+              dispatchEnvelopes(token, errEnvs, emit);
+            }
+            finalizeExchange(token, isStream);
+          });
+
+          proxyRes.on('error', (err) => {
+            console.error('[apiproxy] upstream response error:', err);
+            if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' });
+            res.end('apiproxy upstream error');
+            const errEnvs = s.adapter.handleNetworkError(err.message);
+            dispatchEnvelopes(token, errEnvs, emit);
+            finalizeExchange(token, isStream, true);
+          });
+        });
+
+        proxyReq.on('error', (err) => {
+          console.error('[apiproxy] upstream request error:', err);
+          if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' });
+          res.end('apiproxy upstream error');
+          const errEnvs = s.adapter.handleNetworkError(err.message);
+          dispatchEnvelopes(token, errEnvs, emit);
+          finalizeExchange(token, false, true);
+        });
+
         proxyReq.end(bodyBuf);
-      });
-
-      const proxyReq = upstreamClient.request(options, (proxyRes) => {
-        const isStream = proxyRes.headers['content-type']?.includes('text/event-stream');
-        console.log(`[apiproxy] upstream response ${proxyRes.statusCode} content-type=${proxyRes.headers['content-type'] ?? 'none'} (token=${token.slice(0, 8)}...)`);
-        let responseBody = '';
-        proxyRes.on('data', (chunk: Buffer) => {
-          if (!isStream) {
-            responseBody += chunk.toString();
-            return;
-          }
-          // 流式响应增量解析 SSE，避免在响应末尾一次性处理大量数据阻塞事件循环
-          const entry = resolveProxySession(token);
-          const sid = entry?.sessionId ?? token;
-          const buffer = getResponseBuffer(token, sid);
-          buffer.sse += chunk.toString();
-          const lines = buffer.sse.split('\n');
-          buffer.sse = lines.pop() ?? '';
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (trimmed.startsWith('data: ')) {
-              processSSEData(trimmed.slice(6), token, sid, dispatcher, workDir);
-            }
-          }
-        });
-        proxyRes.on('end', () => {
-          const entry = resolveProxySession(token);
-          const sid = entry?.sessionId ?? token;
-
-          if (!isStream) {
-            try {
-              const parsed = JSON.parse(responseBody);
-              const text = extractResponseText(parsed);
-              if (text) {
-                console.log(`[apiproxy] non-streaming response (sid=${sid.slice(0, 8)}...): ${text.slice(0, 80)}...`);
-                emitStage(dispatcher, sid, workDir, 'response_complete', { text }, 1);
-              }
-              for (const block of parsed.content || []) {
-                if (block?.type === 'tool_use') {
-                  emitStage(dispatcher, sid, workDir, 'tool_use', block, 1);
-                }
-              }
-            } catch (err) {
-              console.log('[apiproxy] non-streaming response is not JSON:', err);
-            }
-            return;
-          }
-
-          // 处理末尾未完成的 SSE 行
-          const buffer = getResponseBuffer(token, sid);
-          if (buffer.sse.trim()) {
-            const trimmed = buffer.sse.trim();
-            if (trimmed.startsWith('data: ')) {
-              processSSEData(trimmed.slice(6), token, sid, dispatcher, workDir);
-            }
-          }
-
-          const flushed = flushResponseBuffer(token);
-          if (flushed) {
-            console.log(`[apiproxy] response_complete (stream end, sid=${flushed.sessionId.slice(0, 8)}...): ${flushed.text.slice(0, 80)}...`);
-            emitStage(dispatcher, flushed.sessionId, workDir, 'response_complete', { text: flushed.text }, 1);
-          }
-        });
-
-        res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
-        proxyRes.pipe(res);
-      });
-
-      proxyReq.on('error', (err) => {
-        console.error('[apiproxy] upstream error:', err);
-        if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' });
-        res.end('apiproxy upstream error');
       });
 
       req.on('error', (err) => {
         console.error('[apiproxy] client request error:', err);
-        proxyReq.destroy();
       });
     });
 
@@ -313,14 +248,15 @@ export function startProxy(
       console.log(`[apiproxy] listening on 127.0.0.1:${port} (token=${token.slice(0, 8)}...)`);
       resolve({
         port,
-        setSessionID: (id: string) => {
-          const entry = proxyStore.get(token);
-          if (entry) {
-            console.log(`[apiproxy] migrate token=${token.slice(0, 8)}... to sid=${id.slice(0, 8)}...`);
-            proxyStore.set(token, { ...entry, sessionId: id });
+        setSessionID: () => { /* token 即 session id，无需迁移 */ },
+        close: () => {
+          server.close();
+          const s = sessionStates.get(token);
+          if (s) {
+            s.jsonl.close();
+            sessionStates.delete(token);
           }
         },
-        close: () => server.close(),
       });
     });
 
@@ -328,23 +264,80 @@ export function startProxy(
   });
 }
 
-export function emitStage(
-  dispatcher: ChannelDispatcher,
-  sessionId: string,
-  workDir: string,
-  kind: ProxyStageEvent['kind'],
-  payload: unknown,
-  turn = 1,
-): void {
-  const event: ProxyStageEvent = {
-    seq: nextSeq(),
-    turn,
-    sessionId,
-    workDir,
-    kind,
-    payload,
-    timestamp: Date.now(),
-  };
-  console.log(`[apiproxy] emit ${kind} (sid=${sessionId.slice(0, 8)}...)`);
-  dispatcher.dispatch(event).catch((err) => console.error('[apiproxy] dispatch error:', err));
+function finalizeExchange(token: string, isStream: boolean, networkError = false): void {
+  const s = sessionStates.get(token);
+  if (!s) return;
+  const finishedAt = Date.now();
+  const raw = Buffer.concat(s.rawChunks).toString('utf8');
+  const errorFlag = networkError || s.resStatus >= 400;
+
+  let reassembled: RawExchangeInput['reassembled'] = null;
+  let model: string | null = null;
+  const usage = { input_tokens: 0, output_tokens: 0 };
+  let cost: CostBreakdown = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, totalInput: 0, cacheHitRate: 0, usd: 0 };
+
+  if (isStream) {
+    const r = s.format.reassembleResponse(raw);
+    if (r) {
+      reassembled = {
+        model: r.model,
+        stop_reason: r.stop_reason,
+        usage: r.usage,
+        content: r.content,
+      };
+      model = r.model;
+      usage.input_tokens = r.usage.input_tokens;
+      usage.output_tokens = r.usage.output_tokens;
+    }
+  }
+
+  if (!model && s.reqBody) {
+    try {
+      const body = JSON.parse(s.reqBody.toString('utf8'));
+      model = recordModel(body, null);
+    } catch { /* ignore */ }
+  }
+
+  if (model) {
+    cost = costFromUsage(model, usage);
+  }
+
+  const trace = requestTiming({
+    startedAt: s.startedAt,
+    firstByteAt: s.firstByteAt,
+    finishedAt,
+    ...usage,
+  }) ?? { totalMs: 0, ttftMs: 0, genMs: 0, inTps: null, outTps: null };
+
+  let parsedBody: unknown = null;
+  try {
+    parsedBody = s.reqBody ? JSON.parse(s.reqBody.toString('utf8')) : null;
+  } catch { /* ignore */ }
+
+  writeRawExchange({
+    sessionId: token,
+    sessionDir: s.sessionDir,
+    seq: s.roundtripSeq,
+    ts: s.startedAt,
+    startedAt: s.startedAt,
+    firstByteAt: s.firstByteAt,
+    finishedAt,
+    model,
+    format: s.format.name,
+    request: {
+      method: 'POST',
+      url: '/v1/messages',
+      headers: s.reqHeaders,
+      body: parsedBody,
+    },
+    response: {
+      status: s.resStatus,
+      headers: s.resHeaders,
+      raw,
+    },
+    trace,
+    reassembled,
+    cost,
+    error: errorFlag,
+  });
 }
