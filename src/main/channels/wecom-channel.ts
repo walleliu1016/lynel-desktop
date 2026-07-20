@@ -635,7 +635,7 @@ export class WeComChannel implements OutputChannel {
     const quoteRouting = this.resolveSessionFromQuote(body);
     if (quoteRouting) {
       if ('error' in quoteRouting) {
-        this.sendWeComReplyWithHeader(chatId, quoteRouting.error, quoteRouting.id).catch((err) =>
+        this.sendWeComReplyWithHeader(chatId, quoteRouting.error).catch((err) =>
           logger.error('[wecom-channel] failed to send reply:', err),
         );
         return;
