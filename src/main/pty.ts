@@ -150,7 +150,11 @@ export function start(
     write: (data) => proc.write(data),
     resize: (cols, rows) => proc.resize(cols, rows),
     kill: (signal) => {
-      if (os.platform() === 'win32' && signal) {
+      if (os.platform() === 'win32') {
+        // Windows 下进程树为 cmd.exe → claude.exe，必须递归终止整个树
+        try {
+          execFileSync('taskkill', ['/F', '/T', '/PID', String(proc.pid)], { stdio: 'ignore', timeout: 3000 });
+        } catch { /* 进程可能已退出 */ }
         proc.kill();
       } else {
         proc.kill(signal);

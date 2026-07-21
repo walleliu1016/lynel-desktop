@@ -370,6 +370,7 @@ export class App {
     try { await this.wecomChannel.close?.(); } catch { /* ignore */ }
     try { this.localFileChannel.close?.(); } catch { /* ignore */ }
     getLogger().info('[app] shutdown complete');
+    getLogger().info('[app] shutdown complete');
   }
 
   private applyChannelConfigs(): void {
