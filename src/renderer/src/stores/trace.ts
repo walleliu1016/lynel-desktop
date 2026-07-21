@@ -25,6 +25,8 @@ export interface TraceSummary {
   error: boolean
   cost: { usd: number; input: number; output: number }
   trace: { totalMs: number; ttftMs: number; genMs: number; inTps: number | null; outTps: number | null }
+  toolCount: number
+  retries: number
 }
 
 export interface SessionStats {
@@ -48,6 +50,7 @@ export const useTraceStore = defineStore('trace', () => {
   const usage = ref<any | null>(null)
   const picks = ref<number[]>([])
   const loading = ref<boolean>(false)
+  const diffMode = ref<boolean>(false)
 
   const filteredRequests = computed(() => {
     let list = requests.value;
@@ -58,6 +61,10 @@ export const useTraceStore = defineStore('trace', () => {
       list = list.filter((r) => r.error || r.status >= 400)
     }
     return list
+  })
+
+  const errorCount = computed(() => {
+    return requests.value.filter((r) => r.error || r.status >= 400).length
   })
 
   const availableModels = computed(() => {
@@ -110,7 +117,14 @@ export const useTraceStore = defineStore('trace', () => {
     diffResult.value = await DiffTraceRequests(workDir.value, sessionId.value, seqA, seqB)
   }
 
+  function toggleDiff() {
+    diffMode.value = !diffMode.value
+    picks.value = []
+    diffResult.value = null
+  }
+
   function togglePick(seq: number) {
+    if (!diffMode.value) return
     if (picks.value.includes(seq)) {
       picks.value = picks.value.filter((x) => x !== seq)
     } else {
@@ -128,8 +142,8 @@ export const useTraceStore = defineStore('trace', () => {
 
   return {
     workDir, sessionId, requests, stats, modelFilter, errorsOnly, selectedSeq, detail,
-    envelopes, diffResult, usage, picks, loading,
-    filteredRequests, availableModels,
-    setSession, load, select, loadUsage, diff, togglePick, exportRequest,
+    envelopes, diffResult, usage, picks, loading, diffMode,
+    filteredRequests, availableModels, errorCount,
+    setSession, load, select, loadUsage, diff, toggleDiff, togglePick, exportRequest,
   }
 })

@@ -103,7 +103,7 @@ export function startProxy(
 ): Promise<Proxy> {
   const up = new URL(upstream);
   const upstreamClient = up.protocol === 'http:' ? http : https;
-  const sessionDir = sessionDirFromWorkDir(workDir);
+  const sessionDir = path.join(sessionDirFromWorkDir(workDir), token);
   const jsonl = new HappyJsonlWriter(sessionDir);
   jsonl.open();
 

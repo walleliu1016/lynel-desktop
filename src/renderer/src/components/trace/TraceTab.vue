@@ -5,9 +5,12 @@
       :models="trace.availableModels"
       :model-filter="trace.modelFilter"
       :errors-only="trace.errorsOnly"
+      :diff-mode="trace.diffMode"
+      :error-count="trace.errorCount"
       @update:model-filter="(v: string) => (trace.modelFilter = v)"
       @update:errors-only="(v: boolean) => (trace.errorsOnly = v)"
       @reload="trace.load()"
+      @toggle-diff="trace.toggleDiff()"
     />
     <div class="trace-body">
       <RequestList
@@ -20,7 +23,7 @@
       <RequestDetailPane
         :detail="trace.detail"
         :diff-result="trace.diffResult"
-        @export="(format) => exportDetail(format)"
+        :loading="trace.loading"
       />
     </div>
   </div>
@@ -51,20 +54,6 @@ watch(() => props.sessionId, (sid) => {
     trace.load()
   }
 })
-
-async function exportDetail(format: 'raw' | 'md' | 'json' | 'har') {
-  if (trace.selectedSeq == null) return
-  const text = await trace.exportRequest(trace.selectedSeq, format)
-  if (text) {
-    const blob = new Blob([text], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `trace-${trace.sessionId.slice(0, 8)}-${String(trace.selectedSeq).padStart(4, '0')}.${format}`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-}
 </script>
 
 <style scoped>

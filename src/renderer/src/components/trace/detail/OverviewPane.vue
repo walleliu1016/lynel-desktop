@@ -64,6 +64,6 @@ function formatNum(n: number | null | undefined): string {
 .overview-pane { padding: 16px; overflow: auto; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 16px; }
 h3 { margin: 16px 0 8px; font-size: 13px; color: var(--text-secondary); }
-.error-block { margin-top: 16px; padding: 12px; border: 1px solid var(--text-error, #c00); border-radius: 4px; }
-.error-block pre { color: var(--text-error, #c00); font-size: 11px; }
+.error-block { margin-top: 16px; padding: 12px; border: 1px solid var(--status-error); border-radius: 4px; }
+.error-block pre { color: var(--status-error); font-size: 11px; }
 </style>

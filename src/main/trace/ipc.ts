@@ -24,6 +24,15 @@ function sessionDirFor(workDir: string, sessionId: string): string {
   return path.join(os.homedir(), '.lynel-desktop', 'projects', projectKeyFor(workDir), sessionId);
 }
 
+// 兼容旧版本路径（无 sessionId 子目录），优先新路径
+function resolveDataDir(workDir: string, sessionId: string): string {
+  const newPath = sessionDirFor(workDir, sessionId);
+  if (fs.existsSync(newPath)) return newPath;
+  const oldPath = path.join(os.homedir(), '.lynel-desktop', 'projects', projectKeyFor(workDir));
+  if (fs.existsSync(oldPath)) return oldPath;
+  return newPath;
+}
+
 export interface TraceSummary {
   id: string;
   seq: number;
@@ -38,12 +47,22 @@ export interface TraceSummary {
   error: boolean;
   cost: { usd: number; input: number; output: number };
   trace: { totalMs: number; ttftMs: number; genMs: number; inTps: number | null; outTps: number | null };
+  toolCount: number;
+  retries: number;
 }
 
 function summarize(exchange: any): TraceSummary {
   const body = exchange?.request?.body || {};
   const usage = exchange?.reassembled?.usage || {};
   const timing = exchange?.trace || { totalMs: 0, ttftMs: 0, genMs: 0, inTps: null, outTps: null };
+  const msgs = body.messages || [];
+  let toolCount = 0;
+  for (const m of msgs) {
+    const c = Array.isArray(m.content) ? m.content : [m.content];
+    for (const b of c) {
+      if (b && typeof b === 'object' && (b.type === 'tool_use' || b.type === 'tool_result')) toolCount++;
+    }
+  }
   return {
     id: exchange.id,
     seq: exchange.seq,
@@ -62,6 +81,8 @@ function summarize(exchange: any): TraceSummary {
       output: exchange.cost?.output ?? 0,
     },
     trace: timing,
+    toolCount,
+    retries: 0,
   };
 }
 
@@ -75,7 +96,7 @@ export function registerTraceIpc(): void {
   });
 
   ipcMain.handle('trace:listRequests', async (_event, workDir: string, sessionId: string, _modelFilter?: string) => {
-    const dir = sessionDirFor(workDir, sessionId);
+    const dir = resolveDataDir(workDir, sessionId);
     const seqs = listRawExchanges(dir);
     const out: TraceSummary[] = [];
     for (const seq of seqs) {
@@ -86,7 +107,7 @@ export function registerTraceIpc(): void {
   });
 
   ipcMain.handle('trace:sessionStats', async (_event, workDir: string, sessionId: string, _modelFilter?: string) => {
-    const dir = sessionDirFor(workDir, sessionId);
+    const dir = resolveDataDir(workDir, sessionId);
     const seqs = listRawExchanges(dir);
     const records: RawExchange[] = [];
     for (const seq of seqs) {
@@ -106,7 +127,7 @@ export function registerTraceIpc(): void {
   });
 
   ipcMain.handle('trace:request', async (_event, workDir: string, sessionId: string, seq: number) => {
-    const dir = sessionDirFor(workDir, sessionId);
+    const dir = resolveDataDir(workDir, sessionId);
     const ex = readRawExchange(dir, seq);
     if (!ex) return null;
     return {
@@ -122,13 +143,20 @@ export function registerTraceIpc(): void {
   });
 
   ipcMain.handle('trace:diff', async (_event, workDir: string, sessionId: string, seqA: number, seqB: number) => {
-    const dir = sessionDirFor(workDir, sessionId);
-    const a = readRawExchange(dir, seqA);
-    const b = readRawExchange(dir, seqB);
-    if (!a || !b) return null;
-    const blocksA = anthropicAdapter.blocks(a.request?.body || {});
-    const blocksB = anthropicAdapter.blocks(b.request?.body || {});
-    return { a: { seq: seqA, blocks: blocksA }, b: { seq: seqB, blocks: blocksB } };
+    const dir = resolveDataDir(workDir, sessionId);
+    const aEx = readRawExchange(dir, seqA);
+    const bEx = readRawExchange(dir, seqB);
+    if (!aEx || !bEx) return null;
+    const blocksA = anthropicAdapter.blocks(aEx.request?.body || {});
+    const blocksB = anthropicAdapter.blocks(bEx.request?.body || {});
+    const labelKey = (b: any) => b.label;
+    const setA = new Set(blocksA.map(labelKey));
+    const setB = new Set(blocksB.map(labelKey));
+    const added = blocksB.filter((b: any) => !setA.has(labelKey(b)));
+    const removed = blocksA.filter((b: any) => !setB.has(labelKey(b)));
+    const cachedInB = added.filter((b: any) => b.cache).length;
+    const counts = { added: added.length, removed: removed.length, common: blocksA.length - removed.length, cachedInB };
+    return { a: { seq: seqA }, b: { seq: seqB }, counts, added, removed };
   });
 
   ipcMain.handle('trace:usage', async () => {
@@ -150,7 +178,7 @@ export function registerTraceIpc(): void {
   });
 
   ipcMain.handle('trace:export', async (_event, workDir: string, sessionId: string, seq: number, format: string) => {
-    const dir = sessionDirFor(workDir, sessionId);
+    const dir = resolveDataDir(workDir, sessionId);
     const ex = readRawExchange(dir, seq);
     if (!ex) return null;
     if (format === 'raw') {
@@ -169,7 +197,7 @@ export function registerTraceIpc(): void {
   });
 
   ipcMain.handle('trace:envelopes', async (_event, workDir: string, sessionId: string) => {
-    const dir = sessionDirFor(workDir, sessionId);
+    const dir = resolveDataDir(workDir, sessionId);
     return HappyJsonlWriter.readAll(dir);
   });
 }
