@@ -51,6 +51,7 @@ export const useTraceStore = defineStore('trace', () => {
   const picks = ref<number[]>([])
   const loading = ref<boolean>(false)
   const diffMode = ref<boolean>(false)
+  const loadError = ref<string | null>(null)
 
   const filteredRequests = computed(() => {
     let list = requests.value;
@@ -86,6 +87,7 @@ export const useTraceStore = defineStore('trace', () => {
   async function load() {
     if (!workDir.value || !sessionId.value) return
     loading.value = true
+    loadError.value = null
     try {
       const [reqs, s, envs] = await Promise.all([
         ListTraceRequests(workDir.value, sessionId.value, modelFilter.value),
@@ -95,6 +97,8 @@ export const useTraceStore = defineStore('trace', () => {
       requests.value = reqs
       stats.value = s
       envelopes.value = envs
+    } catch (e: any) {
+      loadError.value = e?.message || '加载失败'
     } finally {
       loading.value = false
     }
@@ -142,7 +146,7 @@ export const useTraceStore = defineStore('trace', () => {
 
   return {
     workDir, sessionId, requests, stats, modelFilter, errorsOnly, selectedSeq, detail,
-    envelopes, diffResult, usage, picks, loading, diffMode,
+    envelopes, diffResult, usage, picks, loading, diffMode, loadError,
     filteredRequests, availableModels, errorCount,
     setSession, load, select, loadUsage, diff, toggleDiff, togglePick, exportRequest,
   }

@@ -1,6 +1,6 @@
 <template>
   <Teleport to=".center">
-    <div class="trace-overlay" @click.self="$emit('close')">
+    <div ref="overlayRef" class="trace-overlay" tabindex="-1" @click.self="$emit('close')" @keydown.escape="$emit('close')">
       <!-- 背景遮罩 -->
       <div class="backdrop" @click="$emit('close')" />
       <!-- 右侧面板 -->
@@ -27,6 +27,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import { useTraceStore } from '../../stores/trace'
 import RequestDetailPane from './RequestDetailPane.vue'
 import Icon from '../Icon.vue'
@@ -34,6 +35,8 @@ import Icon from '../Icon.vue'
 defineEmits<{ (e: 'close'): void }>()
 
 const trace = useTraceStore()
+const overlayRef = ref<HTMLElement>()
+onMounted(() => overlayRef.value?.focus())
 </script>
 
 <style scoped>
@@ -89,4 +92,9 @@ const trace = useTraceStore()
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop { animation: none; opacity: 0.25; }
+  .panel { animation: none; }
+}
 </style>

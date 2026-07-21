@@ -181,7 +181,7 @@ async function onSelectSession(id: string) {
   if (!meta) return
   tabsStore.openSession(id, meta.workdir, sessionDisplayTitle(meta))
   void sessions.select(id)
-  // trace store 由 TraceSidebar 内部自动加载（通过 setup 中的 onMounted）
+  // 初始化 trace store 并加载数据
   trace.setSession(meta.workdir, id)
   trace.load()
   showTraceOverlay.value = false
@@ -285,7 +285,7 @@ watch(
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  position: relative;
   background: var(--bg-primary);
 }
 .content { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; position: relative; }

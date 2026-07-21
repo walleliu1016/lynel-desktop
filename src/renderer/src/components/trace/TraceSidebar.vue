@@ -17,8 +17,14 @@
       </div>
     </template>
 
+    <!-- Error state -->
+    <div v-else-if="trace.loadError" class="state error">
+      <span>{{ trace.loadError }}</span>
+      <button class="retry-btn" @click="trace.load()">重试</button>
+    </div>
+
     <!-- Request list -->
-    <template v-else-if="filteredRequests.length">
+    <div class="thumb-list" v-else-if="filteredRequests.length">
       <div
         v-for="r in filteredRequests"
         :key="r.seq"
@@ -33,10 +39,10 @@
         </div>
         <div class="row-bottom">
           <span class="meta">{{ formatMs(r.latencyMs) }}</span>
-          <span class="meta cost">${{ r.cost.usd.toFixed(5) }}</span>
+          <span class="meta cost">${{ r.cost.usd.toFixed(4) }}</span>
         </div>
       </div>
-    </template>
+    </div>
 
     <!-- Empty state -->
     <div v-else class="state empty">
@@ -151,4 +157,8 @@ function formatMs(ms: number | null): string {
 .skeleton-line.w-40 { width: 40%; }
 .skeleton-line.w-70 { width: 70%; }
 @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.7; } }
+
+.state.error { color: var(--status-error); font-size: 11px; }
+.retry-btn { color: var(--accent); background: transparent; border: none; cursor: pointer; font-size: 12px; margin-top: 4px; }
+.thumb-list { flex: 1; overflow-y: auto; min-height: 0; }
 </style>
