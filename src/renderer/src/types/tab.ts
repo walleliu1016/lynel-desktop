@@ -1,4 +1,4 @@
-export type TabType = 'welcome' | 'session' | 'settings' | 'guide' | 'trace'
+export type TabType = 'welcome' | 'session' | 'settings' | 'guide'
 
 export interface Tab {
   id: string
@@ -12,7 +12,4 @@ export interface SessionTabPayload {
   workdir: string
 }
 
-export interface TraceTabPayload {
-  sessionId: string
-  workdir: string
-}
+// TraceTabPayload 已移除，Trace 功能移至 TraceSidebar/TraceOverlay

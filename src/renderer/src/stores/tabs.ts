@@ -6,9 +6,6 @@ function generateTabId(type: TabType, payload?: Record<string, unknown>): string
   if (type === 'session' && payload?.sessionId) {
     return `session-${payload.sessionId}`
   }
-  if (type === 'trace' && payload?.sessionId) {
-    return `trace-${payload.sessionId}`
-  }
   return type
 }
 
@@ -58,14 +55,6 @@ export const useTabsStore = defineStore('tabs', () => {
     return open({ type: 'guide', title: '使用指南' })
   }
 
-  function openTrace(sessionId: string, workdir: string, title?: string) {
-    return open({
-      type: 'trace',
-      title: title ?? 'Trace ' + sessionId.slice(0, 8),
-      payload: { sessionId, workdir },
-    })
-  }
-
   function close(id: string) {
     const idx = tabs.value.findIndex((t) => t.id === id)
     if (idx === -1) return
@@ -101,7 +90,6 @@ export const useTabsStore = defineStore('tabs', () => {
     openSession,
     openSettings,
     openGuide,
-    openTrace,
     close,
     updateTitle,
   }

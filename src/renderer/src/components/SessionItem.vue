@@ -39,7 +39,6 @@
       <div class="context-menu" :style="menuStyle" @click.stop>
         <button class="menu-item" @click="startRename">重命名</button>
         <button class="menu-item" @click="copySessionId">复制 Session ID</button>
-        <button class="menu-item" @click="openTrace">打开 Trace</button>
       </div>
     </div>
     <SessionTooltip
@@ -60,7 +59,7 @@ import { showToast } from '../composables/useToast'
 import type { SessionMeta } from '../types/session'
 
 const props = defineProps<{ meta: SessionMeta; isActive: boolean; dup?: boolean }>()
-const emit = defineEmits<{ (e: 'select'): void; (e: 'open-trace'): void }>()
+const emit = defineEmits<{ (e: 'select'): void }>()
 
 const sessions = useSessionsStore()
 const showTip = ref(false)
@@ -133,11 +132,6 @@ function copySessionId() {
   void navigator.clipboard.writeText(props.meta.id).then(() => {
     showToast('已复制', 'success')
   })
-}
-
-function openTrace() {
-  menuOpen.value = false
-  emit('open-trace')
 }
 
 const title = computed(() => sessionDisplayTitle(props.meta))

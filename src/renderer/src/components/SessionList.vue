@@ -52,7 +52,6 @@
             :is-active="s.id === activeId"
             :dup="dupProjects.has(s.project)"
             @select="$emit('select', s.id)"
-            @open-trace="emit('open-trace', s)"
           />
           <div v-if="!filteredList.length" class="empty">
             {{ search ? '无匹配结果' : '暂无会话' }}
@@ -75,7 +74,6 @@ const emit = defineEmits<{
   (e: 'create'): void
   (e: 'select', id: string): void
   (e: 'toggle-collapse'): void
-  (e: 'open-trace', session: SessionMeta): void
 }>()
 
 const sessions = useSessionsStore()
