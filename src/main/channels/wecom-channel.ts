@@ -331,7 +331,10 @@ export class WeComChannel implements OutputChannel, HookChannel {
     switch (ev.t) {
       case 'text': {
         if (event.role === 'user') {
-          const content = `${header}\n👤 **用户**\n${ev.text}`;
+          // 去掉 Claude 注入的 system-reminder，只保留用户实际输入
+          const cleanText = ev.text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>\s*/g, '').trim();
+          if (!cleanText) break;
+          const content = `${header}\n👤 **用户**\n${cleanText}`;
           this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] user text send failed:', e));
         } else if (event.role === 'agent') {
           const prefix = ev.thinking ? '💭 **思考**' : '🤖 **Claude**';
@@ -359,11 +362,9 @@ export class WeComChannel implements OutputChannel, HookChannel {
         }
         break;
       }
-      case 'turn-end': {
-        const content = `${header}\n📌 **Turn 结束** (${ev.status})`;
-        this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] turn-end send failed:', e));
+      case 'turn-end':
+        // 不需要推送给用户，忽略
         break;
-      }
       case 'service': {
         const content = `${header}\n⚠️ **系统通知**\n${ev.text}`;
         this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] service send failed:', e));

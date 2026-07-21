@@ -87,17 +87,8 @@ describe('WeComChannel (LynelEnvelope API)', () => {
     );
   });
 
-  it('send() 处理 turn-end 事件', () => {
-    const env = mkEnv({ turn: 't1', ev: { t: 'turn-end', status: 'completed' } });
-    channel.send(env);
-    expect((channel as any).sendContent).toHaveBeenCalledWith(
-      expect.stringContaining('Turn 结束'),
-      'sid-1',
-    );
-  });
-
-  it('send() 忽略 turn-start/start/stop/file 事件', () => {
-    for (const t of ['turn-start', 'start', 'stop', 'file'] as const) {
+  it('send() 忽略 turn-end/turn-start/start/stop/file 事件', () => {
+    for (const t of ['turn-end', 'turn-start', 'start', 'stop', 'file'] as const) {
       const env = mkEnv({ ev: { t } as any });
       expect(() => channel.send(env)).not.toThrow();
     }
