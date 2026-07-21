@@ -956,38 +956,10 @@ export class WeComChannel implements OutputChannel, HookChannel {
     logger.info(`[wecom-channel] handleCommand cmd=${cmd} arg=${arg} chatId=${chatId}`);
 
     switch (cmd) {
-      case '/bind':
-      case '/switch': {
-        if (!arg) {
-          await this.sendWeComReply(chatId, '用法：/bind <sessionId> 或 /bind <序号>，先发送 /list 查看列表。');
-          return;
-        }
-        const resolved = resolveSessionArg(arg);
-        if ('error' in resolved) {
-          await this.sendWeComReply(chatId, resolved.error);
-          return;
-        }
-        setMapping(chatId, resolved.id, resolved.workDir);
-        await this.sendWeComReply(
-          chatId,
-          '**已绑定会话**\n\n' +
-          '| 项目 | 值 |\n' +
-          '|------|------|\n' +
-          `| 会话ID | \`${resolved.id.slice(0, 8)}\` |\n` +
-          `| 工作目录 | ${resolved.workDir} |`,
-        );
-        return;
-      }
-      case '/unbind':
-      case '/close': {
-        deleteMapping(chatId);
-        await this.sendWeComReply(chatId, '**已解绑**\n\n当前聊天不再关联任何会话。');
-        return;
-      }
       case '/status': {
         const mapping = getMapping(chatId);
         if (!mapping) {
-          await this.sendWeComReply(chatId, '当前聊天未绑定会话。发送 /list 查看可用会话，或 /bind <sessionId> 绑定。');
+          await this.sendWeComReply(chatId, '当前聊天未绑定会话。发送 /list 查看可用会话。');
           return;
         }
         const s = session.lookup(mapping.sessionId);
@@ -1041,24 +1013,6 @@ export class WeComChannel implements OutputChannel, HookChannel {
         }
         return;
       }
-      case '/allow':
-      case '/allowed':
-      case '/允许':
-      case '/y': {
-        await this.handleAllowDeny(chatId, true, arg);
-        return;
-      }
-      case '/deny':
-      case '/拒绝':
-      case '/n': {
-        await this.handleAllowDeny(chatId, false, arg);
-        return;
-      }
-      case '/answer':
-      case '/回答': {
-        await this.handleAnswerCommand(chatId, text);
-        return;
-      }
       case '/pending': {
         await this.handlePendingCommand(chatId);
         return;
@@ -1085,37 +1039,20 @@ export class WeComChannel implements OutputChannel, HookChannel {
       case '/help': {
         await this.sendWeComReply(
           chatId,
-          '**Lynel 企业微信助手**\n\n' +
-          '**可用命令**\n\n' +
-          '| 命令 | 说明 |\n' +
-          '|------|------|\n' +
-          '| `/list` | 查看可用会话列表 |\n' +
-          '| `/create <工作目录> [提示词]` `/new ...` | 创建新会话 |\n' +
-          '| `/bind <sessionId/序号>` | 绑定会话到当前聊天 |\n' +
-          '| `/switch <sessionId/序号>` | 切换绑定会话 |\n' +
-          '| `/status` | 查看当前绑定状态 |\n' +
-          '| `/unbind` `/close` | 解绑当前聊天 |\n' +
-          '| `/to <sessionId/序号> <消息>` | 临时发送消息到指定会话 |\n' +
-          '| `/allow [会话序号/sessionId]` `/允许` `/y` | 批准权限请求（省略则处理最近一条） |\n' +
-          '| `/deny [会话序号/sessionId]` `/拒绝` `/n` | 拒绝权限请求（省略则处理最近一条） |\n' +
-          '| `/pending` | 查看待处理权限/提问 |\n' +
-          '| `/answer <会话序号/sessionId> <答案>` `/回答` | 回答 Claude 提问 |\n' +
-          '| `/help` | 显示此帮助信息 |\n\n' +
-          '**快捷操作**\n\n' +
-          '引用任意一条机器人发送的消息并直接输入内容，会自动转发到该消息所属的会话，无需 `/to`。\n\n' +
-          '**使用示例**\n\n' +
-          '1. 查看会话并绑定\n' +
-          '```\n/list\n/bind 1\n```\n\n' +
-          '2. 创建新会话\n' +
-          '```\n/create /home/user/project 帮我优化代码\n```\n\n' +
-          '3. 批准会话 3 的权限请求\n' +
-          '```\n/allow 3\n```\n' +
-          '或直接回复（处理最近一条）：\n' +
-          '```\n/y\n```\n\n' +
-          '4. 回答会话 3 的 Claude 提问（单选 / 多选 / 自定义）\n' +
-          '```\n/answer 3 1\n/answer 3 1,2\n/answer 3 我的自定义回答\n```\n\n' +
-          '5. 临时向第 2 个会话发送消息\n' +
-          '```\n/to 2 帮我优化这段代码\n```',
+          '**Lynel 企业微信助手**\\n\\n' +
+          '**可用命令**\\n\\n' +
+          '| 命令 | 说明 |\\n' +
+          '|------|------|\\n' +
+          '| \`/list\` | 查看可用会话列表 |\\n' +
+          '| \`/create <工作目录> [提示词]\` \`/new ...\` | 创建新会话 |\\n' +
+          '| \`/status\` | 查看当前绑定状态 |\\n' +
+          '| \`/to <sessionId/序号> <消息>\` | 临时发送消息到指定会话 |\\n' +
+          '| \`/pending\` | 查看待处理权限/提问 |\\n' +
+          '| \`/help\` | 显示此帮助信息 |\\n\\n' +
+          '**快捷操作**\\n\\n' +
+          '引用任意一条机器人发送的消息并直接输入内容，会自动转发到该消息所属的会话。\\n\\n' +
+          '**使用示例**\\n\\n' +
+          '\`\`\`\\n/create /home/user/project 帮我优化代码\\n\`\`\`',
         );
         return;
       }
