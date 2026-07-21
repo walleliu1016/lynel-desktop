@@ -136,6 +136,17 @@ onMounted(async () => {
 
 function onSelectTab(id: string) {
   tabsStore.activate(id)
+  // GlobalTabs 切换 session 时同步加载 trace
+  const tab = tabsStore.tabs.find((t) => t.id === id)
+  if (tab?.type === 'session') {
+    const sid = tab.payload?.sessionId as string
+    const wd = tab.payload?.workdir as string
+    if (sid && wd && sid !== trace.sessionId) {
+      trace.setSession(wd, sid)
+      trace.load()
+      showTraceOverlay.value = false
+    }
+  }
 }
 
 function onCreateTab() {
