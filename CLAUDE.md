@@ -222,8 +222,30 @@ npm run dist:linux
 
 ---
 
+### 11. 三段式布局（Three-Panel Layout）
+
+- 布局结构：左侧 SessionList（280px，可折叠为 44px） | 中间 GlobalTabs + .content（flex:1） | 右侧 TraceSidebar（200px）
+- TraceSidebar：`src/renderer/src/components/trace/TraceSidebar.vue`，右侧固定 200px 面板
+  - StatsBar：请求数、总费用、刷新按钮
+  - 请求缩略列表：状态点 · #seq · model / 延迟 · 费用
+  - 状态覆盖：loading 骨架屏 / error 重试 / 空状态（"暂无 API 请求"）
+- TraceOverlay：`src/renderer/src/components/trace/TraceOverlay.vue`
+  - Teleport 到 `.center`，绝对定位覆盖层
+  - `width: clamp(360px, 35%, 45%)` 随窗口自动缩放
+  - 关闭方式：backdrop 点击 / Escape 键 / × 按钮
+  - 复用 RequestDetailPane 展示单条请求详情
+- Trace store（Pinia）：`src/renderer/src/stores/trace.ts`
+  - 状态：workDir/sessionId/requests/stats/detail/diffResult/loading/loadError
+  - 数据来自 `~/.lynel-desktop/projects/<encoded-project>/<sid>/raw/<seq>.json`
+  - `trace.listRawExchanges` 扫描 raw 目录获取请求列表
+  - HomeView 通过 `watch(activeSessionId)` 统一监听 session 切换并自动调用 `trace.load()`
+  - 覆盖所有激活路径：SessionList 点击、GlobalTabs 切换、最近会话打开、新建会话
+- 删除组件：`TraceTab.vue`（原独立 Trace 标签页）、`TabType['trace']`、`tabsStore.openTrace()`
+
 ## 相关文档
 
 - `README.md` —— 项目总览、完整数据流、目录结构、已知问题。
 - `docs/superpowers/specs/2026-07-06-electron-migration-design.md` —— Electron 迁移设计决策。
 - `docs/superpowers/plans/2026-07-06-electron-migration-plan.md` —— Electron 迁移实施计划。
+- `docs/superpowers/specs/2026-07-21-lynel-desktop-three-panel-layout-design.md` —— 三段式布局设计文档。
+- `docs/superpowers/plans/2026-07-21-three-panel-layout.md` —— 三段式布局实施计划。
