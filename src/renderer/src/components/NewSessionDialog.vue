@@ -63,6 +63,20 @@
               </div>
             </div>
           </div>
+          <div class="form-group">
+            <label class="form-label">绑定机器人（可选）</label>
+            <select class="form-input" v-model="selectedBot">
+              <option value="">不绑定</option>
+              <option
+                v-for="b in botOptions"
+                :key="b.id"
+                :value="b.id"
+                :disabled="!isBotAvailable(b.id)"
+              >
+                {{ b.name }}{{ getBotBoundSessionName(b.id) ? `（已绑定 ${getBotBoundSessionName(b.id)}）` : '' }}
+              </option>
+            </select>
+          </div>
           <div class="form-actions">
             <button type="button" class="cancel" :disabled="loading" @click="$emit('close')">取消</button>
             <button type="submit" class="primary" :disabled="!workdir.trim() || loading">
@@ -77,26 +91,43 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import Icon from './Icon.vue'
 import RecentSessionList from './RecentSessionList.vue'
 import { useRecentStore } from '../stores/recent'
+import { useBotsStore } from '../stores/bots'
+import { useSessionsStore } from '../stores/sessions'
 import type { RecentSession } from '../types/recent'
 import { PickDirectory } from '../composables/useElectron'
 
 const props = defineProps<{ open: boolean; loading?: boolean }>()
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'create', workdir: string, prompt: string, extraArgs: string[]): void
+  (e: 'create', workdir: string, prompt: string, extraArgs: string[], botId?: string): void
   (e: 'open-recent', item: RecentSession): void
 }>()
 
 const recent = useRecentStore()
+const botsStore = useBotsStore()
+const sessions = useSessionsStore()
 const tab = ref<'history' | 'new'>('history')
 const workdir = ref('')
 const prompt = ref('')
 const flagsOpen = ref(false)
 const selectedFlags = ref<string[]>([])
+const selectedBot = ref('')
+const botOptions = computed(() => botsStore.bots)
+
+function isBotAvailable(botId: string): boolean {
+  const sessionId = sessions.botBindings[botId] || sessions.sessionBots[botId]
+  return !sessionId
+}
+
+function getBotBoundSessionName(botId: string): string | undefined {
+  const sessionId = sessions.botBindings[botId] || sessions.sessionBots[botId]
+  if (!sessionId) return undefined
+  return sessions.getBotBoundSessionName(botId)
+}
 
 const flagOptions = [
   { value: '--verbose', label: '--verbose', desc: '输出详细的调试信息' },
@@ -106,9 +137,12 @@ const flagOptions = [
 watch(() => props.open, (isOpen) => {
   if (isOpen) {
     void recent.loadRecentSessions()
+    void botsStore.load()
+    void sessions.loadBotBindings()
     workdir.value = ''
     prompt.value = ''
     selectedFlags.value = []
+    selectedBot.value = ''
     flagsOpen.value = false
     tab.value = recent.recentSessions.length ? 'history' : 'new'
   }
@@ -127,7 +161,7 @@ async function onPick() {
 
 function onSubmit() {
   if (!workdir.value.trim() || props.loading) return
-  emit('create', workdir.value.trim(), prompt.value.trim(), [...selectedFlags.value])
+  emit('create', workdir.value.trim(), prompt.value.trim(), [...selectedFlags.value], selectedBot.value || undefined)
 }
 </script>
 

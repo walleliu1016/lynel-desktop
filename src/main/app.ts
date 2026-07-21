@@ -22,6 +22,7 @@ import { setNotchMousePassthrough, resizeNotchWindow, showNotchWindow, hideNotch
 import { startProxy } from './apiproxy.js';
 import { start as startPty, PtyMode, PtySize } from './pty.js';
 import { registerTraceIpc } from './trace/ipc.js';
+import type { BotConfig } from './types/bot.js';
 
 const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
 
@@ -128,6 +129,7 @@ interface RecentSessionRecord {
   userTitle?: string;
   lastOpenedAt: number;
   state: string;
+  botId?: string;
 }
 
 const RECENT_SESSIONS_PATH = path.join(os.homedir(), '.lynel-desktop', 'recent-sessions.json');
@@ -307,6 +309,17 @@ export class App {
         return { error: err.message };
       }
     });
+    // 加载已持久化的 bot 配置到 WeComChannel 连接池
+    const bots = this.settingsStore.get('wecomBots', {}) as Record<string, BotConfig>;
+    this.wecomChannel.updateBots(Object.values(bots));
+    // 加载已有 session 的 bot 绑定
+    this.withRecentLock(() => {
+      for (const r of readRecentSessions()) {
+        if (r.botId) this.wecomChannel.setSessionBot(r.sessionId, r.botId);
+      }
+    });
+    // 当前登录 UM 账户作为默认 chatId
+    this.wecomChannel.setCurrentUserAccount(this.getCurrentUserAccount());
     await this.ensureHookServer();
     this.watchJsonl();
     this.startAiTitleRefresh();
@@ -382,6 +395,38 @@ export class App {
         }
       }
     }
+
+    // 向后兼容：旧格式 channels.wecom.config 含 botId/secret → 迁移到 wecomBots
+    const wecomCfg = channels.wecom?.config;
+    if (wecomCfg && (wecomCfg.botId || wecomCfg.secret)) {
+      const existingBots = this.settingsStore.get('wecomBots', {}) as Record<string, BotConfig>;
+      // 检查是否已经迁移过（已存在同名 bot）
+      const alreadyMigrated = Object.values(existingBots).some(
+        (b) => b.botId === wecomCfg.botId || (wecomCfg.chatId && b.chatId === wecomCfg.chatId),
+      );
+      if (!alreadyMigrated) {
+        const id = randomUUID();
+        const now = Date.now();
+        existingBots[id] = {
+          id,
+          name: 'default',
+          source: 'wecom',
+          botId: wecomCfg.botId || '',
+          secret: wecomCfg.secret || '',
+          chatId: wecomCfg.chatId || '',
+          createdAt: now,
+          updatedAt: now,
+        };
+        this.settingsStore.set('wecomBots', existingBots);
+        getLogger().info('[app] migrated old wecom channel config to wecomBots');
+      }
+      // 清除 channel config 中的 botId/secret，避免重复迁移
+      delete wecomCfg.botId;
+      delete wecomCfg.secret;
+      if (wecomCfg.chatId) delete wecomCfg.chatId;
+      migrated = true;
+    }
+
     if (migrated) {
       this.settingsStore.set('channels', channels);
     }
@@ -673,7 +718,7 @@ export class App {
     }
   }
 
-  private async createSessionInternal(workDir: string, prompt: string, extraArgs: string[] = [], autoTrust = false): Promise<string> {
+  private async createSessionInternal(workDir: string, prompt: string, extraArgs: string[] = [], autoTrust = false, botId?: string): Promise<string> {
     const realId = randomUUID();
     const upstream = resolveAnthropicBaseUrl();
     const proxy = await startProxy(workDir, realId, (env) => this.dispatcher.dispatch(env), undefined, upstream);
@@ -739,7 +784,11 @@ export class App {
       firstPrompt: prompt,
       lastOpenedAt: Date.now(),
       state: 'running',
+      botId,
     });
+    if (botId) {
+      this.wecomChannel.setSessionBot(realId, botId);
+    }
     return realId;
   }
 
@@ -753,6 +802,15 @@ export class App {
     } finally {
       this.recentSessionsLock = false;
     }
+  }
+
+  private getCurrentUserAccount(): string {
+    return (this.settingsStore.get('currentUser', '') as string) || os.userInfo().username;
+  }
+
+  private setCurrentUserAccount(account: string): void {
+    this.settingsStore.set('currentUser', account);
+    this.wecomChannel.setCurrentUserAccount(account);
   }
 
   private startAiTitleRefresh(): void {
@@ -1075,6 +1133,91 @@ export class App {
     ipcMain.handle('app:getRecentSessions', () => getRecentSessions());
     ipcMain.handle('app:addRecentSession', (_event, record: RecentSessionRecord) => addRecentSession(record));
     ipcMain.handle('app:removeRecentSession', (_event, sessionId: string) => removeRecentSession(sessionId));
+
+    // Bot 管理
+    ipcMain.handle('app:listBots', () => {
+      const bots = this.settingsStore.get('wecomBots', {}) as Record<string, BotConfig>;
+      return Object.values(bots);
+    });
+    ipcMain.handle('app:saveBot', (_event, bot: BotConfig) => {
+      const bots = { ...(this.settingsStore.get('wecomBots', {}) as Record<string, BotConfig>) };
+      const id = bot.id || randomUUID();
+      const now = Date.now();
+      const currentUser = this.getCurrentUserAccount();
+      bots[id] = {
+        ...bot,
+        id,
+        source: bot.source || 'wecom',
+        chatId: bot.chatId || currentUser,
+        createdAt: bot.createdAt || now,
+        updatedAt: now,
+      };
+      this.settingsStore.set('wecomBots', bots);
+      this.wecomChannel.updateBots(Object.values(bots));
+      return bots[id];
+    });
+    ipcMain.handle('app:deleteBot', (_event, id: string) => {
+      const bots = { ...(this.settingsStore.get('wecomBots', {}) as Record<string, BotConfig>) };
+      if (!bots[id]) return { ok: false, error: 'not found' };
+      delete bots[id];
+      this.settingsStore.set('wecomBots', bots);
+      this.wecomChannel.updateBots(Object.values(bots));
+      // 清除使用该 bot 的 session 绑定
+      this.withRecentLock(() => {
+        const list = readRecentSessions();
+        for (const r of list) {
+          if (r.botId === id) {
+            r.botId = undefined;
+            this.wecomChannel.clearSessionBot(r.sessionId);
+          }
+        }
+        writeRecentSessions(list);
+      });
+      return { ok: true };
+    });
+    ipcMain.handle('app:bindSessionBot', (_event, sessionId: string, botId: string | null) => {
+      this.withRecentLock(() => {
+        const list = readRecentSessions();
+        const record = list.find((r) => r.sessionId === sessionId);
+        if (record) {
+          record.botId = botId ?? undefined;
+        } else {
+          list.unshift({
+            sessionId, workdir: '', project: '', aiTitle: '',
+            firstPrompt: '', lastOpenedAt: Date.now(), state: 'idle',
+            botId: botId ?? undefined,
+          });
+        }
+        writeRecentSessions(list);
+      });
+      if (botId) {
+        this.wecomChannel.setSessionBot(sessionId, botId);
+      } else {
+        this.wecomChannel.clearSessionBot(sessionId);
+      }
+      return { ok: true };
+    });
+    ipcMain.handle('app:getSessionBotBinding', (_event, sessionId: string) => {
+      const list = this.withRecentLock(() => readRecentSessions());
+      return list.find((r) => r.sessionId === sessionId)?.botId ?? null;
+    });
+    ipcMain.handle('app:getBotConnectionStatus', () => {
+      return this.wecomChannel.getBotConnectionStatus();
+    });
+    ipcMain.handle('app:listBotBindings', () => {
+      const list = this.withRecentLock(() => readRecentSessions());
+      const map: Record<string, string> = {};
+      for (const r of list) {
+        if (r.botId) map[r.botId] = r.sessionId;
+      }
+      return map;
+    });
+
+    ipcMain.handle('app:setCurrentUser', (_event, account: string) => {
+      this.setCurrentUserAccount(account);
+      return { ok: true };
+    });
+    ipcMain.handle('app:getCurrentUser', () => this.getCurrentUserAccount());
 
     ipcMain.handle('app:getHookServerPort', () => this.hookServer?.getPort() ?? 0);
 

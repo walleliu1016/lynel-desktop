@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { OutputChannel, HookChannel, type HookEventLike } from './channel.js';
 import type { LynelEnvelope } from '../protocol/envelope.js';
+import type { BotConfig, BotConnectionState } from '../types/bot.js';
 import * as session from '../session.js';
 import { getStore } from '../store.js';
 import { getLogger } from '../log.js';
@@ -151,14 +152,19 @@ export class WeComChannel implements OutputChannel, HookChannel {
   readonly id = 'wecom';
   readonly name = 'WeCom';
   private cfg: WeComChannelConfig;
-  private wsClient: any = null;
-  private connecting: Promise<void> | null = null;
+  /** botId → BotConnectionState */
+  private botPool = new Map<string, BotConnectionState>();
+  /** sessionId → botId */
+  private sessionBotMap = new Map<string, string>();
+  /** 当前处理入站消息的 botId（用于命令回复路由） */
+  private currentBotId: string | undefined;
   private chatIdToSession = new Map<string, string>();
   private lastActiveSession = new Map<string, string>();
   private sessionSeqCounters = new Map<string, number>();
   private createSessionCallback: ((workDir: string, prompt: string) => Promise<{ id: string; workDir: string } | { error: string }>) | null = null;
   private cardStore = new WeComCardStore();
   private cardEventHandler?: WeComCardEventHandler;
+  private currentUserAccount: string = '';
   private sessionTitleResolver: ((sessionId: string) => string) | null = null;
   /** 多问题场景：暂存待发送的卡片数据 */
   private pendingQuestionCards = new Map<string, {
@@ -179,6 +185,15 @@ export class WeComChannel implements OutputChannel, HookChannel {
     this.sessionTitleResolver = resolver;
   }
 
+  setCurrentUserAccount(account: string): void {
+    this.currentUserAccount = account;
+    logger.info(`[wecom-channel] current user account set to ${account}`);
+  }
+
+  private getEffectiveChatId(entry: BotConnectionState): string {
+    return entry.config.chatId || this.currentUserAccount;
+  }
+
   private getSessionTitle(sessionId: string): string | undefined {
     if (!this.sessionTitleResolver) return undefined;
     try {
@@ -188,33 +203,76 @@ export class WeComChannel implements OutputChannel, HookChannel {
     }
   }
 
+  /** 获取会话绑定的 bot entry */
+  private getBotForSession(sessionId: string): BotConnectionState | undefined {
+    const botId = this.sessionBotMap.get(sessionId);
+    if (!botId) return undefined;
+    return this.botPool.get(botId);
+  }
+
   isEnabled(): boolean {
-    const ok = this.cfg.enabled && !!this.cfg.chatId && (!!this.cfg.botId || !!this.cfg.agent);
-    logger.info(`[wecom-channel] isEnabled=${ok} enabled=${this.cfg.enabled} chatId=${this.cfg.chatId ? 'set' : 'unset'} botId=${this.cfg.botId ? 'set' : 'unset'}`);
+    // 只要有 bot 配置即可启用
+    const ok = this.cfg.enabled && this.botPool.size > 0;
+    logger.info(`[wecom-channel] isEnabled=${ok} enabled=${this.cfg.enabled} bots=${this.botPool.size}`);
     return ok;
   }
 
   updateConfig(cfg: WeComChannelConfig): void {
-    logger.info('[wecom-channel] updateConfig', { enabled: cfg.enabled, chatId: cfg.chatId, botId: cfg.botId ? 'set' : 'unset' });
+    logger.info('[wecom-channel] updateConfig', { enabled: cfg.enabled });
     this.cfg = cfg;
-    if (!this.isEnabled()) {
-      this.disconnect();
-      return;
+    if (!this.cfg.enabled) {
+      this.disconnectAll();
     }
-    // 预加载插件并预连接 websocket，避免第一次发送消息时才阻塞
-    if (this.cfg.botId && this.cfg.secret) {
-      this.preconnect().catch((err) => logger.error('[wecom-channel] proactive init failed:', err));
+    // bot 连接池由 updateBots() 管理，不在此处预连接
+  }
+
+  /** 批量更新 bot 连接池：新增/更新/移除连接 */
+  updateBots(bots: BotConfig[]): void {
+    const wecomBots = bots.filter((b) => b.source === 'wecom' || !b.source);
+    const newIds = new Set(wecomBots.map((b) => b.id));
+    // 移除不存在的 bot
+    for (const [id, state] of this.botPool) {
+      if (!newIds.has(id)) {
+        logger.info(`[wecom-channel] removing bot ${id}`);
+        state.wsClient?.disconnect();
+        this.botPool.delete(id);
+      }
+    }
+    // 新增/更新 bot
+    for (const bot of wecomBots) {
+      const existing = this.botPool.get(bot.id);
+      if (existing) {
+        if (existing.config.secret !== bot.secret || existing.config.botId !== bot.botId) {
+          logger.info(`[wecom-channel] bot ${bot.id} credentials changed, reconnecting`);
+          existing.wsClient?.disconnect();
+          existing.wsClient = null;
+        }
+        existing.config = bot;
+      } else {
+        logger.info(`[wecom-channel] adding bot ${bot.id}`);
+        this.botPool.set(bot.id, { config: bot, wsClient: null, connecting: null, isConnected: false });
+        this.connectBot(bot.id).catch((err) =>
+          logger.error(`[wecom-channel] bot ${bot.id} connect failed:`, err)
+        );
+      }
     }
   }
 
-  private async preconnect(): Promise<void> {
-    logger.info('[wecom-channel] preconnect start');
-    await Promise.all([loadWecomPlugin(), this.ensureWebSocket()]);
-    logger.info('[wecom-channel] preconnect done');
+  setSessionBot(sessionId: string, botId: string): void {
+    this.sessionBotMap.set(sessionId, botId);
   }
 
-  async close(): Promise<void> {
-    this.disconnect();
+  clearSessionBot(sessionId: string): void {
+    this.sessionBotMap.delete(sessionId);
+    this.clearSessionMappings(sessionId);
+  }
+
+  getBotConnectionStatus(): Record<string, boolean> {
+    const status: Record<string, boolean> = {};
+    for (const [id, state] of this.botPool) {
+      status[id] = state.wsClient?.isConnected ?? false;
+    }
+    return status;
   }
 
   clearSessionMappings(sessionId: string): void {
@@ -237,9 +295,16 @@ export class WeComChannel implements OutputChannel, HookChannel {
     if (!this.isEnabled()) return;
     if (!event.sessionId) return;
 
+    const entry = this.getBotForSession(event.sessionId);
+    if (!entry) {
+      logger.info(`[wecom-channel] no bot bound for session ${event.sessionId.slice(0, 8)}, dropping event`);
+      return;
+    }
+
     // 记录路由
-    if (this.cfg.chatId) {
-      this.recordRouting(this.cfg.chatId, event.sessionId);
+    const effectiveChatId = this.getEffectiveChatId(entry);
+    if (effectiveChatId) {
+      this.recordRouting(effectiveChatId, event.sessionId);
     }
 
     const ev = event.ev;
@@ -314,8 +379,10 @@ export class WeComChannel implements OutputChannel, HookChannel {
       } else {
         this.sendPermissionCard(event, msgSeq).catch((err) => logger.error('[wecom-channel] sendPermissionCard failed:', err));
       }
-      if (this.cfg.chatId) {
-        this.recordRouting(this.cfg.chatId, event.sessionId);
+      const entry = this.getBotForSession(event.sessionId);
+      const chatId = entry ? this.getEffectiveChatId(entry) : '';
+      if (chatId) {
+        this.recordRouting(chatId, event.sessionId);
       }
       return;
     }
@@ -350,8 +417,11 @@ export class WeComChannel implements OutputChannel, HookChannel {
     }
   }
 
-  private async sendContent(content: string, _sessionId: string): Promise<void> {
-    const [plugin] = await Promise.all([loadWecomPlugin(), this.ensureWebSocket()]);
+  private async sendContent(content: string, sessionId: string): Promise<void> {
+    const entry = this.getBotForSession(sessionId);
+    if (!entry) return;
+
+    const [plugin] = await Promise.all([loadWecomPlugin(), this.ensureBotWebSocket(entry.config.id)]);
     if (!plugin?.outbound?.sendText) {
       logger.warn('[wecom-channel] plugin outbound.sendText not available');
       return;
@@ -361,8 +431,8 @@ export class WeComChannel implements OutputChannel, HookChannel {
       channels: {
         wecom: {
           enabled: true,
-          botId: this.cfg.botId,
-          secret: this.cfg.secret,
+          botId: entry.config.botId,
+          secret: entry.config.secret,
           agent: this.cfg.agent,
         },
       },
@@ -370,11 +440,12 @@ export class WeComChannel implements OutputChannel, HookChannel {
 
     // 优先使用 sendMarkdown（支持富文本），回退到 sendText
     const sendFn = plugin.outbound.sendMarkdown || plugin.outbound.sendText;
+    const chatId = this.getEffectiveChatId(entry);
     logger.info(`[wecom-channel] sending to WeCom via ${plugin.outbound.sendMarkdown ? 'sendMarkdown' : 'sendText'}...`);
     const result = await sendFn({
-      to: this.cfg.chatId,
+      to: chatId,
       text: content,
-      accountId: 'default',
+      accountId: entry.config.id,
       cfg,
     });
     logger.info('[wecom-channel] send success:', JSON.stringify(result));
@@ -472,16 +543,20 @@ export class WeComChannel implements OutputChannel, HookChannel {
     seq: number,
     qIdx?: number,
   ): Promise<boolean> {
+    const entry = this.getBotForSession(sessionId);
+    if (!entry) return false;
+
     try {
+      const chatId = this.getEffectiveChatId(entry);
       logger.info('[wecom-channel] sendTemplateCard start: wsConnected=%s, chatId=%s, cardType=%s',
-        String(this.wsClient?.isConnected ?? false), this.cfg.chatId || '<none>',
+        String(entry.wsClient?.isConnected ?? false), chatId || '<none>',
         (card as any)?.card_type);
-      await this.ensureWebSocket();
+      await this.ensureBotWebSocket(entry.config.id);
       logger.info('[wecom-channel] sendTemplateCard after ensure: wsConnected=%s',
-        String(this.wsClient?.isConnected ?? false));
-      if (!this.wsClient?.isConnected || !this.cfg.chatId) {
+        String(entry.wsClient?.isConnected ?? false));
+      if (!entry.wsClient?.isConnected || !chatId) {
         logger.warn('[wecom-channel] sendTemplateCard abort: ws=%s chatId=%s',
-          String(this.wsClient?.isConnected ?? false), String(this.cfg.chatId));
+          String(entry.wsClient?.isConnected ?? false), String(chatId));
         return false;
       }
 
@@ -489,8 +564,8 @@ export class WeComChannel implements OutputChannel, HookChannel {
         msgtype: 'template_card' as const,
         template_card: card,
       };
-      logger.info('[wecom-channel] sendTemplateCard sending to chatId=%s', this.cfg.chatId);
-      const result = await this.wsClient.sendMessage(this.cfg.chatId, body);
+      logger.info('[wecom-channel] sendTemplateCard sending to chatId=%s', chatId);
+      const result = await entry.wsClient.sendMessage(chatId, body);
       logger.info('[wecom-channel] sendTemplateCard result: %s', JSON.stringify(result).slice(0, 200));
 
       const msgid = result?.body?.msgid ?? result?.headers?.req_id;
@@ -498,11 +573,11 @@ export class WeComChannel implements OutputChannel, HookChannel {
         if (qIdx !== undefined) {
           // 多卡片场景：第一张卡片初始化 state，后续追加 msgid
           if (qIdx === 0) {
-            this.cardStore.save(requestId, seq, this.cfg.chatId, msgid, sessionId);
+            this.cardStore.save(requestId, seq, chatId, msgid, sessionId);
           }
           this.cardStore.addQuestionMsgid(requestId, qIdx, msgid);
         } else {
-          this.cardStore.save(requestId, seq, this.cfg.chatId, msgid, sessionId);
+          this.cardStore.save(requestId, seq, chatId, msgid, sessionId);
         }
       }
       return true;
@@ -512,32 +587,36 @@ export class WeComChannel implements OutputChannel, HookChannel {
     }
   }
 
-  private async ensureWebSocket(): Promise<void> {
-    if (this.wsClient?.isConnected) return;
-    if (!this.cfg.botId || !this.cfg.secret) return;
-    if (this.connecting) {
-      await this.connecting;
+  /** 确保指定 bot 的 WebSocket 已连接 */
+  private async ensureBotWebSocket(botId: string): Promise<void> {
+    const entry = this.botPool.get(botId);
+    if (!entry) throw new Error(`Bot ${botId} not in pool`);
+    if (entry.wsClient?.isConnected) return;
+    if (entry.connecting) {
+      await entry.connecting;
       return;
     }
-
-    this.connecting = this.connect();
+    entry.connecting = this.connectBot(botId);
     try {
-      await this.connecting;
+      await entry.connecting;
     } finally {
-      this.connecting = null;
+      entry.connecting = null;
     }
   }
 
-  private async connect(): Promise<void> {
-    logger.info('[wecom-channel] connecting websocket...');
-    const WSClient = await getWSClientClass();
-    const setWeComWebSocket = await getSetWeComWebSocket();
-    logger.info('[wecom-channel] WSClient loaded');
+  /** 连接单个 bot 的 WebSocket */
+  private async connectBot(botId: string): Promise<void> {
+    const entry = this.botPool.get(botId);
+    if (!entry) return;
+    const { botId: wecomBotId, secret } = entry.config;
+
+    logger.info(`[wecom-channel] connecting websocket for bot ${botId}...`);
+    const [WSClient, setWeComWebSocket] = await Promise.all([getWSClientClass(), getSetWeComWebSocket()]);
 
     return new Promise((resolve, reject) => {
       const wsClient = new WSClient({
-        botId: this.cfg.botId,
-        secret: this.cfg.secret,
+        botId: wecomBotId,
+        secret,
         wsUrl: 'wss://openws.work.weixin.qq.com',
         heartbeatInterval: 30000,
         maxReconnectAttempts: 3,
@@ -556,18 +635,19 @@ export class WeComChannel implements OutputChannel, HookChannel {
       }, 15000);
 
       wsClient.on('authenticated', () => {
-        logger.info('[wecom-channel] websocket authenticated');
+        logger.info(`[wecom-channel] websocket authenticated for bot ${botId}`);
         clearTimeout(timer);
-        this.wsClient = wsClient;
-        setWeComWebSocket('default', wsClient);
+        entry.wsClient = wsClient;
+        entry.isConnected = true;
+        setWeComWebSocket(botId, wsClient);
         resolve();
       });
 
       wsClient.on('message', (frame: any) => {
         try {
-          this.handleInboundMessage(frame);
+          this.handleInboundMessage(frame, botId);
         } catch (err) {
-          logger.error('[wecom-channel] failed to handle inbound message:', err);
+          logger.error(`[wecom-channel] bot ${botId} inbound failed:`, err);
         }
       });
 
@@ -575,18 +655,42 @@ export class WeComChannel implements OutputChannel, HookChannel {
 
       wsClient.on('error', (err: any) => {
         clearTimeout(timer);
+        entry.isConnected = false;
         reject(err);
+      });
+
+      wsClient.on('close', () => {
+        entry.isConnected = false;
+        entry.wsClient = null;
       });
 
       wsClient.connect();
     });
   }
 
-  private disconnect(): void {
-    if (this.wsClient) {
-      this.wsClient.disconnect();
-      this.wsClient = null;
+  /** 外部调用：断开所有 bot 连接 */
+  close(): void {
+    this.disconnectAll();
+  }
+
+  /** 断开所有 bot 连接 */
+  private disconnectAll(): void {
+    for (const [id, state] of this.botPool) {
+      logger.info(`[wecom-channel] disconnecting bot ${id}`);
+      state.wsClient?.disconnect();
+      state.wsClient = null;
+      state.isConnected = false;
     }
+  }
+
+  /** 通过 chatId 查找对应的 bot wsClient */
+  private getWSClientByChatId(chatId: string): any {
+    for (const state of this.botPool.values()) {
+      if (state.config.chatId === chatId && state.wsClient?.isConnected) {
+        return state.wsClient;
+      }
+    }
+    return null;
   }
 
   private getCardEventHandler(): WeComCardEventHandler {
@@ -595,8 +699,11 @@ export class WeComChannel implements OutputChannel, HookChannel {
         this.cardStore,
         (chatId, text, requestId) => this.sendCardReplyWithHeader(chatId, text, requestId),
         async (frame: TemplateCardEventFrame, card: unknown) => {
-          if (!this.wsClient) throw new Error('WSClient 未连接');
-          await this.wsClient.updateTemplateCard(frame, card);
+          // 从 frame 的 chatId 反查 bot wsClient
+          const chatId = frame?.body?.chatid || frame?.body?.from?.userid;
+          const wsClient = chatId ? this.getWSClientByChatId(chatId) : null;
+          if (!wsClient) throw new Error('WSClient 未连接');
+          await wsClient.updateTemplateCard(frame, card);
         },
         {
           onQuestionProgress: async (requestId, nextQIdx, chatId) => {
@@ -638,7 +745,31 @@ export class WeComChannel implements OutputChannel, HookChannel {
     });
   }
 
-  private handleInboundMessage(frame: any): void {
+  /** 根据 botId 取 bot entry，兜底取第一个可用的 */
+  /** 通过 chatId 查找对应的 bot entry */
+  private resolveBotByChatId(chatId: string): BotConnectionState | undefined {
+    for (const state of this.botPool.values()) {
+      if (state.config.chatId === chatId) return state;
+    }
+    return undefined;
+  }
+
+  /** 根据 botId 取 bot entry，兜底 currentBotId → chatId → 第一个可用的 */
+  private resolveBot(botId?: string): BotConnectionState | undefined {
+    const effectiveBotId = botId ?? this.currentBotId;
+    if (effectiveBotId) {
+      const entry = this.botPool.get(effectiveBotId);
+      if (entry) return entry;
+    }
+    // 兜底：取第一个有 wsClient 的
+    for (const state of this.botPool.values()) {
+      if (state.wsClient) return state;
+    }
+    return undefined;
+  }
+
+  private handleInboundMessage(frame: any, botId?: string): void {
+    this.currentBotId = botId;
     logger.info('[wecom-channel] inbound frame received');
     const body = frame?.body as any;
     if (!body) {
@@ -704,30 +835,25 @@ export class WeComChannel implements OutputChannel, HookChannel {
       return;
     }
 
-    // 优先用持久化映射，其次内存映射，最后最近活跃 session
-    const mapping = getMapping(chatId);
+    // 多 bot 模式：通过 currentBotId 反查绑定的 session
     let sessionId: string | undefined;
-    if (mapping) {
-      const s = session.lookup(mapping.sessionId);
-      if (!s) {
-        this.sendWeComReplyWithHeader(chatId, '绑定的会话已不存在，请发送 /bind 重新绑定。', mapping.sessionId).catch((err) =>
-          logger.error('[wecom-channel] failed to send reply:', err),
-        );
-        return;
+    if (this.currentBotId) {
+      for (const [sid, bid] of this.sessionBotMap) {
+        if (bid === this.currentBotId) {
+          sessionId = sid;
+          break;
+        }
       }
-      if (s.workDir !== mapping.workDir) {
-        this.sendWeComReplyWithHeader(chatId, '绑定会话的工作目录已变更，请发送 /bind 重新绑定。', mapping.sessionId).catch((err) =>
-          logger.error('[wecom-channel] failed to send reply:', err),
-        );
-        return;
-      }
-      sessionId = mapping.sessionId;
-    } else {
-      sessionId = this.chatIdToSession.get(chatId) || this.lastActiveSession.get(chatId);
+    }
+    // 兜底：用持久化映射 / chatIdToSession（兼容旧路由）
+    if (!sessionId) {
+      const mapping = getMapping(chatId);
+      if (mapping) sessionId = mapping.sessionId;
+      else sessionId = this.chatIdToSession.get(chatId) || this.lastActiveSession.get(chatId);
     }
     if (!sessionId) {
       logger.info('[wecom-channel] no active session for inbound message');
-      this.sendWeComReply(chatId, '当前没有绑定会话，请发送 /list 查看，或 /bind <sessionId> / /bind <序号> 绑定。').catch((err) =>
+      this.sendWeComReply(chatId, '当前没有绑定会话，请先通过 Lynel Desktop 为当前机器人绑定一个会话。').catch((err) =>
         logger.error('[wecom-channel] failed to send reply:', err),
       );
       return;
@@ -1124,26 +1250,35 @@ export class WeComChannel implements OutputChannel, HookChannel {
     }
   }
 
-  private async sendWeComReply(chatId: string, text: string): Promise<void> {
-    logger.info(`[wecom-channel] sendWeComReply chatId=${chatId} text=${text.slice(0, 80)}`);
+  private async sendWeComReply(chatId: string, text: string, botId?: string): Promise<void> {
+    const effectiveBotId = botId ?? this.currentBotId;
+    logger.info(`[wecom-channel] sendWeComReply chatId=${chatId} botId=${effectiveBotId ?? 'fallback'}`);
+    // Resolution chain: explicit botId → currentBotId → by chatId → first available
+    let entry = effectiveBotId ? this.botPool.get(effectiveBotId) : undefined;
+    if (!entry) entry = this.resolveBotByChatId(chatId);
+    if (!entry) entry = this.resolveBot(); // fallback: first available
+    if (!entry) {
+      logger.warn('[wecom-channel] sendWeComReply no available bot');
+      return;
+    }
     const plugin = await loadWecomPlugin();
     if (!plugin?.outbound?.sendText) {
       logger.warn('[wecom-channel] plugin outbound.sendText not available');
       return;
     }
-    await this.ensureWebSocket();
+    await this.ensureBotWebSocket(entry.config.id);
     const cfg = {
       channels: {
         wecom: {
           enabled: true,
-          botId: this.cfg.botId,
-          secret: this.cfg.secret,
+          botId: entry.config.botId,
+          secret: entry.config.secret,
           agent: this.cfg.agent,
         },
       },
     };
     try {
-      const result = await plugin.outbound.sendText({ to: chatId, text, accountId: 'default', cfg });
+      const result = await plugin.outbound.sendText({ to: chatId, text, accountId: entry.config.id, cfg });
       logger.info('[wecom-channel] sendWeComReply success:', JSON.stringify(result));
     } catch (err) {
       logger.error('[wecom-channel] sendWeComReply failed:', err);

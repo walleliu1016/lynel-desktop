@@ -203,9 +203,9 @@ function onTraceSelect(seq: number) {
   }
 }
 
-async function onCreate(workdir: string, prompt: string, extraArgs: string[] = []) {
+async function onCreate(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string) {
   try {
-    const id = await sessions.create(workdir, prompt, extraArgs)
+    const id = await sessions.create(workdir, prompt, extraArgs, botId)
     const meta = sessions.list.find((s) => s.id === id)
     if (meta) {
       tabsStore.openSession(id, meta.workdir, sessionDisplayTitle(meta) || prompt)
@@ -215,13 +215,13 @@ async function onCreate(workdir: string, prompt: string, extraArgs: string[] = [
   }
 }
 
-async function onCreateFromFolder(workdir: string, prompt: string, extraArgs: string[] = []) {
-  await onCreate(workdir, prompt, extraArgs)
+async function onCreateFromFolder(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string) {
+  await onCreate(workdir, prompt, extraArgs, botId)
   showOpenFolder.value = false
 }
 
-async function onCreateFromSession(workdir: string, prompt: string, extraArgs: string[] = []) {
-  await onCreate(workdir, prompt, extraArgs)
+async function onCreateFromSession(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string) {
+  await onCreate(workdir, prompt, extraArgs, botId)
   showNewSession.value = false
 }
 
@@ -236,6 +236,11 @@ async function onOpenRecent(item: RecentSession) {
     }))
     await AdoptSession(item.sessionId, item.workdir)
     await OpenSessionTerminal(item.sessionId, item.workdir)
+    // 加载 bot 绑定信息
+    await sessions.loadBotNames()
+    if (item.botId) {
+      sessions.sessionBots = { ...sessions.sessionBots, [item.sessionId]: item.botId }
+    }
     showNewSession.value = false
   } catch (e: any) {
     console.error('[home] open recent failed:', e?.message || e)

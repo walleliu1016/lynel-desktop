@@ -24,6 +24,12 @@ describe('WeComChannel (LynelEnvelope API)', () => {
       botId: 'bot-1',
       secret: 'secret-1',
     });
+
+    // 用 BotConfig 初始化 bot 连接池
+    const botConfig = { id: 'b1', name: 'test-bot', botId: 'bot-1', secret: 'secret-1', chatId: 'chat-1', createdAt: Date.now(), updatedAt: Date.now() };
+    channel.updateBots([botConfig]);
+    channel.setSessionBot('sid-1', 'b1');
+
     // mock plugin 加载
     (channel as any).sendContent = vi.fn().mockResolvedValue(undefined);
   });

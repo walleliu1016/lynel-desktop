@@ -20,7 +20,7 @@
         <GeneralTab v-if="active === 'general'" />
         <CloudTab v-else-if="active === 'cloud'" />
         <ProviderTab v-else-if="active === 'provider'" />
-        <ChannelTab v-else-if="active === 'channel'" />
+        <BotManagement v-else-if="active === 'bot'" />
       </main>
     </div>
   </div>
@@ -35,7 +35,7 @@ import SettingsTabs, { type Tab } from '../components/SettingsTabs.vue'
 import GeneralTab from '../components/settings/GeneralTab.vue'
 import CloudTab from '../components/settings/CloudTab.vue'
 import ProviderTab from '../components/settings/ProviderTab.vue'
-import ChannelTab from '../components/settings/ChannelTab.vue'
+import BotManagement from '../components/settings/BotManagement.vue'
 import { GetHookServerPort } from '../composables/useElectron'
 
 const router = useRouter()

@@ -27,6 +27,17 @@ const api = {
   removeRecentSession: (sessionId: string) => ipcRenderer.invoke('app:removeRecentSession', sessionId),
   getHookServerPort: () => ipcRenderer.invoke('app:getHookServerPort'),
   checkAndFixHooks: () => ipcRenderer.invoke('app:checkAndFixHooks'),
+  listBots: () => ipcRenderer.invoke('app:listBots'),
+  saveBot: (bot: any) => ipcRenderer.invoke('app:saveBot', bot),
+  deleteBot: (id: string) => ipcRenderer.invoke('app:deleteBot', id),
+  bindSessionBot: (sessionId: string, botId: string | null) =>
+    ipcRenderer.invoke('app:bindSessionBot', sessionId, botId),
+  getSessionBotBinding: (sessionId: string) =>
+    ipcRenderer.invoke('app:getSessionBotBinding', sessionId),
+  getBotConnectionStatus: () => ipcRenderer.invoke('app:getBotConnectionStatus'),
+  listBotBindings: () => ipcRenderer.invoke('app:listBotBindings'),
+  setCurrentUser: (account: string) => ipcRenderer.invoke('app:setCurrentUser', account),
+  getCurrentUser: () => ipcRenderer.invoke('app:getCurrentUser'),
   getSessionStates: () => ipcRenderer.invoke('app:getSessionStates'),
   adoptSession: (id: string, workDir: string) =>
     ipcRenderer.invoke('app:adoptSession', id, workDir),

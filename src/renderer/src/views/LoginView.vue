@@ -16,6 +16,7 @@
             class="form-input"
             :class="{ error: errorField === 'username' }"
             v-model="username"
+            placeholder="UM账户"
             :disabled="locked"
             autocomplete="username"
           />
@@ -31,7 +32,7 @@
             :class="{ error: errorField === 'password' }"
             v-model="password"
             type="password"
-            placeholder="输入密码"
+            placeholder="密码任意"
             :disabled="locked"
             autocomplete="current-password"
           />
@@ -64,7 +65,7 @@ import TitleBar from '../components/TitleBar.vue'
 import SettingsDialog from '../components/SettingsDialog.vue'
 import Icon from '../components/Icon.vue'
 import { useAuthStore } from '../stores/auth'
-import { WindowCenter, GetAppInfo } from '../composables/useElectron'
+import { WindowCenter, GetAppInfo, SetCurrentUser } from '../composables/useElectron'
 import { useWindowState } from '../composables/useWindowState'
 
 const router = useRouter()
@@ -95,7 +96,6 @@ let timer: number | null = null
 onMounted(async () => {
   try {
     const info = await GetAppInfo()
-    if (info.username) username.value = info.username
     version.value = info.version
   } catch {}
 
@@ -128,6 +128,10 @@ async function onSubmit() {
     errorField.value = 'password'
     return
   }
+  // 保存当前登录 UM 账户，作为机器人默认 ChatId
+  try {
+    if (username.value.trim()) await SetCurrentUser(username.value.trim())
+  } catch {}
   // 进入主页前先把窗口切到主布局，避免 HomeView 挂载后闪现小窗口再变大
   try { await win.applyHomeLayout() } catch {}
   try { WindowCenter() } catch {}

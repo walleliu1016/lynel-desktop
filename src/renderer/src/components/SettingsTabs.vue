@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import Icon from './Icon.vue'
 
-export type Tab = 'general' | 'cloud' | 'provider' | 'channel'
+export type Tab = 'general' | 'cloud' | 'provider' | 'bot'
 
 const props = defineProps<{
   modelValue: Tab
@@ -9,18 +9,18 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: Tab): void }>()
 
-const tabs: Tab[] = ['general', 'cloud', 'provider', 'channel']
+const tabs: Tab[] = ['general', 'cloud', 'provider', 'bot']
 const labels: Record<Tab, string> = {
   general: '通用',
   cloud: '云服务',
   provider: '模型供应商',
-  channel: '通道',
+  bot: '机器人',
 }
 const icons: Record<Tab, string> = {
   general: 'settings',
   cloud: 'cloud',
   provider: 'bot',
-  channel: 'message-square',
+  bot: 'bot-message-square',
 }
 
 function select(t: Tab) {

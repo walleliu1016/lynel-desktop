@@ -25,6 +25,7 @@ export interface SessionMeta {
   lastEvent?: { type: string; summary: string }
   user_title?: string
   title_source?: 'user' | 'ai' | 'first_prompt'
+  bot_id?: string
 }
 
 export type TitleSource = 'user' | 'ai' | 'first_prompt'

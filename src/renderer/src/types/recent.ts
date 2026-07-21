@@ -7,4 +7,5 @@ export interface RecentSession {
   userTitle?: string
   lastOpenedAt: number
   state: string
+  botId?: string
 }

@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import type { SessionMeta, ChatMessage, SessionState } from '../types/session'
 import type { RecentSession } from '../types/recent'
 import type { ContentBlock, ToolResultBlock, RawContent } from '../types/blocks'
-import { CreateSession, SendMessage, GetSessionMessages, AdoptSession, RenameSession } from '../composables/useElectron'
+import { CreateSession, SendMessage, GetSessionMessages, AdoptSession, RenameSession, BindSessionBot, ListBots, ListBotBindings } from '../composables/useElectron'
 
 export interface HookPermissionRequest {
   requestId: string
@@ -127,8 +127,28 @@ export const useSessionsStore = defineStore('sessions', () => {
   const loading = ref(false)
   const userTitles = ref<Record<string, string>>({})
   const titleSources = ref<Record<string, 'user' | 'ai' | 'first_prompt'>>({})
+  const sessionBots = ref<Record<string, string>>({})
+  const botNames = ref<Record<string, string>>({})
+  const botBindings = ref<Record<string, string>>({})
 
   const active = computed(() => list.value.find((s) => s.id === activeId.value) ?? null)
+
+  function getBotBoundSessionName(botId: string): string | undefined {
+    const sessionId = botBindings.value[botId] || sessionBots.value[botId]
+    if (!sessionId) return undefined
+    const meta = list.value.find((s) => s.id === sessionId)
+    if (meta) return sessionDisplayTitle(meta)
+    return sessionId.slice(0, 8)
+  }
+
+  async function loadBotBindings() {
+    try {
+      const map = (await ListBotBindings()) as Record<string, string>
+      botBindings.value = map
+    } catch (e: any) {
+      console.error('[sessions] loadBotBindings failed:', e)
+    }
+  }
 
   function applyTitleChange(id: string, title: string, source: 'user' | 'ai' | 'first_prompt') {
     titleSources.value = { ...titleSources.value, [id]: source }
@@ -199,7 +219,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     return s.slice(0, max) + '…'
   }
 
-  async function create(workdir: string, prompt: string, extraArgs: string[] = []) {
+  async function create(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string) {
     creating.value = true
     try {
       const id = await CreateSession(workdir, prompt, extraArgs)
@@ -214,6 +234,11 @@ export const useSessionsStore = defineStore('sessions', () => {
         }, ...list.value]
       }
       titleSources.value = { ...titleSources.value, [id]: prompt ? 'first_prompt' : 'first_prompt' }
+      // 绑定 bot（如果有）
+      if (botId) {
+        await BindSessionBot(id, botId)
+        sessionBots.value = { ...sessionBots.value, [id]: botId }
+      }
       activeId.value = id
       await select(id)
       return id
@@ -409,11 +434,45 @@ export const useSessionsStore = defineStore('sessions', () => {
     applyTitleChange(id, trimmed, 'user')
   }
 
+  async function loadBotNames() {
+    try {
+      const bots = (await ListBots()) as any[]
+      const map: Record<string, string> = {}
+      for (const b of bots) { map[b.id] = b.name }
+      botNames.value = map
+    } catch {}
+  }
+
+  async function bindBot(id: string, botId: string | null) {
+    console.log('[sessions] bindBot called', id.slice(0, 8), botId)
+    await BindSessionBot(id, botId)
+    if (botId) {
+      sessionBots.value = { ...sessionBots.value, [id]: botId }
+      botBindings.value = { ...botBindings.value, [botId]: id }
+    } else {
+      const prevBotId = sessionBots.value[id]
+      sessionBots.value = { ...sessionBots.value, [id]: undefined! }
+      sessionBots.value = Object.fromEntries(Object.entries(sessionBots.value).filter(([, v]) => v !== undefined))
+      if (prevBotId) {
+        botBindings.value = { ...botBindings.value, [prevBotId]: undefined! }
+        botBindings.value = Object.fromEntries(Object.entries(botBindings.value).filter(([, v]) => v !== undefined))
+      }
+    }
+    await loadBotNames()
+    console.log('[sessions] bindBot done, sessionBots:', sessionBots.value)
+  }
+
+  function getSessionBotName(id: string): string | undefined {
+    const botId = sessionBots.value[id]
+    return botId ? botNames.value[botId] : undefined
+  }
+
   return { list, activeId, active, messages, streaming, state,
     hasMore, creating, loading, adopted, drafts, hookPermissions, opened,
-    userTitles, titleSources,
+    userTitles, titleSources, sessionBots, botNames, botBindings,
     setDraft, create, open, select, send, setHookPermission,
-    reloadFromJsonl, handleHookEvent, loadMore, remove, renameSession, applyTitleChange }
+    reloadFromJsonl, handleHookEvent, loadMore, remove, renameSession, applyTitleChange,
+    loadBotNames, bindBot, getSessionBotName, loadBotBindings, getBotBoundSessionName }
 })
 
 export function sessionDisplayTitle(meta?: { id?: string; user_title?: string; ai_title?: string; first_prompt?: string; project?: string } | null): string {

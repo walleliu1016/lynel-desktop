@@ -13,7 +13,7 @@
       <GeneralTab v-if="active === 'general'" />
       <CloudTab v-else-if="active === 'cloud'" />
       <ProviderTab v-else-if="active === 'provider'" />
-      <ChannelTab v-else-if="active === 'channel'" />
+      <BotManagement v-else-if="active === 'bot'" />
     </main>
   </div>
 </template>
@@ -24,7 +24,7 @@ import SettingsTabs, { type Tab } from './SettingsTabs.vue'
 import GeneralTab from './settings/GeneralTab.vue'
 import CloudTab from './settings/CloudTab.vue'
 import ProviderTab from './settings/ProviderTab.vue'
-import ChannelTab from './settings/ChannelTab.vue'
+import BotManagement from './settings/BotManagement.vue'
 import { GetHookServerPort } from '../composables/useElectron'
 
 const active = ref<Tab>('general')
