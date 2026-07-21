@@ -122,9 +122,14 @@ const activeSessionWorkdir = computed(() => {
 const sessionTabs = computed(() => tabsStore.tabs.filter((t) => t.type === 'session'))
 // 移除 traceTabs、activeTraceId
 
-// 切 session 时关闭 overlay
-watch(activeSessionId, () => {
+// 切 session 时关闭 overlay 并加载 trace 数据
+watch(activeSessionId, (newId) => {
   showTraceOverlay.value = false
+  if (!newId) return
+  const wd = activeSessionWorkdir.value
+  if (!wd || newId === trace.sessionId) return
+  trace.setSession(wd, newId)
+  trace.load()
 })
 
 onMounted(async () => {
@@ -136,17 +141,6 @@ onMounted(async () => {
 
 function onSelectTab(id: string) {
   tabsStore.activate(id)
-  // GlobalTabs 切换 session 时同步加载 trace
-  const tab = tabsStore.tabs.find((t) => t.id === id)
-  if (tab?.type === 'session') {
-    const sid = tab.payload?.sessionId as string
-    const wd = tab.payload?.workdir as string
-    if (sid && wd && sid !== trace.sessionId) {
-      trace.setSession(wd, sid)
-      trace.load()
-      showTraceOverlay.value = false
-    }
-  }
 }
 
 function onCreateTab() {
@@ -192,10 +186,7 @@ async function onSelectSession(id: string) {
   if (!meta) return
   tabsStore.openSession(id, meta.workdir, sessionDisplayTitle(meta))
   void sessions.select(id)
-  // 初始化 trace store 并加载数据
-  trace.setSession(meta.workdir, id)
-  trace.load()
-  showTraceOverlay.value = false
+  // trace 加载由 activeSessionId watch 统一处理
 }
 
 function closeTraceOverlay() {

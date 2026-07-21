@@ -88,7 +88,7 @@ onMounted(() => overlayRef.value?.focus())
   transition: background 100ms, color 100ms;
 }
 .panel-close:hover { background: var(--status-error-soft); color: var(--status-error); }
-.panel-body { flex: 1; min-height: 0; overflow: hidden; }
+.panel-body { flex: 1; min-height: 0; overflow-y: auto; }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
