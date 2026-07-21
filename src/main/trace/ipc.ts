@@ -3,6 +3,8 @@ import { ipcMain } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import chokidar from 'chokidar';
+import type { FSWatcher } from 'chokidar';
 import { HappyJsonlWriter } from '../archive/happyJsonl.js';
 import { listRawExchanges, readRawExchange } from '../archive/rawArchive.js';
 import { requestTiming, recordModel } from '../trace/timing.js';
@@ -10,6 +12,7 @@ import { anthropicAdapter } from '../formats/anthropic.js';
 import { summarizeUsage, type RawExchange } from '../cost/usage.js';
 import { costFromUsage } from '../cost/priceTable.js';
 import type { UsageSummary } from '../cost/usage.js';
+import { getBus } from '../events.js';
 
 function projectKeyFor(workDir: string): string {
   const safe = workDir
@@ -200,7 +203,36 @@ export function registerTraceIpc(): void {
     const dir = resolveDataDir(workDir, sessionId);
     return HappyJsonlWriter.readAll(dir);
   });
+
+  // 文件变更通知：trace watcher
+  ipcMain.handle('trace:watch', async (_event, workDir: string, sessionId: string) => {
+    const dir = resolveDataDir(workDir, sessionId);
+    const rawDir = path.join(dir, 'raw');
+    if (watchers.has(rawDir)) return;
+    try { await fs.promises.mkdir(rawDir, { recursive: true }); } catch { /* ignore */ }
+    const watcher = chokidar.watch(rawDir, {
+      ignoreInitial: true,
+      depth: 0,
+    });
+    watcher.on('add', () => {
+      getBus().emit('trace:updated', workDir, sessionId);
+    });
+    watchers.set(rawDir, watcher);
+  });
+
+  ipcMain.handle('trace:unwatch', async (_event, workDir: string, sessionId: string) => {
+    const dir = resolveDataDir(workDir, sessionId);
+    const rawDir = path.join(dir, 'raw');
+    const watcher = watchers.get(rawDir);
+    if (watcher) {
+      await watcher.close();
+      watchers.delete(rawDir);
+    }
+  });
 }
+
+// session 维度 watcher 缓存，key = raw 目录绝对路径
+const watchers = new Map<string, FSWatcher>();
 
 function exportMarkdown(ex: any): string {
   const body = ex.request?.body || {};

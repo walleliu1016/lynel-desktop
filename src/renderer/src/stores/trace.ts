@@ -9,6 +9,9 @@ import {
   GetUsageSummary,
   ListHappyEnvelopes,
   ExportTraceRequest,
+  WatchTraceSession,
+  UnwatchTraceSession,
+  EventsOn,
 } from '../composables/useElectron'
 
 export interface TraceSummary {
@@ -77,12 +80,32 @@ export const useTraceStore = defineStore('trace', () => {
   })
 
   function setSession(wd: string, sid: string) {
+    // 停止监听旧会话
+    if (workDir.value && sessionId.value) {
+      UnwatchTraceSession(workDir.value, sessionId.value).catch(() => {})
+    }
     workDir.value = wd
     sessionId.value = sid
     selectedSeq.value = null
     detail.value = null
     picks.value = []
+    // 监听新会话的 raw 目录
+    if (wd && sid) {
+      WatchTraceSession(wd, sid).catch(() => {})
+    }
   }
+
+  // 监听文件变更自动刷新
+  let watchCleanup: (() => void) | null = null
+  function initWatcher() {
+    watchCleanup?.()
+    watchCleanup = EventsOn('trace:updated', (wd: string, sid: string) => {
+      if (wd === workDir.value && sid === sessionId.value) {
+        load()
+      }
+    })
+  }
+  initWatcher()
 
   async function load() {
     if (!workDir.value || !sessionId.value) return
@@ -149,5 +172,6 @@ export const useTraceStore = defineStore('trace', () => {
     envelopes, diffResult, usage, picks, loading, diffMode, loadError,
     filteredRequests, availableModels, errorCount,
     setSession, load, select, loadUsage, diff, toggleDiff, togglePick, exportRequest,
+    cleanupWatcher: () => { watchCleanup?.(); watchCleanup = null },
   }
 })

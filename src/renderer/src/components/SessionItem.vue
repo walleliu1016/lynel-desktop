@@ -8,9 +8,9 @@
     @contextmenu.prevent="onContextMenu"
     ref="itemEl"
   >
-    <div class="cc-icon">CC</div>
+    <div class="avatar">CC</div>
     <div class="body">
-      <div class="row1">
+      <div class="row-top">
         <input
           v-if="editing"
           ref="inputEl"
@@ -21,13 +21,16 @@
           @keydown.escape="cancelRename"
         />
         <span v-else class="title" :title="title">{{ title }}</span>
-        <span v-if="stateLabel" class="state-tag" :class="state">{{ stateLabel }}</span>
+        <div class="right-group">
+          <span class="time">{{ duration }}</span>
+          <span v-if="stateDotClass" class="dot" :class="stateDotClass"></span>
+        </div>
       </div>
-      <div class="row2">
-        <span class="meta" :title="`${projectName} · ${msgCount} · ${duration}`">{{ projectName }} · {{ msgCount }} · {{ duration }}</span>
+      <div class="row-bottom">
+        <span class="meta" :title="`${projectName} · ${msgCount}`">{{ projectName }} · {{ msgCount }}</span>
+        <span v-if="currentBotName" class="bot-tag"><Icon name="bot" :size="10" />{{ currentBotName }}</span>
       </div>
       <div v-if="eventText" class="event">{{ eventText }}</div>
-      <div v-if="currentBotName" class="bot-badge">{{ currentBotName }}</div>
     </div>
   </div>
   <Teleport to="body">
@@ -83,6 +86,7 @@
 <script setup lang="ts">
 import { computed, ref, nextTick, onMounted } from 'vue'
 import SessionTooltip from './SessionTooltip.vue'
+import Icon from './Icon.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useBotsStore } from '../stores/bots'
 import { showToast } from '../composables/useToast'
@@ -115,7 +119,7 @@ function onEnter() {
       const r = itemEl.value.getBoundingClientRect()
       tipAnchor.value = { x: r.right + 8, y: r.top }
     }
-  }, 3000)
+  }, 1000)
 }
 function onLeave() {
   if (showTimer) { clearTimeout(showTimer); showTimer = null }
@@ -231,6 +235,21 @@ const stateLabel = computed(() => {
   }
 })
 
+const stateDotClass = computed(() => {
+  switch (state.value) {
+    case 'waiting':
+    case 'thinking':
+    case 'streaming':
+    case 'running_tool':
+      return 'running'
+    case 'awaiting_permission': return 'awaiting'
+    case 'done':
+    case 'ended':
+      return 'done'
+    default: return ''
+  }
+})
+
 // Bot 绑定
 const currentBotName = computed(() => sessions.getSessionBotName(props.meta.id))
 
@@ -278,45 +297,50 @@ async function unbindBot() {
 
 <style scoped>
 .session-item {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 11px; border-radius: var(--radius-lg);
+  display: flex; align-items: stretch; gap: 10px;
+  padding: 10px; border-radius: 10px;
   cursor: pointer; position: relative;
   background: transparent;
-  border: 1px solid transparent;
-  margin-bottom: 6px;
-  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+  transition: background 0.12s;
 }
 .session-item:hover { background: var(--session-item-hover-bg); }
-.session-item:active { background: var(--session-item-hover-bg); transform: scale(0.995); }
+.session-item:active { background: var(--session-item-hover-bg); }
 .session-item.active {
   background: var(--session-item-active-bg);
-  border-color: var(--accent-soft-border);
-  box-shadow: inset 4px 0 0 var(--accent);
+}
+.session-item.active::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 50%; transform: translateY(-50%);
+  width: 3px; height: 24px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 .session-item.awaiting {
-  border-color: var(--status-error);
   background: var(--status-error-soft);
 }
-.session-item.awaiting.active {
-  box-shadow: inset 4px 0 0 var(--status-error);
+.session-item.awaiting.active::before {
+  background: var(--status-error);
 }
-.session-item.awaiting .state-tag.awaiting_permission {
-  animation: pulse-opacity 1.2s ease-in-out infinite;
-}
-.cc-icon {
-  width: 30px; height: 30px; border-radius: 9px;
+.avatar {
+  width: 34px; height: 34px; border-radius: 10px;
   background: var(--accent-soft-bg);
   color: var(--accent);
   display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 800; letter-spacing: 0.2px;
-  flex-shrink: 0; margin-top: 1px;
+  font-size: 11px; font-weight: 700;
+  flex-shrink: 0;
 }
-.body { flex: 1; min-width: 0; }
-.row1 {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 8px;
+.body {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  justify-content: center; gap: 3px;
+}
+.row-top {
+  display: flex; align-items: center; gap: 8px;
 }
 .title {
+  flex: 1; min-width: 0;
   font-size: 12px; color: var(--text-primary); font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -330,30 +354,45 @@ async function unbindBot() {
   padding: 2px 6px;
   outline: none;
 }
-.state-tag {
-  font-size: 9px; font-weight: 700; white-space: nowrap;
-  padding: 2px 6px; border-radius: 6px; flex-shrink: 0;
+.right-group {
+  display: flex; align-items: center; gap: 6px;
+  flex-shrink: 0;
 }
-.state-tag.waiting,
-.state-tag.thinking,
-.state-tag.streaming,
-.state-tag.running_tool {
-  color: var(--accent);
-  background: var(--accent-soft-bg);
+.time {
+  font-size: 10px; color: var(--text-tertiary);
+  white-space: nowrap;
 }
-.state-tag.awaiting_permission {
-  color: var(--status-error);
-  background: var(--status-error-soft);
+.dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  flex-shrink: 0;
 }
-.state-tag.done,
-.state-tag.ended {
-  color: var(--status-success);
-  background: var(--status-success-soft);
+.dot.running {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent-glow);
 }
-.row2 { margin-top: 2px; }
-.meta { font-size: 10px; color: var(--text-tertiary); }
+.dot.done { background: var(--status-success); }
+.dot.awaiting {
+  background: var(--status-error);
+  animation: pulse-opacity 1.2s ease-in-out infinite;
+}
+.row-bottom {
+  display: flex; align-items: center; gap: 8px;
+}
+.meta {
+  flex: 1;
+  font-size: 10px; color: var(--text-tertiary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bot-tag {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 9px; padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(59,130,246,0.12);
+  color: #60a5fa;
+  white-space: nowrap; flex-shrink: 0;
+}
 .event {
-  font-size: 10px; color: var(--text-secondary); margin-top: 6px;
+  font-size: 10px; color: var(--text-secondary); margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .event :deep(b), .event b { font-weight: 600; color: var(--text-primary); }
@@ -401,14 +440,6 @@ async function unbindBot() {
   height: 1px; background: var(--border); margin: 4px 0;
 }
 .picker-overlay { z-index: 1001; }
-.bot-badge {
-  display: inline-block; margin-top: 4px;
-  font-size: 9px; padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--accent-soft-bg);
-  color: var(--accent);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
-}
 .bot-picker { min-width: 160px; }
 .picker-title {
   padding: 6px 10px; font-size: 11px; color: var(--text-tertiary);
@@ -417,6 +448,6 @@ async function unbindBot() {
 .menu-item.selected { color: var(--accent); font-weight: 600; }
 @keyframes pulse-opacity {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  50% { opacity: 0.3; }
 }
 </style>

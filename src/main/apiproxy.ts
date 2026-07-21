@@ -13,7 +13,7 @@ import { type LynelEnvelope } from './protocol/envelope.js';
 import { requestTiming, recordModel } from './trace/timing.js';
 import { costFromUsage, type CostBreakdown } from './cost/priceTable.js';
 import { HappyJsonlWriter } from './archive/happyJsonl.js';
-import { writeRawExchange, type RawExchangeInput } from './archive/rawArchive.js';
+import { writeRawExchange, listRawExchanges, type RawExchangeInput } from './archive/rawArchive.js';
 
 export interface Proxy {
   port: number;
@@ -107,12 +107,15 @@ export function startProxy(
   const jsonl = new HappyJsonlWriter(sessionDir);
   jsonl.open();
 
+  const existingSeqs = listRawExchanges(sessionDir)
+  const initialSeq = existingSeqs.length > 0 ? Math.max(...existingSeqs) : 0
+
   const state: SessionState = {
     workDir,
     sessionDir,
     adapter: new SessionAdapter(),
     jsonl,
-    roundtripSeq: 0,
+    roundtripSeq: initialSeq,
     rawChunks: [],
     sseCarry: '',
     startedAt: 0,

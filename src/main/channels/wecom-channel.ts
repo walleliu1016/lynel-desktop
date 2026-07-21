@@ -1025,13 +1025,16 @@ export class WeComChannel implements OutputChannel, HookChannel {
         }
         const lines = sessions.map((s, i) => {
           const project = path.basename(s.workDir);
-          return `| ${i + 1} | \`${s.id.slice(0, 8)}\` | ${s.state} | ${project} |`;
+          const botId = this.sessionBotMap.get(s.id);
+          const botName = botId ? this.botPool.get(botId)?.config.name : undefined;
+          const botTag = botName ? `🤖 ${botName}` : '';
+          return `| ${i + 1} | \`${s.id.slice(0, 8)}\` | ${s.state} | ${project} | ${botTag}`;
         });
         await this.sendWeComReply(
           chatId,
           '**可用会话**\n\n' +
-          '| 序号 | 会话ID | 状态 | 项目 |\n' +
-          '|------|--------|------|------|\n' +
+          '| 序号 | 会话ID | 状态 | 项目 | Bot |\n' +
+          '|------|--------|------|------|------|\n' +
           lines.join('\n'),
         );
         return;

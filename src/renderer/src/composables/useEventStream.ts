@@ -18,8 +18,9 @@ export function useEventStream() {
       console.error('[fatal]', msg)
     }))
 
-    // 后端 fsnotify 监听 jsonl 变化后推送 → 重载当前 session 消息。
+    // 后端 fsnotify 监听 jsonl 变化后推送 → 刷新列表（msg_count 等）+ 重载当前 session 消息。
     cleanups.push(EventsOn('sessions:list:changed', () => {
+      void sessions.refreshList()
       if (sessions.activeId) {
         void sessions.reloadFromJsonl(sessions.activeId)
       }

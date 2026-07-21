@@ -109,6 +109,10 @@ const api = {
     ipcRenderer.invoke('trace:export', workDir, sessionId, seq, format),
   listHappyEnvelopes: (workDir: string, sessionId: string) =>
     ipcRenderer.invoke('trace:envelopes', workDir, sessionId),
+  watchTraceSession: (workDir: string, sessionId: string) =>
+    ipcRenderer.invoke('trace:watch', workDir, sessionId),
+  unwatchTraceSession: (workDir: string, sessionId: string) =>
+    ipcRenderer.invoke('trace:unwatch', workDir, sessionId),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

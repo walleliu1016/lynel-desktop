@@ -50,9 +50,12 @@
           <span class="bot-name">{{ bot.name }}</span>
           <span class="bot-source">{{ SOURCE_LABELS[bot.source] || '企业微信' }}</span>
           <span class="bot-meta">{{ bot.botId }}</span>
-          <span v-if="sessions.getBotBoundSessionName(bot.id)" class="bot-bound">已绑定：{{ sessions.getBotBoundSessionName(bot.id) }}</span>
+          <span class="bot-bound" :title="boundSessionTooltip(bot.id)">{{ boundSessionLabel(bot.id) }}</span>
           <button class="btn-icon" title="编辑" @click.stop="toggleEdit(bot.id)">
             <Icon name="pencil" :size="13" />
+          </button>
+          <button v-if="boundSessionId(bot.id)" class="btn-icon" title="解绑" @click.stop="onUnbind(bot.id)">
+            <Icon name="link-2-off" :size="13" />
           </button>
           <button class="btn-icon btn-icon--danger" title="删除" @click.stop="onDelete(bot.id)">
             <Icon name="trash" :size="13" />
@@ -128,7 +131,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import Icon from '../Icon.vue'
 import type { BotItem, BotSource } from '../../types/bots'
 import { useBotsStore } from '../../stores/bots'
-import { useSessionsStore } from '../../stores/sessions'
+import { useSessionsStore, sessionDisplayTitle } from '../../stores/sessions'
 import { showToast } from '../../composables/useToast'
 
 const store = useBotsStore()
@@ -153,6 +156,39 @@ const editForm = reactive({
 const editValid = computed(() =>
   editForm.name.trim() && editForm.botId.trim() && editForm.secret.trim()
 )
+
+/** 查找 bot 绑定的 sessionId */
+function boundSessionId(botId: string): string | undefined {
+  return sessions.botBindings[botId] || sessions.sessionBots[botId]
+}
+
+/** 绑定的 session 标题 */
+function boundSessionLabel(botId: string): string {
+  const sessionId = boundSessionId(botId)
+  if (!sessionId) return ''
+  const meta = sessions.list.find((s) => s.id === sessionId)
+  const title = meta ? sessionDisplayTitle(meta) : sessionId.slice(0, 8)
+  return `已绑定：${title}`
+}
+
+/** 绑定详情 tooltip（完整 sessionId） */
+function boundSessionTooltip(botId: string): string | undefined {
+  const sessionId = boundSessionId(botId)
+  if (!sessionId) return undefined
+  return `会话 ${sessionId}`
+}
+
+async function onUnbind(botId: string) {
+  const sessionId = boundSessionId(botId)
+  if (!sessionId) return
+  try {
+    await sessions.bindBot(sessionId, null)
+    await sessions.loadBotBindings()
+    showToast('已解绑', 'success')
+  } catch (e: any) {
+    showToast('解绑失败：' + (e?.message ?? e), 'error')
+  }
+}
 
 onMounted(() => {
   void store.load()

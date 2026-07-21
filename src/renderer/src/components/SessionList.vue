@@ -19,7 +19,7 @@
     </div>
     <div v-if="!props.collapsed" class="content">
       <div class="search-bar">
-        <Icon name="message-square" :size="12" class="search-icon" />
+        <Icon name="search" :size="12" class="search-icon" />
         <input
           v-model="search"
           class="search-input"

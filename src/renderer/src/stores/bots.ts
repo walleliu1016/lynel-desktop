@@ -15,10 +15,8 @@ export const useBotsStore = defineStore('bots', () => {
   async function load() {
     loading.value = true
     try {
-      console.log('[bots] load start')
       const configs = (await ListBots()) as any[]
       const status = (await GetBotConnectionStatus()) as Record<string, boolean>
-      console.log('[bots] load got', configs.length, 'bots')
       bots.value = configs.map(c => ({
         ...c,
         connected: status[c.id] ?? false,

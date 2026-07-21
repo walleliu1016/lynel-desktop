@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import type { SessionMeta, ChatMessage, SessionState } from '../types/session'
 import type { RecentSession } from '../types/recent'
 import type { ContentBlock, ToolResultBlock, RawContent } from '../types/blocks'
-import { CreateSession, SendMessage, GetSessionMessages, AdoptSession, RenameSession, BindSessionBot, ListBots, ListBotBindings } from '../composables/useElectron'
+import { CreateSession, ListSessions, SendMessage, GetSessionMessages, AdoptSession, RenameSession, BindSessionBot, ListBots, ListBotBindings } from '../composables/useElectron'
 
 export interface HookPermissionRequest {
   requestId: string
@@ -326,6 +326,34 @@ export const useSessionsStore = defineStore('sessions', () => {
     await loadHistory(id, meta.workdir, nextStart, loaded - nextStart, false)
   }
 
+  async function refreshList() {
+    try {
+      const all = await ListSessions()
+      if (!all) return
+      // 用后端数据合并到现有 list，保留前端独有的字段（user_title, title_source 等）
+      const map = new Map(all.map((s: any) => [s.id, s]))
+      for (let i = 0; i < list.value.length; i++) {
+        const cur = list.value[i]
+        const fresh = map.get(cur.id)
+        if (fresh) {
+          list.value[i] = { ...cur, msg_count: fresh.msg_count, mtime: fresh.mtime, first_prompt: fresh.first_prompt || cur.first_prompt, ai_title: fresh.ai_title || cur.ai_title }
+          map.delete(cur.id)
+        }
+      }
+      // 新增不在本地的条目
+      for (const s of map.values()) {
+        list.value.push({
+          id: s.id, workdir: s.workdir, project: s.project,
+          mtime: s.mtime, msg_count: s.msg_count,
+          first_prompt: s.first_prompt || '', ai_title: s.ai_title || '',
+          size: s.size || 0,
+        })
+      }
+    } catch (e: any) {
+      console.error('[sessions] refreshList failed:', e?.message || e)
+    }
+  }
+
   async function reloadFromJsonl(sid: string) {
     const meta = list.value.find((s) => s.id === sid)
     if (!meta) return
@@ -341,6 +369,14 @@ export const useSessionsStore = defineStore('sessions', () => {
       historyOffset.value = { ...historyOffset.value, [sid]: raw?.length || 0 }
       hasMore.value = { ...hasMore.value, [sid]: false }
       messages.value = { ...messages.value, [sid]: msgs }
+      // 更新 msg_count
+      if (raw?.length) {
+        const idx = list.value.findIndex((s) => s.id === sid)
+        if (idx >= 0) {
+          const updated = { ...list.value[idx], msg_count: raw.length }
+          list.value = [...list.value.slice(0, idx), updated, ...list.value.slice(idx + 1)]
+        }
+      }
     } catch (e: any) {
       console.error('[sessions] reloadFromJsonl failed:', e?.message || e)
     }
@@ -467,11 +503,14 @@ export const useSessionsStore = defineStore('sessions', () => {
     return botId ? botNames.value[botId] : undefined
   }
 
+  // 初始加载会话列表
+  setTimeout(() => refreshList(), 0)
+
   return { list, activeId, active, messages, streaming, state,
     hasMore, creating, loading, adopted, drafts, hookPermissions, opened,
     userTitles, titleSources, sessionBots, botNames, botBindings,
     setDraft, create, open, select, send, setHookPermission,
-    reloadFromJsonl, handleHookEvent, loadMore, remove, renameSession, applyTitleChange,
+    reloadFromJsonl, refreshList, handleHookEvent, loadMore, remove, renameSession, applyTitleChange,
     loadBotNames, bindBot, getSessionBotName, loadBotBindings, getBotBoundSessionName }
 })
 

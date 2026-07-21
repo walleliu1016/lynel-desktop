@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Bot,
   BotMessageSquare,
+  Link2Off,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -21,6 +22,7 @@ import {
   Plus,
   Puzzle,
   RefreshCw,
+  Search,
   Send,
   Settings,
   ShieldAlert,
@@ -74,7 +76,9 @@ const icons: Record<string, unknown> = {
   puzzle: Puzzle,
   'corner-down-left': CornerDownLeft,
   'refresh-cw': RefreshCw,
+  search: Search,
   square: Square,
+  'link-2-off': Link2Off,
 }
 
 const Comp = computed(() => icons[props.name] ?? null)

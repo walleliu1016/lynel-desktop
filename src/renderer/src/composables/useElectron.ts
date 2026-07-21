@@ -95,5 +95,9 @@ export const ExportTraceRequest = (workDir: string, sessionId: string, seq: numb
   api().exportTraceRequest(workDir, sessionId, seq, format);
 export const ListHappyEnvelopes = (workDir: string, sessionId: string) =>
   api().listHappyEnvelopes(workDir, sessionId);
+export const WatchTraceSession = (workDir: string, sessionId: string) =>
+  api().watchTraceSession(workDir, sessionId);
+export const UnwatchTraceSession = (workDir: string, sessionId: string) =>
+  api().unwatchTraceSession(workDir, sessionId);
 
 export const isElectronDev = import.meta.env.DEV;
