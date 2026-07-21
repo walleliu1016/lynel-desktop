@@ -285,6 +285,7 @@ export class App {
 
   async init(): Promise<void> {
     this.applyChannelConfigs();
+    this.applyPushSettings();
     session.setOnRemove((id) => this.wecomChannel.clearSessionMappings(id));
     this.wecomChannel.setSessionTitleResolver((sessionId: string) => {
       const list = this.withRecentLock(() => readRecentSessions());
@@ -430,6 +431,14 @@ export class App {
     if (migrated) {
       this.settingsStore.set('channels', channels);
     }
+  }
+
+  private applyPushSettings(): void {
+    const pushThinking = this.settingsStore.get('push_thinking', true) as boolean;
+    const pushToolCalls = this.settingsStore.get('push_tool_calls', true) as boolean;
+    this.wecomChannel.pushThinking = pushThinking;
+    this.wecomChannel.pushToolCalls = pushToolCalls;
+    getLogger().info(`[app] push settings: thinking=${pushThinking} toolCalls=${pushToolCalls}`);
   }
 
   /** 把 ChannelInstance 规范化成 {id, type, name, enabled, config}；旧的内联 config 格式会被包装 */
@@ -788,6 +797,7 @@ export class App {
     });
     if (botId) {
       this.wecomChannel.setSessionBot(realId, botId);
+      this.wecomChannel.sendSessionStarted(realId, workDir);
     }
     return realId;
   }
@@ -941,6 +951,7 @@ export class App {
     ipcMain.handle('app:getSettings', () => this.settingsStore.store);
     ipcMain.handle('app:updateSettings', (_event, cfg: any) => {
       this.settingsStore.set(cfg);
+      this.applyPushSettings();
       // 灵动岛开关已隐藏，强制保持关闭
       hideNotchWindow();
     });
@@ -1192,6 +1203,11 @@ export class App {
       });
       if (botId) {
         this.wecomChannel.setSessionBot(sessionId, botId);
+        // 绑定 bot 时如果会话已运行，也推送启动通知
+        const s = session.lookup(sessionId);
+        if (s?.process) {
+          this.wecomChannel.sendSessionStarted(sessionId, s.workDir);
+        }
       } else {
         this.wecomChannel.clearSessionBot(sessionId);
       }
@@ -1365,6 +1381,8 @@ export class App {
         proc.onExit(() => cleanup());
         this.setSessionState(id, 'running');
         this.wirePty(id, proc);
+        // 有 bot 绑定的会话启动后推送通知
+        this.wecomChannel.sendSessionStarted(id, workDir);
       } catch (err: any) {
         getLogger().error(`[app:openSessionTerminal] startPty failed for sid=${id}: ${err.message}`);
         getBus().emit(`session:${id}`, `\r\n启动终端失败：${err.message}\r\n`);

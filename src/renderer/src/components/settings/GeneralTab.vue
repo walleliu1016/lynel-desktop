@@ -47,6 +47,14 @@
           <span class="switch-label">启动时最小化</span>
           <Switch v-model="cfg.minimize_on_start" @change="markDirty" />
         </label>
+        <label class="switch-row">
+          <span class="switch-label">推送思考过程</span>
+          <Switch v-model="cfg.push_thinking" @change="markDirty" />
+        </label>
+        <label class="switch-row">
+          <span class="switch-label">推送工具调用</span>
+          <Switch v-model="cfg.push_tool_calls" @change="markDirty" />
+        </label>
         <label v-if="false" class="switch-row">
           <span class="switch-label">显示灵动岛</span>
           <Switch v-model="cfg.notch_enabled" @change="markDirty" />
@@ -83,6 +91,8 @@ const cfg = computed(() => settings.cfg ?? (settings.cfg = {
   cloud_service_enabled: false,
   cloud_service_url: '',
   cloud_service_token: '',
+  push_thinking: true,
+  push_tool_calls: true,
 } as any))
 
 onMounted(() => settings.load())

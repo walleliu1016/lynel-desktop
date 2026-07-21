@@ -297,7 +297,21 @@ export class WeComCardEventHandler {
 
     const text = decision === 'allow' ? '已批准该权限请求。' : '已拒绝该权限请求。';
     try {
-      await this.updateCard(frame, {
+      const updateFrame = {
+        ...frame,
+        body: {
+          ...frame.body,
+          event: {
+            ...frame.body.event,
+            template_card_event: {
+              ...frame.body.event.template_card_event,
+              task_id: requestId,
+              response_code: state.msgid,
+            },
+          },
+        },
+      };
+      await this.updateCard(updateFrame, {
         card_type: 'text_notice',
         source: { desc: 'Lynel', desc_color: 0 },
         main_title: { title: text },

@@ -166,6 +166,10 @@ export class WeComChannel implements OutputChannel, HookChannel {
   private cardEventHandler?: WeComCardEventHandler;
   private currentUserAccount: string = '';
   private sessionTitleResolver: ((sessionId: string) => string) | null = null;
+  /** 是否推送 thinking 文本 */
+  pushThinking = true;
+  /** 是否推送工具调用事件 */
+  pushToolCalls = true;
   /** 多问题场景：暂存待发送的卡片数据 */
   private pendingQuestionCards = new Map<string, {
     cards: unknown[];
@@ -258,6 +262,16 @@ export class WeComChannel implements OutputChannel, HookChannel {
     }
   }
 
+  /** 会话已绑定 bot 且启动后，向 bot 推送启动通知 */
+  sendSessionStarted(sessionId: string, workDir: string): void {
+    if (!this.isEnabled()) return;
+    const entry = this.getBotForSession(sessionId);
+    if (!entry) return;
+    const project = path.basename(workDir);
+    const content = `> **${project}** · \`${sessionId.slice(0, 8)}\`\n\n**${project}**，工作目录 **${workDir}**，会话已启动。`;
+    this.sendContent(content, sessionId).catch((e) => logger.error('[wecom] sendSessionStarted failed:', e));
+  }
+
   setSessionBot(sessionId: string, botId: string): void {
     this.sessionBotMap.set(sessionId, botId);
   }
@@ -294,6 +308,10 @@ export class WeComChannel implements OutputChannel, HookChannel {
   send(event: LynelEnvelope): void {
     if (!this.isEnabled()) return;
     if (!event.sessionId) return;
+
+    // 推送过滤
+    if (!this.pushThinking && event.ev.t === 'text' && event.ev.thinking) return;
+    if (!this.pushToolCalls && (event.ev.t === 'tool-call-start' || event.ev.t === 'tool-call-end')) return;
 
     const entry = this.getBotForSession(event.sessionId);
     if (!entry) {
@@ -388,13 +406,15 @@ export class WeComChannel implements OutputChannel, HookChannel {
     }
 
     // PermissionResolved 降级为 Markdown
+    // 注意：source === 'wecom' 时跳过，因为卡片事件处理器或 /allow 命令已回复过
     if (event.kind === 'PermissionResolved') {
       const p = event.payload as any;
+      if (p?.source === 'wecom') return;
       const header = this.formatSessionHeader(event.sessionId) ?? '';
       if (p?.source === 'terminal') {
         this.sendContent(`${header}\n✅ **权限已在终端处理**`, event.sessionId).catch(() => {});
       } else {
-        const src = p?.source === 'wecom' ? '企业微信' : p?.source === 'notch' ? '桌面端' : '终端';
+        const src = p?.source === 'notch' ? '桌面端' : '终端';
         this.sendContent(`${header}\n✅ **权限已处理: ${p?.decision}** (${src})`, event.sessionId).catch(() => {});
       }
       return;
@@ -651,7 +671,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
         }
       });
 
-      this.registerCardEventListener(wsClient);
+      this.registerCardEventListener(wsClient, botId);
 
       wsClient.on('error', (err: any) => {
         clearTimeout(timer);
@@ -699,9 +719,9 @@ export class WeComChannel implements OutputChannel, HookChannel {
         this.cardStore,
         (chatId, text, requestId) => this.sendCardReplyWithHeader(chatId, text, requestId),
         async (frame: TemplateCardEventFrame, card: unknown) => {
-          // 从 frame 的 chatId 反查 bot wsClient
-          const chatId = frame?.body?.chatid || frame?.body?.from?.userid;
-          const wsClient = chatId ? this.getWSClientByChatId(chatId) : null;
+          // 优先用 currentBotId 定位 wsClient，确保卡片回复回到正确的 bot 连接
+          const botEntry = this.currentBotId ? this.botPool.get(this.currentBotId) : undefined;
+          const wsClient = botEntry?.wsClient;
           if (!wsClient) throw new Error('WSClient 未连接');
           await wsClient.updateTemplateCard(frame, card);
         },
@@ -737,8 +757,10 @@ export class WeComChannel implements OutputChannel, HookChannel {
     return this.cardEventHandler;
   }
 
-  private registerCardEventListener(wsClient: any): void {
+  private registerCardEventListener(wsClient: any, botId: string): void {
     wsClient.on('event.template_card_event', (frame: any) => {
+      // 设置当前 bot，确保卡片回复消息回到正确的 bot 会话
+      this.currentBotId = botId;
       this.getCardEventHandler()
         .handle(frame)
         .catch((err) => logger.error('[wecom-channel] failed to handle card event:', err));

@@ -207,10 +207,16 @@ export function startProxy(
             }
             // HTTP 错误状态码（4xx/5xx）：生成 error envelope 推送到 channel
             if (s.resStatus >= 400) {
-              const rawErr = Buffer.concat(s.rawChunks).toString('utf8');
-              const errMsg = s.format.parseHttpError(s.resStatus, rawErr);
-              const errEnvs = s.adapter.handleHttpError(errMsg);
-              dispatchEnvelopes(token, errEnvs, emit);
+              // 跳过非 JSON 请求体导致的错误（如 GET 连接检查），仅记录日志
+              const hadJsonBody = s.reqBody && s.reqBody.length > 0;
+              if (!hadJsonBody) {
+                console.log(`[apiproxy] skipped 4xx for non-JSON request: ${req.method} ${forwardPath} status=${s.resStatus}`);
+              } else {
+                const rawErr = Buffer.concat(s.rawChunks).toString('utf8');
+                const errMsg = s.format.parseHttpError(s.resStatus, rawErr);
+                const errEnvs = s.adapter.handleHttpError(errMsg);
+                dispatchEnvelopes(token, errEnvs, emit);
+              }
             }
             finalizeExchange(token, isStream);
           });
