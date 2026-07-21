@@ -10,10 +10,9 @@
           @create="showNewSession = true"
           @select="onSelectSession"
           @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
-          @open-trace="onOpenTrace"
         />
       </aside>
-      <main class="right">
+      <div class="center">
         <GlobalTabs
           :tabs="tabsStore.tabs"
           :active-id="tabsStore.activeId"
@@ -29,7 +28,7 @@
               @open-recent="onOpenRecent"
             />
           </div>
-          <div v-show="tabsStore.activeType === 'session'" class="content-pane">
+          <div v-show="tabsStore.activeType === 'session'" class="content-pane session-content">
             <template v-if="sessionTabs.length > 0">
               <SessionTabContent
                 v-for="tab in sessionTabs"
@@ -39,13 +38,13 @@
                 :workdir="tab.payload?.workdir as string"
                 :visible="activeSessionId === tab.payload?.sessionId"
               />
-              <div v-if="!activeSessionId" class="empty">
-                <div class="empty-text">未选择会话</div>
-              </div>
             </template>
-            <div v-else class="empty">
-              <div class="empty-text">未选择会话</div>
-            </div>
+            <div v-else class="empty"><div class="empty-text">未选择会话</div></div>
+            <!-- Trace overlay (only when session active and overlay open) -->
+            <TraceOverlay
+              v-if="activeSessionId && showTraceOverlay"
+              @close="closeTraceOverlay"
+            />
           </div>
           <div v-show="tabsStore.activeType === 'settings'" class="content-pane">
             <SettingsTab />
@@ -53,18 +52,13 @@
           <div v-show="tabsStore.activeType === 'guide'" class="content-pane">
             <GuideTab />
           </div>
-          <div v-show="tabsStore.activeType === 'trace'" class="content-pane">
-            <template v-for="tab in traceTabs" :key="tab.id">
-              <TraceTab
-                v-if="tab.payload"
-                v-show="activeTraceId === tab.id"
-                :work-dir="(tab.payload.workdir as string)"
-                :session-id="(tab.payload.sessionId as string)"
-              />
-            </template>
-          </div>
         </div>
-      </main>
+      </div>
+      <!-- Right sidebar: visible only when session is active -->
+      <TraceSidebar
+        v-if="activeSessionId"
+        @select="onTraceSelect"
+      />
     </div>
     <OpenFolderDialog
       :open="showOpenFolder"
@@ -88,7 +82,8 @@ import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import GlobalTabs from '../components/GlobalTabs.vue'
 import SessionList from '../components/SessionList.vue'
-import TraceTab from '../components/trace/TraceTab.vue'
+import TraceSidebar from '../components/trace/TraceSidebar.vue'
+import TraceOverlay from '../components/trace/TraceOverlay.vue'
 import WelcomeTab from '../components/WelcomeTab.vue'
 import SessionTabContent from '../components/SessionTabContent.vue'
 import SettingsTab from '../components/SettingsTab.vue'
@@ -97,6 +92,7 @@ import OpenFolderDialog from '../components/OpenFolderDialog.vue'
 import NewSessionDialog from '../components/NewSessionDialog.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useTabsStore } from '../stores/tabs'
+import { useTraceStore } from '../stores/trace'
 import type { RecentSession } from '../types/recent'
 import type { SessionState } from '../types/session'
 import { GetAppInfo, AdoptSession, OpenSessionTerminal, CloseSession } from '../composables/useElectron'
@@ -105,12 +101,14 @@ import { useEventStream } from '../composables/useEventStream'
 const router = useRouter()
 const sessions = useSessionsStore()
 const tabsStore = useTabsStore()
+const trace = useTraceStore()
 useEventStream()
 
 const showOpenFolder = ref(false)
 const showNewSession = ref(false)
 const username = ref('')
 const sidebarCollapsed = ref(false)
+const showTraceOverlay = ref(false)
 
 const activeTab = computed(() => tabsStore.activeTab)
 const activeSessionId = computed(() => {
@@ -122,10 +120,11 @@ const activeSessionWorkdir = computed(() => {
   return (activeTab.value.payload?.workdir as string) ?? ''
 })
 const sessionTabs = computed(() => tabsStore.tabs.filter((t) => t.type === 'session'))
-const traceTabs = computed(() => tabsStore.tabs.filter((t) => t.type === 'trace'))
-const activeTraceId = computed(() => {
-  if (activeTab.value?.type !== 'trace') return null
-  return activeTab.value.id
+// 移除 traceTabs、activeTraceId
+
+// 切 session 时关闭 overlay
+watch(activeSessionId, () => {
+  showTraceOverlay.value = false
 })
 
 onMounted(async () => {
@@ -173,6 +172,8 @@ async function onCloseTab(id: string) {
   }
 
   tabsStore.close(id)
+  // 如果关闭的是活跃 session，关闭 overlay
+  showTraceOverlay.value = false
 }
 
 async function onSelectSession(id: string) {
@@ -180,10 +181,24 @@ async function onSelectSession(id: string) {
   if (!meta) return
   tabsStore.openSession(id, meta.workdir, sessionDisplayTitle(meta))
   void sessions.select(id)
+  // trace store 由 TraceSidebar 内部自动加载（通过 setup 中的 onMounted）
+  trace.setSession(meta.workdir, id)
+  trace.load()
+  showTraceOverlay.value = false
 }
 
-function onOpenTrace(meta: { id: string; workdir: string }) {
-  tabsStore.openTrace(meta.id, meta.workdir)
+function closeTraceOverlay() {
+  showTraceOverlay.value = false
+}
+
+function onTraceSelect(seq: number) {
+  if (showTraceOverlay.value && trace.selectedSeq === seq) {
+    // 点击已选中的行 → 关闭
+    showTraceOverlay.value = false
+  } else {
+    trace.select(seq)
+    showTraceOverlay.value = true
+  }
 }
 
 async function onCreate(workdir: string, prompt: string, extraArgs: string[] = []) {
@@ -264,9 +279,19 @@ watch(
   transition: width 0.2s ease;
 }
 .left.collapsed { width: 44px; }
-.right { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-primary); }
+.center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
 .content { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; position: relative; }
 .content-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .empty { flex: 1; display: flex; align-items: center; justify-content: center; }
 .empty-text { color: var(--text-tertiary); font-size: 12px; }
+/* session content 需要 position: relative 给 overlay 定位 */
+.session-content { position: relative; }
 </style>
