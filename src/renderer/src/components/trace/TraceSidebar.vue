@@ -1,53 +1,64 @@
 <template>
-  <aside class="trace-sidebar">
+  <aside class="trace-sidebar" :class="{ collapsed: collapsed }">
     <!-- StatsBar -->
     <div class="stats-bar">
-      <span class="stat-count">{{ filteredRequests.length }} calls</span>
-      <span class="stat-cost">${{ totalCost }}</span>
-      <button class="stat-reload" title="重新加载" @click="trace.load()">
-        <Icon name="refresh-cw" :size="12" />
+      <button
+        class="toggle-btn"
+        :title="collapsed ? '展开 Trace' : '收起 Trace'"
+        @click="$emit('toggle-collapse')"
+      >
+        <Icon :name="collapsed ? 'panel-right-open' : 'panel-right-close'" :size="16" />
       </button>
+      <template v-if="!collapsed">
+        <span class="stat-count">{{ filteredRequests.length }} calls</span>
+        <span class="stat-cost">${{ totalCost }}</span>
+        <button class="stat-reload" title="重新加载" @click="trace.load()">
+          <Icon name="refresh-cw" :size="12" />
+        </button>
+      </template>
     </div>
 
-    <!-- Loading skeleton -->
-    <template v-if="trace.loading && !filteredRequests.length">
-      <div v-for="i in 4" :key="i" class="skeleton-row">
-        <div class="skeleton-line w-40" />
-        <div class="skeleton-line w-70" />
+    <template v-if="!collapsed">
+      <!-- Loading skeleton -->
+      <template v-if="trace.loading && !filteredRequests.length">
+        <div v-for="i in 4" :key="i" class="skeleton-row">
+          <div class="skeleton-line w-40" />
+          <div class="skeleton-line w-70" />
+        </div>
+      </template>
+
+      <!-- Error state -->
+      <div v-else-if="trace.loadError" class="state error">
+        <span>{{ trace.loadError }}</span>
+        <button class="retry-btn" @click="trace.load()">重试</button>
+      </div>
+
+      <!-- Request list -->
+      <div class="thumb-list" v-else-if="filteredRequests.length" ref="thumbListEl">
+        <div
+          v-for="r in filteredRequests"
+          :key="r.seq"
+          class="thumb-row"
+          :class="{ selected: r.seq === trace.selectedSeq }"
+          @click="$emit('select', r.seq)"
+        >
+          <div class="row-top">
+            <span class="status-dot" :class="statusClass(r)" />
+            <span class="seq">#{{ r.seq }}</span>
+            <span class="model">{{ modelShort(r.model) }}</span>
+          </div>
+          <div class="row-bottom">
+            <span class="meta">{{ formatMs(r.latencyMs) }}</span>
+            <span class="meta cost">${{ r.cost.usd.toFixed(4) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div v-else class="state empty">
+        <span>暂无 API 请求</span>
       </div>
     </template>
-
-    <!-- Error state -->
-    <div v-else-if="trace.loadError" class="state error">
-      <span>{{ trace.loadError }}</span>
-      <button class="retry-btn" @click="trace.load()">重试</button>
-    </div>
-
-    <!-- Request list -->
-    <div class="thumb-list" v-else-if="filteredRequests.length" ref="thumbListEl">
-      <div
-        v-for="r in filteredRequests"
-        :key="r.seq"
-        class="thumb-row"
-        :class="{ selected: r.seq === trace.selectedSeq }"
-        @click="$emit('select', r.seq)"
-      >
-        <div class="row-top">
-          <span class="status-dot" :class="statusClass(r)" />
-          <span class="seq">#{{ r.seq }}</span>
-          <span class="model">{{ modelShort(r.model) }}</span>
-        </div>
-        <div class="row-bottom">
-          <span class="meta">{{ formatMs(r.latencyMs) }}</span>
-          <span class="meta cost">${{ r.cost.usd.toFixed(4) }}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Empty state -->
-    <div v-else class="state empty">
-      <span>暂无 API 请求</span>
-    </div>
   </aside>
 </template>
 
@@ -57,7 +68,8 @@ import Icon from '../Icon.vue'
 import { useTraceStore } from '../../stores/trace'
 import type { TraceSummary } from '../../stores/trace'
 
-defineEmits<{ (e: 'select', seq: number): void }>()
+defineProps<{ collapsed: boolean }>()
+defineEmits<{ (e: 'select', seq: number): void; (e: 'toggle-collapse'): void }>()
 
 const trace = useTraceStore()
 const thumbListEl = ref<HTMLElement | null>(null)
@@ -116,15 +128,39 @@ function formatMs(ms: number | null): string {
   border-left: 1px solid var(--border);
   min-height: 0;
   overflow: hidden;
+  transition: width 0.2s ease;
+}
+.trace-sidebar.collapsed {
+  width: 32px;
+}
+.trace-sidebar.collapsed .stats-bar {
+  flex-direction: column;
+  padding: 6px 4px;
 }
 .stats-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 6px 6px;
   border-bottom: 1px solid var(--border);
   font-size: 11px;
   flex-shrink: 0;
+}
+.toggle-btn {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.toggle-btn:hover {
+  background: var(--bg-input);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .stat-count { color: var(--text-secondary); font-weight: 600; }
 .stat-cost { color: var(--accent); font-family: var(--font-mono); font-size: 10px; margin-left: auto; }

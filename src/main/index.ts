@@ -129,6 +129,11 @@ if (!gotTheLock) {
     createWindow();
     createTray();
 
+    // macOS: 确保 dock 图标显示
+    if (process.platform === 'darwin') {
+      app.dock.show();
+    }
+
     appInstance = new App();
     appInstance.setWindow(mainWindow!);
     try {
@@ -165,6 +170,11 @@ if (!gotTheLock) {
   });
 
   app.on('activate', () => {
-    if (mainWindow === null) createWindow();
+    if (mainWindow === null) {
+      createWindow();
+    } else {
+      mainWindow.show();
+      mainWindow.focus();
+    }
   });
 }

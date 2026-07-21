@@ -14,7 +14,7 @@
         :title="props.collapsed ? '展开会话列表' : '收起会话列表'"
         @click="$emit('toggle-collapse')"
       >
-        <Icon :name="props.collapsed ? 'chevron-right' : 'chevron-left'" :size="14" />
+        <Icon :name="props.collapsed ? 'panel-left-open' : 'panel-left-close'" :size="16" />
       </button>
     </div>
     <div v-if="!props.collapsed" class="content">

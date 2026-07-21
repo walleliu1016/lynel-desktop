@@ -57,7 +57,9 @@
       <!-- Right sidebar: visible only when session is active -->
       <TraceSidebar
         v-if="activeSessionId"
+        :collapsed="traceCollapsed"
         @select="onTraceSelect"
+        @toggle-collapse="traceCollapsed = !traceCollapsed"
       />
     </div>
     <OpenFolderDialog
@@ -108,6 +110,7 @@ const showOpenFolder = ref(false)
 const showNewSession = ref(false)
 const username = ref('')
 const sidebarCollapsed = ref(false)
+const traceCollapsed = ref(false)
 const showTraceOverlay = ref(false)
 
 const activeTab = computed(() => tabsStore.activeTab)

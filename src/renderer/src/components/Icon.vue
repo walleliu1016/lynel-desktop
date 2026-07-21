@@ -18,6 +18,10 @@ import {
   Loader2,
   MessageSquare,
   Minus,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Pencil,
   Plus,
   Puzzle,
@@ -79,6 +83,10 @@ const icons: Record<string, unknown> = {
   search: Search,
   square: Square,
   'link-2-off': Link2Off,
+  'panel-left-close': PanelLeftClose,
+  'panel-left-open': PanelLeftOpen,
+  'panel-right-close': PanelRightClose,
+  'panel-right-open': PanelRightOpen,
 }
 
 const Comp = computed(() => icons[props.name] ?? null)
