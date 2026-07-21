@@ -19,6 +19,7 @@ import {
   Pencil,
   Plus,
   Puzzle,
+  RefreshCw,
   Send,
   Settings,
   ShieldAlert,
@@ -68,6 +69,7 @@ const icons: Record<string, unknown> = {
   wrench: Wrench,
   puzzle: Puzzle,
   'corner-down-left': CornerDownLeft,
+  'refresh-cw': RefreshCw,
   square: Square,
 }
 

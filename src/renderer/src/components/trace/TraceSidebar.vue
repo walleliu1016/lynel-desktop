@@ -9,14 +9,8 @@
       </button>
     </div>
 
-    <!-- Error state -->
-    <div v-if="error" class="state error">
-      <span>加载失败</span>
-      <button @click="trace.load()">重试</button>
-    </div>
-
     <!-- Loading skeleton -->
-    <template v-else-if="trace.loading && !filteredRequests.length">
+    <template v-if="trace.loading && !filteredRequests.length">
       <div v-for="i in 4" :key="i" class="skeleton-row">
         <div class="skeleton-line w-40" />
         <div class="skeleton-line w-70" />
@@ -62,8 +56,6 @@ defineEmits<{ (e: 'select', seq: number): void }>()
 const trace = useTraceStore()
 
 const filteredRequests = computed(() => trace.filteredRequests)
-
-const error = computed(() => false) // 暂由 trace store 内部处理
 
 const totalCost = computed(() => {
   let sum = 0
@@ -127,8 +119,6 @@ function formatMs(ms: number | null): string {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 8px; font-size: 12px; color: var(--text-tertiary); padding: 16px;
 }
-.state.error { color: var(--status-error); }
-.state.error button { color: var(--accent); background: transparent; border: none; cursor: pointer; font-size: 12px; }
 
 .thumb-row {
   padding: 6px 10px;
