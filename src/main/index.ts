@@ -131,7 +131,7 @@ if (!gotTheLock) {
 
     // macOS: 确保 dock 图标显示
     if (process.platform === 'darwin') {
-      app.dock.show();
+      app.dock?.show();
     }
 
     appInstance = new App();
