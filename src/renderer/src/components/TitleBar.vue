@@ -89,7 +89,7 @@ const runningCount = computed(() => {
 .titlebar-left { gap: 16px; }
 .brand-name { font-weight: 800; font-size: 18px; color: var(--accent); letter-spacing: -0.3px; transform: translateY(10px); }
 .brand-desktop { font-weight: 500; color: var(--status-error); }
-.states { display: flex; align-items: center; gap: 8px; }
+.states { display: flex; align-items: center; gap: 8px; transform: translateY(10px); }
 .pill {
   height: 28px; padding: 0 10px;
   display: flex; align-items: center; gap: 6px;

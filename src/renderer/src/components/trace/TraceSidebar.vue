@@ -24,7 +24,7 @@
     </div>
 
     <!-- Request list -->
-    <div class="thumb-list" v-else-if="filteredRequests.length">
+    <div class="thumb-list" v-else-if="filteredRequests.length" ref="thumbListEl">
       <div
         v-for="r in filteredRequests"
         :key="r.seq"
@@ -52,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import Icon from '../Icon.vue'
 import { useTraceStore } from '../../stores/trace'
 import type { TraceSummary } from '../../stores/trace'
@@ -60,6 +60,19 @@ import type { TraceSummary } from '../../stores/trace'
 defineEmits<{ (e: 'select', seq: number): void }>()
 
 const trace = useTraceStore()
+const thumbListEl = ref<HTMLElement | null>(null)
+
+// 新请求到达时自动滚动到底部（仅当用户已在底部附近时）
+watch(() => trace.filteredRequests.length, () => {
+  void nextTick(() => {
+    const el = thumbListEl.value
+    if (!el) return
+    const threshold = 50
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < threshold) {
+      el.scrollTop = el.scrollHeight
+    }
+  })
+})
 
 const filteredRequests = computed(() => trace.filteredRequests)
 

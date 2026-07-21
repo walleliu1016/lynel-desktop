@@ -37,54 +37,80 @@
     </div>
 
     <!-- Bot 列表 -->
-    <div v-else class="bot-list">
-      <div
-        v-for="bot in store.bots"
-        :key="bot.id"
-        class="bot-item"
-        :class="{ editing: editingId === bot.id }"
-      >
-        <!-- 摘要行 -->
-        <div class="bot-summary" @click="toggleEdit(bot.id)">
-          <span class="status-dot" :class="bot.connected ? 'online' : 'offline'" :title="bot.connected ? '已连接' : '未连接'" />
-          <span class="bot-name">{{ bot.name }}</span>
-          <span class="bot-source">{{ SOURCE_LABELS[bot.source] || '企业微信' }}</span>
-          <span class="bot-meta">{{ bot.botId }}</span>
-          <span class="bot-bound" :title="boundSessionTooltip(bot.id)">{{ boundSessionLabel(bot.id) }}</span>
-          <button class="btn-icon" title="编辑" @click.stop="toggleEdit(bot.id)">
-            <Icon name="pencil" :size="13" />
-          </button>
-          <button v-if="boundSessionId(bot.id)" class="btn-icon" title="解绑" @click.stop="onUnbind(bot.id)">
-            <Icon name="link-2-off" :size="13" />
-          </button>
-          <button class="btn-icon btn-icon--danger" title="删除" @click.stop="onDelete(bot.id)">
-            <Icon name="trash" :size="13" />
-          </button>
+    <div v-else class="bot-table-wrap">
+      <div class="bot-table">
+        <div class="bot-thead">
+          <span class="col-status" />
+          <span class="col-name">名称</span>
+          <span class="col-source">来源</span>
+          <span class="col-botid">Bot ID</span>
+          <span class="col-bound">绑定会话</span>
+          <span class="col-actions">操作</span>
         </div>
+        <div
+          v-for="bot in store.bots"
+          :key="bot.id"
+          class="bot-tr"
+          :class="{ editing: editingId === bot.id }"
+        >
+          <!-- 摘要行 -->
+          <div class="bot-summary" @click="toggleEdit(bot.id)">
+            <span class="col-status">
+              <span class="status-dot" :class="bot.connected ? 'online' : 'offline'" :title="bot.connected ? '已连接' : '未连接'" />
+            </span>
+            <span class="col-name bot-name">{{ bot.name }}</span>
+            <span class="col-source">
+              <span class="source-tag">{{ SOURCE_LABELS[bot.source] || '企业微信' }}</span>
+            </span>
+            <span class="col-botid bot-id-text">{{ bot.botId }}</span>
+            <span class="col-bound bot-bound" :title="boundSessionTooltip(bot.id)">
+              <template v-if="boundSessionId(bot.id)">
+                <Icon name="corner-down-left" :size="11" />
+                {{ boundSessionLabel(bot.id) }}
+              </template>
+              <span v-else class="unbound">未绑定</span>
+            </span>
+            <span class="col-actions">
+              <button class="btn-icon" title="编辑" @click.stop="toggleEdit(bot.id)">
+                <Icon name="pencil" :size="13" />
+              </button>
+              <button v-if="boundSessionId(bot.id)" class="btn-icon" title="解绑" @click.stop="onUnbind(bot.id)">
+                <Icon name="link-2-off" :size="13" />
+              </button>
+              <button class="btn-icon btn-icon--danger" title="删除" @click.stop="onDelete(bot.id)">
+                <Icon name="trash" :size="13" />
+              </button>
+            </span>
+          </div>
 
-        <!-- 编辑表单 -->
-        <div v-if="editingId === bot.id" class="bot-edit-form">
-          <div class="form-group">
-            <label class="form-label">名称</label>
-            <input class="form-input" v-model="editForm.name" placeholder="如：我的助手" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">来源</label>
-            <select class="form-input" v-model="editForm.source">
-              <option v-for="opt in SOURCE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Bot ID</label>
-            <input class="form-input" v-model="editForm.botId" placeholder="企业微信 bot ID" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Secret</label>
-            <input class="form-input" v-model="editForm.secret" type="password" placeholder="bot secret" />
-          </div>
-          <div class="edit-actions">
-            <button class="btn-cancel" @click="cancelEdit">取消</button>
-            <button class="btn-save" :disabled="!editValid" @click="onSaveEdit">保存</button>
+          <!-- 编辑表单 -->
+          <div v-if="editingId === bot.id" class="bot-edit-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">名称</label>
+                <input class="form-input" v-model="editForm.name" placeholder="如：我的助手" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">来源</label>
+                <select class="form-input" v-model="editForm.source">
+                  <option v-for="opt in SOURCE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Bot ID</label>
+                <input class="form-input" v-model="editForm.botId" placeholder="企业微信 bot ID" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Secret</label>
+                <input class="form-input" v-model="editForm.secret" type="password" placeholder="bot secret" />
+              </div>
+            </div>
+            <div class="edit-actions">
+              <button class="btn-cancel" @click="cancelEdit">取消</button>
+              <button class="btn-save" :disabled="!editValid" @click="onSaveEdit">保存</button>
+            </div>
           </div>
         </div>
       </div>
@@ -167,8 +193,7 @@ function boundSessionLabel(botId: string): string {
   const sessionId = boundSessionId(botId)
   if (!sessionId) return ''
   const meta = sessions.list.find((s) => s.id === sessionId)
-  const title = meta ? sessionDisplayTitle(meta) : sessionId.slice(0, 8)
-  return `已绑定：${title}`
+  return meta ? sessionDisplayTitle(meta) : sessionId.slice(0, 8)
 }
 
 /** 绑定详情 tooltip（完整 sessionId） */
@@ -303,39 +328,56 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin: 0; }
 
 .empty-state { text-align: center; padding: 40px 0; color: var(--text-tertiary); font-size: 13px; }
 
-.bot-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.bot-table-wrap { margin-bottom: 12px; }
+.bot-table { display: flex; flex-direction: column; gap: 2px; }
 
-.bot-item {
+.bot-thead {
+  display: flex; align-items: center;
+  padding: 6px 12px;
+  font-size: 10px; color: var(--text-tertiary); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+
+.bot-tr {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
 }
-.bot-item.editing { border-color: var(--accent); }
+.bot-tr.editing { border-color: var(--accent); }
 
 .bot-summary {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px;
+  display: flex; align-items: center;
+  min-height: 42px; padding: 6px 12px;
   cursor: pointer;
   transition: background 0.15s;
 }
 .bot-summary:hover { background: var(--bg-input); }
 
+.col-status { width: 24px; flex-shrink: 0; display: flex; align-items: center; }
+.col-name { width: 110px; flex-shrink: 0; }
+.col-source { width: 70px; flex-shrink: 0; }
+.col-botid { flex: 1; min-width: 0; }
+.col-bound { width: 160px; flex-shrink: 0; }
+.col-actions { width: 90px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; }
+
 .status-dot {
-  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  width: 8px; height: 8px; border-radius: 50%; display: inline-block;
 }
 .status-dot.online { background: var(--status-success); }
 .status-dot.offline { background: var(--text-tertiary); }
 
-.bot-name { font-size: 13px; color: var(--text-primary); font-weight: 500; flex-shrink: 0; }
-.bot-source {
+.bot-name { font-size: 13px; color: var(--text-primary); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.source-tag {
   font-size: 9px; color: var(--accent); background: var(--accent-soft-bg);
-  padding: 1px 6px; border-radius: 4px; flex-shrink: 0;
+  padding: 1px 6px; border-radius: 4px; white-space: nowrap;
 }
+.bot-id-text { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bot-bound {
-  font-size: 10px; color: var(--text-tertiary); flex-shrink: 0;
-  max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; color: var(--text-secondary);
+  display: inline-flex; align-items: center; gap: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.bot-meta { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.bot-bound .unbound { color: var(--text-tertiary); }
 
 .btn-icon {
   display: flex; align-items: center; padding: 4px 6px;
@@ -344,6 +386,9 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin: 0; }
 }
 .btn-icon:hover { background: var(--bg-input); color: var(--text-primary); }
 .btn-icon--danger:hover { color: var(--status-error); }
+
+.form-row { display: flex; gap: 16px; }
+.form-row .form-group { flex: 1; }
 
 .bot-edit-form {
   padding: 12px 14px 4px;

@@ -330,24 +330,14 @@ export const useSessionsStore = defineStore('sessions', () => {
     try {
       const all = await ListSessions()
       if (!all) return
-      // 用后端数据合并到现有 list，保留前端独有的字段（user_title, title_source 等）
-      const map = new Map(all.map((s: any) => [s.id, s]))
+      // 只更新已有条目的 msg_count/mtime，不追加新条目（列表仅由 open/create 控制）
+      const map = new Map<string, any>(all.map((s: any) => [s.id, s]))
       for (let i = 0; i < list.value.length; i++) {
         const cur = list.value[i]
-        const fresh = map.get(cur.id)
+        const fresh = map.get(cur.id) as Record<string, any> | undefined
         if (fresh) {
           list.value[i] = { ...cur, msg_count: fresh.msg_count, mtime: fresh.mtime, first_prompt: fresh.first_prompt || cur.first_prompt, ai_title: fresh.ai_title || cur.ai_title }
-          map.delete(cur.id)
         }
-      }
-      // 新增不在本地的条目
-      for (const s of map.values()) {
-        list.value.push({
-          id: s.id, workdir: s.workdir, project: s.project,
-          mtime: s.mtime, msg_count: s.msg_count,
-          first_prompt: s.first_prompt || '', ai_title: s.ai_title || '',
-          size: s.size || 0,
-        })
       }
     } catch (e: any) {
       console.error('[sessions] refreshList failed:', e?.message || e)

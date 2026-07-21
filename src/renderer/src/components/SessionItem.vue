@@ -341,9 +341,11 @@ async function unbindBot() {
 }
 .title {
   flex: 1; min-width: 0;
-  font-size: 12px; color: var(--text-primary); font-weight: 600;
+  font-size: 13px; color: var(--accent); font-weight: 700;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  letter-spacing: 0.02em;
 }
+.session-item.active .title { color: var(--accent-deep); }
 .title-input {
   flex: 1; min-width: 0;
   font-size: 12px; font-weight: 600;
@@ -380,7 +382,7 @@ async function unbindBot() {
 }
 .meta {
   flex: 1;
-  font-size: 10px; color: var(--text-tertiary);
+  font-size: 10px; color: var(--text-secondary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .bot-tag {
@@ -402,10 +404,10 @@ async function unbindBot() {
 .context-menu {
   position: fixed;
   z-index: 1000;
-  background: var(--bg-primary);
+  background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--shadow-window);
   padding: 4px;
   min-width: 140px;
 }
@@ -440,6 +442,17 @@ async function unbindBot() {
   height: 1px; background: var(--border); margin: 4px 0;
 }
 .picker-overlay { z-index: 1001; }
+.bot-picker .menu-item {
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 8px 10px;
+}
+.bot-picker .menu-item:last-of-type {
+  border-bottom: none;
+}
+.bot-picker .menu-item:hover {
+  background: rgba(128,128,128,0.2);
+}
 .bot-picker { min-width: 160px; }
 .picker-title {
   padding: 6px 10px; font-size: 11px; color: var(--text-tertiary);
