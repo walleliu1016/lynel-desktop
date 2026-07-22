@@ -47,7 +47,7 @@ function createWindow(): void {
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     show: false,
     backgroundColor: '#0A0A0A',
-    icon: getWindowIconPath(),
+    icon: process.platform === 'darwin' ? undefined : getWindowIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -129,8 +129,17 @@ if (!gotTheLock) {
     createWindow();
     createTray();
 
-    // macOS: 确保 dock 图标显示
+    // macOS: 设置 dock 图标并确保显示
     if (process.platform === 'darwin') {
+      const dockIconPath = getBuildAssetPath('appicon.png');
+      try {
+        const dockIcon = nativeImage.createFromPath(dockIconPath);
+        if (!dockIcon.isEmpty()) {
+          app.dock?.setIcon(dockIcon);
+        }
+      } catch (err) {
+        console.error('[main] failed to set dock icon:', err);
+      }
       app.dock?.show();
     }
 
