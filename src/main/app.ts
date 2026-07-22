@@ -16,6 +16,7 @@ import { SSEChannel } from './channels/sse-channel.js';
 import { WeComChannel, WeComChannelConfig } from './channels/wecom-channel.js';
 import { LocalFileChannel } from './channels/localfile-channel.js';
 import { StateChannel } from './channels/state-channel.js';
+import { CloudChannel, CloudChannelConfig } from './channels/cloud-channel.js';
 import { OutputChannel, type HookEventLike } from './channels/channel.js';
 import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
 import { setNotchMousePassthrough, resizeNotchWindow, showNotchWindow, hideNotchWindow, getNotchWindow } from './notch-window.js';
@@ -210,10 +211,12 @@ export class App {
     onActivity: (id, activity) =>
       getBus().emit('sessions:activity', JSON.stringify({ sessionId: id, ...activity })),
   });
+  private cloudChannel = new CloudChannel();
   // type → singleton 通道实例；与 settingsStore.channels 的 key 对齐（key === type）
   private channelInstances = new Map<string, OutputChannel>([
     ['wecom', this.wecomChannel],
     ['localfile', this.localFileChannel],
+    ['cloud', this.cloudChannel],
   ]);
   private ptyCleanups = new Map<string, (() => void) | null>();
   private recentSessionsLock = false;
@@ -225,6 +228,7 @@ export class App {
     this.dispatcher.register(this.sseChannel);
     this.dispatcher.register(this.wecomChannel);
     this.dispatcher.register(this.localFileChannel);
+    this.dispatcher.register(this.cloudChannel);
     this.dispatcher.register(this.stateChannel);
     this.dispatcher.registerHook(this.stateChannel);
     this.dispatcher.registerHook(this.wecomChannel);
@@ -276,6 +280,7 @@ export class App {
   async init(): Promise<void> {
     this.applyChannelConfigs();
     this.applyPushSettings();
+    this.applyCloudSettings();
     // 预热 macOS shell env 缓存（异步，不阻塞 init）
     void preloadShellEnv().catch((err) => {
       getLogger().warn(`[app] preload shell env failed: ${err?.message || err}`);
@@ -434,6 +439,13 @@ export class App {
     this.wecomChannel.pushThinking = pushThinking;
     this.wecomChannel.pushToolCalls = pushToolCalls;
     getLogger().info(`[app] push settings: thinking=${pushThinking} toolCalls=${pushToolCalls}`);
+  }
+
+  private applyCloudSettings(): void {
+    const enabled = (this.settingsStore.get('cloud_service_enabled', false) as boolean) || false;
+    const url = (this.settingsStore.get('cloud_service_url', '') as string) || '';
+    const token = (this.settingsStore.get('cloud_service_token', '') as string) || '';
+    this.cloudChannel.updateConfig({ enabled, url, token });
   }
 
   /** 把 ChannelInstance 规范化成 {id, type, name, enabled, config}；旧的内联 config 格式会被包装 */
@@ -943,6 +955,7 @@ export class App {
     ipcMain.handle('app:updateSettings', (_event, cfg: any) => {
       this.settingsStore.set(cfg);
       this.applyPushSettings();
+      this.applyCloudSettings();
       // 灵动岛开关已隐藏，强制保持关闭
       hideNotchWindow();
     });
