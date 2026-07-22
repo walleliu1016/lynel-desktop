@@ -27,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { sessionDisplayTitle } from '../stores/sessions'
 import type { RecentSession } from '../types/recent'
 
@@ -38,6 +38,12 @@ const props = withDefaults(defineProps<{ list: RecentSession[]; limit?: number }
 defineEmits<{ (e: 'select', item: RecentSession): void }>()
 
 const expanded = ref(false)
+
+// 每分钟更新一次，驱动 duration 重新计算
+const tick = ref(0)
+let timer: ReturnType<typeof setInterval> | null = null
+onMounted(() => { timer = setInterval(() => { tick.value++ }, 60000) })
+onUnmounted(() => { if (timer) clearInterval(timer) })
 
 const visibleList = computed(() => {
   if (expanded.value) return props.list
@@ -58,6 +64,7 @@ function metaTitle(item: RecentSession) {
 }
 
 function duration(lastOpenedAt: number) {
+  void tick.value // 依赖 tick 确保每分钟重算
   if (!lastOpenedAt || lastOpenedAt <= 0) return '刚刚'
   const lastOpenedMs = lastOpenedAt < 10_000_000_000 ? lastOpenedAt * 1000 : lastOpenedAt
   const ms = Date.now() - lastOpenedMs

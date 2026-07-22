@@ -84,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, nextTick, onMounted } from 'vue'
+import { computed, ref, nextTick, onMounted, onUnmounted } from 'vue'
 import SessionTooltip from './SessionTooltip.vue'
 import Icon from './Icon.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
@@ -200,7 +200,19 @@ const projectName = computed(() => {
   return name
 })
 
+// 每分钟更新一次，驱动 duration 重新计算
+const tick = ref(0)
+let timer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  timer = setInterval(() => { tick.value++ }, 60000)
+  void botsStore.load()
+})
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
+})
+
 const duration = computed(() => {
+  void tick.value // 依赖 tick 确保每分钟重算
   const mtime = props.meta.mtime
   if (!mtime || mtime <= 0) return '刚刚'
   const now = Date.now()
@@ -266,9 +278,6 @@ function isBotAvailable(botId: string): boolean {
   return !sessionId || sessionId === props.meta.id
 }
 
-onMounted(() => {
-  void botsStore.load()
-})
 
 async function onSelectBot(botId: string | null) {
   console.log('[session-item] select bot', botId, 'for session', props.meta.id.slice(0, 8))
