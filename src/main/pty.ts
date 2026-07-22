@@ -2,7 +2,7 @@ import * as pty from 'node-pty';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { getLogger } from './log.js';
 
 export enum PtyMode {
@@ -28,8 +28,77 @@ export interface PtyProcess {
 // macOS GUI 应用从 Finder 启动时 PATH 不完整，这里用用户的 login shell 解析完整环境变量，
 // 确保能找到通过 npm/homebrew 安装的 claude。
 let cachedDarwinEnv: Record<string, string> | null = null;
+let darwinEnvLoading: Promise<Record<string, string>> | null = null;
 
-function resolveShellEnv(): Record<string, string> {
+const DARWIN_ENV_CACHE_PATH = path.join(os.homedir(), '.lynel-desktop', 'darwin-env.json');
+
+interface DarwinEnvCache {
+  version: 1;
+  shell: string;
+  env: Record<string, string>;
+  sources: Record<string, number>; // file mtime map
+}
+
+function readShellEnvCache(): DarwinEnvCache | null {
+  try {
+    const raw = fs.readFileSync(DARWIN_ENV_CACHE_PATH, 'utf8');
+    const parsed = JSON.parse(raw) as DarwinEnvCache;
+    if (parsed.version !== 1 || !parsed.env || !parsed.sources) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeShellEnvCache(cache: DarwinEnvCache): void {
+  try {
+    fs.mkdirSync(path.dirname(DARWIN_ENV_CACHE_PATH), { recursive: true });
+    fs.writeFileSync(DARWIN_ENV_CACHE_PATH, JSON.stringify(cache, null, 2), 'utf8');
+  } catch (err: any) {
+    getLogger().warn(`[pty] failed to write darwin env cache: ${err?.message || err}`);
+  }
+}
+
+function shellEnvSources(shell: string): Record<string, number> {
+  const candidates = [
+    path.join(os.homedir(), '.zshrc'),
+    path.join(os.homedir(), '.zprofile'),
+    path.join(os.homedir(), '.bashrc'),
+    path.join(os.homedir(), '.bash_profile'),
+    path.join(os.homedir(), '.profile'),
+  ];
+  const sources: Record<string, number> = {};
+  for (const f of candidates) {
+    try {
+      sources[f] = fs.statSync(f).mtimeMs;
+    } catch {
+      // file not exists, skip
+    }
+  }
+  return sources;
+}
+
+function isCacheValid(cache: DarwinEnvCache, shell: string): boolean {
+  const current = shellEnvSources(shell);
+  const keys = new Set([...Object.keys(current), ...Object.keys(cache.sources)]);
+  for (const k of keys) {
+    if ((current[k] ?? 0) !== (cache.sources[k] ?? 0)) return false;
+  }
+  return true;
+}
+
+function parseEnvOutput(out: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const line of out.split('\n')) {
+    const idx = line.indexOf('=');
+    if (idx > 0) {
+      env[line.slice(0, idx)] = line.slice(idx + 1);
+    }
+  }
+  return env;
+}
+
+function resolveShellEnvSync(): Record<string, string> {
   if (os.platform() !== 'darwin') return {};
   if (cachedDarwinEnv) return cachedDarwinEnv;
 
@@ -37,26 +106,76 @@ function resolveShellEnv(): Record<string, string> {
   const logger = getLogger();
   logger.info(`[pty] resolving darwin shell env via ${shell}`);
 
+  const cached = readShellEnvCache();
+  if (cached && cached.shell === shell && isCacheValid(cached, shell)) {
+    cachedDarwinEnv = cached.env;
+    logger.info(`[pty] using cached darwin env (PATH=${cached.env.PATH?.slice(0, 120)}...)`);
+    return cached.env;
+  }
+
   try {
     const out = execFileSync(shell, ['-ilc', 'env'], {
       encoding: 'utf8',
       timeout: 5000,
       maxBuffer: 1024 * 1024,
     });
-    const env: Record<string, string> = {};
-    for (const line of out.split('\n')) {
-      const idx = line.indexOf('=');
-      if (idx > 0) {
-        env[line.slice(0, idx)] = line.slice(idx + 1);
-      }
-    }
+    const env = parseEnvOutput(out);
     cachedDarwinEnv = env;
-    logger.info(`[pty] resolved PATH=${env.PATH?.slice(0, 120)}...`);
+    writeShellEnvCache({ version: 1, shell, env, sources: shellEnvSources(shell) });
+    logger.info(`[pty] resolved and cached PATH=${env.PATH?.slice(0, 120)}...`);
     return env;
   } catch (err: any) {
     logger.warn('[pty] failed to resolve darwin shell env:', err?.message || err);
     return {};
   }
+}
+
+export async function resolveShellEnvAsync(): Promise<Record<string, string>> {
+  if (os.platform() !== 'darwin') return {};
+  if (cachedDarwinEnv) return cachedDarwinEnv;
+  if (darwinEnvLoading) return darwinEnvLoading;
+
+  darwinEnvLoading = (async () => {
+    const shell = process.env.SHELL || '/bin/zsh';
+    const logger = getLogger();
+    logger.info(`[pty] async resolving darwin shell env via ${shell}`);
+
+    const cached = readShellEnvCache();
+    if (cached && cached.shell === shell && isCacheValid(cached, shell)) {
+      cachedDarwinEnv = cached.env;
+      logger.info(`[pty] using cached darwin env (PATH=${cached.env.PATH?.slice(0, 120)}...)`);
+      return cached.env;
+    }
+
+    return new Promise<Record<string, string>>((resolve) => {
+      execFile(shell, ['-ilc', 'env'], {
+        encoding: 'utf8',
+        timeout: 5000,
+        maxBuffer: 1024 * 1024,
+      }, (err, stdout) => {
+        if (err) {
+          getLogger().warn('[pty] async resolve darwin shell env failed:', err?.message || err);
+          resolve({});
+          return;
+        }
+        const env = parseEnvOutput(stdout);
+        cachedDarwinEnv = env;
+        writeShellEnvCache({ version: 1, shell, env, sources: shellEnvSources(shell) });
+        getLogger().info(`[pty] async resolved and cached PATH=${env.PATH?.slice(0, 120)}...`);
+        resolve(env);
+      });
+    });
+  })();
+
+  return darwinEnvLoading;
+}
+
+export function preloadShellEnv(): Promise<Record<string, string>> {
+  return resolveShellEnvAsync();
+}
+
+function resolveShellEnv(): Record<string, string> {
+  return resolveShellEnvSync();
 }
 
 // 如果 bin 是相对路径（如 'claude'），在解析后的 PATH 中查找绝对路径，

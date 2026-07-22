@@ -11,13 +11,15 @@
       <div v-if="diffResult.added?.length" class="diff-section add">+ Added in B</div>
       <div v-for="(x, i) in (diffResult.added || [])" :key="'a'+i" class="diff-block add">
         <div class="h"><span>{{ x.label }}</span><span v-if="x.cache" class="tag cache">cache</span></div>
-        <FoldingPre :text="(x.text || '').slice(0, 4000)" />
+        <Markdown v-if="isMarkdownBlock(x)" :text="(x.text || '').slice(0, 4000)" />
+        <FoldingPre v-else :text="(x.text || '').slice(0, 4000)" />
       </div>
       <p v-if="!diffResult.added?.length" class="diff-empty">nothing added</p>
       <div v-if="diffResult.removed?.length" class="diff-section del">- Removed since A</div>
       <div v-for="(x, i) in (diffResult.removed || [])" :key="'r'+i" class="diff-block del">
         <div class="h"><span>{{ x.label }}</span></div>
-        <FoldingPre :text="(x.text || '').slice(0, 4000)" />
+        <Markdown v-if="isMarkdownBlock(x)" :text="(x.text || '').slice(0, 4000)" />
+        <FoldingPre v-else :text="(x.text || '').slice(0, 4000)" />
       </div>
       <p v-if="!diffResult.removed?.length" class="diff-empty">nothing removed</p>
     </div>
@@ -51,6 +53,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import FoldingPre from './FoldingPre.vue'
+import Markdown from './Markdown.vue'
 import OverviewPane from './detail/OverviewPane.vue'
 import MessagesPane from './detail/MessagesPane.vue'
 import ToolsPane from './detail/ToolsPane.vue'
@@ -68,6 +71,20 @@ defineProps<{
 
 const tabs = ['overview', 'flow', 'system', 'messages', 'tools', 'response', 'headers'] as const
 const activeTab = ref<typeof tabs[number]>('overview')
+
+// diff block 是否用 Markdown 渲染：
+// - system / tool：纯文本描述，用 Markdown
+// - message text / tool_result（字符串 content）：用 Markdown
+// - tool_use（JSON）/ tool_result（对象 content）：用 FoldingPre
+function isMarkdownBlock(x: any): boolean {
+  if (!x) return false
+  if (x.kind === 'system' || x.kind === 'tool') return true
+  if (x.kind === 'message') {
+    if (x.type === 'tool_use') return false
+    return true
+  }
+  return true
+}
 </script>
 
 <style scoped>

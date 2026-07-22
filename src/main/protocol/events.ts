@@ -6,7 +6,7 @@ export type SessionEvent =
   | { t: 'service'; text: string }
   | { t: 'file'; ref: string; name: string; size: number; mimeType?: string; image?: { width: number; height: number; thumbhash: string } }
   | { t: 'tool-call-start'; call: string; name: string; title: string; description: string; args: Record<string, unknown> }
-  | { t: 'tool-call-end'; call: string; is_error?: boolean; error?: string }
+  | { t: 'tool-call-end'; call: string; is_error?: boolean; error?: string; result?: string }
   | { t: 'turn-start' }
   | { t: 'turn-end'; status: 'completed' | 'failed' | 'cancelled' }
   | { t: 'start'; title?: string }

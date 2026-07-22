@@ -8,7 +8,7 @@
           <span class="copy-btn" title="复制" @click="copyText(s.text)">copy</span>
         </span>
       </div>
-      <FoldingPre :text="s.text" />
+      <Markdown :text="s.text" />
     </div>
     <div v-if="!system.length" class="empty">暂无系统提示</div>
   </div>
@@ -16,7 +16,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import FoldingPre from '../FoldingPre.vue'
+import Markdown from '../Markdown.vue'
 
 const props = defineProps<{ detail: any }>()
 const system = computed(() => {

@@ -51,8 +51,9 @@ function syncXtermTheme(t: Terminal) {
     background: cssVar('--bg-terminal'),
     foreground: cssVar('--text-primary'),
     cursor: cssVar('--accent'),
-    selectionBackground: cssVar('--accent-soft-bg'),
-    selectionForeground: cssVar('--text-primary'),
+    selectionBackground: cssVar('--accent'),
+    selectionForeground: cssVar('--text-inverse'),
+    selectionInactiveBackground: cssVar('--accent-soft-border'),
   }
 }
 
@@ -109,6 +110,7 @@ let resizeTimer: ReturnType<typeof setTimeout> | null = null
 let fallbackTimer: ReturnType<typeof setTimeout> | null = null
 let lastCols = 0
 let lastRows = 0
+let ptyConnected = false
 
 const ctxOpen = ref(false)
 const ctxStyle = ref({ top: '0px', left: '0px' })
@@ -168,6 +170,7 @@ async function reconnect() {
   lastRows = 0
   exited.value = false
   loading.value = true
+  ptyConnected = false
   if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null }
   if (resizeTimer) { clearTimeout(resizeTimer); resizeTimer = null }
   await initializeTerminal()
@@ -184,9 +187,9 @@ async function initializeTerminal() {
   await waitForSize()
 
   term = new Terminal({
-    cursorBlink: false,
-    fontSize: 14,
-    fontFamily: 'Consolas, "Courier New", monospace',
+    cursorBlink: true,
+    fontSize: 15,
+    fontFamily: '"JetBrains Mono", "SF Mono", Menlo, Consolas, "Courier New", monospace',
     allowProposedApi: true,
     minimumContrastRatio: 4.5,
     scrollback: 1000,
@@ -205,6 +208,7 @@ async function initializeTerminal() {
 
   renderDisposer = term.onRender(() => {
     if (!loading.value) return
+    if (!ptyConnected) return
     if (bufferHasVisibleContent()) revealTerminal()
   })
 
@@ -233,14 +237,24 @@ async function initializeTerminal() {
     term?.write(line)
   })
 
-  fallbackTimer = setTimeout(() => revealTerminal(), 10000)
+  // fallback 真正兜底：30s 内无可见内容则强制 reveal
+  fallbackTimer = setTimeout(() => revealTerminal(), 30000)
 
   try {
     emit('starting')
     await fitWithRetry()
     await new Promise((resolve) => requestAnimationFrame(resolve))
     forceViewportSync()
-    await OpenSessionTerminalSized(props.sessionId, props.workdir, term.cols, term.rows)
+    const ptyExisted = await OpenSessionTerminalSized(props.sessionId, props.workdir, term.cols, term.rows)
+    ptyConnected = true
+    if (ptyExisted) {
+      revealTerminal()
+    } else {
+      // 新建 PTY：IPC 期间可能已有数据写入 xterm 但 onRender 被 ptyConnected=false 拦截，
+      // 主动检查一次 buffer，有可见内容则立即 reveal，否则等下次 onRender 或 fallback
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      if (bufferHasVisibleContent()) revealTerminal()
+    }
   } catch (e: any) {
     revealTerminal()
     term?.writeln(`\r\n启动 Claude 失败：${e?.message || e}`)
@@ -260,7 +274,7 @@ function bufferHasVisibleContent(): boolean {
   const buffer = term.buffer.active
   for (let i = 0; i < buffer.length; i++) {
     const line = buffer.getLine(i)
-    if (line && line.translateToString(true).length > 0) {
+    if (line && line.translateToString(true).trim().length > 0) {
       return true
     }
   }
@@ -373,6 +387,7 @@ onBeforeUnmount(() => {
   renderDisposer = null
   lastCols = 0
   lastRows = 0
+  ptyConnected = false
   if (resizeTimer) {
     clearTimeout(resizeTimer)
     resizeTimer = null
@@ -445,10 +460,6 @@ onBeforeUnmount(() => {
 }
 .exited-btn:hover { background: var(--accent-deep); }
 
-.xterm-container :deep(.xterm-cursor),
-.xterm-container :deep(.xterm-cursor-layer) {
-  display: none !important;
-}
 .xterm-container :deep(.xterm-viewport)::-webkit-scrollbar {
   width: 8px;
 }

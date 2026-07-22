@@ -55,7 +55,7 @@ export const ResizeTerminal = (id: string, cols: number, rows: number) => api().
 export const GetProvidersConfig = () => api().getProvidersConfig();
 export const SaveProvidersConfig = (cfg: any) => api().saveProvidersConfig(cfg);
 export const ApplyActiveProvider = () => api().applyActiveProvider();
-export const TestProviderConnection = (baseUrl: string, authToken: string) => api().testProviderConnection(baseUrl, authToken);
+export const TestProviderConnection = (baseUrl: string, authToken: string, defaultModel?: string) => api().testProviderConnection(baseUrl, authToken, defaultModel);
 
 export const ResolvePermission = (id: string, decision: 'allow' | 'deny', source: string, answers?: Record<string, string | string[]>) => api().resolvePermission(id, decision, source, answers);
 export const IsPermissionPending = (id: string) => api().isPermissionPending(id);

@@ -56,8 +56,8 @@ const api = {
   getProvidersConfig: () => ipcRenderer.invoke('app:getProvidersConfig'),
   saveProvidersConfig: (cfg: any) => ipcRenderer.invoke('app:saveProvidersConfig', cfg),
   applyActiveProvider: () => ipcRenderer.invoke('app:applyActiveProvider'),
-  testProviderConnection: (baseUrl: string, authToken: string) =>
-    ipcRenderer.invoke('app:testProviderConnection', baseUrl, authToken),
+  testProviderConnection: (baseUrl: string, authToken: string, defaultModel?: string) =>
+    ipcRenderer.invoke('app:testProviderConnection', baseUrl, authToken, defaultModel),
 
   resolvePermission: (id: string, decision: 'allow' | 'deny', source: string, answers?: Record<string, string | string[]>) =>
     ipcRenderer.invoke('permission:resolve', id, decision, source, answers),

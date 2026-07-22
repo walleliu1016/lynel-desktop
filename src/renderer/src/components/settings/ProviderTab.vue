@@ -154,14 +154,14 @@ async function onCancel() {
 
 async function onTest() {
   if (!provider.value) return
-  const { base_url, auth_token } = provider.value
+  const { base_url, auth_token, default_model } = provider.value
   if (!base_url) return
-  showToast('正在测试连接...')
-  const result = await TestProviderConnection(base_url, auth_token || '')
+  showToast('正在测试连接...', 'success', 5000)
+  const result = await TestProviderConnection(base_url, auth_token || '', default_model || '')
   if (result.ok) {
-    showToast('连接成功')
+    showToast('连接成功', 'success', 5000)
   } else {
-    showToast('连接失败：' + (result.error || '未知错误'), 'error')
+    showToast('连接失败：' + (result.error || '未知错误'), 'error', 8000)
   }
 }
 

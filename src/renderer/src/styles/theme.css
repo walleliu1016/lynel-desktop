@@ -124,9 +124,9 @@
   --bg-panel: #ffffff;
   --bg-input: #ffffff;
   --bg-titlebar: linear-gradient(180deg, #ffffff 0%, #f6f7f9 100%);
-  --bg-terminal: #ffffff;
+  --bg-terminal: #fafafa;
   --bg-terminal-header: #f1f5f9;
-  --bg-terminal-loading: #ffffff;
+  --bg-terminal-loading: #fafafa;
 
   --accent: #1e5af5;
   --accent-deep: #1749cc;

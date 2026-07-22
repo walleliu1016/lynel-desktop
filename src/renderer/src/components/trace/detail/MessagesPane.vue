@@ -21,7 +21,8 @@
           >{{ String(m.callId).slice(-8) }}</span>
         </span>
       </div>
-      <FoldingPre :text="m.text" />
+      <Markdown v-if="m.contentType === 'markdown'" :text="m.text" />
+      <FoldingPre v-else :text="m.text" />
     </div>
     <div v-if="!messages.length" class="empty">暂无消息块</div>
   </div>
@@ -30,6 +31,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import FoldingPre from '../FoldingPre.vue'
+import Markdown from '../Markdown.vue'
 import { hueBg, hueColor, hueFg } from '../../../composables/useIdHue'
 
 const props = defineProps<{ detail: any }>()
@@ -42,12 +44,20 @@ const messages = computed(() => {
       const content = Array.isArray(m.content) ? m.content : [{ type: 'text', text: m.content }]
       content.forEach((b: any, bi: number) => {
         let text = ''
+        let contentType: 'markdown' | 'json' = 'markdown'
         const isToolUse = b.type === 'tool_use'
         const isToolResult = b.type === 'tool_result'
         if (isToolUse) {
           text = JSON.stringify(b.input ?? {}, null, 2)
+          contentType = 'json'
         } else if (isToolResult) {
-          text = typeof b.content === 'string' ? b.content : JSON.stringify(b.content, null, 2)
+          if (typeof b.content === 'string') {
+            text = b.content
+            contentType = 'markdown'
+          } else {
+            text = JSON.stringify(b.content, null, 2)
+            contentType = 'json'
+          }
         } else {
           text = b.text ?? JSON.stringify(b, null, 2)
         }
@@ -55,6 +65,7 @@ const messages = computed(() => {
           label: `msg[${mi}].${m.role}[${bi}]`,
           type: b.type || 'text',
           text,
+          contentType,
           name: b.name || '',
           callId: b.id || b.tool_use_id || null,
           isError: isToolResult ? !!b.is_error : false,

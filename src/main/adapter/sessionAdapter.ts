@@ -30,8 +30,8 @@ export type SseEvent =
 export interface SessionAdapterState {
   turn: TurnState;
   toolTracker: ToolTracker;
-  // 累积当前响应中的 content blocks（index -> {type, data}）
-  currentBlocks: Map<number, { type: 'text' | 'thinking'; data: string }>;
+  // 累积当前响应中的 content blocks（index -> {type, data, envelopeIndex?}）
+  currentBlocks: Map<number, { type: 'text' | 'thinking' | 'tool_use'; data: string; envelopeIndex?: number }>;
   currentMessageId: string | null;
   currentInputTokens: number;
   currentOutputTokens: number;
@@ -97,7 +97,7 @@ export class SessionAdapter {
         for (const tr of toolResults) {
           out.push(createEnvelope(
             'agent',
-            this.state.toolTracker.onToolResult(tr.tool_use_id, tr.is_error, tr.content_summary),
+            this.state.toolTracker.onToolResult(tr.tool_use_id, tr.is_error, tr.content_summary, tr.content),
             this.opts(turnId),
           ));
         }
@@ -127,7 +127,7 @@ export class SessionAdapter {
 
       case 'content_block_start': {
         const cb = event.content_block;
-        this.state.currentBlocks.set(event.index, { type: cb.type as 'text' | 'thinking', data: '' });
+        this.state.currentBlocks.set(event.index, { type: cb.type as 'text' | 'thinking' | 'tool_use', data: '' });
         if (cb.type === 'tool_use') {
           const call = cb.id ?? randomUUID();
           const env = createEnvelope('agent', {
@@ -138,8 +138,12 @@ export class SessionAdapter {
             description: '',
             args: cb.input ?? {},
           }, this.opts(this.state.turn.currentTurnId!));
-          this.pushEnv(out, env);
-          this.state.toolTracker.onToolUseStart(event.index, call, cb.name ?? 'unknown', this.state.currentMessageEnvelopes.length - 1);
+          // 不立即返回给 out，等 content_block_stop 时补全 args 后再 dispatch
+          // 避免 channel 拿到空 args 后推送不完整的工具调用信息
+          this.state.currentMessageEnvelopes.push(env);
+          const envelopeIndex = this.state.currentMessageEnvelopes.length - 1;
+          this.state.currentBlocks.get(event.index)!.envelopeIndex = envelopeIndex;
+          this.state.toolTracker.onToolUseStart(event.index, call, cb.name ?? 'unknown', envelopeIndex);
         }
         break;
       }
@@ -164,7 +168,14 @@ export class SessionAdapter {
         const block = this.state.currentBlocks.get(event.index);
         if (block) {
           this.state.streamHadContent = true;
-          if (block.data) {
+          if (block.type === 'tool_use') {
+            // tool_use 块：补全 args 后再把 tool-call-start envelope 返回给调用者 dispatch
+            this.state.toolTracker.onToolUseStop(event.index);
+            if (block.envelopeIndex !== undefined) {
+              const env = this.state.currentMessageEnvelopes[block.envelopeIndex];
+              if (env) out.push(env);
+            }
+          } else if (block.data) {
             const env = createEnvelope('agent', {
               t: 'text',
               text: block.data,
@@ -173,10 +184,9 @@ export class SessionAdapter {
             this.pushEnv(out, env);
           }
           this.state.currentBlocks.delete(event.index);
-        }
-        const args = this.state.toolTracker.onToolUseStop(event.index);
-        if (args) {
-          this.state.streamHadContent = true;
+        } else {
+          // 兜底：currentBlocks 没有记录（理论上不该发生），仍尝试补全
+          this.state.toolTracker.onToolUseStop(event.index);
         }
         break;
       }

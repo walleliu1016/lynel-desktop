@@ -64,8 +64,9 @@ export class ToolTracker {
     call: string,
     isError: boolean,
     errorSummary?: string,
-  ): { t: 'tool-call-end'; call: string; is_error?: boolean; error?: string } {
-    const out: { t: 'tool-call-end'; call: string; is_error?: boolean; error?: string } = {
+    content?: string,
+  ): { t: 'tool-call-end'; call: string; is_error?: boolean; error?: string; result?: string } {
+    const out: { t: 'tool-call-end'; call: string; is_error?: boolean; error?: string; result?: string } = {
       t: 'tool-call-end',
       call,
     };
@@ -74,6 +75,7 @@ export class ToolTracker {
       out.is_error = true;
       if (errorSummary) out.error = errorSummary;
     }
+    if (content) out.result = content;
     return out;
   }
 

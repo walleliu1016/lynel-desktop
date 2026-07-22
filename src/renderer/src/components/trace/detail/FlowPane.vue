@@ -39,7 +39,8 @@
           </div>
           <details v-if="s.text && s.kind !== 'stop'" class="step-body">
             <summary><span class="prev">{{ oneLine(s.text) }}</span></summary>
-            <pre>{{ s.text }}</pre>
+            <Markdown v-if="s.contentType === 'markdown'" :text="s.text" />
+            <pre v-else>{{ s.text }}</pre>
           </details>
         </div>
       </div>
@@ -50,6 +51,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import Icon from '../../Icon.vue'
+import Markdown from '../Markdown.vue'
 import { idHue, hueBg, hueFg } from '../../../composables/useIdHue'
 
 const props = defineProps<{ detail: any }>()
@@ -104,18 +106,21 @@ const steps = computed(() => {
           name: isSkill ? skillName(JSON.stringify(b.input ?? {})) || 'skill' : b.name,
           callId: b.id || null,
           text: JSON.stringify(b.input ?? {}, null, 2),
+          contentType: 'json' as const,
         })
       } else if (b.type === 'tool_result') {
+        const isStr = typeof b.content === 'string'
         out.push({
           kind: 'tool_result',
           callId: b.tool_use_id || null,
           isError: !!b.is_error,
-          text: typeof b.content === 'string' ? b.content : JSON.stringify(b.content, null, 2),
+          text: isStr ? b.content : JSON.stringify(b.content, null, 2),
+          contentType: isStr ? ('markdown' as const) : ('json' as const),
         })
       } else if (b.type === 'thinking') {
-        out.push({ kind: 'thinking', text: b.thinking ?? '' })
+        out.push({ kind: 'thinking', text: b.thinking ?? '', contentType: 'markdown' as const })
       } else {
-        out.push({ kind: m.role === 'assistant' ? 'assistant' : 'user', text: b.text ?? '' })
+        out.push({ kind: m.role === 'assistant' ? 'assistant' : 'user', text: b.text ?? '', contentType: 'markdown' as const })
       }
     }
   }
@@ -129,12 +134,13 @@ const steps = computed(() => {
           name: isSkill ? (b.input?.skill || 'skill') : b.name,
           callId: b.id || null,
           text: JSON.stringify(b.input ?? {}, null, 2),
+          contentType: 'json' as const,
           latest: true,
         })
       } else if (b.type === 'thinking') {
-        out.push({ kind: 'thinking', text: b.thinking ?? '', latest: true })
+        out.push({ kind: 'thinking', text: b.thinking ?? '', contentType: 'markdown' as const, latest: true })
       } else {
-        out.push({ kind: 'assistant', text: b.text ?? '', latest: true })
+        out.push({ kind: 'assistant', text: b.text ?? '', contentType: 'markdown' as const, latest: true })
       }
     }
     if (parsed.stop_reason) {

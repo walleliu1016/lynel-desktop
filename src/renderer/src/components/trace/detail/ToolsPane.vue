@@ -9,7 +9,8 @@
         <span>{{ t.name }}</span>
         <span class="copy-btn" title="复制 schema" @click="copySchema(t.schema)">copy</span>
       </div>
-      <FoldingPre :text="t.description + '\n\n— schema —\n' + t.schema" />
+      <Markdown v-if="t.description" :text="t.description" />
+      <FoldingPre :text="'— schema —\n' + t.schema" />
     </div>
     <div v-if="!tools.length" class="empty">暂无工具定义</div>
     <div v-else-if="!filtered.length" class="empty">无匹配工具</div>
@@ -19,6 +20,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import FoldingPre from '../FoldingPre.vue'
+import Markdown from '../Markdown.vue'
 
 const props = defineProps<{ detail: any }>()
 
@@ -77,5 +79,9 @@ function copySchema(schema: string) {
   font-weight: 400;
 }
 .copy-btn:hover { opacity: 1; }
+.tool-desc {
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+}
 .empty { padding: 20px; text-align: center; color: var(--text-tertiary); }
 </style>

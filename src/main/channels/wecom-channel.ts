@@ -340,20 +340,18 @@ export class WeComChannel implements OutputChannel, HookChannel {
         break;
       }
       case 'tool-call-start': {
-        const title = ev.title || ev.name;
-        const argsStr = ev.args && Object.keys(ev.args).length
-          ? `\n\`\`\`json\n${JSON.stringify(ev.args, null, 2)}\n\`\`\``
-          : '';
-        const content = `${header}\n🔧 **${ev.name}**\n> ${title}${argsStr}`;
+        const argsStr = this.formatToolArgs(ev.args);
+        const content = `${header}\n🔧 **${ev.name}**${argsStr}`;
         this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] tool-call-start send failed:', e));
         break;
       }
       case 'tool-call-end': {
+        const resultStr = ev.result ? this.formatToolResult(ev.result, !!ev.is_error) : '';
         if (ev.is_error) {
-          const content = `${header}\n❌ **工具执行失败**：${ev.error ?? '未知错误'} (${ev.call})`;
+          const content = `${header}\n❌ **工具执行失败**：${ev.error ?? '未知错误'} (${ev.call})${resultStr}`;
           this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] tool-call-end send failed:', e));
         } else {
-          const content = `${header}\n✅ **工具执行完成** (${ev.call})`;
+          const content = `${header}\n✅ **工具执行完成** (${ev.call})${resultStr}`;
           this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] tool-call-end send failed:', e));
         }
         break;
@@ -1008,6 +1006,79 @@ export class WeComChannel implements OutputChannel, HookChannel {
       return String(p.file_path || p.path);
     }
     return '';
+  }
+
+  /**
+   * 格式化工具参数为企微 Markdown：
+   * - Bash 命令：高亮 command 字段
+   * - 文件操作：高亮 file_path/path 字段
+   * - 其他：JSON 代码块（参数为空时返回空串）
+   */
+  private formatToolArgs(args: Record<string, unknown> | undefined): string {
+    if (!args || typeof args !== 'object' || Object.keys(args).length === 0) return '';
+
+    const p = args as Record<string, any>;
+    const lines: string[] = [];
+
+    // 优先展示常用字段
+    if (typeof p.command === 'string') {
+      lines.push(`\n\`\`\`bash\n${p.command}\n\`\`\``);
+    }
+    if (typeof p.file_path === 'string') {
+      lines.push(`\n> 📄 ${p.file_path}`);
+    } else if (typeof p.path === 'string') {
+      lines.push(`\n> 📄 ${p.path}`);
+    }
+    if (typeof p.pattern === 'string') {
+      lines.push(`\n> 🔍 pattern: ${p.pattern}`);
+    }
+    // description 是 Claude 给工具调用加的说明，作为引用文字放在命令后面
+    if (typeof p.description === 'string' && p.description.trim()) {
+      lines.push(`\n> 💡 ${p.description.trim()}`);
+    }
+
+    // 其余字段按值类型分别展示：
+    // - 多行字符串：用代码块展示（Write/Edit 的 content、new_string 等）
+    // - 单行字符串：用 `- key: value` 行展示
+    // - 非字符串（对象/数组/数字/布尔）：聚合后用 JSON 代码块展示
+    const restNonString: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(p)) {
+      if (['command', 'file_path', 'path', 'pattern', 'description'].includes(k)) continue;
+      if (typeof v === 'string') {
+        if (v.includes('\n')) {
+          const MAX = 1000;
+          const trunc = v.length > MAX ? v.slice(0, MAX) + `\n... (${v.length - MAX} 字符已省略)` : v;
+          lines.push(`\n**${k}:**\n\`\`\`text\n${trunc}\n\`\`\``);
+        } else {
+          const MAX = 200;
+          const trunc = v.length > MAX ? v.slice(0, MAX) + '...' : v;
+          lines.push(`\n- \`${k}\`: ${trunc}`);
+        }
+      } else {
+        restNonString[k] = v;
+      }
+    }
+    if (Object.keys(restNonString).length > 0) {
+      const json = JSON.stringify(restNonString, null, 2);
+      lines.push(`\n\`\`\`json\n${json}\n\`\`\``);
+    }
+
+    return lines.join('');
+  }
+
+  /**
+   * 格式化工具执行结果为企微 Markdown 代码块：
+   * - 截断到 1500 字符避免超企微消息长度限制
+   * - 根据是否出错选择代码块语言标记
+   */
+  private formatToolResult(result: string, isError: boolean): string {
+    if (!result) return '';
+    const MAX = 1500;
+    const truncated = result.length > MAX
+      ? result.slice(0, MAX) + `\n\n... (${result.length - MAX} 字符已省略)`
+      : result;
+    const lang = isError ? '' : 'text';
+    return `\n\`\`\`${lang}\n${truncated}\n\`\`\``;
   }
 
   private formatPermissionRequest(header: string, toolName: string, input: unknown): string {

@@ -29,7 +29,8 @@
           >{{ String(b.id).slice(-8) }}</span>
         </span>
       </div>
-      <FoldingPre :text="blockText(b)" />
+      <Markdown v-if="b.type === 'text'" :text="blockText(b)" />
+      <FoldingPre v-else :text="blockText(b)" />
     </div>
     <div v-if="response?.error" class="block err">
       <div class="h" style="color:var(--status-error)">error</div>
@@ -41,6 +42,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import FoldingPre from '../FoldingPre.vue'
+import Markdown from '../Markdown.vue'
 import { hueBg, hueColor, hueFg } from '../../../composables/useIdHue'
 
 const props = defineProps<{ detail: any }>()

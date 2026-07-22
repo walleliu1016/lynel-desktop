@@ -20,7 +20,7 @@ import { OutputChannel, type HookEventLike } from './channels/channel.js';
 import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
 import { setNotchMousePassthrough, resizeNotchWindow, showNotchWindow, hideNotchWindow, getNotchWindow } from './notch-window.js';
 import { startProxy } from './apiproxy.js';
-import { start as startPty, PtyMode, PtySize } from './pty.js';
+import { start as startPty, PtyMode, PtySize, preloadShellEnv } from './pty.js';
 import { registerTraceIpc } from './trace/ipc.js';
 import type { BotConfig } from './types/bot.js';
 
@@ -81,9 +81,6 @@ function createSettingsOverrideFile(proxyUrl: string): { args: string[]; cleanup
 function mapHookToKind(name: string): HookEventLike['kind'] | null {
   switch (name) {
     case 'SessionStart': return 'SessionStart';
-    case 'SessionEnd': return 'SessionEnd';
-    case 'UserPromptSubmit': return 'UserPromptSubmit';
-    case 'Stop': return 'Stop';
     default: return null;
   }
 }
@@ -103,13 +100,6 @@ function normalizeHookActivity(name: string, evt: any): SessionActivity | null {
     }
     case 'PostToolUse':
       return { phase: 'thinking' };
-    case 'UserPromptSubmit':
-      return { phase: 'thinking' };
-    case 'Stop':
-    case 'SessionEnd':
-      return { phase: 'idle' };
-    case 'Notification':
-      return { phase: 'idle' };
     default:
       return null;
   }
@@ -286,6 +276,10 @@ export class App {
   async init(): Promise<void> {
     this.applyChannelConfigs();
     this.applyPushSettings();
+    // 预热 macOS shell env 缓存（异步，不阻塞 init）
+    void preloadShellEnv().catch((err) => {
+      getLogger().warn(`[app] preload shell env failed: ${err?.message || err}`);
+    });
     session.setOnRemove((id) => this.wecomChannel.clearSessionMappings(id));
     this.wecomChannel.setSessionTitleResolver((sessionId: string) => {
       const list = this.withRecentLock(() => readRecentSessions());
@@ -633,14 +627,10 @@ export class App {
     }
 
     const hookTypes: Record<string, number> = {
-      Notification: 120,
       PermissionRequest: 7200,
       PreToolUse: 5,
       PostToolUse: 5,
       PostToolUseFailure: 5,
-      SessionEnd: 5,
-      Stop: 5,
-      UserPromptSubmit: 5,
     };
 
     const hooksObj: Record<string, any> = {};
@@ -1263,9 +1253,11 @@ export class App {
       return this.applyActiveProvider();
     });
 
-    ipcMain.handle('app:testProviderConnection', async (_event, baseUrl: string, authToken: string) => {
+    ipcMain.handle('app:testProviderConnection', async (_event, baseUrl: string, authToken: string, defaultModel?: string) => {
       try {
         const url = baseUrl.replace(/\/+$/, '') + '/v1/messages';
+        // 优先用 provider 配置的默认模型，回退到官方推荐模型
+        const model = defaultModel?.trim() || 'claude-sonnet-4-6-20251101';
         const res = await fetch(url, {
           method: 'POST',
           headers: {
@@ -1274,7 +1266,7 @@ export class App {
             'anthropic-version': '2023-06-01',
           },
           body: JSON.stringify({
-            model: 'claude-sonnet-4-6-20251101',
+            model,
             max_tokens: 1,
             messages: [{ role: 'user', content: 'hi' }],
           }),
@@ -1282,11 +1274,48 @@ export class App {
         });
         const body = await res.text().catch(() => '');
         if (res.ok) return { ok: true };
-        return { ok: false, error: `HTTP ${res.status}: ${body.slice(0, 200)}` };
+        const parsed = parseApiError(body, res.status);
+        return { ok: false, error: parsed };
       } catch (err: any) {
         return { ok: false, error: err.message || String(err) };
       }
     });
+
+    // 解析 API 错误响应，提取人类可读的错误信息
+    function parseApiError(body: string, status: number): string {
+      const statusText: Record<number, string> = {
+        400: '请求参数错误',
+        401: '认证失败，请检查 Auth Token',
+        403: '无权限访问',
+        404: '接口不存在，请检查 Base URL',
+        408: '请求超时',
+        429: '请求过于频繁，请稍后再试',
+        500: '服务器内部错误',
+        502: '网关错误',
+        503: '服务暂不可用',
+      };
+      const hint = statusText[status] || '';
+      try {
+        const obj = JSON.parse(body);
+        // Anthropic 格式: { type: "error", error: { type: "...", message: "..." } }
+        // OpenAI 兼容: { error: { message: "...", type: "...", code: "..." } }
+        const err = obj?.error;
+        if (err && typeof err === 'object') {
+          const msg = typeof err.message === 'string' ? err.message : '';
+          const type = typeof err.type === 'string' ? err.type : '';
+          if (msg) return hint ? `${hint}：${msg}` : msg;
+          if (type) return hint ? `${hint}（${type}）` : type;
+        }
+        // 兜底：直接取 message 字段
+        if (typeof obj?.message === 'string') return obj.message;
+        // 无已知结构，返回简化 JSON
+        const short = body.length > 120 ? body.slice(0, 120) + '…' : body;
+        return hint ? `${hint}\n${short}` : `HTTP ${status}\n${short}`;
+      } catch {
+        const short = body.length > 120 ? body.slice(0, 120) + '…' : body;
+        return hint || `HTTP ${status}\n${short}`;
+      }
+    }
 
     ipcMain.handle('app:checkAndFixHooks', () => this.checkAndFixHooks());
 
@@ -1363,36 +1392,44 @@ export class App {
     });
   }
 
-  private openTerminal(id: string, workDir: string, size: PtySize = { cols: 80, rows: 24 }): void {
+  private openTerminal(id: string, workDir: string, size: PtySize = { cols: 80, rows: 24 }): Promise<boolean> {
     if (!session.lookup(id)) session.register(session.newSession(id, workDir));
     const s = session.lookup(id)!;
     if (s.process) {
       getLogger().info(`[app:openSessionTerminal] pty already running for sid=${id}`);
-      return;
+      return Promise.resolve(true);
     }
     const upstream = resolveAnthropicBaseUrl();
-    startProxy(workDir, id, (env) => this.dispatcher.dispatch(env), undefined, upstream).then((proxy) => {
-      this.apiProxies.push(proxy);
-      const proxyUrl = `http://127.0.0.1:${proxy.port}`;
-      const { args, cleanup } = createSettingsOverrideFile(proxyUrl);
-      getLogger().info(`[app:openSessionTerminal] proxyUrl=${proxyUrl} upstream=${upstream} sid=${id}`);
-      try {
-        const proc = startPty(workDir, id, 'claude', PtyMode.Resume, {}, size, args);
-        session.setProcess(id, proc);
-        proc.onExit(() => cleanup());
-        this.setSessionState(id, 'running');
-        this.wirePty(id, proc);
-        // 有 bot 绑定的会话启动后推送通知
-        this.wecomChannel.sendSessionStarted(id, workDir);
-      } catch (err: any) {
-        getLogger().error(`[app:openSessionTerminal] startPty failed for sid=${id}: ${err.message}`);
-        getBus().emit(`session:${id}`, `\r\n启动终端失败：${err.message}\r\n`);
+    // PTY spawn 完成后立即 resolve，让前端隐藏 loading；proxy 启动失败不阻塞 PTY
+    return new Promise<boolean>((resolvePty) => {
+      startProxy(workDir, id, (env) => this.dispatcher.dispatch(env), undefined, upstream).then((proxy) => {
+        this.apiProxies.push(proxy);
+        const proxyUrl = `http://127.0.0.1:${proxy.port}`;
+        const { args, cleanup } = createSettingsOverrideFile(proxyUrl);
+        getLogger().info(`[app:openSessionTerminal] proxyUrl=${proxyUrl} upstream=${upstream} sid=${id}`);
+        try {
+          const proc = startPty(workDir, id, 'claude', PtyMode.Resume, {}, size, args);
+          session.setProcess(id, proc);
+          proc.onExit(() => cleanup());
+          this.setSessionState(id, 'running');
+          this.wirePty(id, proc);
+          // 有 bot 绑定的会话启动后推送通知
+          this.wecomChannel.sendSessionStarted(id, workDir);
+          // PTY 已 spawn，立即通知前端隐藏 loading
+          resolvePty(false);
+        } catch (err: any) {
+          getLogger().error(`[app:openSessionTerminal] startPty failed for sid=${id}: ${err.message}`);
+          getBus().emit(`session:${id}`, `\r\n启动终端失败：${err.message}\r\n`);
+          this.setSessionState(id, 'done');
+          resolvePty(false);
+        }
+      }).catch((err: any) => {
+        getLogger().error(`[app:openSessionTerminal] proxy failed for sid=${id}: ${err?.message ?? err}`);
+        getBus().emit(`session:${id}`, `\r\n启动终端失败：${err?.message ?? err}\r\n`);
         this.setSessionState(id, 'done');
-      }
-    }).catch((err: any) => {
-      getLogger().error(`[app:openSessionTerminal] proxy failed for sid=${id}: ${err?.message ?? err}`);
-      getBus().emit(`session:${id}`, `\r\n启动终端失败：${err?.message ?? err}\r\n`);
-      this.setSessionState(id, 'done');
+        // proxy 启动失败也 resolve，让前端能继续（终端内会显示错误）
+        resolvePty(false);
+      });
     });
   }
 }
