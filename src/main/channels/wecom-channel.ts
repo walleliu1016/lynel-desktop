@@ -486,7 +486,6 @@ export class WeComChannel implements OutputChannel, HookChannel {
         this.formatHeader(event, msgSeq),
         p.toolName || 'unknown',
         p.toolInput,
-        this.getSessionCmdArg(event.sessionId),
       );
       await this.sendContent(content, event.sessionId);
     }
@@ -505,7 +504,6 @@ export class WeComChannel implements OutputChannel, HookChannel {
       const content = this.formatAskUserQuestion(
         this.formatHeader(event, msgSeq),
         input,
-        this.getSessionCmdArg(event.sessionId),
       );
       await this.sendContent(content, event.sessionId);
       return;
@@ -518,7 +516,6 @@ export class WeComChannel implements OutputChannel, HookChannel {
         const content = this.formatAskUserQuestion(
           this.formatHeader(event, msgSeq),
           input,
-          this.getSessionCmdArg(event.sessionId),
         );
         await this.sendContent(content, event.sessionId);
       }
@@ -547,7 +544,6 @@ export class WeComChannel implements OutputChannel, HookChannel {
       const content = this.formatAskUserQuestion(
         this.formatHeader(event, msgSeq),
         input,
-        this.getSessionCmdArg(event.sessionId),
       );
       await this.sendContent(content, event.sessionId);
     }
@@ -817,19 +813,8 @@ export class WeComChannel implements OutputChannel, HookChannel {
     }
     logger.info(`[wecom-channel] after strip text=${text}`);
 
-    // 单条消息指定 session，不修改默认绑定
-    if (text.startsWith('/to ')) {
-      this.handleToCommand(chatId, text).catch((err) => logger.error('[wecom-channel] /to failed:', err));
-      return;
-    }
-
-    // 其他命令消息在企业微信侧处理，不送给 Claude
-    if (text.startsWith('/')) {
-      this.handleCommand(chatId, text).catch((err) => logger.error('[wecom-channel] command failed:', err));
-      return;
-    }
-
-    // 通过引用消息中的会话头部直接路由，无需 /to
+    // 所有消息直接转发给 Claude，不再拦截 / 命令
+    // 通过引用消息中的会话头部直接路由
     const quoteRouting = this.resolveSessionFromQuote(body);
     if (quoteRouting) {
       if ('error' in quoteRouting) {
@@ -944,271 +929,6 @@ export class WeComChannel implements OutputChannel, HookChannel {
 
     return undefined;
   }
-
-  private async handleCommand(chatId: string, text: string): Promise<void> {
-    const parts = text.trim().split(/\s+/);
-    const cmd = parts[0].toLowerCase();
-    const arg = parts[1];
-    logger.info(`[wecom-channel] handleCommand cmd=${cmd} arg=${arg} chatId=${chatId}`);
-
-    switch (cmd) {
-      case '/status': {
-        const mapping = getMapping(chatId);
-        if (!mapping) {
-          await this.sendWeComReply(chatId, '当前聊天未绑定会话。发送 /list 查看可用会话。');
-          return;
-        }
-        const s = session.lookup(mapping.sessionId);
-        const state = s?.state ?? 'unknown';
-        await this.sendWeComReply(
-          chatId,
-          '**当前绑定状态**\n\n' +
-          '| 项目 | 值 |\n' +
-          '|------|------|\n' +
-          `| 会话ID | \`${mapping.sessionId.slice(0, 8)}\` |\n` +
-          `| 状态 | ${state} |\n` +
-          `| 工作目录 | ${mapping.workDir} |`,
-        );
-        return;
-      }
-      case '/create':
-      case '/new': {
-        if (!this.createSessionCallback) {
-          await this.sendWeComReply(chatId, '创建会话功能暂不可用。');
-          return;
-        }
-        const rest = text.trim().slice(cmd.length).trim();
-        if (!rest) {
-          await this.sendWeComReply(chatId, '用法：`/create <工作目录> [提示词]`\n\n示例：\n```\n/create /home/user/project 帮我优化代码\n```');
-          return;
-        }
-        const args = rest.split(/\s+/);
-        const workDir = args[0].replace(/^~(?=[\/\\]|$)/, os.homedir());
-        const prompt = args.slice(1).join(' ').trim();
-        await this.sendWeComReply(chatId, '正在创建新会话…');
-        try {
-          const result = await this.createSessionCallback(workDir, prompt);
-          if ('error' in result) {
-            await this.sendWeComReply(chatId, `创建失败：${result.error}`);
-            return;
-          }
-          setMapping(chatId, result.id, result.workDir);
-          const seq = session.list().length; // 新创建的在末尾，序号即总数
-          await this.sendWeComReply(
-            chatId,
-            '**已创建并绑定新会话**\n\n' +
-            '| 项目 | 值 |\n' +
-            '|------|------|\n' +
-            `| 序号 | ${seq} |\n` +
-            `| 会话ID | \`${result.id.slice(0, 8)}\` |\n` +
-            `| 工作目录 | ${result.workDir} |` +
-            (prompt ? `\n| 提示词 | ${prompt} |` : ''),
-          );
-        } catch (err: any) {
-          await this.sendWeComReply(chatId, `创建失败：${err.message}`);
-        }
-        return;
-      }
-      case '/pending': {
-        await this.handlePendingCommand(chatId);
-        return;
-      }
-      case '/list': {
-        const sessions = session.list();
-        if (sessions.length === 0) {
-          await this.sendWeComReply(chatId, '当前没有可用会话。请先在 Lynel Desktop 中创建或打开一个会话。');
-          return;
-        }
-        const lines = sessions.map((s, i) => {
-          const project = path.basename(s.workDir);
-          const botId = this.sessionBotMap.get(s.id);
-          const botName = botId ? this.botPool.get(botId)?.config.name : undefined;
-          const botTag = botName ? `🤖 ${botName}` : '';
-          return `| ${i + 1} | \`${s.id.slice(0, 8)}\` | ${s.state} | ${project} | ${botTag}`;
-        });
-        await this.sendWeComReply(
-          chatId,
-          '**可用会话**\n\n' +
-          '| 序号 | 会话ID | 状态 | 项目 | Bot |\n' +
-          '|------|--------|------|------|------|\n' +
-          lines.join('\n'),
-        );
-        return;
-      }
-      case '/help': {
-        await this.sendWeComReply(
-          chatId,
-          '**Lynel 企业微信助手**\\n\\n' +
-          '**可用命令**\\n\\n' +
-          '| 命令 | 说明 |\\n' +
-          '|------|------|\\n' +
-          '| \`/list\` | 查看可用会话列表 |\\n' +
-          '| \`/create <工作目录> [提示词]\` \`/new ...\` | 创建新会话 |\\n' +
-          '| \`/status\` | 查看当前绑定状态 |\\n' +
-          '| \`/to <sessionId/序号> <消息>\` | 临时发送消息到指定会话 |\\n' +
-          '| \`/pending\` | 查看待处理权限/提问 |\\n' +
-          '| \`/help\` | 显示此帮助信息 |\\n\\n' +
-          '**快捷操作**\\n\\n' +
-          '引用任意一条机器人发送的消息并直接输入内容，会自动转发到该消息所属的会话。\\n\\n' +
-          '**使用示例**\\n\\n' +
-          '\`\`\`\\n/create /home/user/project 帮我优化代码\\n\`\`\`',
-        );
-        return;
-      }
-      default: {
-        await this.sendWeComReply(
-          chatId,
-          '未知命令。发送 /help 查看可用命令。',
-        );
-        return;
-      }
-    }
-  }
-
-  private async handleAllowDeny(chatId: string, isAllow: boolean, arg?: string): Promise<void> {
-    if (arg) {
-      // 参数是会话序号（/list 中的编号）或 sessionId（前缀），定位到该会话的待处理请求
-      const resolved = resolveSessionArg(arg);
-      if ('error' in resolved) {
-        await this.sendWeComReply(chatId, resolved.error);
-        return;
-      }
-      const label = this.getSessionListIndex(resolved.id);
-      const ok = permissionBroker.resolveBySession(resolved.id, isAllow ? 'allow' : 'deny', 'wecom');
-      if (ok) {
-        await this.sendWeComReplyWithHeader(chatId, `已${isAllow ? '批准' : '拒绝'} ${label} 的权限请求`, resolved.id);
-      } else {
-        await this.sendWeComReplyWithHeader(chatId, `${label} 当前没有待处理的权限请求。`, resolved.id);
-      }
-      return;
-    }
-
-    // 没有参数时，取当前绑定会话的最近一条待处理权限
-    const mapping = getMapping(chatId);
-    const pending = permissionBroker
-      .listPending()
-      .filter((p) => (mapping ? p.request.sessionId === mapping.sessionId : true))
-      .sort((a, b) => b.seq - a.seq);
-    if (pending.length === 0) {
-      await this.sendWeComReply(chatId, '当前没有待处理的权限请求。');
-      return;
-    }
-    const target = pending[0];
-    const label = this.getSessionListIndex(target.request.sessionId);
-    const ok = permissionBroker.resolve(target.id, isAllow ? 'allow' : 'deny', 'wecom');
-    if (!ok) {
-      await this.sendWeComReplyWithHeader(chatId, `${label} 的权限请求已被处理。`, target.request.sessionId);
-    } else {
-      await this.sendWeComReplyWithHeader(chatId, `已${isAllow ? '批准' : '拒绝'} ${label} 的权限请求`, target.request.sessionId);
-    }
-  }
-
-  private async handleAnswerCommand(chatId: string, text: string): Promise<void> {
-    const cmd = text.trim().split(/\s+/)[0].toLowerCase();
-    const rest = text.slice(cmd.length).trim();
-    const spaceIdx = rest.search(/\s/);
-    if (spaceIdx === -1) {
-      await this.sendWeComReply(
-        chatId,
-        '用法：/answer <会话序号> <答案>\n例如：/answer 3 A  或  /answer 3 A,B',
-      );
-      return;
-    }
-
-    const sessArg = rest.slice(0, spaceIdx).trim();
-    const answerText = rest.slice(spaceIdx + 1).trim();
-    // 参数是会话序号（/list 中的编号）或 sessionId（前缀）
-    const resolved = resolveSessionArg(sessArg);
-    if ('error' in resolved) {
-      await this.sendWeComReply(chatId, resolved.error);
-      return;
-    }
-    const label = this.getSessionListIndex(resolved.id);
-
-    logger.info(`[wecom-channel] handleAnswerCommand session=${resolved.id.slice(0, 8)} answerText=${answerText}`);
-
-    const entry = permissionBroker.getPendingBySession(resolved.id);
-    if (!entry) {
-      await this.sendWeComReplyWithHeader(chatId, `${label} 当前没有待处理的权限请求或提问。`, resolved.id);
-      return;
-    }
-
-    if (entry.request.toolName !== 'AskUserQuestion') {
-      permissionBroker.resolve(entry.id, 'allow', 'wecom');
-      await this.sendWeComReplyWithHeader(chatId, `已批准 ${label} 的权限请求`, resolved.id);
-      return;
-    }
-
-    const questions = this.parseAskQuestions(entry.request.toolInput);
-    const result = this.parseAskAnswer(questions, answerText);
-    if ('error' in result) {
-      await this.sendWeComReplyWithHeader(chatId, `回答格式错误：${result.error}`, resolved.id);
-      return;
-    }
-
-    permissionBroker.resolve(entry.id, 'allow', 'wecom', result.answers);
-    await this.sendWeComReplyWithHeader(chatId, `已提交 ${label} 的回答`, resolved.id);
-  }
-
-  private async handlePendingCommand(chatId: string): Promise<void> {
-    const mapping = getMapping(chatId);
-    const pending = permissionBroker.listPending();
-    const filtered = mapping ? pending.filter((p) => p.request.sessionId === mapping.sessionId) : pending;
-    if (filtered.length === 0) {
-      await this.sendWeComReply(chatId, '当前没有待处理的权限请求或提问。');
-      return;
-    }
-
-    const lines = filtered.map((p) => {
-      const isAsk = p.request.toolName === 'AskUserQuestion';
-      const preview = isAsk ? 'Claude 提问' : this.formatToolInputPreview(p.request.toolInput);
-      return `| ${this.getSessionListIndex(p.request.sessionId)} | ${p.request.toolName} | ${preview || '-'} |`;
-    });
-    await this.sendWeComReply(
-      chatId,
-      '**待处理权限/提问**\n\n' +
-      '| 会话 | 类型 | 内容 |\n' +
-      '|------|------|------|\n' +
-      lines.join('\n'),
-    );
-  }
-
-  private async handleToCommand(chatId: string, text: string): Promise<void> {
-    const rest = text.slice(3).trim();
-    const spaceIdx = rest.search(/\s/);
-    if (spaceIdx === -1) {
-      await this.sendWeComReply(chatId, '用法：/to <sessionId/序号> <消息内容>');
-      return;
-    }
-    const arg = rest.slice(0, spaceIdx);
-    const message = rest.slice(spaceIdx + 1).trim();
-    if (!message) {
-      await this.sendWeComReply(chatId, '消息内容不能为空。');
-      return;
-    }
-
-    const resolved = resolveSessionArg(arg);
-    if ('error' in resolved) {
-      await this.sendWeComReply(chatId, resolved.error);
-      return;
-    }
-
-    const s = session.lookup(resolved.id);
-    if (!s || !s.process) {
-      await this.sendWeComReplyWithHeader(chatId, `会话 ${resolved.id.slice(0, 8)}... 不存在或未启动。`, resolved.id);
-      return;
-    }
-
-    logger.info(`[wecom-channel] /to from ${chatId}, forward to session ${resolved.id.slice(0, 8)}...`);
-    try {
-      session.send(resolved.id, message);
-      // 不发送成功提示，避免与 Claude 的回复消息重复
-    } catch (err) {
-      logger.error('[wecom-channel] failed to forward /to message to session:', err);
-      await this.sendWeComReplyWithHeader(chatId, `发送失败：${err instanceof Error ? err.message : String(err)}`, resolved.id);
-    }
-  }
-
   private async sendWeComReply(chatId: string, text: string, botId?: string): Promise<void> {
     const effectiveBotId = botId ?? this.currentBotId;
     logger.info(`[wecom-channel] sendWeComReply chatId=${chatId} botId=${effectiveBotId ?? 'fallback'}`);
@@ -1264,13 +984,6 @@ export class WeComChannel implements OutputChannel, HookChannel {
     return idx >= 0 ? `会话#${idx + 1}` : '?';
   }
 
-  // 生成 /allow /deny /answer 的命令参数：优先会话序号，找不到时用 sessionId 前缀
-  private getSessionCmdArg(sessionId: string): string {
-    const all = session.list();
-    const idx = all.findIndex((s) => s.id === sessionId);
-    return idx >= 0 ? String(idx + 1) : sessionId.slice(0, 8);
-  }
-
   private formatSessionHeader(sessionId: string): string | undefined {
     const s = session.lookup(sessionId);
     if (!s) return undefined;
@@ -1297,16 +1010,16 @@ export class WeComChannel implements OutputChannel, HookChannel {
     return '';
   }
 
-  private formatPermissionRequest(header: string, toolName: string, input: unknown, reqId: string | number): string {
+  private formatPermissionRequest(header: string, toolName: string, input: unknown): string {
     const preview = this.formatToolInputPreview(input);
     const inputBlock = preview ? `\n\`\`\`\n${preview}\n\`\`\`` : '';
-    return `${header}\n\n**权限请求：${toolName}**${inputBlock}\n\n操作：\`/allow ${reqId}\` 或 \`/deny ${reqId}\``;
+    return `${header}\n\n**权限请求：${toolName}**${inputBlock}`;
   }
 
-  private formatAskUserQuestion(header: string, input: unknown, reqId: string | number): string {
+  private formatAskUserQuestion(header: string, input: unknown): string {
     const questions = this.parseAskQuestions(input);
     if (questions.length === 0) {
-      return `${header}\n\n**Claude 向你提问**\n\n操作：\`/answer ${reqId} <你的回答>\``;
+      return `${header}\n\n**Claude 向你提问**`;
     }
 
     const lines: string[] = ['', '**Claude 向你提问：**', ''];
@@ -1325,14 +1038,6 @@ export class WeComChannel implements OutputChannel, HookChannel {
       }
       lines.push('');
     });
-
-    lines.push('**回复示例：**');
-    lines.push(`- \`/answer ${reqId} 1\`  单选`);
-    lines.push(`- \`/answer ${reqId} 1,2\`  多选`);
-    lines.push(`- \`/answer ${reqId} 自定义回答\`  自由输入`);
-    if (questions.length > 1) {
-      lines.push(`- \`/answer ${reqId} 1;2,3\`  多个问题用分号分隔`);
-    }
 
     return `${header}\n${lines.join('\n')}`;
   }
