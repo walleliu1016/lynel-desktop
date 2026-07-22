@@ -9,3 +9,5 @@ dist/
 dist-electron/
 .claude/
 .worktrees/
+src/**/*.js
+src/**/*.js.map
