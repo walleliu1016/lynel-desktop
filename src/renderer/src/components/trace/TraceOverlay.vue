@@ -56,7 +56,7 @@ onMounted(() => overlayRef.value?.focus())
 .panel {
   position: relative;
   z-index: 1;
-  width: clamp(360px, 35%, 45%);
+  width: 50%;
   max-width: 100%;
   height: 100%;
   display: flex;

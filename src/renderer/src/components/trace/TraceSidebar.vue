@@ -46,6 +46,7 @@
             <span class="status-dot" :class="statusClass(r)" />
             <span class="seq">#{{ r.seq }}</span>
             <span class="model">{{ modelShort(r.model) }}</span>
+            <span class="meta time">{{ formatTime(r.ts) }}</span>
           </div>
           <div class="row-bottom">
             <span class="meta">{{ formatMs(r.latencyMs) }}</span>
@@ -108,6 +109,14 @@ function modelShort(model: string | null): string {
   if (model.includes('opus')) return 'opus'
   if (model.includes('haiku')) return 'haiku'
   return model.split('-').slice(0, 2).join('-')
+}
+
+function formatTime(ts: number): string {
+  const d = new Date(ts)
+  const hh = d.getHours().toString().padStart(2, '0')
+  const mm = d.getMinutes().toString().padStart(2, '0')
+  const ss = d.getSeconds().toString().padStart(2, '0')
+  return `${hh}:${mm}:${ss}`
 }
 
 function formatMs(ms: number | null): string {

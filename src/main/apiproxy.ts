@@ -224,8 +224,8 @@ export function startProxy(
             finalizeExchange(token, isStream);
           });
 
-          proxyRes.on('error', (err) => {
-            console.error('[apiproxy] upstream response error:', err);
+          proxyRes.on('error', (err: any) => {
+            console.error(`[apiproxy] upstream response error: upstream=${up.href} path=${forwardPath} code=${err.code} syscall=${err.syscall} message=${err.message}`);
             if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' });
             res.end('apiproxy upstream error');
             const errEnvs = s.adapter.handleNetworkError(err.message);
@@ -234,8 +234,8 @@ export function startProxy(
           });
         });
 
-        proxyReq.on('error', (err) => {
-          console.error('[apiproxy] upstream request error:', err);
+        proxyReq.on('error', (err: any) => {
+          console.error(`[apiproxy] upstream request error: upstream=${up.href} path=${forwardPath} code=${err.code} syscall=${err.syscall} hostname=${err.hostname} port=${err.port} message=${err.message}`);
           if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' });
           res.end('apiproxy upstream error');
           const errEnvs = s.adapter.handleNetworkError(err.message);
@@ -254,7 +254,7 @@ export function startProxy(
     server.listen(0, '127.0.0.1', () => {
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : 0;
-      console.log(`[apiproxy] listening on 127.0.0.1:${port} (token=${token.slice(0, 8)}...)`);
+      console.log(`[apiproxy] listening on 127.0.0.1:${port} upstream=${up.href} token=${token.slice(0, 8)}...`);
       resolve({
         port,
         setSessionID: () => { /* token 即 session id，无需迁移 */ },
