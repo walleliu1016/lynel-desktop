@@ -63,6 +63,13 @@ function createWindow(): void {
     mainWindow.loadFile(path.join(__dirname, '../../../src/renderer/dist/index.html'));
   }
 
+  // F12 切换 DevTools（开发/生产均可用）
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.key === 'F12') {
+      mainWindow?.webContents.toggleDevTools();
+    }
+  });
+
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
