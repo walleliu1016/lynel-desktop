@@ -13,6 +13,7 @@ import {
   Cloud,
   Copy,
   CornerDownLeft,
+  Expand,
   FileText,
   FolderOpen,
   Loader2,
@@ -30,6 +31,7 @@ import {
   Send,
   Settings,
   ShieldAlert,
+  Shrink,
   Smartphone,
   Sparkles,
   Square,
@@ -87,6 +89,8 @@ const icons: Record<string, unknown> = {
   'panel-left-open': PanelLeftOpen,
   'panel-right-close': PanelRightClose,
   'panel-right-open': PanelRightOpen,
+  expand: Expand,
+  shrink: Shrink,
 }
 
 const Comp = computed(() => icons[props.name] ?? null)

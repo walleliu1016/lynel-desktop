@@ -14,6 +14,17 @@ import { WeComCardEventHandler, type TemplateCardEventFrame } from './wecom-card
 
 const logger = getLogger().scope('wecom-channel');
 
+/** 企业微信控制指令 → PTY 原始字节映射 */
+const CONTROL_COMMANDS: Record<string, string> = {
+  '/interrupt': '\x03', // Ctrl+C → SIGINT
+  '/ctrl-c': '\x03',
+  '/ctrl+c': '\x03',
+  '/escape': '\x1b', // Esc
+  '/esc': '\x1b',
+  '/ctrl-d': '\x04', // Ctrl+D → EOF
+  '/ctrl-z': '\x1a', // Ctrl+Z → SIGTSTP
+};
+
 export interface WeComChannelConfig {
   enabled: boolean;
   chatId?: string;
@@ -811,6 +822,13 @@ export class WeComChannel implements OutputChannel, HookChannel {
     }
     logger.info(`[wecom-channel] after strip text=${text}`);
 
+    // 控制指令拦截：/interrupt、/escape 等 → 发送原始控制字符到 PTY
+    const controlChar = CONTROL_COMMANDS[text];
+    if (controlChar) {
+      void this.handleControlCommand(chatId, body, text, controlChar);
+      return;
+    }
+
     // 所有消息直接转发给 Claude，不再拦截 / 命令
     // 通过引用消息中的会话头部直接路由
     const quoteRouting = this.resolveSessionFromQuote(body);
@@ -875,6 +893,58 @@ export class WeComChannel implements OutputChannel, HookChannel {
       session.send(sessionId, text);
     } catch (err) {
       logger.error('[wecom-channel] failed to forward inbound message to session:', err);
+    }
+  }
+
+  /** 处理企业微信控制指令，发送原始控制字符到 PTY */
+  private async handleControlCommand(
+    chatId: string,
+    body: any,
+    command: string,
+    controlChar: string,
+  ): Promise<void> {
+    // 解析目标 session（复用引用路由 + 默认路由逻辑）
+    let sessionId: string | undefined;
+    const quoteRouting = this.resolveSessionFromQuote(body);
+    if (quoteRouting && !('error' in quoteRouting)) {
+      sessionId = quoteRouting.id;
+    }
+    if (!sessionId) {
+      if (this.currentBotId) {
+        for (const [sid, bid] of this.sessionBotMap) {
+          if (bid === this.currentBotId) { sessionId = sid; break; }
+        }
+      }
+    }
+    if (!sessionId) {
+      const mapping = getMapping(chatId);
+      if (mapping) sessionId = mapping.sessionId;
+      else sessionId = this.chatIdToSession.get(chatId) || this.lastActiveSession.get(chatId);
+    }
+
+    if (!sessionId) {
+      await this.sendWeComReply(chatId, '当前没有绑定会话，无法发送控制指令。');
+      return;
+    }
+
+    const s = session.lookup(sessionId);
+    if (!s || !s.process) {
+      await this.sendWeComReplyWithHeader(chatId, `会话 ${sessionId.slice(0, 8)}... 不存在或未启动。`, sessionId);
+      return;
+    }
+
+    try {
+      session.writeInput(sessionId, controlChar);
+      const label = command === '/interrupt' || command === '/ctrl-c' || command === '/ctrl+c'
+        ? 'Ctrl+C (中断)'
+        : command === '/escape' || command === '/esc'
+          ? 'Esc'
+          : command;
+      await this.sendWeComReplyWithHeader(chatId, `已发送 ${label}`, sessionId);
+      logger.info(`[wecom-channel] sent control char U+${controlChar.codePointAt(0)!.toString(16)} for ${command} to session ${sessionId.slice(0, 8)}`);
+    } catch (err) {
+      logger.error(`[wecom-channel] failed to send control char for ${command}:`, err);
+      await this.sendWeComReply(chatId, `发送 ${command} 失败`);
     }
   }
 

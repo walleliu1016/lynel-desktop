@@ -200,6 +200,20 @@ npm run dist:linux
 - `submit_button.key` 可跨卡片相同（仅用作 event_key 回调值）
 - `vote_interaction` 的 `question_key` / `option_id` 必须与 `submit_button.key` 共享同一 `EVENT_KEY_PREFIX`
 
+**企业微信控制指令：**
+
+支持在企业微信中发送以下命令来操作 PTY 进程（非文本消息，不会被转发给 Claude）：
+
+| 命令 | 控制字符 | 效果 |
+|------|---------|------|
+| `/interrupt` `/ctrl-c` `/ctrl+c` | `\x03` | Ctrl+C，中断 Claude 当前生成 |
+| `/escape` `/esc` | `\x1b` | Esc |
+| `/ctrl-d` | `\x04` | Ctrl+D / EOF |
+| `/ctrl-z` | `\x1a` | Ctrl+Z / SIGTSTP |
+
+- 实现：`wecom-channel.ts` → `CONTROL_COMMANDS` 映射 → `handleControlCommand()` → `session.writeInput()`（原始字节，不追加 `\r`）
+- 会话路由逻辑与普通消息一致（引用路由 → bot 绑定 → 默认映射）
+
 ---
 
 ## 提交规范
@@ -216,6 +230,7 @@ npm run dist:linux
 - 新建 session 用 `randomUUID()` 预生成 UUID + `--session-id`；不再依赖 SessionStart hook。
 - jsonl 已存在的 sid 用 `--resume`；全新 sid 用 `--session-id`。
 - 向 PTY 发送用户消息必须以回车结尾；`session.send` 会自动补，但 `writeTerminalInput` 不会。
+- `session.send()` 用于文本消息（自动补 `\r`）；发送控制字符必须用 `session.writeInput()`（原始字节）。
 - 启动 PTY 前必须先确保对应 session 的 `APIProxy` 已启动并把 `ANTHROPIC_BASE_URL` 注入 env；代理直接使用预生成的 UUID，不需要迁移。
 - `ProxyStore` 是全局单例，所有 proxy 共享；不要为同一个 session 创建多个 proxy。
 - 网关数据是 PTY+xterm.js 的**补充**，不替代终端渲染；前端消费失败不能影响 Claude 正常运行。

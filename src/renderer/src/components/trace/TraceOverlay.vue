@@ -1,11 +1,14 @@
 <template>
   <Teleport to=".center">
-    <div ref="overlayRef" class="trace-overlay" tabindex="-1" @click.self="$emit('close')" @keydown.escape="$emit('close')">
+    <div ref="overlayRef" class="trace-overlay" :class="{ expanded }" tabindex="-1" @click.self="$emit('close')" @keydown.escape="onEscape">
       <!-- 背景遮罩 -->
       <div class="backdrop" @click="$emit('close')" />
       <!-- 右侧面板 -->
       <div class="panel">
         <div class="panel-header">
+          <button class="panel-expand" @click="expanded = !expanded" :title="expanded ? '收起' : '展开'">
+            <Icon :name="expanded ? 'shrink' : 'expand' " :size="14" />
+          </button>
           <span class="panel-title" v-if="trace.detail">
             #{{ trace.detail.seq }} · {{ trace.detail.model || '—' }}
           </span>
@@ -32,11 +35,20 @@ import { useTraceStore } from '../../stores/trace'
 import RequestDetailPane from './RequestDetailPane.vue'
 import Icon from '../Icon.vue'
 
-defineEmits<{ (e: 'close'): void }>()
+const emit = defineEmits<{ (e: 'close'): void }>()
 
 const trace = useTraceStore()
 const overlayRef = ref<HTMLElement>()
+const expanded = ref(false)
 onMounted(() => overlayRef.value?.focus())
+
+function onEscape() {
+  if (expanded.value) {
+    expanded.value = false
+  } else {
+    emit('close')
+  }
+}
 </script>
 
 <style scoped>
@@ -65,11 +77,15 @@ onMounted(() => overlayRef.value?.focus())
   border-left: 1px solid var(--border-strong);
   box-shadow: -4px 0 16px rgba(0, 0, 0, 0.12);
   animation: slideIn 200ms ease;
+  transition: width 250ms ease;
+}
+.expanded .panel {
+  width: 100%;
 }
 .panel-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   padding: 8px 14px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -77,6 +93,20 @@ onMounted(() => overlayRef.value?.focus())
   font-weight: 600;
   color: var(--text-primary);
 }
+.panel-title {
+  flex: 1;
+}
+.panel-expand {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 100ms, color 100ms;
+}
+.panel-expand:hover { background: var(--bg-hover); color: var(--text-primary); }
 .panel-close {
   width: 28px; height: 28px;
   display: flex; align-items: center; justify-content: center;

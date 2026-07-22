@@ -320,7 +320,7 @@ async function unbindBot() {
 .session-item.active::before {
   content: '';
   position: absolute;
-  left: -4px;
+  left: 0;
   top: 50%; transform: translateY(-50%);
   width: 3px; height: 24px;
   border-radius: 2px;

@@ -128,6 +128,24 @@ Claude 一次提出多个问题时，企业微信会采用逐题发送模式：
 
 ![企业微信引用消息路由](guide-images/20-wecom-quote-reply.png)
 
+## 控制指令
+
+在企业微信中发送以下命令可远程操控 Claude 终端进程（不转发给 Claude，仅在 PTY 层面生效）：
+
+| 命令 | 效果 |
+|------|------|
+| `/interrupt` `/ctrl-c` `/ctrl+c` | 中断 Claude 当前生成（等同在终端按 Ctrl+C） |
+| `/escape` `/esc` | 发送 Esc 键 |
+| `/ctrl-d` | 发送 Ctrl+D（EOF） |
+| `/ctrl-z` | 发送 Ctrl+Z（SIGTSTP） |
+
+**使用场景：**
+- Claude 陷入死循环或输出过长时，发送 `/interrupt` 可立即中断
+- Claude 处于交互式模式时，发送 `/escape` 退出当前模式
+- 需要结束标准输入时，发送 `/ctrl-d`
+
+> 命令使用与普通消息相同的路由逻辑：引用消息中的会话头部自动识别目标会话，或通过 Bot 绑定关系路由到对应会话。执行成功后会收到"已发送 xxx"的确认回复。
+
 ## 消息推送内容
 
 绑定后企业微信会收到：

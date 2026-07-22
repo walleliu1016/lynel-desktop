@@ -61,7 +61,7 @@
 
   --session-item-bg: transparent;
   --session-item-hover-bg: rgba(255,255,255,0.04);
-  --session-item-active-bg: var(--accent-soft-bg);
+  --session-item-active-bg: rgba(139, 92, 246, 0.20);
 
   --assistant-card-bg: var(--bg-panel);
   --message-card-shadow: none;
