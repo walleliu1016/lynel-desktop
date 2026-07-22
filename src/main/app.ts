@@ -213,7 +213,7 @@ export class App {
   private hookServer: HookServer | null = null;
   private dispatcher = new ChannelDispatcher();
   private sseChannel = new SSEChannel();
-  private wecomChannel = new WeComChannel({ enabled: false });
+  private wecomChannel = new WeComChannel({} as WeComChannelConfig);
   private localFileChannel = new LocalFileChannel();
   private stateChannel = new StateChannel({
     onStableState: (id, state, persist = true) => this.setSessionState(id, state, persist),
@@ -958,7 +958,7 @@ export class App {
     });
 
     ipcMain.handle('app:getWeComConfig', () => {
-      return this.settingsStore.get('wecom', { enabled: false }) as WeComChannelConfig;
+      return this.settingsStore.get('wecom', {}) as WeComChannelConfig;
     });
     ipcMain.handle('app:updateWeComConfig', (_event, cfg: WeComChannelConfig) => {
       this.settingsStore.set('wecom', cfg);

@@ -215,18 +215,14 @@ export class WeComChannel implements OutputChannel, HookChannel {
   }
 
   isEnabled(): boolean {
-    // 只要有 bot 配置即可启用
-    const ok = this.cfg.enabled && this.botPool.size > 0;
-    logger.info(`[wecom-channel] isEnabled=${ok} enabled=${this.cfg.enabled} bots=${this.botPool.size}`);
+    const ok = this.botPool.size > 0;
+    logger.info(`[wecom-channel] isEnabled=${ok} bots=${this.botPool.size}`);
     return ok;
   }
 
   updateConfig(cfg: WeComChannelConfig): void {
-    logger.info('[wecom-channel] updateConfig', { enabled: cfg.enabled });
+    logger.info('[wecom-channel] updateConfig', { bots: this.botPool.size });
     this.cfg = cfg;
-    if (!this.cfg.enabled) {
-      this.disconnectAll();
-    }
     // bot 连接池由 updateBots() 管理，不在此处预连接
   }
 
