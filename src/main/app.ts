@@ -1,4 +1,4 @@
-import { app, ipcMain, BrowserWindow, dialog } from 'electron';
+import { app, ipcMain, BrowserWindow, dialog, powerSaveBlocker } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -223,6 +223,7 @@ export class App {
   private aiTitleRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private apiProxies: import('./apiproxy.js').Proxy[] = [];
   private watchCleanup: (() => void) | null = null;
+  private sleepBlockerId: number | null = null;
 
   constructor() {
     this.dispatcher.register(this.sseChannel);
@@ -279,6 +280,7 @@ export class App {
 
   async init(): Promise<void> {
     this.applyChannelConfigs();
+    this.applyAutoSettings();
     this.applyPushSettings();
     this.applyCloudSettings();
     // 预热 macOS shell env 缓存（异步，不阻塞 init）
@@ -439,6 +441,26 @@ export class App {
     this.wecomChannel.pushThinking = pushThinking;
     this.wecomChannel.pushToolCalls = pushToolCalls;
     getLogger().info(`[app] push settings: thinking=${pushThinking} toolCalls=${pushToolCalls}`);
+  }
+
+  private applyAutoSettings(): void {
+    // auto_start
+    app.setLoginItemSettings({
+      openAtLogin: this.settingsStore.get('auto_start', false) as boolean,
+    })
+
+    // log_enabled
+    const logEnabled = this.settingsStore.get('log_enabled', false) as boolean
+    getLogger().transports.file.level = logEnabled ? 'info' : false
+
+    // prevent_sleep
+    const preventSleep = this.settingsStore.get('prevent_sleep', false) as boolean
+    if (preventSleep && this.sleepBlockerId == null) {
+      this.sleepBlockerId = powerSaveBlocker.start('prevent-app-suspension')
+    } else if (!preventSleep && this.sleepBlockerId != null) {
+      powerSaveBlocker.stop(this.sleepBlockerId)
+      this.sleepBlockerId = null
+    }
   }
 
   private applyCloudSettings(): void {
@@ -739,7 +761,8 @@ export class App {
     const { args, cleanup } = createSettingsOverrideFile(proxyUrl);
     const allArgs = [...args, ...extraArgs];
     getLogger().info(`[app:createSession] proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId} extraArgs=${extraArgs.join(',')}`);
-    const proc = startPty(workDir, realId, 'claude', PtyMode.New, {}, { cols: 80, rows: 24 }, allArgs);
+    const claudeBin = (this.settingsStore.get('claude_path', '') as string) || 'claude';
+    const proc = startPty(workDir, realId, claudeBin, PtyMode.New, {}, { cols: 80, rows: 24 }, allArgs);
     const s = session.newSession(realId, workDir);
     s.process = proc;
     s.state = 'running';
@@ -954,6 +977,7 @@ export class App {
     ipcMain.handle('app:getSettings', () => this.settingsStore.store);
     ipcMain.handle('app:updateSettings', (_event, cfg: any) => {
       this.settingsStore.set(cfg);
+      this.applyAutoSettings();
       this.applyPushSettings();
       this.applyCloudSettings();
       // 灵动岛开关已隐藏，强制保持关闭
@@ -1427,7 +1451,8 @@ export class App {
         const { args, cleanup } = createSettingsOverrideFile(proxyUrl);
         getLogger().info(`[app:openSessionTerminal] proxyUrl=${proxyUrl} upstream=${upstream} sid=${id}`);
         try {
-          const proc = startPty(workDir, id, 'claude', PtyMode.Resume, {}, size, args);
+          const claudeBin = (this.settingsStore.get('claude_path', '') as string) || 'claude';
+          const proc = startPty(workDir, id, claudeBin, PtyMode.Resume, {}, size, args);
           session.setProcess(id, proc);
           proc.onExit(() => cleanup());
           this.setSessionState(id, 'running');

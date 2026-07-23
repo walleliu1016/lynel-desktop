@@ -18,6 +18,7 @@ function defaultSettings(): Settings {
     cloud_service_token: '',
     push_thinking: false,
     push_tool_calls: false,
+    prevent_sleep: false,
   }
 }
 

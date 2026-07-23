@@ -14,4 +14,5 @@ export interface Settings {
   cloud_service_token: string
   push_thinking: boolean
   push_tool_calls: boolean
+  prevent_sleep: boolean
 }

@@ -59,6 +59,10 @@
           <span class="switch-label">显示灵动岛</span>
           <Switch v-model="cfg.notch_enabled" @change="markDirty" />
         </label>
+        <label class="switch-row">
+          <span class="switch-label">防止系统休眠</span>
+          <Switch v-model="cfg.prevent_sleep" @change="markDirty" />
+        </label>
       </div>
     </div>
 
@@ -93,6 +97,7 @@ const cfg = computed(() => settings.cfg ?? (settings.cfg = {
   cloud_service_token: '',
   push_thinking: false,
   push_tool_calls: false,
+  prevent_sleep: false,
 } as any))
 
 onMounted(() => settings.load())
