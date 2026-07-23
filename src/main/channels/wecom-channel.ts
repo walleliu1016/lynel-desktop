@@ -6,6 +6,7 @@ import type { LynelEnvelope } from '../protocol/envelope.js';
 import type { BotConfig, BotConnectionState } from '../types/bot.js';
 import * as session from '../session.js';
 import { getStore } from '../store.js';
+import { getBus } from '../events.js';
 import { getLogger } from '../log.js';
 import { permissionBroker, PermissionRequest } from '../permission-broker.js';
 import { buildPermissionCard, buildAskQuestionCard } from './wecom-cards/card-builder.js';
@@ -162,6 +163,8 @@ async function getWSClientClass(): Promise<any> {
 export class WeComChannel implements OutputChannel, HookChannel {
   readonly id = 'wecom';
   readonly name = 'WeCom';
+  /** 企微 markdown 单消息硬限制 20480 字节；保留 ~1.5KB buffer 应对 JSON 序列化膨胀 */
+  private static readonly MARKDOWN_SAFE_LENGTH = 19000;
   private cfg: WeComChannelConfig;
   /** botId → BotConnectionState */
   private botPool = new Map<string, BotConnectionState>();
@@ -338,9 +341,13 @@ export class WeComChannel implements OutputChannel, HookChannel {
     switch (ev.t) {
       case 'text': {
         if (event.role === 'user') {
-          // 去掉 Claude 注入的 system-reminder，只保留用户实际输入
+          // 去掉 Claude 注入的 system-reminder，只保留用户实际输入；
+          // 整条只含 reminder（自动续杯/上下文注入）时清完为空则丢弃；
+          // TUI 注入的伪 user 消息（[SUGGESTION MODE:] / [AUTO MODE:] / [EXECUTE MODE:] 等）
+          // 整条丢
           const cleanText = ev.text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>\s*/g, '').trim();
           if (!cleanText) break;
+          if (/^\[[A-Z][A-Z _-]*MODE\s*:/.test(cleanText)) break;
           const content = `${header}\n---\n\n👤 **用户**\n\n${cleanText}`;
           this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] user text send failed:', e));
         } else if (event.role === 'agent') {
@@ -447,6 +454,14 @@ export class WeComChannel implements OutputChannel, HookChannel {
     const entry = this.getBotForSession(sessionId);
     if (!entry) return;
 
+    // 企微 markdown 单消息硬限制 20480 字节。保留 ~1.5KB buffer 应对 JSON 序列化膨胀。
+    if (content.length > WeComChannel.MARKDOWN_SAFE_LENGTH) {
+      const overflow = content.length - WeComChannel.MARKDOWN_SAFE_LENGTH;
+      content = content.slice(0, WeComChannel.MARKDOWN_SAFE_LENGTH) +
+        `\n\n... (内容过长已截断 ${overflow} 字符)`;
+      logger.warn(`[wecom-channel] markdown content truncated sid=${sessionId.slice(0, 8)} overflow=${overflow}`);
+    }
+
     const [plugin] = await Promise.all([loadWecomPlugin(), this.ensureBotWebSocket(entry.config.id)]);
     if (!plugin?.outbound?.sendText) {
       logger.warn('[wecom-channel] plugin outbound.sendText not available');
@@ -468,13 +483,23 @@ export class WeComChannel implements OutputChannel, HookChannel {
     const sendFn = plugin.outbound.sendMarkdown || plugin.outbound.sendText;
     const chatId = this.getEffectiveChatId(entry);
     logger.info(`[wecom-channel] sending to WeCom via ${plugin.outbound.sendMarkdown ? 'sendMarkdown' : 'sendText'}...`);
-    const result = await sendFn({
-      to: chatId,
-      text: content,
-      accountId: entry.config.id,
-      cfg,
-    });
-    logger.info('[wecom-channel] send success:', JSON.stringify(result));
+    try {
+      const result = await sendFn({
+        to: chatId,
+        text: content,
+        accountId: entry.config.id,
+        cfg,
+      });
+      logger.info('[wecom-channel] send success:', JSON.stringify(result));
+    } catch (err: any) {
+      const msg = err?.message ?? String(err);
+      logger.error(`[wecom] content send failed sid=${sessionId.slice(0, 8)} len=${content.length}: ${msg}`);
+      // 通过 EventBus 推 toast，前端 useEventStream 订阅 app:toast 调 showToast
+      try {
+        getBus().emit('app:toast', 'error', `企微发送失败 (${sessionId.slice(0, 8)}): ${msg.slice(0, 100)}`);
+      } catch { /* bus 不可用时静默 */ }
+      throw err; // 保留 throw，让外层 .catch 仍能感知
+    }
   }
 
   private async sendPermissionCard(event: HookEventLike, msgSeq: number): Promise<void> {
