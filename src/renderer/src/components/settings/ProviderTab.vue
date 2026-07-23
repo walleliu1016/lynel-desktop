@@ -40,17 +40,7 @@
       </div>
       <div class="form-group">
         <label>Base URL <small>ANTHROPIC_BASE_URL</small></label>
-        <div class="input-row">
-          <input class="v" v-model="provider.base_url" @input="markDirty" placeholder="https://api.anthropic.com" />
-          <button
-            class="fetch-btn"
-            :disabled="!provider.base_url || fetchingModels"
-            title="获取模型列表"
-            @click="fetchModels"
-          >
-            <Icon name="refresh-cw" :size="13" :class="{ spinning: fetchingModels }" />
-          </button>
-        </div>
+        <input class="v" v-model="provider.base_url" @input="markDirty" placeholder="https://api.anthropic.com" />
       </div>
       <div class="form-group">
         <label>Auth Token <small>ANTHROPIC_AUTH_TOKEN</small></label>
@@ -116,12 +106,12 @@ const availableModels = ref<string[]>([])
 const fetchingModels = ref(false)
 const activeModelField = ref('') // 当前展开下拉的 model 字段名
 
-// base_url 变更后自动拉取模型列表（debounce 800ms）
+// base_url + auth_token 都有值时自动拉取模型列表（debounce 600ms）
 let fetchTimer: ReturnType<typeof setTimeout> | null = null
-watch(() => provider.value?.base_url, (url) => {
+watch(() => [provider.value?.base_url, provider.value?.auth_token], ([url, token]) => {
   if (fetchTimer) clearTimeout(fetchTimer)
   if (!url) { availableModels.value = []; return }
-  fetchTimer = setTimeout(() => fetchModels(), 800)
+  fetchTimer = setTimeout(() => fetchModels(), 600)
 })
 
 async function fetchModels() {
@@ -289,18 +279,6 @@ async function onTest() {
 }
 .form-group input.v:focus { outline: none; border-color: var(--accent); }
 .form-group input.v[type="password"] { font-family: var(--font-mono); }
-
-.input-row { display: flex; gap: 6px; flex: 1; }
-.fetch-btn {
-  width: 30px; height: 30px; border-radius: var(--radius-md);
-  border: 1px solid var(--border); background: var(--bg-input);
-  color: var(--text-secondary); cursor: pointer; display: flex;
-  align-items: center; justify-content: center; flex-shrink: 0;
-}
-.fetch-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-light); }
-.fetch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.spinning { animation: spin 1s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 .combo-wrap { position: relative; flex: 1; }
 .combo-dropdown {
