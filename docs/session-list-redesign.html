@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session List Redesign</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #0a0a0c;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    padding: 40px;
+    gap: 40px;
+    flex-wrap: wrap;
+  }
+
+  .sidebar {
+    width: 280px;
+    background: #121214;
+    border-radius: 16px;
+    padding: 16px;
+    border: 1px solid #1e1e22;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .new-btn {
+    flex: 1;
+    height: 38px;
+    border-radius: 10px;
+    background: #7c3aed;
+    color: #fff;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: background 0.15s;
+  }
+  .new-btn:hover { background: #6d28d9; }
+  .collapse-btn {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    border: 1px solid #27272a;
+    background: transparent;
+    color: #a1a1aa;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+  }
+  .collapse-btn:hover { border-color: #7c3aed; color: #7c3aed; }
+  .search-wrap { position: relative; }
+  .search-wrap input {
+    width: 100%;
+    height: 34px;
+    padding: 0 12px 0 32px;
+    border-radius: 10px;
+    border: 1px solid #27272a;
+    background: #161618;
+    color: #f4f4f5;
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .search-wrap input:focus { border-color: #7c3aed; }
+  .search-wrap input::placeholder { color: #52525b; }
+  .search-icon {
+    position: absolute;
+    left: 10px; top: 50%; transform: translateY(-50%);
+    color: #52525b;
+    font-size: 13px;
+  }
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 4px;
+  }
+  .section-header span {
+    font-size: 10px;
+    font-weight: 700;
+    color: #71717a;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .section-header .count {
+    font-size: 10px;
+    color: #52525b;
+  }
+  .items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  /* ===== 新版布局：右侧不空 ===== */
+  .item {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.12s;
+    position: relative;
+  }
+  .item:hover { background: rgba(255,255,255,0.04); }
+  .item.active {
+    background: rgba(139,92,246,0.1);
+  }
+  .item.active::before {
+    content: '';
+    position: absolute;
+    left: -4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 24px;
+    border-radius: 2px;
+    background: #7c3aed;
+  }
+  .item .avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #a78bfa;
+    background: rgba(139,92,246,0.12);
+  }
+  /* 主内容区：flex column 占满宽 */
+  .item .body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+  }
+  /* 第一行：标题 + 状态指示器（右侧） */
+  .item .row-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .item .title {
+    flex: 1;
+    font-size: 12px;
+    color: #f4f4f5;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .item .right-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .item .time {
+    font-size: 10px;
+    color: #52525b;
+    white-space: nowrap;
+  }
+  .item .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .item .dot.running { background: #7c3aed; box-shadow: 0 0 6px rgba(124,58,237,0.5); }
+  .item .dot.done { background: #22c55e; }
+  .item .dot.awaiting { background: #ef4444; animation: pulse 1.2s ease-in-out infinite; }
+  .item .dot.idle { background: #52525b; }
+
+  /* 第二行：元信息 + bot 标签（右侧） */
+  .item .row-bottom {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .item .meta {
+    flex: 1;
+    font-size: 10px;
+    color: #71717a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .item .bot-tag {
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(139,92,246,0.1);
+    color: #a78bfa;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .item .bot-tag.blue { background: rgba(59,130,246,0.1); color: #60a5fa; }
+
+  /* ===== 对比：右侧没利用好的旧布局 ===== */
+  .sidebar-old {
+    width: 280px;
+    background: #121214;
+    border-radius: 16px;
+    padding: 16px;
+    border: 1px solid #1e1e22;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .item-old {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 11px;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-bottom: 6px;
+  }
+  .item-old:hover { background: rgba(255,255,255,0.04); }
+  .item-old.active { background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.35); }
+  .item-old .avatar { width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0; background: rgba(139,92,246,0.12); color: #a78bfa; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; }
+  .item-old .body { flex: 1; min-width: 0; }
+  .item-old .row1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .item-old .title { font-size: 12px; color: #f4f4f5; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item-old .state-tag { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 6px; flex-shrink: 0; color: #7c3aed; background: rgba(139,92,246,0.12); }
+  .item-old .row2 { margin-top: 2px; }
+  .item-old .meta { font-size: 10px; color: #71717a; }
+  .item-old .event { font-size: 10px; color: #a1a1aa; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item-old .bot-badge { display: inline-block; margin-top: 4px; font-size: 9px; padding: 1px 6px; border-radius: 4px; background: rgba(139,92,246,0.1); color: #a78bfa; }
+
+  .label {
+    font-size: 11px;
+    color: #52525b;
+    text-align: center;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .col { display: flex; flex-direction: column; align-items: center; }
+  .arrow {
+    font-size: 24px;
+    color: #52525b;
+    margin-top: 60px;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 旧布局（对比） -->
+<div class="col">
+  <div class="label">当前 · 右侧太空</div>
+  <div class="sidebar-old">
+    <div class="item-old active">
+      <div class="avatar">CC</div>
+      <div class="body">
+        <div class="row1">
+          <span class="title">帮我分析这份财务报表</span>
+          <span class="state-tag">运行中</span>
+        </div>
+        <div class="row2"><span class="meta">F:\Filez · 24 条消息 · 2m</span></div>
+        <div class="bot-badge">🤖 财务分析助手</div>
+      </div>
+    </div>
+    <div class="item-old">
+      <div class="avatar">CC</div>
+      <div class="body">
+        <div class="row1">
+          <span class="title">重构用户管理模块的数据库设计方案</span>
+          <span class="state-tag">已完成</span>
+        </div>
+        <div class="row2"><span class="meta">G:\project · 56 条消息 · 1h</span></div>
+      </div>
+    </div>
+    <div class="item-old">
+      <div class="avatar">CC</div>
+      <div class="body">
+        <div class="row1">
+          <span class="title">部署新版本到生产环境</span>
+          <span class="state-tag">等待授权</span>
+        </div>
+        <div class="row2"><span class="meta">G:\project · 12 条消息 · 3h</span></div>
+        <div class="event">Bash · deploy.sh</div>
+        <div class="bot-badge">🤖 运维机器人</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="arrow">→</div>
+
+<!-- 新版布局 -->
+<div class="col">
+  <div class="label">新版 · 空间充分利用</div>
+  <div class="sidebar">
+    <div class="top-row">
+      <button class="new-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        打开 Session
+      </button>
+      <button class="collapse-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+    </div>
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" placeholder="搜索会话…">
+    </div>
+    <div class="section-header">
+      <span>会话列表</span>
+      <span class="count">8</span>
+    </div>
+    <div class="items">
+      <!-- active 运行中 -->
+      <div class="item active">
+        <div class="avatar">CC</div>
+        <div class="body">
+          <div class="row-top">
+            <span class="title">帮我分析这份财务报表</span>
+            <div class="right-group">
+              <span class="time">2m</span>
+              <span class="dot running"></span>
+            </div>
+          </div>
+          <div class="row-bottom">
+            <span class="meta">F:\Filez · 24 条消息</span>
+            <span class="bot-tag">财务分析助手</span>
+          </div>
+        </div>
+      </div>
+      <!-- 已完成 -->
+      <div class="item">
+        <div class="avatar">CC</div>
+        <div class="body">
+          <div class="row-top">
+            <span class="title">重构用户管理模块的数据库设计方案</span>
+            <div class="right-group">
+              <span class="time">1h</span>
+              <span class="dot done"></span>
+            </div>
+          </div>
+          <div class="row-bottom">
+            <span class="meta">G:\project · 56 条消息</span>
+          </div>
+        </div>
+      </div>
+      <!-- 等待授权 -->
+      <div class="item">
+        <div class="avatar">CC</div>
+        <div class="body">
+          <div class="row-top">
+            <span class="title">部署新版本到生产环境</span>
+            <div class="right-group">
+              <span class="time">3h</span>
+              <span class="dot awaiting"></span>
+            </div>
+          </div>
+          <div class="row-bottom">
+            <span class="meta">G:\project · 12 条消息</span>
+            <span class="bot-tag blue">运维机器人</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
