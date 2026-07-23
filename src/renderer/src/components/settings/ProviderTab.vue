@@ -40,11 +40,11 @@
       </div>
       <div class="form-group">
         <label>Base URL <small>ANTHROPIC_BASE_URL</small></label>
-        <input class="v" v-model="provider.base_url" @input="markDirty" placeholder="https://api.anthropic.com" />
+        <input class="v" v-model="provider.base_url" @input="onUrlOrTokenInput" placeholder="https://api.anthropic.com" />
       </div>
       <div class="form-group">
         <label>Auth Token <small>ANTHROPIC_AUTH_TOKEN</small></label>
-        <input class="v" type="password" v-model="provider.auth_token" @input="markDirty" />
+        <input class="v" type="password" v-model="provider.auth_token" @input="onUrlOrTokenInput" />
       </div>
 
       <div v-for="f in modelFields" :key="f.key" class="form-group">
@@ -106,12 +106,21 @@ const availableModels = ref<string[]>([])
 const fetchingModels = ref(false)
 const activeModelField = ref('') // 当前展开下拉的 model 字段名
 
-// base_url + auth_token 都填写后自动拉取模型列表（debounce 600ms）
+// 用户主动编辑 URL/Token 时才触发拉取（切换供应商不触发）
 let fetchTimer: ReturnType<typeof setTimeout> | null = null
-watch(() => [provider.value?.base_url, provider.value?.auth_token], ([url, token]) => {
+function onUrlOrTokenInput() {
+  markDirty()
   if (fetchTimer) clearTimeout(fetchTimer)
+  const url = provider.value?.base_url
+  const token = provider.value?.auth_token
   if (!url || !token) { availableModels.value = []; return }
   fetchTimer = setTimeout(() => fetchModels(), 600)
+}
+
+// 切换供应商时清空模型列表，避免显示上一个供应商的列表
+watch(selectedId, () => {
+  availableModels.value = []
+  if (fetchTimer) { clearTimeout(fetchTimer); fetchTimer = null }
 })
 
 async function fetchModels() {
@@ -221,7 +230,13 @@ async function onTest() {
   showToast('正在测试连接...', 'success', 5000)
   const result = await TestProviderConnection(base_url, auth_token || '', default_model || '')
   if (result.ok) {
-    showToast('连接成功', 'success', 5000)
+    const fmt = (result as any).format === 'openai' ? 'OpenAI' : 'Anthropic'
+    const warn = (result as any).warning
+    if (warn) {
+      showToast(`连接成功（${fmt} 格式）⚠️ ${warn}`, 'error', 8000)
+    } else {
+      showToast(`连接成功（${fmt} 格式）`, 'success', 5000)
+    }
   } else {
     showToast('连接失败：' + (result.error || '未知错误'), 'error', 8000)
   }

@@ -1292,26 +1292,47 @@ export class App {
 
     ipcMain.handle('app:testProviderConnection', async (_event, baseUrl: string, authToken: string, defaultModel?: string) => {
       try {
-        const url = baseUrl.replace(/\/+$/, '') + '/v1/messages';
+        const trimmed = baseUrl.replace(/\/+$/, '');
         const model = defaultModel?.trim() || 'claude-sonnet-4-6-20251101';
-        const res = await fetch(url, {
+        const base = trimmed.endsWith('/v1') ? trimmed : trimmed + '/v1';
+
+        // 1. 先试 Anthropic 格式 /v1/messages
+        const anthRes = await fetch(base + '/messages', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'x-api-key': authToken,
             'anthropic-version': '2023-06-01',
           },
-          body: JSON.stringify({
-            model,
-            max_tokens: 1,
-            messages: [{ role: 'user', content: 'hi' }],
-          }),
+          body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] }),
           signal: AbortSignal.timeout(15000),
         });
-        const body = await res.text().catch(() => '');
-        if (res.ok) return { ok: true };
-        const parsed = parseApiError(body, res.status);
-        return { ok: false, error: parsed };
+        if (anthRes.ok) return { ok: true, format: 'anthropic' };
+
+        // 2. 404 时回退试 OpenAI 格式 /v1/chat/completions
+        if (anthRes.status === 404) {
+          const oaiRes = await fetch(base + '/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] }),
+            signal: AbortSignal.timeout(15000),
+          });
+          if (oaiRes.ok) {
+            return {
+              ok: true,
+              format: 'openai',
+              warning: '该供应商使用 OpenAI 格式，Claude CLI 需要代理才能使用',
+            };
+          }
+          const oaiBody = await oaiRes.text().catch(() => '');
+          return { ok: false, error: parseApiError(oaiBody, oaiRes.status) };
+        }
+
+        const anthBody = await anthRes.text().catch(() => '');
+        return { ok: false, error: parseApiError(anthBody, anthRes.status) };
       } catch (err: any) {
         return { ok: false, error: err.message || String(err) };
       }
@@ -1319,7 +1340,11 @@ export class App {
 
     ipcMain.handle('app:fetchProviderModels', async (_event, baseUrl: string, authToken: string) => {
       try {
-        const url = baseUrl.replace(/\/+$/, '') + '/v1/models';
+        const trimmed = baseUrl.replace(/\/+$/, '');
+        // 兼容 base_url 已带 /v1 的情况
+        const url = trimmed.endsWith('/v1')
+          ? trimmed + '/models'
+          : trimmed + '/v1/models';
         const res = await fetch(url, {
           headers: {
             'Content-Type': 'application/json',
