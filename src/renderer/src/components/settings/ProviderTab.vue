@@ -40,31 +40,45 @@
       </div>
       <div class="form-group">
         <label>Base URL <small>ANTHROPIC_BASE_URL</small></label>
-        <input class="v" v-model="provider.base_url" @input="markDirty" placeholder="https://api.anthropic.com" />
+        <div class="input-row">
+          <input class="v" v-model="provider.base_url" @input="markDirty" placeholder="https://api.anthropic.com" />
+          <button
+            class="fetch-btn"
+            :disabled="!provider.base_url || fetchingModels"
+            title="获取模型列表"
+            @click="fetchModels"
+          >
+            <Icon name="refresh-cw" :size="13" :class="{ spinning: fetchingModels }" />
+          </button>
+        </div>
       </div>
       <div class="form-group">
         <label>Auth Token <small>ANTHROPIC_AUTH_TOKEN</small></label>
         <input class="v" type="password" v-model="provider.auth_token" @input="markDirty" />
       </div>
-      <div class="form-group">
-        <label>默认模型 <small>ANTHROPIC_MODEL</small></label>
-        <input class="v" v-model="provider.default_model" @input="markDirty" placeholder="claude-sonnet-4-6-20251101" />
-      </div>
-      <div class="form-group">
-        <label>Haiku默认模型 <small>ANTHROPIC_DEFAULT_HAIKU_MODEL</small></label>
-        <input class="v" v-model="provider.default_haiku_model" @input="markDirty" :placeholder="modelPlaceholder" />
-      </div>
-      <div class="form-group">
-        <label>Sonnet默认模型 <small>ANTHROPIC_DEFAULT_SONNET_MODEL</small></label>
-        <input class="v" v-model="provider.default_sonnet_model" @input="markDirty" :placeholder="modelPlaceholder" />
-      </div>
-      <div class="form-group">
-        <label>Opus默认模型 <small>ANTHROPIC_DEFAULT_OPUS_MODEL</small></label>
-        <input class="v" v-model="provider.default_opus_model" @input="markDirty" :placeholder="modelPlaceholder" />
-      </div>
-      <div class="form-group">
-        <label>推理模型 <small>ANTHROPIC_REASONING_MODEL</small></label>
-        <input class="v" v-model="provider.reasoning_model" @input="markDirty" placeholder="claude-opus-4-7-20260201" />
+
+      <div v-for="f in modelFields" :key="f.key" class="form-group">
+        <label>{{ f.label }} <small>{{ f.env }}</small></label>
+        <div class="combo-wrap">
+          <input
+            class="v"
+            :value="(provider as any)[f.key]"
+            :placeholder="f.placeholder || modelPlaceholder"
+            @input="(e: any) => { (provider as any)[f.key] = e.target.value; markDirty(); activeModelField = f.key }"
+            @focus="activeModelField = f.key"
+            @blur="onComboBlur(f.key)"
+          />
+          <div v-if="activeModelField === f.key && availableModels.length > 0" class="combo-dropdown">
+            <div
+              v-for="m in availableModels.filter(m => !(provider as any)[f.key] || m.toLowerCase().includes((provider as any)[f.key].toLowerCase()))"
+              :key="m"
+              class="combo-option"
+              @mousedown.prevent="selectModel(f.key, m)"
+            >
+              {{ m }}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="hint">
@@ -83,10 +97,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import Icon from '../../components/Icon.vue'
 import { useProvidersStore } from '../../stores/providers'
-import { TestProviderConnection } from '../../composables/useElectron'
+import { TestProviderConnection, FetchProviderModels } from '../../composables/useElectron'
 import { showToast } from '../../composables/useToast'
 
 const store = useProvidersStore()
@@ -97,6 +111,55 @@ const activeId = computed(() => store.cfg?.active_provider_id ?? '')
 const dirty = computed(() => store.dirty)
 const provider = computed(() => providers.value.find(p => p.id === selectedId.value))
 const modelPlaceholder = computed(() => provider.value?.default_model ? `留空则使用默认模型：${provider.value.default_model}` : '留空则使用默认模型')
+
+const availableModels = ref<string[]>([])
+const fetchingModels = ref(false)
+const activeModelField = ref('') // 当前展开下拉的 model 字段名
+
+// base_url 变更后自动拉取模型列表（debounce 800ms）
+let fetchTimer: ReturnType<typeof setTimeout> | null = null
+watch(() => provider.value?.base_url, (url) => {
+  if (fetchTimer) clearTimeout(fetchTimer)
+  if (!url) { availableModels.value = []; return }
+  fetchTimer = setTimeout(() => fetchModels(), 800)
+})
+
+async function fetchModels() {
+  if (!provider.value?.base_url) return
+  fetchingModels.value = true
+  try {
+    const result = await FetchProviderModels(provider.value.base_url, provider.value.auth_token || '')
+    if (result.ok && result.models?.length) {
+      availableModels.value = result.models
+    } else {
+      availableModels.value = []
+    }
+  } catch {
+    availableModels.value = []
+  } finally {
+    fetchingModels.value = false
+  }
+}
+
+function toggleModelDropdown(field: string) {
+  activeModelField.value = activeModelField.value === field ? '' : field
+}
+
+function selectModel(field: string, model: string) {
+  if (!provider.value) return
+  ;(provider.value as any)[field] = model
+  activeModelField.value = ''
+  markDirty()
+}
+
+const modelFields = [
+  { key: 'default_model', label: '默认模型', env: 'ANTHROPIC_MODEL', placeholder: 'claude-sonnet-4-6-20251101' },
+  { key: 'default_haiku_model', label: 'Haiku默认模型', env: 'ANTHROPIC_DEFAULT_HAIKU_MODEL', placeholder: '' },
+  { key: 'default_sonnet_model', label: 'Sonnet默认模型', env: 'ANTHROPIC_DEFAULT_SONNET_MODEL', placeholder: '' },
+  { key: 'default_opus_model', label: 'Opus默认模型', env: 'ANTHROPIC_DEFAULT_OPUS_MODEL', placeholder: '' },
+  { key: 'reasoning_model', label: '推理模型', env: 'ANTHROPIC_REASONING_MODEL', placeholder: 'claude-opus-4-7-20260201' },
+]
+
 
 onMounted(async () => {
   await store.load()
@@ -150,6 +213,12 @@ async function onCancel() {
   if (providers.value.length > 0 && !providers.value.find(p => p.id === selectedId.value)) {
     selectedId.value = store.cfg?.active_provider_id ?? providers.value[0].id
   }
+}
+
+function onComboBlur(field: string) {
+  setTimeout(() => {
+    if (activeModelField.value === field) activeModelField.value = ''
+  }, 150)
 }
 
 async function onTest() {
@@ -216,9 +285,36 @@ async function onTest() {
   flex: 1; background: var(--bg-input); border: 1px solid var(--border);
   border-radius: var(--radius-md); padding: 7px 10px;
   color: var(--text-primary); font-size: 12px; font-family: inherit;
+  width: 100%;
 }
 .form-group input.v:focus { outline: none; border-color: var(--accent); }
 .form-group input.v[type="password"] { font-family: var(--font-mono); }
+
+.input-row { display: flex; gap: 6px; flex: 1; }
+.fetch-btn {
+  width: 30px; height: 30px; border-radius: var(--radius-md);
+  border: 1px solid var(--border); background: var(--bg-input);
+  color: var(--text-secondary); cursor: pointer; display: flex;
+  align-items: center; justify-content: center; flex-shrink: 0;
+}
+.fetch-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-light); }
+.fetch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.spinning { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.combo-wrap { position: relative; flex: 1; }
+.combo-dropdown {
+  position: absolute; top: 100%; left: 0; right: 0;
+  max-height: 200px; overflow-y: auto;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  z-index: 50; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+.combo-option {
+  padding: 6px 10px; font-size: 12px; color: var(--text-primary);
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.combo-option:hover { background: var(--accent-soft-bg); color: var(--accent-light); }
 .hint {
   margin-top: auto; padding: 10px 14px; background: var(--accent-soft-bg);
   border: 1px solid var(--accent-soft-border); border-radius: var(--radius-md);

@@ -1293,7 +1293,6 @@ export class App {
     ipcMain.handle('app:testProviderConnection', async (_event, baseUrl: string, authToken: string, defaultModel?: string) => {
       try {
         const url = baseUrl.replace(/\/+$/, '') + '/v1/messages';
-        // 优先用 provider 配置的默认模型，回退到官方推荐模型
         const model = defaultModel?.trim() || 'claude-sonnet-4-6-20251101';
         const res = await fetch(url, {
           method: 'POST',
@@ -1315,6 +1314,27 @@ export class App {
         return { ok: false, error: parsed };
       } catch (err: any) {
         return { ok: false, error: err.message || String(err) };
+      }
+    });
+
+    ipcMain.handle('app:fetchProviderModels', async (_event, baseUrl: string, authToken: string) => {
+      try {
+        const url = baseUrl.replace(/\/+$/, '') + '/v1/models';
+        const res = await fetch(url, {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken ? { 'x-api-key': authToken } : {}),
+          },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, models: [] };
+        const body = await res.json();
+        // 兼容 OpenAI / LiteLLM / One API 等常见格式
+        const data: Array<{ id?: string }> = body?.data ?? [];
+        const models = data.map((m: any) => (typeof m === 'string' ? m : m.id)).filter(Boolean) as string[];
+        return { ok: true, models };
+      } catch (err: any) {
+        return { ok: false, error: err.message || String(err), models: [] };
       }
     });
 
