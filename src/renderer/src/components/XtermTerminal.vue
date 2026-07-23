@@ -41,20 +41,79 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { EventsOn, ResizeTerminal, OpenSessionTerminalSized } from '../composables/useElectron'
 import { showToast } from '../composables/useToast'
+import { useSettingsStore } from '../stores/settings'
+import { defaultTerminalConfig, type TerminalConfig, type TerminalTheme } from '../types/settings'
 
-function cssVar(name: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#000'
+const settings = useSettingsStore()
+
+/** 一次 getComputedStyle 内读全部 xterm 主题变量，合并 22 次 layout 为 1 次 */
+const THEME_VARS = [
+  ['background', '--term-bg'],
+  ['foreground', '--term-fg'],
+  ['cursor', '--term-cursor'],
+  ['selectionBackground', '--term-selection'],
+  ['selectionForeground', '--term-fg'],
+  ['selectionInactiveBackground', '--term-selection'],
+  ['black', '--term-black'],
+  ['red', '--term-red'],
+  ['green', '--term-green'],
+  ['yellow', '--term-yellow'],
+  ['blue', '--term-blue'],
+  ['magenta', '--term-magenta'],
+  ['cyan', '--term-cyan'],
+  ['white', '--term-white'],
+  ['brightBlack', '--term-bright-black'],
+  ['brightRed', '--term-bright-red'],
+  ['brightGreen', '--term-bright-green'],
+  ['brightYellow', '--term-bright-yellow'],
+  ['brightBlue', '--term-bright-blue'],
+  ['brightMagenta', '--term-bright-magenta'],
+  ['brightCyan', '--term-bright-cyan'],
+  ['brightWhite', '--term-bright-white'],
+] as const
+
+/**
+ * 同步应用 theme：setAttribute data-term-theme + 一次 getComputedStyle 读全部 22 个变量。
+ * 给 init（同步用）和 scheduleThemeSync（rAF 内用）共用，避免两处重复实现。
+ */
+function applyThemeSync(theme: TerminalTheme): Record<string, string> {
+  document.documentElement.setAttribute('data-term-theme', theme)
+  const style = getComputedStyle(document.documentElement)
+  const themeObj: Record<string, string> = {}
+  for (const [key, varName] of THEME_VARS) {
+    themeObj[key] = style.getPropertyValue(varName).trim() || '#000'
+  }
+  return themeObj
 }
 
-function syncXtermTheme(t: Terminal) {
-  t.options.theme = {
-    background: cssVar('--bg-terminal'),
-    foreground: cssVar('--text-primary'),
-    cursor: cssVar('--accent'),
-    selectionBackground: cssVar('--accent'),
-    selectionForeground: cssVar('--text-inverse'),
-    selectionInactiveBackground: cssVar('--accent-soft-border'),
+/** 等待指定字体可用。否则 fitAddon 测出来的 char width 是回退字体的，会算出错误的 cols/rows */
+async function waitForFontReady(family: string, size: number): Promise<void> {
+  if (!document.fonts?.load) return
+  // 解析 font-family 字符串，取第一个引号名作为优先字体
+  const first = family.split(',')[0].trim().replace(/^["']|["']$/g, '')
+  if (!first || first === 'monospace') return
+  try {
+    await document.fonts.load(`${size}px ${first}`)
+  } catch {
+    // 字体加载失败也不阻塞终端初始化，用回退字体也能用
   }
+}
+
+/** rAF 节流：合并同一帧内的多次 theme 同步，避免快速点击触发连续 22 次 reflow */
+let pendingThemeSync: { t: Terminal; theme: TerminalTheme } | null = null
+let themeSyncRaf = 0
+function scheduleThemeSync(t: Terminal, theme: TerminalTheme) {
+  pendingThemeSync = { t, theme }
+  if (themeSyncRaf) return
+  themeSyncRaf = requestAnimationFrame(() => {
+    themeSyncRaf = 0
+    const job = pendingThemeSync
+    pendingThemeSync = null
+    if (!job) return
+    job.t.options.theme = applyThemeSync(job.theme) as any
+    // xterm 不会自动用新 theme 重绘已有 buffer；必须显式 refresh 才能让已显示的字符换色
+    job.t.refresh(0, job.t.rows - 1)
+  })
 }
 
 const props = defineProps<{
@@ -102,15 +161,55 @@ watch(loading, (v) => {
 
 let term: Terminal | null = null
 let fitAddon: FitAddon | null = null
-let cleanupEvents: (() => void) | null = null
+let cleanupFns: (() => void)[] = []
 let resizeObserver: ResizeObserver | null = null
-let themeObserver: MutationObserver | null = null
 let renderDisposer: { dispose: () => void } | null = null
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
 let fallbackTimer: ReturnType<typeof setTimeout> | null = null
 let lastCols = 0
 let lastRows = 0
 let ptyConnected = false
+
+/** 上次应用的 TerminalConfig：避免 theme 切换时也跑 fit/refresh/IPC */
+let lastApplied: TerminalConfig | null = null
+async function applyTerminalConfig(cfg: TerminalConfig) {
+  if (!term) return
+  const prev = lastApplied
+  // theme 走节流路径：合帧内的多次切换
+  if (!prev || prev.theme !== cfg.theme) {
+    scheduleThemeSync(term, cfg.theme)
+  }
+  // **关键顺序**：必须先等新字体加载完成，再写 term.options。
+  // xterm 6.0 在 options 变化时 CharSizeService 同步 measure()，
+  // 若新字体还没就绪，measure 拿的是回退字体的 cell.width，
+  // 之后 fit() 用这个错值算 cols 就会偏小（5/6.png 现象）。
+  // 字体 ready 后写 options → xterm 内部 measure/onCharSizeChange/buffer resize 整条链路打通，
+  // buffer 自动按新 cols 重排，ANSI 颜色全保。
+  const needsRefit = !prev
+    || prev.fontSize !== cfg.fontSize
+    || prev.lineHeight !== cfg.lineHeight
+    || prev.fontFamily !== cfg.fontFamily
+  if (needsRefit) {
+    await waitForFontReady(cfg.fontFamily, cfg.fontSize)
+    if (!term) return
+  }
+  if (!prev || prev.fontSize !== cfg.fontSize) term.options.fontSize = cfg.fontSize
+  if (!prev || prev.fontFamily !== cfg.fontFamily) term.options.fontFamily = cfg.fontFamily
+  if (!prev || prev.lineHeight !== cfg.lineHeight) term.options.lineHeight = cfg.lineHeight
+  if (!prev || prev.cursorStyle !== cfg.cursorStyle) term.options.cursorStyle = cfg.cursorStyle
+  if (!prev || prev.cursorBlink !== cfg.cursorBlink) term.options.cursorBlink = cfg.cursorBlink
+  if (!prev || prev.scrollback !== cfg.scrollback) term.options.scrollback = cfg.scrollback
+  if (needsRefit) {
+    // xterm 已自动重排 buffer，这里只 fit 把 cols/rows 同步到容器 + 通知 PTY
+    fitAddon?.fit()
+    if (term && term.cols > 0 && term.rows > 0) {
+      lastCols = term.cols
+      lastRows = term.rows
+      ResizeTerminal(props.sessionId, term.cols, term.rows).catch(() => {})
+    }
+  }
+  lastApplied = { ...cfg }
+}
 
 const ctxOpen = ref(false)
 const ctxStyle = ref({ top: '0px', left: '0px' })
@@ -155,19 +254,40 @@ function selectAllTerm() {
   closeTermCtx()
 }
 
+/** Ctrl + 滚轮调节终端字号 */
+const FONT_SIZE_MIN = 10
+const FONT_SIZE_MAX = 24
+const FONT_SIZE_STEP = 1
+function clampFontSize(n: number): number {
+  return Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, Math.round(n)))
+}
+function onWheel(e: WheelEvent) {
+  if (!e.ctrlKey || !term || !settings.cfg) return
+  e.preventDefault()
+  e.stopPropagation()
+  const cur = settings.cfg.terminal.fontSize
+  const next = clampFontSize(cur + (e.deltaY < 0 ? FONT_SIZE_STEP : -FONT_SIZE_STEP))
+  if (next === cur) return
+  settings.cfg.terminal.fontSize = next
+  settings.markDirty()
+  applyTerminalConfig(settings.cfg.terminal)
+  showToast(`字号 ${next}px`, 'success')
+}
+
 async function reconnect() {
   if (!terminalEl.value || !props.visible) return
-  cleanupEvents?.()
+  for (const fn of cleanupFns) try { fn() } catch {}
+  cleanupFns = []
   resizeObserver?.disconnect()
   renderDisposer?.dispose()
   term?.dispose()
   term = null
   fitAddon = null
-  cleanupEvents = null
   resizeObserver = null
   renderDisposer = null
   lastCols = 0
   lastRows = 0
+  lastApplied = null
   exited.value = false
   loading.value = true
   ptyConnected = false
@@ -178,23 +298,33 @@ async function reconnect() {
 
 onMounted(async () => {
   if (!terminalEl.value || !props.visible) return
+  if (!settings.cfg) await settings.load()
   await initializeTerminal()
 })
 
 async function initializeTerminal() {
   if (term || !terminalEl.value) return
+  if (!settings.cfg) await settings.load()
 
   await waitForSize()
 
+  const termCfg = settings.cfg?.terminal ?? defaultTerminalConfig()
+  // 同步应用 theme：让 Terminal 创建时就拿到正确的颜色对象，避免首帧闪烁或颜色错误
+  const themeObj = applyThemeSync(termCfg.theme)
+  // 等待配置的字体加载完成再创建 Terminal，否则 fitAddon 测出来的 char 尺寸是回退字体的
+  await waitForFontReady(termCfg.fontFamily, termCfg.fontSize)
+  if (!terminalEl.value) return
   term = new Terminal({
-    cursorBlink: true,
-    fontSize: 15,
-    fontFamily: '"JetBrains Mono", "SF Mono", Menlo, Consolas, "Courier New", monospace',
+    cursorBlink: termCfg.cursorBlink,
+    cursorStyle: termCfg.cursorStyle,
+    fontSize: termCfg.fontSize,
+    fontFamily: termCfg.fontFamily,
+    lineHeight: termCfg.lineHeight,
     allowProposedApi: true,
     minimumContrastRatio: 4.5,
-    scrollback: 1000,
+    scrollback: termCfg.scrollback,
+    theme: themeObj as any,
   })
-  syncXtermTheme(term)
 
   fitAddon = new FitAddon()
   term.loadAddon(fitAddon)
@@ -202,9 +332,15 @@ async function initializeTerminal() {
 
   term.open(terminalEl.value)
 
+  // 强制 xterm renderer 用新字体重测 char size，避免 fit 拿到旧 metrics 算出错的 cols
+  ;(term as any)._core?._renderService?.onCharSizeChanged?.()
   // 等待浏览器完成布局，让 xterm 的 char size 测量和 IntersectionObserver 生效
   await new Promise((resolve) => requestAnimationFrame(resolve))
   await new Promise((resolve) => requestAnimationFrame(resolve))
+
+  // Ctrl+滚轮调字号：挂在容器上即可
+  terminalEl.value.addEventListener('wheel', onWheel, { passive: false })
+  cleanupFns.push(() => terminalEl.value?.removeEventListener('wheel', onWheel))
 
   renderDisposer = term.onRender(() => {
     if (!loading.value) return
@@ -216,10 +352,12 @@ async function initializeTerminal() {
     emit('data', data)
   })
 
-  themeObserver = new MutationObserver(() => {
-    if (term) syncXtermTheme(term)
-  })
-  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  // 监听 settings.terminal 变化（用户从设置面板修改时实时应用到 xterm）
+  cleanupFns.push(watch(
+    () => settings.cfg?.terminal,
+    (cfg) => { if (cfg && term) applyTerminalConfig(cfg) },
+    { deep: true },
+  ))
 
   resizeObserver = new ResizeObserver(() => {
     if (resizeTimer) clearTimeout(resizeTimer)
@@ -228,14 +366,14 @@ async function initializeTerminal() {
   resizeObserver.observe(terminalEl.value)
 
   const topic = `session:${props.sessionId}`
-  cleanupEvents = EventsOn(topic, (line: string) => {
+  cleanupFns.push(EventsOn(topic, (line: string) => {
     if (line === '{"type":"done"}') {
       loading.value = false
       exited.value = true
       return
     }
     term?.write(line)
-  })
+  }))
 
   // fallback 真正兜底：30s 内无可见内容则强制 reveal
   fallbackTimer = setTimeout(() => revealTerminal(), 30000)
@@ -384,19 +522,19 @@ watch(() => props.visible, (visible) => {
 
 onBeforeUnmount(() => {
   killSpinner()
-  cleanupEvents?.()
+  for (const fn of cleanupFns) try { fn() } catch {}
+  cleanupFns = []
   resizeObserver?.disconnect()
-  themeObserver?.disconnect()
   renderDisposer?.dispose()
   term?.dispose()
   term = null
   fitAddon = null
-  cleanupEvents = null
   resizeObserver = null
   renderDisposer = null
   lastCols = 0
   lastRows = 0
   ptyConnected = false
+  lastApplied = null
   if (resizeTimer) {
     clearTimeout(resizeTimer)
     resizeTimer = null
