@@ -220,6 +220,8 @@ export class App {
   ]);
   private ptyCleanups = new Map<string, (() => void) | null>();
   private recentSessionsLock = false;
+  // 待写入 recent 列表的新会话元数据：spawn 时登记，收到首个 UserPromptSubmit 时落盘
+  private pendingRecentWrites = new Map<string, { workdir: string; project: string; firstPrompt: string; botId?: string }>();
   private aiTitleRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private apiProxies: import('./apiproxy.js').Proxy[] = [];
   private watchCleanup: (() => void) | null = null;
@@ -540,6 +542,25 @@ export class App {
       const sid = evt.session_id ?? '';
       const name = evt.hook_event_name ?? evt.type ?? '';
       const toolName = evt.tool_name || (evt as any).tool || '';
+
+      // 收到首个 UserPromptSubmit 才把会话写入 recent 列表，
+      // 避免新建后未发 prompt 就关闭/重启产生 phantom session。
+      if (name === 'UserPromptSubmit' && sid && this.pendingRecentWrites.has(sid)) {
+        const meta = this.pendingRecentWrites.get(sid)!;
+        this.pendingRecentWrites.delete(sid);
+        const hookPrompt = typeof (evt as any).prompt === 'string' ? (evt as any).prompt : meta.firstPrompt;
+        addRecentSession({
+          sessionId: sid,
+          workdir: meta.workdir,
+          project: meta.project,
+          aiTitle: '',
+          firstPrompt: hookPrompt,
+          lastOpenedAt: Date.now(),
+          state: 'running',
+          botId: meta.botId,
+        }).catch((err) => getLogger().error(`[app] deferred addRecentSession failed: ${err?.message ?? err}`));
+      }
+
       getBus().emit(`hook:${sid}`, JSON.stringify(evt));
 
       // 广播结构化活动事件（供灵动岛等 UI 消费）
@@ -811,14 +832,12 @@ export class App {
       session.send(realId, prompt);
     }
     const project = workDir.split(/[\\/]/).filter(Boolean).pop() || workDir;
-    await addRecentSession({
-      sessionId: realId,
+    // 延迟到首个 UserPromptSubmit hook 再写 recent 列表，
+    // 避免新建后未发 prompt 就关闭/重启产生 phantom session（jsonl 永远不存在）。
+    this.pendingRecentWrites.set(realId, {
       workdir: workDir,
       project,
-      aiTitle: '',
       firstPrompt: prompt,
-      lastOpenedAt: Date.now(),
-      state: 'running',
       botId,
     });
     if (botId) {
@@ -1494,10 +1513,19 @@ export class App {
         this.apiProxies.push(proxy);
         const proxyUrl = `http://127.0.0.1:${proxy.port}`;
         const { args, cleanup } = createSettingsOverrideFile(proxyUrl);
-        getLogger().info(`[app:openSessionTerminal] proxyUrl=${proxyUrl} upstream=${upstream} sid=${id}`);
+        // 历史 session 重启时 jsonl 可能还没创建（用户新建后没发 prompt 就关闭），
+        // 此时 --resume 会失败并立即退出。fallback 用 --session-id 同 sid 重新拉起，
+        // 保持 id 一致；如果后续产生了消息，jsonl 会落在同一个路径上。
+        const jsonlPath = jsonl.getSessionJsonlPath(id, workDir);
+        const hasJsonl = fs.existsSync(jsonlPath);
+        const mode = hasJsonl ? PtyMode.Resume : PtyMode.New;
+        if (!hasJsonl) {
+          getLogger().warn(`[app:openSessionTerminal] jsonl missing for sid=${id} at ${jsonlPath}, fallback to PtyMode.New`);
+        }
+        getLogger().info(`[app:openSessionTerminal] proxyUrl=${proxyUrl} upstream=${upstream} sid=${id} mode=${mode}`);
         try {
           const claudeBin = (this.settingsStore.get('claude_path', '') as string) || 'claude';
-          const proc = startPty(workDir, id, claudeBin, PtyMode.Resume, {}, size, args);
+          const proc = startPty(workDir, id, claudeBin, mode, {}, size, args);
           session.setProcess(id, proc);
           proc.onExit(() => cleanup());
           this.setSessionState(id, 'running');
