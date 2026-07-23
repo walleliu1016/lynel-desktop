@@ -106,11 +106,11 @@ const availableModels = ref<string[]>([])
 const fetchingModels = ref(false)
 const activeModelField = ref('') // 当前展开下拉的 model 字段名
 
-// base_url + auth_token 都有值时自动拉取模型列表（debounce 600ms）
+// base_url + auth_token 都填写后自动拉取模型列表（debounce 600ms）
 let fetchTimer: ReturnType<typeof setTimeout> | null = null
 watch(() => [provider.value?.base_url, provider.value?.auth_token], ([url, token]) => {
   if (fetchTimer) clearTimeout(fetchTimer)
-  if (!url) { availableModels.value = []; return }
+  if (!url || !token) { availableModels.value = []; return }
   fetchTimer = setTimeout(() => fetchModels(), 600)
 })
 
