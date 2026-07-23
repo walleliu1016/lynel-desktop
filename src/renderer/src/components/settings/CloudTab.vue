@@ -19,14 +19,16 @@
 
     <div class="row">
       <label class="k">连接状态</label>
-      <div class="v status">
-        <span class="dot" />
-        <span>{{ cfg.cloud_service_enabled ? '未连接' : '未启用' }}</span>
+      <div class="v status-row">
+        <span class="dot" :class="statusClass" />
+        <span class="status-label">{{ statusText }}</span>
+        <button class="test-btn" :class="testStatus" :disabled="!cfg.cloud_service_enabled || testStatus === 'testing'" @click="onTest">
+          {{ testBtnText }}
+        </button>
       </div>
     </div>
 
     <div class="actions">
-      <button class="test" :disabled="!cfg.cloud_service_enabled" @click="onTest">测试连接</button>
       <div class="spacer" />
       <button class="cancel" :disabled="!settings.dirty" @click="settings.load">取消</button>
       <button class="save" :disabled="!settings.dirty" @click="onSave">保存</button>
@@ -35,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { onMounted, computed, ref } from 'vue'
 import Switch from '../../components/Switch.vue'
 import { useSettingsStore } from '../../stores/settings'
 
@@ -53,7 +55,10 @@ const cfg = computed(() => settings.cfg ?? (settings.cfg = {
   cloud_service_token: '',
 } as any))
 
-onMounted(() => settings.load())
+onMounted(async () => {
+  await settings.load()
+  if (cfg.value.cloud_service_enabled) onTest()
+})
 function markDirty() { settings.markDirty() }
 
 async function onSave() {
@@ -61,8 +66,46 @@ async function onSave() {
   catch (e: any) { alert('保存失败：' + (e?.message ?? e)) }
 }
 
-function onTest() {
-  // 云服务连接测试暂未开放
+const testStatus = ref<'idle' | 'testing' | 'ok' | 'fail'>('idle')
+
+const statusClass = computed(() => {
+  if (!cfg.value.cloud_service_enabled) return ''
+  if (testStatus.value === 'ok') return 'ok'
+  if (testStatus.value === 'fail') return 'fail'
+  if (testStatus.value === 'testing') return 'testing'
+  return ''
+})
+const statusText = computed(() => {
+  if (!cfg.value.cloud_service_enabled) return '未启用'
+  if (testStatus.value === 'testing') return '检测中...'
+  if (testStatus.value === 'ok') return '已连接'
+  if (testStatus.value === 'fail') return '连接失败'
+  return '未检测'
+})
+const testBtnText = computed(() => {
+  if (testStatus.value === 'testing') return '检测中...'
+  if (testStatus.value === 'ok') return '重新检测'
+  if (testStatus.value === 'fail') return '重新检测'
+  return '测试连接'
+})
+
+async function onTest() {
+  if (!cfg.value.cloud_service_url || !cfg.value.cloud_service_token) return
+  testStatus.value = 'testing'
+  try {
+    const res = await fetch(`${cfg.value.cloud_service_url.replace(/\/+$/, '')}/desktop/connect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${cfg.value.cloud_service_token}`,
+      },
+      body: JSON.stringify({ test: true }),
+      signal: AbortSignal.timeout(5000),
+    })
+    testStatus.value = res.ok ? 'ok' : 'fail'
+  } catch {
+    testStatus.value = 'fail'
+  }
 }
 </script>
 
@@ -88,12 +131,25 @@ function onTest() {
 }
 .v > input:disabled, .v > select:disabled { opacity: 0.5; }
 .v > input:focus, .v > select:focus { outline: none; border-color: var(--accent); }
-.status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-tertiary); padding: 6px 0; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); }
+.status-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.status-label { font-size: 12px; color: var(--text-tertiary); min-width: 56px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
+.dot.ok { background: #22c55e !important; box-shadow: 0 0 6px rgba(34,197,94,.4); }
+.dot.fail { background: #ef4444 !important; }
+.dot.testing { background: #f59e0b !important; animation: pulse 0.8s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.test-btn {
+  padding: 5px 16px; border-radius: var(--radius-md); font-size: 12px; font-weight: 500;
+  border: 1px solid var(--accent); color: var(--accent); background: transparent;
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.test-btn:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.test-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.test-btn.ok { border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,.06); }
+.test-btn.fail { border-color: #ef4444; color: #ef4444; background: rgba(239,68,68,.06); }
+.test-btn.testing { border-color: #f59e0b; color: #f59e0b; }
 .toggle .v { display: flex; }
 .actions { display: flex; align-items: center; gap: 8px; margin-top: 24px; }
-.test { padding: 6px 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 11px; }
-.test:hover:not(:disabled) { background: var(--border); }
 .spacer { flex: 1; }
 .save { padding: 6px 16px; background: var(--accent); color: white; border-radius: var(--radius-md); }
 .save:hover:not(:disabled) { background: var(--accent-light); }
