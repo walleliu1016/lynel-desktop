@@ -121,11 +121,14 @@ async function fetchModels() {
     const result = await FetchProviderModels(provider.value.base_url, provider.value.auth_token || '')
     if (result.ok && result.models?.length) {
       availableModels.value = result.models
+      showToast(`已获取 ${result.models.length} 个模型`, 'success', 3000)
     } else {
       availableModels.value = []
+      showToast('获取模型列表失败，请手动输入模型名称', 'error', 5000)
     }
   } catch {
     availableModels.value = []
+    showToast('获取模型列表失败，请手动输入模型名称', 'error', 5000)
   } finally {
     fetchingModels.value = false
   }
