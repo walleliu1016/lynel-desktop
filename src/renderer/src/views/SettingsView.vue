@@ -18,6 +18,7 @@
       </nav>
       <main class="content">
         <GeneralTab v-if="active === 'general'" />
+        <AppearanceTab v-else-if="active === 'appearance'" />
         <CloudTab v-else-if="active === 'cloud'" />
         <ProviderTab v-else-if="active === 'provider'" />
         <BotManagement v-else-if="active === 'bot'" />
@@ -33,6 +34,7 @@ import TitleBar from '../components/TitleBar.vue'
 import Icon from '../components/Icon.vue'
 import SettingsTabs, { type Tab } from '../components/SettingsTabs.vue'
 import GeneralTab from '../components/settings/GeneralTab.vue'
+import AppearanceTab from '../components/settings/AppearanceTab.vue'
 import CloudTab from '../components/settings/CloudTab.vue'
 import ProviderTab from '../components/settings/ProviderTab.vue'
 import BotManagement from '../components/settings/BotManagement.vue'
@@ -74,3 +76,4 @@ function goBack() { router.push('/home') }
 .port-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--status-success); flex-shrink: 0; }
 .content { flex: 1; overflow-y: auto; min-width: 0; }
 </style>
+

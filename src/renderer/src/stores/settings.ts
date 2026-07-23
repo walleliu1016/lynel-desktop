@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { Settings } from '../types/settings'
+import { defaultTerminalConfig, type Settings } from '../types/settings'
 import { GetSettings, UpdateSettings } from '../composables/useElectron'
 
 function defaultSettings(): Settings {
@@ -19,6 +19,7 @@ function defaultSettings(): Settings {
     push_thinking: false,
     push_tool_calls: false,
     prevent_sleep: false,
+    terminal: defaultTerminalConfig(),
   }
 }
 
@@ -32,7 +33,14 @@ export const useSettingsStore = defineStore('settings', () => {
     if (raw && (raw.theme as string) === 'oled-dark') {
       raw.theme = 'light-pro'
     }
-    cfg.value = { ...defaultSettings(), ...(raw || {}) }
+    const merged: Settings = { ...defaultSettings(), ...(raw || {}) }
+    // 兼容老版本：缺 terminal 字段时填默认
+    if (!raw?.terminal || typeof raw.terminal !== 'object') {
+      merged.terminal = defaultTerminalConfig()
+    } else {
+      merged.terminal = { ...defaultTerminalConfig(), ...raw.terminal }
+    }
+    cfg.value = merged
     dirty.value = false
   }
 

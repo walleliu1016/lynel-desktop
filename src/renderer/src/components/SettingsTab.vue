@@ -11,6 +11,7 @@
     </nav>
     <main class="content">
       <GeneralTab v-if="active === 'general'" />
+      <AppearanceTab v-else-if="active === 'appearance'" />
       <CloudTab v-else-if="active === 'cloud'" />
       <ProviderTab v-else-if="active === 'provider'" />
       <BotManagement v-else-if="active === 'bot'" />
@@ -22,6 +23,7 @@
 import { ref, onMounted } from 'vue'
 import SettingsTabs, { type Tab } from './SettingsTabs.vue'
 import GeneralTab from './settings/GeneralTab.vue'
+import AppearanceTab from './settings/AppearanceTab.vue'
 import CloudTab from './settings/CloudTab.vue'
 import ProviderTab from './settings/ProviderTab.vue'
 import BotManagement from './settings/BotManagement.vue'
