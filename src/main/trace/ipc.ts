@@ -120,7 +120,7 @@ export function registerTraceIpc(): void {
           session: sessionId,
           seq: ex.seq,
           ts: ex.ts,
-          model: ex.model,
+          model: ex.model ?? undefined,
           usage: ex.reassembled?.usage,
           cost: ex.cost,
         });
