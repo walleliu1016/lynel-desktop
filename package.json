@@ -5,7 +5,8 @@
   "main": "dist-electron/src/main/index.js",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:electron\" \"npm run dev:app\"",
+    "dev": "node scripts/dev-cleanup.mjs && concurrently --kill-others-on-fail \"npm run dev:frontend\" \"npm run dev:electron\" \"npm run dev:app\"",
+    "dev:stop": "node scripts/dev-cleanup.mjs",
     "dev:frontend": "cd src/renderer && vite",
     "dev:electron": "tsc --watch",
     "dev:app": "wait-on http://localhost:5173 && electron .",
