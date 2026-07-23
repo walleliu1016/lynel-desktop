@@ -42,6 +42,7 @@ vi.mock('@xterm/xterm', () => ({
       },
       write: (line: string) => { written += line },
       writeln: vi.fn(),
+      refresh: vi.fn(),
       resize: vi.fn(),
       focus: vi.fn(),
       dispose: vi.fn(),

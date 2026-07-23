@@ -8,6 +8,22 @@ export interface Session {
   state: SessionState;
   process: PtyProcess | null;
   lastHookAt: number;
+  buffer: string;
+}
+
+const MAX_BUFFER = 65536
+
+export function appendBuffer(id: string, data: string): void {
+  const s = sessions.get(id)
+  if (!s) return
+  s.buffer += data
+  if (s.buffer.length > MAX_BUFFER) {
+    s.buffer = s.buffer.slice(s.buffer.length - MAX_BUFFER)
+  }
+}
+
+export function getBuffer(id: string): string {
+  return sessions.get(id)?.buffer ?? ''
 }
 
 const sessions = new Map<string, Session>();
@@ -24,6 +40,7 @@ export function newSession(id: string, workDir: string): Session {
     state: 'idle',
     process: null,
     lastHookAt: 0,
+    buffer: '',
   };
 }
 

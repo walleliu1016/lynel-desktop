@@ -32,7 +32,7 @@
       <label class="form-label">开关</label>
       <div class="switch-list">
         <label class="switch-row">
-          <span class="switch-label">自动允许 Bash 执行</span>
+          <span class="switch-label">自动允许工具调用</span>
           <Switch v-model="cfg.auto_allow_bash" @change="markDirty" />
         </label>
         <label class="switch-row">

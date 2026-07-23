@@ -1383,6 +1383,7 @@ export class App {
     let exited = false;
     const onData = (data: string) => {
       getBus().emit(`session:${id}`, data);
+      session.appendBuffer(id, data);
     };
     const onExit = (code: number) => {
       if (exited) return;
@@ -1410,6 +1411,11 @@ export class App {
     const s = session.lookup(id)!;
     if (s.process) {
       getLogger().info(`[app:openSessionTerminal] pty already running for sid=${id}`);
+      const buf = session.getBuffer(id);
+      if (buf) {
+        // 回放缓冲内容到前端，避免新 xterm 实例白屏等待
+        getBus().emit(`session:${id}`, buf);
+      }
       return Promise.resolve(true);
     }
     const upstream = resolveAnthropicBaseUrl();

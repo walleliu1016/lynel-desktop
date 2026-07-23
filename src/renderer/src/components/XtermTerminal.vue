@@ -247,12 +247,21 @@ async function initializeTerminal() {
     forceViewportSync()
     const ptyExisted = await OpenSessionTerminalSized(props.sessionId, props.workdir, term.cols, term.rows)
     ptyConnected = true
+
+    // 强制刷新以触发 onRender（此时 ptyConnected 已为 true，可以正确检查 buffer）
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    term?.refresh(0, term.rows - 1)
+
     if (ptyExisted) {
-      revealTerminal()
+      // 重连已有 PTY：新 xterm buffer 为空，PTY 可能空闲无新输出
+      // 缩短 fallback 到 5s，onRender 会在数据到达时自动 reveal
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer)
+        fallbackTimer = null
+      }
+      fallbackTimer = setTimeout(() => revealTerminal(), 5000)
     } else {
-      // 新建 PTY：IPC 期间可能已有数据写入 xterm 但 onRender 被 ptyConnected=false 拦截，
-      // 主动检查一次 buffer，有可见内容则立即 reveal，否则等下次 onRender 或 fallback
-      await new Promise((resolve) => requestAnimationFrame(resolve))
+      // 新建 PTY：IPC 期间可能已有数据写入 xterm，主动检查 buffer
       if (bufferHasVisibleContent()) revealTerminal()
     }
   } catch (e: any) {
