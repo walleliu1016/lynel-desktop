@@ -12,6 +12,7 @@ import { permissionBroker, PermissionRequest } from '../permission-broker.js';
 import { buildPermissionCard, buildAskQuestionCard } from './wecom-cards/card-builder.js';
 import { WeComCardStore } from './wecom-cards/card-store.js';
 import { WeComCardEventHandler, type TemplateCardEventFrame } from './wecom-cards/event-handler.js';
+import { renderBufferToPng } from '../terminal-screenshot.js';
 
 const logger = getLogger().scope('wecom-channel');
 
@@ -24,6 +25,8 @@ const CONTROL_COMMANDS: Record<string, string> = {
   '/esc': '\x1b',
   '/ctrl-d': '\x04', // Ctrl+D → EOF
   '/ctrl-z': '\x1a', // Ctrl+Z → SIGTSTP
+  '/screenshot': '__screenshot__',
+  '/help': '__help__',
 };
 
 export interface WeComChannelConfig {
@@ -348,28 +351,28 @@ export class WeComChannel implements OutputChannel, HookChannel {
           const cleanText = ev.text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>\s*/g, '').trim();
           if (!cleanText) break;
           if (/^\[[A-Z][A-Z _-]*MODE\s*:/.test(cleanText)) break;
-          const content = `${header}\n---\n\n👤 **用户**\n\n${cleanText}`;
+          const content = this.buildMessage(header, '👤 **用户**', cleanText);
           this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] user text send failed:', e));
         } else if (event.role === 'agent') {
-          const prefix = ev.thinking ? '💭 **思考**' : '🤖 **Claude**';
-          const content = `${header}\n---\n\n${prefix}\n\n${ev.text}`;
+          const prefix = ev.thinking ? '💭 **思考**' : '🤖 **Agent**';
+          const content = this.buildMessage(header, prefix, ev.text);
           this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] agent text send failed:', e));
         }
         break;
       }
       case 'tool-call-start': {
         const argsStr = this.formatToolArgs(ev.args);
-        const content = `${header}\n---\n\n🔧 **${ev.name}**${argsStr}`;
+        const content = this.buildMessage(header, `🔧 **${ev.name}**`, '') + argsStr;
         this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] tool-call-start send failed:', e));
         break;
       }
       case 'tool-call-end': {
         const resultStr = ev.result ? this.formatToolResult(ev.result, !!ev.is_error) : '';
         if (ev.is_error) {
-          const content = `${header}\n---\n\n❌ **工具执行失败**：${ev.error ?? '未知错误'} (${ev.call})${resultStr}`;
+          const content = this.buildMessage(header, '❌ **工具执行失败**', `${ev.error ?? '未知错误'} (${ev.call})`) + resultStr;
           this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] tool-call-end send failed:', e));
         } else {
-          const content = `${header}\n---\n\n✅ **工具执行完成** (${ev.call})${resultStr}`;
+          const content = this.buildMessage(header, '✅ **工具执行完成**', `(${ev.call})`) + resultStr;
           this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] tool-call-end send failed:', e));
         }
         break;
@@ -378,7 +381,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
         // 不需要推送给用户，忽略
         break;
       case 'service': {
-        const content = `${header}\n---\n\n⚠️ **系统通知**\n\n${ev.text}`;
+        const content = this.buildMessage(header, '⚠️ **系统通知**', ev.text);
         this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] service send failed:', e));
         break;
       }
@@ -425,10 +428,10 @@ export class WeComChannel implements OutputChannel, HookChannel {
       if (p?.source === 'wecom') return;
       const header = this.formatSessionHeader(event.sessionId) ?? '';
       if (p?.source === 'terminal') {
-        this.sendContent(`${header}\n---\n\n✅ **权限已在终端处理**`, event.sessionId).catch(() => {});
+        this.sendContent(this.buildMessage(header, '✅ **权限已在终端处理**', ''), event.sessionId).catch(() => {});
       } else {
         const src = p?.source === 'notch' ? '桌面端' : '终端';
-        this.sendContent(`${header}\n---\n\n✅ **权限已处理: ${p?.decision}** (${src})`, event.sessionId).catch(() => {});
+        this.sendContent(this.buildMessage(header, `✅ **权限已处理: ${p?.decision}**`, `(${src})`), event.sessionId).catch(() => {});
       }
       return;
     }
@@ -436,7 +439,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
     // SessionEnd 降级为 Markdown
     if (event.kind === 'SessionEnd') {
       const header = this.formatSessionHeader(event.sessionId) ?? '';
-      this.sendContent(`${header}\n---\n\n📌 **会话结束**`, event.sessionId).catch(() => {});
+      this.sendContent(this.buildMessage(header, '📌 **会话结束**', ''), event.sessionId).catch(() => {});
       return;
     }
   }
@@ -566,7 +569,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
         return `**${i + 1}. ${q.question}**${q.multiSelect ? '（多选）' : ''}\n${opts}`;
       })
       .join('\n');
-    const intro = `${header}\n---\n\n**Claude 向你提了 ${questions.length} 个问题：**\n${questionsList}\n\n将逐一发送卡片，请依次作答。`;
+    const intro = `${header}\n---\n\n**Agent 向你提了 ${questions.length} 个问题：**\n${questionsList}\n\n将逐一发送卡片，请依次作答。`;
     await this.sendContent(intro, event.sessionId);
 
     // 暂存剩余卡片，发送第一张
@@ -775,7 +778,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
               const tag = q.multiSelect ? '（多选）' : '';
               return `- **${q.question}**${tag}：${value}`;
             });
-            const summary = `已收集全部回答，已回复 Claude：\n${lines.join('\n')}`;
+            const summary = `已收集全部回答，已回复 Agent：\n${lines.join('\n')}`;
             await this.sendCardReplyWithHeader(chatId, summary, requestId);
           },
         },
@@ -817,6 +820,13 @@ export class WeComChannel implements OutputChannel, HookChannel {
     return undefined;
   }
 
+  private resolveBotForChat(chatId: string): BotConnectionState | undefined {
+    let entry = this.currentBotId ? this.botPool.get(this.currentBotId) : undefined;
+    if (!entry) entry = this.resolveBotByChatId(chatId);
+    if (!entry) entry = this.resolveBot();
+    return entry;
+  }
+
   private handleInboundMessage(frame: any, botId?: string): void {
     this.currentBotId = botId;
     logger.info('[wecom-channel] inbound frame received');
@@ -846,6 +856,9 @@ export class WeComChannel implements OutputChannel, HookChannel {
       return;
     }
     logger.info(`[wecom-channel] after strip text=${text}`);
+
+    // 去除末尾换行，确保 session.send 始终追加 \r
+    text = text.replace(/[\r\n]+$/, '');
 
     // 控制指令拦截：/interrupt、/escape 等 → 发送原始控制字符到 PTY
     const controlChar = CONTROL_COMMANDS[text];
@@ -928,6 +941,15 @@ export class WeComChannel implements OutputChannel, HookChannel {
     command: string,
     controlChar: string,
   ): Promise<void> {
+    if (controlChar === '__screenshot__') {
+      await this.handleScreenshot(chatId, body);
+      return;
+    }
+    if (controlChar === '__help__') {
+      await this.handleHelp(chatId);
+      return;
+    }
+
     // 解析目标 session（复用引用路由 + 默认路由逻辑）
     let sessionId: string | undefined;
     const quoteRouting = this.resolveSessionFromQuote(body);
@@ -970,6 +992,106 @@ export class WeComChannel implements OutputChannel, HookChannel {
     } catch (err) {
       logger.error(`[wecom-channel] failed to send control char for ${command}:`, err);
       await this.sendWeComReply(chatId, `发送 ${command} 失败`);
+    }
+  }
+
+  private async handleHelp(chatId: string): Promise<void> {
+    const entry = this.resolveBotForChat(chatId);
+    if (!entry?.wsClient) {
+      await this.sendWeComReply(chatId, 'Bot 未连接。');
+      return;
+    }
+
+    const help = [
+      '## 快捷指令',
+      '',
+      '| 指令 | 作用 |',
+      '|------|------|',
+      '| `/interrupt` `/ctrl-c` `/ctrl+c` | 中断 Agent 当前生成 |',
+      '| `/escape` `/esc` | 发送 Esc 键 |',
+      '| `/ctrl-d` | 发送 Ctrl+D（EOF） |',
+      '| `/ctrl-z` | 发送 Ctrl+Z（SIGTSTP） |',
+      '| `/screenshot` | 截取当前终端画面 |',
+      '| `/help` | 显示本帮助 |',
+      '',
+      '## 常见操作',
+      '',
+      '- 直接发送文本消息，自动转发给当前绑定的 Agent',
+      '- 权限审批：收到卡片后点击 **允许** / **拒绝**',
+      '- 选择题：单选或多选后点击 **提交**',
+    ].join('\n');
+
+    const time = this.formatTime();
+    const msg = `**Lynel Desktop** · 使用帮助\n\n> ${time} | /help\n\n${help}`;
+    try {
+      await entry.wsClient.sendMessage(chatId, { msgtype: 'markdown', markdown: { content: msg } });
+      logger.info(`[wecom-channel] help sent to chatId=${chatId}`);
+    } catch (err: any) {
+      logger.error('[wecom-channel] help send failed:', err);
+    }
+  }
+
+  private async handleScreenshot(chatId: string, body: any): Promise<void> {
+    let sessionId: string | undefined;
+    const quoteRouting = this.resolveSessionFromQuote(body);
+    if (quoteRouting && !('error' in quoteRouting)) {
+      sessionId = quoteRouting.id;
+    }
+    if (!sessionId && this.currentBotId) {
+      for (const [sid, bid] of this.sessionBotMap) {
+        if (bid === this.currentBotId) { sessionId = sid; break; }
+      }
+    }
+    if (!sessionId) {
+      const mapping = getMapping(chatId);
+      if (mapping) sessionId = mapping.sessionId;
+      else sessionId = this.chatIdToSession.get(chatId) || this.lastActiveSession.get(chatId);
+    }
+
+    if (!sessionId) {
+      await this.sendWeComReply(chatId, '当前没有绑定会话，无法截图。');
+      return;
+    }
+
+    const s = session.lookup(sessionId);
+    if (!s) {
+      await this.sendWeComReplyWithHeader(chatId, '会话不存在或已关闭。', sessionId);
+      return;
+    }
+
+    const raw = session.getBuffer(sessionId);
+    if (!raw) {
+      await this.sendWeComReplyWithHeader(chatId, '终端暂无内容。', sessionId);
+      return;
+    }
+
+    const size = session.getSize(sessionId);
+    const rawLen = raw.length;
+    const rawTail = raw.slice(-200).replace(/\x1b/g, '<ESC>').replace(/\r/g, '<R>').replace(/\n/g, '<N>');
+    logger.info(`[wecom-channel] screenshot cols=${size?.cols} rawLen=${rawLen} rawTail=${rawTail}`);
+
+    let pngBuf: Buffer;
+    try {
+      pngBuf = await renderBufferToPng(raw, { cols: size?.cols, rows: size?.rows });
+    } catch (err: any) {
+      logger.error('[wecom-channel] screenshot render failed:', err);
+      await this.sendWeComReplyWithHeader(chatId, `截图渲染失败: ${err.message}`, sessionId);
+      return;
+    }
+
+    const entry = this.resolveBotForChat(chatId);
+    if (!entry?.wsClient) {
+      await this.sendWeComReplyWithHeader(chatId, 'Bot 未连接。', sessionId);
+      return;
+    }
+
+    try {
+      const uploadResult = await entry.wsClient.uploadMedia(pngBuf, { type: 'image', filename: 'screenshot.png' });
+      await entry.wsClient.sendMediaMessage(chatId, 'image', uploadResult.media_id);
+      logger.info(`[wecom-channel] screenshot sent for session ${sessionId.slice(0, 8)} chatId=${chatId}`);
+    } catch (err: any) {
+      logger.error('[wecom-channel] screenshot upload/send failed:', err);
+      await this.sendWeComReplyWithHeader(chatId, `截图发送失败: ${err.message}`, sessionId);
     }
   }
 
@@ -1067,7 +1189,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
   /** 发送文本反馈，自动带上指定会话的头部（如果找得到会话）。 */
   private async sendWeComReplyWithHeader(chatId: string, text: string, sessionId?: string): Promise<void> {
     const header = sessionId ? this.formatSessionHeader(sessionId) : undefined;
-    const fullText = header ? `${header}\n---\n\n${text}` : text;
+    const fullText = header ? `${header}\n\n> ${this.formatTime()} ${text}` : text;
     await this.sendWeComReply(chatId, fullText);
   }
 
@@ -1088,6 +1210,17 @@ export class WeComChannel implements OutputChannel, HookChannel {
 
   private formatHeader(event: { sessionId: string }, _msgSeq: number): string {
     return this.formatSessionHeader(event.sessionId) ?? '';
+  }
+
+  private formatTime(): string {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  }
+
+  private buildMessage(header: string, role: string, body: string): string {
+    const quotedBody = body ? '\n\n' + body.split('\n').map((l) => `> ${l}`).join('\n') : '';
+    return `${header}\n\n${role} ${this.formatTime()}\n**━━━━━━━━━━━━━━━━**${quotedBody}`;
   }
 
   private formatToolInputPreview(input: unknown): string {
@@ -1179,16 +1312,16 @@ export class WeComChannel implements OutputChannel, HookChannel {
   private formatPermissionRequest(header: string, toolName: string, input: unknown): string {
     const preview = this.formatToolInputPreview(input);
     const inputBlock = preview ? `\n\`\`\`\n${preview}\n\`\`\`` : '';
-    return `${header}\n---\n\n**权限请求：${toolName}**${inputBlock}`;
+    return `${header}\n\n🔐 **权限请求：${toolName}** ${this.formatTime()}\n**━━━━━━━━━━━━━━━━**${inputBlock}`;
   }
 
   private formatAskUserQuestion(header: string, input: unknown): string {
     const questions = this.parseAskQuestions(input);
     if (questions.length === 0) {
-      return `${header}\n---\n\n**Claude 向你提问**`;
+      return `${header}\n\n❓ **Agent 向你提问** ${this.formatTime()}\n**━━━━━━━━━━━━━━━━**`;
     }
 
-    const lines: string[] = ['', '**Claude 向你提问：**', ''];
+    const lines: string[] = ['', '**Agent 向你提问：**', ''];
     questions.forEach((q, idx) => {
       lines.push(`${idx + 1}. ${q.header || q.question}`);
       if (q.question && q.header && q.header !== q.question) {
@@ -1205,7 +1338,9 @@ export class WeComChannel implements OutputChannel, HookChannel {
       lines.push('');
     });
 
-    return `${header}\n---\n\n${lines.join('\n')}`;
+    const body = lines.slice(2).join('\n');
+    const quotedBody = body ? '\n\n' + body.split('\n').map((l) => `> ${l}`).join('\n') : '';
+    return `${header}\n\n❓ **Agent 向你提问：** ${this.formatTime()}\n**━━━━━━━━━━━━━━━━**${quotedBody}`;
   }
 
   private parseAskQuestions(input: unknown): AskQuestion[] {
