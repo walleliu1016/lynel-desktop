@@ -70,6 +70,12 @@ vi.mock('@xterm/addon-web-links', () => ({
   }),
 }))
 
+vi.mock('@xterm/addon-serialize', () => ({
+  SerializeAddon: vi.fn(function SerializeAddon() {
+    return { serialize: vi.fn(() => ''), dispose: vi.fn() }
+  }),
+}))
+
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
 
 vi.mock('../composables/useElectron', () => ({

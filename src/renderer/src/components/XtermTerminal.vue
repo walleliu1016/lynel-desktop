@@ -38,6 +38,7 @@ import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { SerializeAddon } from '@xterm/addon-serialize'
 import '@xterm/xterm/css/xterm.css'
 import { EventsOn, ResizeTerminal, OpenSessionTerminalSized, ClipboardWrite } from '../composables/useElectron'
 import { showToast } from '../composables/useToast'
@@ -161,6 +162,7 @@ watch(loading, (v) => {
 
 let term: Terminal | null = null
 let fitAddon: FitAddon | null = null
+let serializeAddon: SerializeAddon | null = null
 let cleanupFns: (() => void)[] = []
 let resizeObserver: ResizeObserver | null = null
 let renderDisposer: { dispose: () => void } | null = null
@@ -179,17 +181,31 @@ async function applyTerminalConfig(cfg: TerminalConfig) {
   if (!prev || prev.theme !== cfg.theme) {
     scheduleThemeSync(term, cfg.theme)
   }
-  // **关键顺序**：必须先等新字体加载完成，再写 term.options。
-  // xterm 6.0 在 options 变化时 CharSizeService 同步 measure()，
-  // 若新字体还没就绪，measure 拿的是回退字体的 cell.width，
-  // 之后 fit() 用这个错值算 cols 就会偏小（5/6.png 现象）。
-  // 字体 ready 后写 options → xterm 内部 measure/onCharSizeChange/buffer resize 整条链路打通，
-  // buffer 自动按新 cols 重排，ANSI 颜色全保。
+  // 需要触发 refit 的配置变化（影响 cell 尺寸 → cols）：
+  //   - fontSize / fontFamily / lineHeight 改变
+  //   - 首次进入（prev 为 null）
   const needsRefit = !prev
     || prev.fontSize !== cfg.fontSize
     || prev.lineHeight !== cfg.lineHeight
     || prev.fontFamily !== cfg.fontFamily
+  // 在改字体前先把 buffer 序列化成字符串（含 FG/BG/attrs 的 ANSI 转义码）。
+  // SerializeAddon 的输出规则：硬换行输出 \r\n，软换行（isWrapped=true）不输出分隔符。
+  // 所以写回新 cols 的终端时，原本按旧 cols 折行的内容会被新 cols 自动重新 wrap，
+  // 颜色和属性也通过 ANSI 码原样保留。这绕开了 xterm 6.0 内置 reflow 在 buffer resize 时
+  // 不重排老内容的问题（实测 3/5/6.png 现象）。
+  let savedSnapshot = ''
   if (needsRefit) {
+    try {
+      savedSnapshot = serializeAddon?.serialize() ?? ''
+    } catch (err) {
+      // 序列化失败不能阻塞字体切换；记日志后走无 reflow 路径
+      console.warn('[XtermTerminal] SerializeAddon.serialize failed:', err)
+      savedSnapshot = ''
+    }
+  }
+  if (needsRefit) {
+    // **关键顺序**：先等新字体加载完成再写 term.options，否则 xterm 的 CharSizeService
+    // 同步 measure 时会拿到回退字体的 metrics，把 cell.width 锁死。
     await waitForFontReady(cfg.fontFamily, cfg.fontSize)
     if (!term) return
   }
@@ -200,13 +216,17 @@ async function applyTerminalConfig(cfg: TerminalConfig) {
   if (!prev || prev.cursorBlink !== cfg.cursorBlink) term.options.cursorBlink = cfg.cursorBlink
   if (!prev || prev.scrollback !== cfg.scrollback) term.options.scrollback = cfg.scrollback
   if (needsRefit) {
-    // xterm 已自动重排 buffer，这里只 fit 把 cols/rows 同步到容器 + 通知 PTY
+    // 清空老 buffer：旧 cell 已经按旧 cols 摆放，必须丢掉
+    term.reset()
+    // fit 重新计算 cols/rows（依赖新字体已加载）
     fitAddon?.fit()
     if (term && term.cols > 0 && term.rows > 0) {
       lastCols = term.cols
       lastRows = term.rows
       ResizeTerminal(props.sessionId, term.cols, term.rows).catch(() => {})
     }
+    // 写回序列化的内容：xterm 会按新 cols 自动 wrap
+    if (savedSnapshot) term.write(savedSnapshot)
   }
   lastApplied = { ...cfg }
 }
@@ -282,9 +302,11 @@ async function reconnect() {
   cleanupFns = []
   resizeObserver?.disconnect()
   renderDisposer?.dispose()
+  serializeAddon?.dispose()
   term?.dispose()
   term = null
   fitAddon = null
+  serializeAddon = null
   resizeObserver = null
   renderDisposer = null
   lastCols = 0
@@ -331,6 +353,10 @@ async function initializeTerminal() {
   fitAddon = new FitAddon()
   term.loadAddon(fitAddon)
   term.loadAddon(new WebLinksAddon())
+  // SerializeAddon：用于字体/字号切换时把老 buffer（含 ANSI 颜色）序列化出来，
+  // reset + 重写时由新 cols 自动重新 wrap。
+  serializeAddon = new SerializeAddon()
+  term.loadAddon(serializeAddon)
 
   term.open(terminalEl.value)
 
@@ -528,9 +554,11 @@ onBeforeUnmount(() => {
   cleanupFns = []
   resizeObserver?.disconnect()
   renderDisposer?.dispose()
+  serializeAddon?.dispose()
   term?.dispose()
   term = null
   fitAddon = null
+  serializeAddon = null
   resizeObserver = null
   renderDisposer = null
   lastCols = 0
