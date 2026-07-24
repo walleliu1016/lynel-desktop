@@ -43,7 +43,7 @@ import { useSettingsStore } from '../../stores/settings'
 
 const settings = useSettingsStore()
 const cfg = computed(() => settings.cfg ?? (settings.cfg = {
-  theme: 'dark-pro',
+  theme: 'light',
   claude_path: '',
   auto_allow_bash: false,
   log_enabled: false,

@@ -29,7 +29,7 @@ Lynel Desktop 把这三件事变成一个 native 窗口，同时保留 `claude -
 - **本地文件通道** — 阶段事件写入本地 JSONL/JSON
 - **Hook 编辑器** — 13 类 Claude hooks 表单配置，自动备份
 - **Trace 面板** — 实时 API 请求列表，含状态、模型、延迟、费用
-- **主题切换** — dark-pro / light-pro 两种主题
+- **浅色主题** — 红蓝配色的现代浅色风格
 
 ## 安装
 

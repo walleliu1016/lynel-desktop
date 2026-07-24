@@ -5,7 +5,7 @@ import { GetSettings, UpdateSettings } from '../composables/useElectron'
 
 function defaultSettings(): Settings {
   return {
-    theme: 'light-pro',
+    theme: 'light',
     claude_path: '',
     auto_allow_bash: false,
     log_enabled: false,
@@ -29,9 +29,9 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function load() {
     const raw = (await GetSettings()) as Partial<Settings> | null
-    // OLED 暗色主题已下线，迁移到默认浅色主题
-    if (raw && (raw.theme as string) === 'oled-dark') {
-      raw.theme = 'light-pro'
+    // 兼容老版本：dark-pro / oled-dark 已下线，统一迁移到 light
+    if (raw && (raw.theme as string) !== 'light') {
+      raw.theme = 'light'
     }
     const merged: Settings = { ...defaultSettings(), ...(raw || {}) }
     // 兼容老版本：缺 terminal 字段时填默认

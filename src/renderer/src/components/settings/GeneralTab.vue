@@ -3,14 +3,6 @@
     <h2>通用设置</h2>
 
     <div class="form-group">
-      <label class="form-label">主题</label>
-      <select class="form-select" v-model="cfg.theme" @change="onThemeChange">
-        <option value="dark-pro">深色专业</option>
-        <option value="light-pro">浅色（红蓝）</option>
-      </select>
-    </div>
-
-    <div class="form-group">
       <label class="form-label">Claude CLI 路径</label>
       <input class="form-input" v-model="cfg.claude_path" @change="markDirty" placeholder="留空使用 PATH 中的 claude" />
       <p class="form-hint">自定义 Claude 可执行文件路径。留空则自动查找 PATH。</p>
@@ -84,7 +76,7 @@ import { showToast } from '../../composables/useToast'
 
 const settings = useSettingsStore()
 const cfg = computed(() => settings.cfg ?? (settings.cfg = {
-  theme: 'light-pro',
+  theme: 'light',
   claude_path: '',
   auto_allow_bash: false,
   log_enabled: false,
@@ -102,15 +94,6 @@ const cfg = computed(() => settings.cfg ?? (settings.cfg = {
 
 onMounted(() => settings.load())
 function markDirty() { settings.markDirty() }
-
-function onThemeChange() {
-  markDirty()
-  const theme = cfg.value?.theme
-  if (theme) {
-    document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem('lynel-desktop-theme', theme)
-  }
-}
 
 async function onSave() {
   try {
