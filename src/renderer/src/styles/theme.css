@@ -44,6 +44,10 @@
   --scrollbar-thumb: #d1d5db;
   --scrollbar-thumb-hover: #9ca3af;
 
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
   --shadow-window: 0 8px 32px rgba(13, 24, 41, 0.12);
   --shadow-accent: 0 4px 14px var(--accent-glow);
   --shadow-panel: 0 0 0 1px var(--border), 0 2px 6px rgba(13, 24, 41, 0.04);

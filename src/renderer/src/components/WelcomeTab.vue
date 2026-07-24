@@ -21,15 +21,30 @@
       <div class="recent-section">
         <div class="section-header">
           <div class="section-title">Recent Sessions</div>
-          <span v-if="recent.recentSessions.length" class="count">{{ recent.recentSessions.length }}</span>
+          <span v-if="recent.recentSessions.length" class="count">{{ recentSearchText ? `${filteredRecent.length} / ${recent.recentSessions.length}` : recent.recentSessions.length }}</span>
         </div>
         <div v-if="recent.loading" class="loading">加载中...</div>
-        <RecentSessionList
-          v-else
-          :list="recent.recentSessions"
-          :limit="6"
-          @select="$emit('open-recent', $event)"
-        />
+        <template v-else>
+          <div class="recent-search">
+            <Icon name="search" :size="12" class="search-icon" />
+            <input
+              v-model="recentSearchText"
+              class="search-input"
+              placeholder="搜索（项目 / 标题 / 目录）"
+              @keydown.escape="recentSearchText = ''"
+            />
+            <button v-if="recentSearchText" class="search-clear" aria-label="清除搜索" title="清除搜索" @click="recentSearchText = ''">
+              <Icon name="close" :size="12" />
+            </button>
+          </div>
+          <div v-if="!filteredRecent.length" class="loading">{{ recentSearchText ? '无匹配结果' : '暂无历史会话' }}</div>
+          <RecentSessionList
+            v-else
+            :list="filteredRecent"
+            :limit="6"
+            @select="$emit('open-recent', $event)"
+          />
+        </template>
       </div>
     </div>
   </div>
@@ -40,9 +55,11 @@ import { onMounted } from 'vue'
 import Icon from './Icon.vue'
 import RecentSessionList from './RecentSessionList.vue'
 import { useRecentStore } from '../stores/recent'
+import { useRecentSessionSearch } from '../composables/useRecentSessionSearch'
 import type { RecentSession } from '../types/recent'
 
 const recent = useRecentStore()
+const { search: recentSearchText, filtered: filteredRecent } = useRecentSessionSearch()
 
 defineEmits<{
   create: []
@@ -163,4 +180,48 @@ onMounted(() => {
   font-size: 12px;
   color: var(--text-secondary);
 }
+.recent-search {
+  position: relative;
+  margin-bottom: 10px;
+}
+.recent-search .search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.recent-search .search-input {
+  width: 100%;
+  height: 32px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0 28px 0 30px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.recent-search .search-input:focus { border-color: var(--accent); }
+.recent-search .search-input::placeholder { color: var(--text-tertiary); }
+.recent-search .search-clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+.recent-search .search-clear:hover { background: var(--border); color: var(--text-primary); }
 </style>
