@@ -26,13 +26,30 @@
       <div class="body">
         <div v-if="tab === 'history'" class="tab-panel">
           <div v-if="recent.loading" class="empty">加载中…</div>
-          <div v-else-if="!recent.recentSessions.length" class="empty">暂无历史会话</div>
-          <RecentSessionList
-            v-else
-            :list="recent.recentSessions"
-            :limit="10"
-            @select="onRecent"
-          />
+          <template v-else>
+            <div v-if="recent.recentSessions.length" class="history-search">
+              <Icon name="search" :size="12" class="search-icon" />
+              <input
+                v-model="historySearch"
+                class="search-input"
+                placeholder="搜索历史会话（项目 / 标题 / 目录）"
+                @keydown.escape="historySearch = ''"
+              />
+              <button v-if="historySearch" class="search-clear" aria-label="清除搜索" title="清除搜索" @click="historySearch = ''">
+                <Icon name="close" :size="12" />
+              </button>
+            </div>
+            <div v-if="recent.recentSessions.length" class="count-row">
+              <span>{{ historySearch ? `${filteredRecentSessions.length} / ${recent.recentSessions.length}` : `共 ${recent.recentSessions.length} 个` }}</span>
+            </div>
+            <div v-if="!filteredRecentSessions.length" class="empty">{{ historySearch ? '无匹配结果' : '暂无历史会话' }}</div>
+            <RecentSessionList
+              v-else
+              :list="filteredRecentSessions"
+              :limit="10"
+              @select="onRecent"
+            />
+          </template>
         </div>
         <form v-else @submit.prevent="onSubmit" class="tab-panel new-form">
           <div class="form-group">
@@ -117,6 +134,19 @@ const flagsOpen = ref(false)
 const selectedFlags = ref<string[]>([])
 const selectedBot = ref('')
 const botOptions = computed(() => botsStore.bots)
+const historySearch = ref('')
+
+// 历史会话按项目 / 标题 / 目录模糊匹配
+const filteredRecentSessions = computed(() => {
+  const q = historySearch.value.trim().toLowerCase()
+  if (!q) return recent.recentSessions
+  return recent.recentSessions.filter((s) => {
+    const pn = s.project.toLowerCase()
+    const wd = s.workdir.toLowerCase()
+    const title = (s.userTitle || s.firstPrompt || s.aiTitle || '').toLowerCase()
+    return pn.includes(q) || wd.includes(q) || title.includes(q)
+  })
+})
 
 function isBotAvailable(botId: string): boolean {
   const sessionId = sessions.botBindings[botId] || sessions.sessionBots[botId]
@@ -144,6 +174,7 @@ watch(() => props.open, (isOpen) => {
     selectedFlags.value = []
     selectedBot.value = ''
     flagsOpen.value = false
+    historySearch.value = ''
     tab.value = recent.recentSessions.length ? 'history' : 'new'
   }
 })
@@ -205,6 +236,32 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
 }
 .tab-panel { min-height: 0; }
 .empty { padding: 24px; text-align: center; font-size: 12px; color: var(--text-tertiary); }
+.history-search {
+  position: relative; margin-bottom: 8px;
+}
+.history-search .search-icon {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--text-tertiary); pointer-events: none;
+}
+.history-search .search-input {
+  width: 100%; height: 32px;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 0 28px 0 30px;
+  color: var(--text-primary); font-size: 12px; font-family: inherit;
+  outline: none; transition: border-color 0.15s;
+}
+.history-search .search-input:focus { border-color: var(--accent); }
+.history-search .search-input::placeholder { color: var(--text-tertiary); }
+.history-search .search-clear {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  color: var(--text-tertiary); border-radius: 50%;
+}
+.history-search .search-clear:hover { background: var(--border); color: var(--text-primary); }
+.count-row {
+  font-size: 11px; color: var(--text-tertiary);
+  padding: 0 2px 8px;
+}
 .new-form { display: flex; flex-direction: column; }
 .form-group { margin-bottom: 12px; }
 .form-label { display: block; font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
