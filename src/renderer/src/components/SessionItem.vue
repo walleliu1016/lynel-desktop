@@ -90,6 +90,7 @@ import Icon from './Icon.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useBotsStore } from '../stores/bots'
 import { showToast } from '../composables/useToast'
+import { ClipboardWrite } from '../composables/useElectron'
 import type { SessionMeta } from '../types/session'
 
 const props = defineProps<{ meta: SessionMeta; isActive: boolean; dup?: boolean }>()
@@ -167,8 +168,10 @@ function cancelRename() {
 
 function copySessionId() {
   menuOpen.value = false
-  void navigator.clipboard.writeText(props.meta.id).then(() => {
+  void ClipboardWrite(props.meta.id).then(() => {
     showToast('已复制', 'success')
+  }).catch(() => {
+    showToast('复制失败', 'error')
   })
 }
 

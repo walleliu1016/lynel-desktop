@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
 const api = {
   getAppInfo: () => ipcRenderer.invoke('app:getAppInfo'),
+  clipboardWrite: (text: string) => ipcRenderer.invoke('app:clipboardWrite', text),
   isInitialized: () => ipcRenderer.invoke('app:isInitialized'),
   verify: (pw: string) => ipcRenderer.invoke('app:verify', pw),
   lockoutState: () => ipcRenderer.invoke('app:lockoutState'),

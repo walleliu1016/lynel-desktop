@@ -39,7 +39,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
-import { EventsOn, ResizeTerminal, OpenSessionTerminalSized } from '../composables/useElectron'
+import { EventsOn, ResizeTerminal, OpenSessionTerminalSized, ClipboardWrite } from '../composables/useElectron'
 import { showToast } from '../composables/useToast'
 import { useSettingsStore } from '../stores/settings'
 import { defaultTerminalConfig, type TerminalConfig, type TerminalTheme } from '../types/settings'
@@ -232,8 +232,10 @@ function closeTermCtx() {
 function copyTermSelection() {
   const text = term?.getSelection()
   if (text) {
-    void navigator.clipboard.writeText(text).then(() => {
+    void ClipboardWrite(text).then(() => {
       showToast('已复制', 'success')
+    }).catch(() => {
+      showToast('复制失败', 'error')
     })
   }
   closeTermCtx()

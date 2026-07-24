@@ -31,6 +31,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { ClipboardWrite } from '../../../composables/useElectron'
 
 const props = defineProps<{ detail: any }>()
 
@@ -44,7 +45,7 @@ const resHeaders = computed<Record<string, unknown>>(() => {
 
 function copyHeaders(obj: Record<string, unknown>) {
   const text = JSON.stringify(obj, null, 2)
-  navigator.clipboard.writeText(text)
+  void ClipboardWrite(text)
 }
 </script>
 

@@ -21,6 +21,7 @@
 import { computed, ref } from 'vue'
 import FoldingPre from '../FoldingPre.vue'
 import Markdown from '../Markdown.vue'
+import { ClipboardWrite } from '../../../composables/useElectron'
 
 const props = defineProps<{ detail: any }>()
 
@@ -44,7 +45,7 @@ const filtered = computed(() => {
 })
 
 function copySchema(schema: string) {
-  navigator.clipboard.writeText(schema)
+  void ClipboardWrite(schema)
 }
 </script>
 

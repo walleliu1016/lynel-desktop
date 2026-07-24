@@ -17,6 +17,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import Markdown from '../Markdown.vue'
+import { ClipboardWrite } from '../../../composables/useElectron'
 
 const props = defineProps<{ detail: any }>()
 const system = computed(() => {
@@ -29,7 +30,7 @@ const system = computed(() => {
 })
 
 function copyText(text: string) {
-  navigator.clipboard.writeText(text)
+  void ClipboardWrite(text)
 }
 </script>
 

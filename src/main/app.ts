@@ -1,4 +1,4 @@
-import { app, ipcMain, BrowserWindow, dialog, powerSaveBlocker } from 'electron';
+import { app, ipcMain, BrowserWindow, dialog, powerSaveBlocker, clipboard } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -944,6 +944,13 @@ export class App {
 
   private registerIpcHandlers(): void {
     registerTraceIpc();
+    // 系统剪贴板写入：渲染端 navigator.clipboard 在 file:// + contextIsolation 下
+    // 经常静默失败（权限/激活上下文），改走主进程 electron.clipboard 模块，
+    // 保证写出的内容能被企业微信、浏览器等外部应用读到。
+    ipcMain.handle('app:clipboardWrite', (_event, text: string) => {
+      clipboard.writeText(typeof text === 'string' ? text : String(text ?? ''))
+      return true
+    })
     ipcMain.handle('app:isInitialized', () => {
       const hash = this.settingsStore.get('auth.hash', '');
       return auth.isInitialized(hash as string);

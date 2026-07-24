@@ -12,6 +12,7 @@ function api(): ElectronAPI {
 }
 
 export const GetAppInfo = () => api().getAppInfo();
+export const ClipboardWrite = (text: string) => api().clipboardWrite(text);
 export const IsInitialized = () => api().isInitialized();
 export const Verify = (pw: string) => api().verify(pw);
 export const LockoutState = () => api().lockoutState();
