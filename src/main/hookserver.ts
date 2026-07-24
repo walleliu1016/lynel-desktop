@@ -109,6 +109,12 @@ export class HookServer {
     // 记录所有进入的 hook
     log.info(`[hook] ← ${summary} sid=${sid.slice(0, 8)}`);
 
+    // PreToolUse 类的 hook：把 tool_input 整个打出来，方便查看 ExitPlanMode/AskUserQuestion 这类
+    // 用户决策类工具的入参 schema（plan 文本 / questions 结构等）。
+    if (name === 'PreToolUse' || name === 'PermissionRequest') {
+      log.info(`[hook-input] ${summary} sid=${sid.slice(0, 8)} tool_input=${JSON.stringify((evt as any).tool_input ?? null)}`);
+    }
+
     // 监听连接状态
     let resClosed = false;
     req.on('close', () => {

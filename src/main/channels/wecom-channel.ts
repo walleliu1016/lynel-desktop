@@ -9,7 +9,7 @@ import { getStore } from '../store.js';
 import { getBus } from '../events.js';
 import { getLogger } from '../log.js';
 import { permissionBroker, PermissionRequest } from '../permission-broker.js';
-import { buildPermissionCard, buildAskQuestionCard } from './wecom-cards/card-builder.js';
+import { buildPermissionCard, buildAskQuestionCard, buildExitPlanCard } from './wecom-cards/card-builder.js';
 import { WeComCardStore } from './wecom-cards/card-store.js';
 import { WeComCardEventHandler, type TemplateCardEventFrame } from './wecom-cards/event-handler.js';
 import { renderBufferToPng } from '../terminal-screenshot.js';
@@ -410,6 +410,8 @@ export class WeComChannel implements OutputChannel, HookChannel {
       const toolName = p?.toolName || 'unknown';
       if (toolName === 'AskUserQuestion') {
         this.sendAskQuestionCard(event, msgSeq).catch((err) => logger.error('[wecom-channel] sendAskQuestionCard failed:', err));
+      } else if (toolName === 'ExitPlanMode') {
+        this.sendExitPlanCard(event, msgSeq).catch((err) => logger.error('[wecom-channel] sendExitPlanCard failed:', err));
       } else {
         this.sendPermissionCard(event, msgSeq).catch((err) => logger.error('[wecom-channel] sendPermissionCard failed:', err));
       }
@@ -522,6 +524,28 @@ export class WeComChannel implements OutputChannel, HookChannel {
       const content = this.formatPermissionRequest(
         this.formatHeader(event, msgSeq),
         p.toolName || 'unknown',
+        p.toolInput,
+      );
+      await this.sendContent(content, event.sessionId);
+    }
+  }
+
+  private async sendExitPlanCard(event: HookEventLike, msgSeq: number): Promise<void> {
+    const p = event.payload as any;
+    const req: PermissionRequest = {
+      id: p.id,
+      sessionId: event.sessionId,
+      workDir: event.workDir,
+      toolName: 'ExitPlanMode',
+      toolInput: p.toolInput,
+    };
+    const seq = p.seq ?? msgSeq;
+    const sessionTitle = this.getSessionTitle(event.sessionId);
+    const card = buildExitPlanCard(req, seq, sessionTitle);
+    const ok = await this.sendTemplateCard(card, event.sessionId, req.id, seq);
+    if (!ok) {
+      const content = this.formatExitPlanRequest(
+        this.formatHeader(event, msgSeq),
         p.toolInput,
       );
       await this.sendContent(content, event.sessionId);
@@ -1313,6 +1337,29 @@ export class WeComChannel implements OutputChannel, HookChannel {
     const preview = this.formatToolInputPreview(input);
     const inputBlock = preview ? `\n\`\`\`\n${preview}\n\`\`\`` : '';
     return `${header}\n\n🔐 **权限请求：${toolName}** ${this.formatTime()}\n**━━━━━━━━━━━━━━━━**${inputBlock}`;
+  }
+
+  private formatExitPlanRequest(header: string, input: unknown): string {
+    const p = input as Record<string, any> | undefined;
+    const plan = typeof p?.plan === 'string' ? p.plan : '';
+    const allowedPrompts = Array.isArray(p?.allowedPrompts) ? p.allowedPrompts : [];
+    const lines: string[] = [];
+    if (plan) {
+      const MAX = 800;
+      const trunc = plan.length > MAX
+        ? plan.slice(0, MAX) + `\n\n... (${plan.length - MAX} 字符已省略)`
+        : plan;
+      lines.push(trunc);
+    }
+    if (allowedPrompts.length > 0) {
+      lines.push('\n**批准后允许执行：**');
+      for (const ap of allowedPrompts) {
+        lines.push(`- \`${ap.tool}\`: ${ap.prompt}`);
+      }
+    }
+    const body = lines.join('\n');
+    const quotedBody = body ? '\n\n' + body.split('\n').map((l) => `> ${l}`).join('\n') : '';
+    return `${header}\n\n🗂️ **退出计划模式** ${this.formatTime()}\n**━━━━━━━━━━━━━━━━**${quotedBody}`;
   }
 
   private formatAskUserQuestion(header: string, input: unknown): string {

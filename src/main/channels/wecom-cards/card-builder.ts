@@ -80,6 +80,66 @@ export function buildPermissionCard(
 }
 
 /**
+ * ExitPlanMode 工具输入（Claude Code 的 EnterPlanMode tool_input shape）。
+ * plan 太长（典型 500-3000 字），不直接塞进 desc；只取前 N 字摘要。
+ * allowedPrompts 列出"批准后会跑的命令"，是用户的核心决策信息。
+ */
+interface ExitPlanInput {
+  plan?: string;
+  planFilePath?: string;
+  allowedPrompts?: Array<{ tool: string; prompt: string }>;
+}
+
+/**
+ * 构建 ExitPlanMode 的 button_interaction 模板卡片。
+ * - 标题：退出计划模式
+ * - desc：plan 前 500 字摘要 + "..."，再列出 allowedPrompts
+ * - 按钮：允许 / 拒绝（沿用 wecom:allow / wecom:deny 事件格式，PermissionBroker 通用处理）
+ */
+export function buildExitPlanCard(
+  req: PermissionRequest,
+  seq: number,
+  sessionTitle?: string,
+): unknown {
+  const input = (req.toolInput ?? {}) as ExitPlanInput;
+  const plan = typeof input.plan === 'string' ? input.plan : '';
+  const allowedPrompts = Array.isArray(input.allowedPrompts) ? input.allowedPrompts : [];
+
+  const PLAN_PREVIEW_LEN = 500;
+  let desc = '';
+  if (plan) {
+    desc = plan.length > PLAN_PREVIEW_LEN
+      ? plan.slice(0, PLAN_PREVIEW_LEN) + '\n\n... (计划较长，已截断)'
+      : plan;
+  }
+  if (allowedPrompts.length > 0) {
+    const promptLines = allowedPrompts
+      .map((p) => `- \`${p.tool}\`: ${p.prompt}`)
+      .join('\n');
+    desc = desc
+      ? `${desc}\n\n**批准后允许执行：**\n${promptLines}`
+      : `**批准后允许执行：**\n${promptLines}`;
+  }
+
+  const sourceDesc = sessionTitle ? `项目：${sessionTitle}` : 'Lynel';
+
+  return {
+    card_type: 'button_interaction',
+    source: { desc: sourceDesc, desc_color: 0 },
+    main_title: {
+      title: '退出计划模式',
+      desc: `ExitPlanMode（会话#${seq}）`,
+    },
+    sub_title_text: desc || undefined,
+    task_id: toTaskId(req.id),
+    button_list: [
+      { text: '允许', style: 1, key: `${EVENT_KEY_PREFIX}:allow:${req.id}` },
+      { text: '拒绝', style: 4, key: `${EVENT_KEY_PREFIX}:deny:${req.id}` },
+    ],
+  };
+}
+
+/**
  * 构建用户提问的模板卡片。
  * 每个问题独立一张 vote_interaction 卡片（mode 区分单选/多选），
  * 多问题场景下依次发送，事件处理器累积答案后统一 resolve。

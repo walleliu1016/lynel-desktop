@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildPermissionCard,
   buildAskQuestionCard,
+  buildExitPlanCard,
 } from '../../../../src/main/channels/wecom-cards/card-builder.js';
 import type { PermissionRequest } from '../../../../src/main/permission-broker.js';
 
@@ -241,5 +242,84 @@ describe('buildAskQuestionCard', () => {
     expect(cards).toHaveLength(2);
     expect(cards[0]).toMatchObject({ source: { desc: '项目：项目讨论' } });
     expect(cards[1]).toMatchObject({ source: { desc: '项目：项目讨论' } });
+  });
+});
+
+describe('buildExitPlanCard', () => {
+  function makeExitPlanRequest(toolInput: unknown): PermissionRequest {
+    return {
+      id: 'req-exit',
+      sessionId: 'sid-1',
+      workDir: '/wd',
+      toolName: 'ExitPlanMode',
+      toolInput,
+    };
+  }
+
+  it('构建 button_interaction 卡片，包含 plan 摘要与 allowedPrompts 列表', () => {
+    const req = makeExitPlanRequest({
+      plan: '我打算分两步：\n1. 重构 A 模块\n2. 补 B 模块测试',
+      planFilePath: '~/.claude/plans/abc.md',
+      allowedPrompts: [
+        { tool: 'Bash', prompt: 'run vue-tsc type check' },
+        { tool: 'Bash', prompt: 'run vitest main process tests' },
+      ],
+    });
+    const card = buildExitPlanCard(req, 5);
+
+    expect(card).toMatchObject({
+      card_type: 'button_interaction',
+      main_title: {
+        title: '退出计划模式',
+        desc: 'ExitPlanMode（会话#5）',
+      },
+      task_id: 'req-exit',
+      button_list: [
+        { text: '允许', style: 1, key: 'wecom:allow:req-exit' },
+        { text: '拒绝', style: 4, key: 'wecom:deny:req-exit' },
+      ],
+    });
+
+    const desc = (card as any).sub_title_text as string;
+    expect(desc).toContain('我打算分两步');
+    expect(desc).toContain('批准后允许执行');
+    expect(desc).toContain('`Bash`: run vue-tsc type check');
+    expect(desc).toContain('`Bash`: run vitest main process tests');
+  });
+
+  it('plan 超过 500 字时截断并追加省略提示', () => {
+    const longPlan = 'A'.repeat(800);
+    const req = makeExitPlanRequest({ plan: longPlan, allowedPrompts: [] });
+    const desc = (buildExitPlanCard(req, 1) as any).sub_title_text as string;
+    expect(desc).toContain('... (计划较长，已截断)');
+    expect(desc.length).toBeLessThan(longPlan.length);
+    expect(desc.startsWith('A')).toBe(true);
+  });
+
+  it('plan 为空但有 allowedPrompts 时仅展示预批准命令', () => {
+    const req = makeExitPlanRequest({
+      allowedPrompts: [{ tool: 'Bash', prompt: 'git commit' }],
+    });
+    const desc = (buildExitPlanCard(req, 1) as any).sub_title_text as string;
+    expect(desc).toBe('**批准后允许执行：**\n- `Bash`: git commit');
+  });
+
+  it('plan 与 allowedPrompts 都缺失时省略 sub_title_text', () => {
+    const card = buildExitPlanCard(makeExitPlanRequest({}), 1);
+    expect((card as any).sub_title_text).toBeUndefined();
+  });
+
+  it('toolInput 为非对象时不会抛异常，省略 sub_title_text', () => {
+    const card = buildExitPlanCard(makeExitPlanRequest('not-an-object'), 1);
+    expect((card as any).sub_title_text).toBeUndefined();
+  });
+
+  it('sessionTitle 注入到 source.desc 前缀', () => {
+    const req = makeExitPlanRequest({
+      plan: '简短计划',
+      allowedPrompts: [],
+    });
+    const card = buildExitPlanCard(req, 1, '重构讨论');
+    expect(card).toMatchObject({ source: { desc: '项目：重构讨论' } });
   });
 });
