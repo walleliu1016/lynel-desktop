@@ -372,6 +372,7 @@ export class App {
     // 6. 关闭 channels
     try { await this.wecomChannel.close?.(); } catch { /* ignore */ }
     try { this.localFileChannel.close?.(); } catch { /* ignore */ }
+    try { this.cloudChannel.close(); } catch { /* ignore */ }
     getLogger().info('[app] shutdown complete');
     getLogger().info('[app] shutdown complete');
   }
@@ -469,7 +470,27 @@ export class App {
     const enabled = (this.settingsStore.get('cloud_service_enabled', false) as boolean) || false;
     const url = (this.settingsStore.get('cloud_service_url', '') as string) || '';
     const token = (this.settingsStore.get('cloud_service_token', '') as string) || '';
-    this.cloudChannel.updateConfig({ enabled, url, token });
+    const userId = this.getCurrentUserAccount();
+    this.cloudChannel.updateConfig({ enabled, url, token, userId });
+  }
+
+  private syncCloudSession(sessionId: string, workDir: string): void {
+    if (!this.cloudChannel.isEnabled()) return;
+    const list = this.withRecentLock(() => readRecentSessions());
+    const r = list.find((x) => x.sessionId === sessionId);
+    const project = workDir.split(/[\\/]/).filter(Boolean).pop() || workDir;
+    const title = r ? (r.userTitle || r.aiTitle || r.firstPrompt || undefined) : undefined;
+    const sessionData = {
+      session_id: sessionId,
+      jsonl_path: jsonl.getSessionJsonlPath(sessionId, workDir),
+      cwd: workDir,
+      project_name: project,
+      title,
+      last_activity_at: Math.floor(Date.now() / 1000),
+    };
+    this.cloudChannel.syncSessions([sessionData]).catch((err) => {
+      getLogger().warn(`[app] syncCloudSession failed for ${sessionId.slice(0, 8)}: ${(err as Error).message}`);
+    });
   }
 
   /** 把 ChannelInstance 规范化成 {id, type, name, enabled, config}；旧的内联 config 格式会被包装 */
@@ -790,6 +811,7 @@ export class App {
     session.register(s);
     this.setSessionState(realId, 'running');
     this.wirePty(realId, proc);
+    this.syncCloudSession(realId, workDir);
     proc.onExit(() => cleanup());
 
     getLogger().info(`[app:createSession] session created id=${realId} workDir=${workDir}`);
@@ -1105,6 +1127,7 @@ export class App {
     ipcMain.handle('app:adoptSession', async (_event, id: string, workDir: string) => {
       if (!session.lookup(id)) {
         session.register(session.newSession(id, workDir));
+        this.syncCloudSession(id, workDir);
         getLogger().info(`[app:adoptSession] adopted sid=${id} workDir=${workDir}`);
       }
       let title: string | null = null;
@@ -1526,10 +1549,11 @@ export class App {
         try {
           const claudeBin = (this.settingsStore.get('claude_path', '') as string) || 'claude';
           const proc = startPty(workDir, id, claudeBin, mode, {}, size, args);
-          session.setProcess(id, proc);
+          session.setProcess(id, proc, size);
           proc.onExit(() => cleanup());
           this.setSessionState(id, 'running');
           this.wirePty(id, proc);
+          this.syncCloudSession(id, workDir);
           // 有 bot 绑定的会话启动后推送通知
           this.wecomChannel.sendSessionStarted(id, workDir);
           // PTY 已 spawn，立即通知前端隐藏 loading

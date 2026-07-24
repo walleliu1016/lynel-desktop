@@ -93,13 +93,13 @@ async function onTest() {
   if (!cfg.value.cloud_service_url || !cfg.value.cloud_service_token) return
   testStatus.value = 'testing'
   try {
-    const res = await fetch(`${cfg.value.cloud_service_url.replace(/\/+$/, '')}/desktop/connect`, {
+    const res = await fetch(`${cfg.value.cloud_service_url.replace(/\/+$/, '')}/api/health`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${cfg.value.cloud_service_token}`,
       },
-      body: JSON.stringify({ test: true }),
+      body: JSON.stringify({}),
       signal: AbortSignal.timeout(5000),
     })
     testStatus.value = res.ok ? 'ok' : 'fail'

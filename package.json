@@ -33,8 +33,10 @@
     "wait-on": "^9.0.10"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.68",
     "@wecom/aibot-node-sdk": "^1.0.7",
     "@wecom/wecom-openclaw-plugin": "^20206.7.201",
+    "@xterm/headless": "^6.0.0",
     "bcryptjs": "^2.4.3",
     "chokidar": "^4.0.0",
     "electron-log": "^5.0.0",

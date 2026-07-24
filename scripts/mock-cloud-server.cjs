@@ -15,33 +15,56 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && req.url === '/desktop/connect') {
+  if (req.method === 'POST' && req.url === '/api/health') {
+    console.log(`\n[health check] ${new Date().toLocaleTimeString()}`);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/api/envelope/push') {
     let body = '';
     req.on('data', (chunk) => { body += chunk; });
     req.on('end', () => {
+      const { envelopes } = JSON.parse(body);
+      const n = envelopes?.length ?? 0;
       count++;
-      const env = JSON.parse(body);
-      console.log(`\n=== #${count} [${new Date().toLocaleTimeString()}] ===`);
-      console.log(`  seq: ${env.seq}  role: ${env.role}  type: ${env.ev?.t}`);
-      if (env.ev?.t === 'text') {
-        const preview = (env.ev.text || '').slice(0, 120);
-        console.log(`  text: ${preview}`);
-      } else if (env.ev?.t === 'tool-call-start') {
-        console.log(`  tool: ${env.ev.name}`);
-      } else if (env.ev?.t === 'tool-call-end') {
-        console.log(`  call: ${env.ev.call}  error: ${!!env.ev.is_error}`);
+      console.log(`\n=== batch #${count} [${new Date().toLocaleTimeString()}] ${n} envelopes ===`);
+      if (envelopes) {
+        for (const env of envelopes) {
+          console.log(`  seq: ${env.seq}  role: ${env.role}  type: ${env.ev?.t}  sid: ${(env.sessionId || '').slice(0, 8)}`);
+        }
       }
-      console.log(`  full: ${JSON.stringify(env)}`);
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true }));
+      res.end(JSON.stringify({ ok: true, pushed: n, stored: n }));
     });
-  } else {
-    res.writeHead(404);
-    res.end('not found');
+    return;
   }
+
+  if (req.method === 'POST' && req.url === '/api/sessions/sync') {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => {
+      const { sessions } = JSON.parse(body);
+      console.log(`\n[sync] ${new Date().toLocaleTimeString()} ${(sessions || []).length} sessions`);
+      if (sessions) {
+        for (const s of sessions) {
+          console.log(`  sid: ${s.session_id.slice(0, 8)}  project: ${s.project_name}  title: ${s.title || '-'}`);
+        }
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ synced: (sessions || []).length }));
+    });
+    return;
+  }
+
+  res.writeHead(404);
+  res.end('not found');
 });
 
 server.listen(PORT, () => {
   console.log(`mock cloud server listening on http://localhost:${PORT}`);
-  console.log(`endpoint: POST http://localhost:${PORT}/desktop/connect\n`);
+  console.log(`  POST /api/health`);
+  console.log(`  POST /api/envelope/push`);
+  console.log(`  POST /api/sessions/sync\n`);
 });
