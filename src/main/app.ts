@@ -693,7 +693,7 @@ export class App {
       }
     });
 
-    // PermissionRequest：走 broker 阻塞等待用户决策
+    // PermissionRequest：cloud + 本地 broker race
     this.hookServer.onPermissionRequest(async (evt) => {
       const sid = evt.session_id ?? '';
       const request = evt.request || ({} as any);
@@ -715,19 +715,68 @@ export class App {
 
       const seq = permissionBroker.allocateSeq(reqId);
       const req: BrokerPermissionRequest = { id: reqId, sessionId: sid, workDir, toolName, toolInput };
+      const rawBody = evt as Record<string, unknown>;
 
       // 通知主窗口（保持兼容现有 PermissionToast）
       getBus().emit('permission:request', JSON.stringify({ ...req, seq }));
       getBus().emit(`hook:${sid}`, JSON.stringify(evt));
 
-      // 通知所有通道展示审批 UI（带上预分配的 seq）
+      // 通知其他 channel 展示 UI（WeCom 卡片、StateChannel 状态等）；cloud 通道跳过 PermissionRequest
       try {
-        this.dispatcher.dispatchHook({ kind: 'PermissionRequest', sessionId: sid, workDir, payload: { ...req, seq } });
+        this.dispatcher.dispatchHook({
+          kind: 'PermissionRequest',
+          sessionId: sid,
+          workDir,
+          payload: { ...req, seq },
+          rawBody,
+        });
       } catch {}
 
-      // 阻塞等待
-      const result = await permissionBroker.wait(req);
-      return { id: reqId, allowed: result.decision === 'allow', answers: result.answers };
+      // 本地 broker.wait：始终参与
+      const brokerP = permissionBroker.wait(req).then((r) => ({ source: 'broker' as const, response: r }));
+
+      // Cloud 同步 forward：仅在 enabled 时参与；2h 超时由 cloud-channel 内部控制，超时后抛错走 broker
+      const cloudEnabled = this.cloudChannel.isEnabled();
+      const cloudP = cloudEnabled
+        ? this.cloudChannel.sendPermissionRequest(reqId, rawBody).then(
+            (r) => ({ source: 'cloud' as const, response: r }),
+            (err) => ({ source: 'cloud-error' as const, error: err as Error }),
+          )
+        : null;
+
+      // Cloud 未启用：直接等 broker
+      if (!cloudP) {
+        const r = await brokerP;
+        return { id: reqId, allowed: r.response.decision === 'allow', answers: r.response.answers };
+      }
+
+      // Cloud enabled：race cloud vs broker
+      const winner = await Promise.race([cloudP, brokerP]);
+
+      if (winner.source === 'cloud') {
+        // cloud 胜：原样透传 cloud 响应给 Claude；清理 broker pending
+        const parsed = winner.response.parsed;
+        const cloudBehavior = parsed && typeof parsed === 'object'
+          ? (parsed as any).hookSpecificOutput?.decision?.behavior
+          : undefined;
+        permissionBroker.resolve(reqId, cloudBehavior === 'deny' ? 'deny' : 'allow', 'cloud');
+        getLogger().info(`[permission] cloud wins sid=${sid.slice(0, 8)} tool=${toolName} status=${winner.response.status}`);
+        return { id: reqId, allowed: true, rawResponse: parsed ?? {} };
+      }
+
+      if (winner.source === 'cloud-error') {
+        // cloud 报错或超时：清理云端状态后继续等 broker（云不通就走本地）
+        getLogger().warn(`[permission] cloud error, fall back to broker: ${winner.error.message}`);
+        this.cloudChannel.abortPermissionRequest(reqId, rawBody).catch(() => { /* 忽略 */ });
+        const r = await brokerP;
+        return { id: reqId, allowed: r.response.decision === 'allow', answers: r.response.answers };
+      }
+
+      // broker 胜：发 abort 通知 cloud 取消，返回本地 decision
+      this.cloudChannel
+        .abortPermissionRequest(reqId, rawBody, winner.response.decision)
+        .catch((err) => getLogger().warn(`[permission] cloud abort failed: ${(err as Error).message}`));
+      return { id: reqId, allowed: winner.response.decision === 'allow', answers: winner.response.answers };
     });
 
     this.hookServer.onSend(async (sid, prompt) => {

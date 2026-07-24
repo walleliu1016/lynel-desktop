@@ -23,7 +23,14 @@ export interface HookEvent {
 
 export type SendHandler = (sessionId: string, prompt: string) => Promise<{ ok: boolean; error?: string }>;
 export type EventHandler = (evt: HookEvent) => void;
-export type PermissionHandler = (evt: HookEvent) => Promise<{ id: string; allowed: boolean; answers?: Record<string, string | string[]> }>;
+// PermissionRequest handler：rawResponse 存在时整段 hook 响应体原样返回 Claude
+// （用于 cloud 透传场景）；否则按 allowed/answers 拼装 Claude 标准 decision 格式
+export type PermissionHandler = (evt: HookEvent) => Promise<{
+  id: string;
+  allowed: boolean;
+  answers?: Record<string, string | string[]>;
+  rawResponse?: unknown;
+}>;
 
 export class HookServer {
   private app = express();
@@ -145,6 +152,12 @@ export class HookServer {
       log.info(`[PermissionRequest] → broker sid=${sid.slice(0, 8)} tool=${toolName}`);
       this.onPermissionHandler(evt).then((result) => {
         try {
+          // cloud 透传：原样返回 cloud 响应（Claude 期望的格式由 cloud 保证）
+          if ((result as any).rawResponse !== undefined) {
+            safeJson((result as any).rawResponse);
+            log.info(`[PermissionRequest] → rawResponse (cloud passthrough) sid=${sid.slice(0, 8)}`);
+            return;
+          }
           const allowed = result.allowed;
           const isAsk = toolName === 'AskUserQuestion';
           const decision: any = { behavior: allowed ? 'allow' : 'deny' };

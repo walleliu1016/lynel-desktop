@@ -73,4 +73,20 @@ describe('hookserver', () => {
       },
     });
   });
+
+  it('rawResponse 存在时原样透传（cloud 场景）', async () => {
+    const cloudResponse = { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } };
+    server.onPermissionRequest(async () => ({ id: 'r-cloud', allowed: true, rawResponse: cloudResponse }));
+    const res = await fetch(server.url(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hook_event_name: 'PermissionRequest',
+        session_id: 's-cloud',
+        request: { id: 'r-cloud' },
+      }),
+    });
+    expect(res.ok).toBe(true);
+    expect(await res.json()).toEqual(cloudResponse);
+  });
 });

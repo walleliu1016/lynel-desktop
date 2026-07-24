@@ -20,6 +20,9 @@ export interface HookEventLike {
   sessionId: string;
   workDir: string;
   payload: Record<string, unknown>;
+  // 来自 Claude /hook 端点的原始 body（未加工）。仅由 hookserver 派发的 hook 携带，
+  // PermissionResolved 等 broker 内部合成事件无此字段。
+  rawBody?: Record<string, unknown>;
 }
 
 export interface HookChannel {
