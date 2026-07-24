@@ -121,6 +121,13 @@ interface RecentSessionRecord {
   lastOpenedAt: number;
   state: string;
   botId?: string;
+  /** 用户在 claude 终端里主动执行了 /exit（或其他退出命令）。
+   *  claude CLI 内部会把这种 session 标记为终止，即使 jsonl 完整存在，
+   *  后续 `claude --resume <sid>` 也会被它自己拒绝。
+   *  openTerminal 检测到该标志就走 PtyMode.New + 同 sid 重新拉起，
+   *  避免触发 "No conversation found" 错误。spawn 成功后立刻清掉，
+   *  保证新 session 的下一次 reconnect 走正常的 Resume 路径。 */
+  terminated?: boolean;
 }
 
 const RECENT_SESSIONS_PATH = path.join(os.homedir(), '.lynel-desktop', 'recent-sessions.json');
@@ -196,6 +203,81 @@ function removeRecentSession(sessionId: string): void {
   writeRecentSessions(list);
 }
 
+/** 读取某 session 的 terminated 标志；record 不存在或字段缺失返回 false。 */
+function getTerminatedFlag(sessionId: string): boolean {
+  const list = readRecentSessions();
+  const record = list.find((r) => r.sessionId === sessionId);
+  return record?.terminated === true;
+}
+
+/** 把某 session 标记为 terminated（用户主动 /exit 之后）。
+ *  通过 recent-sessions.json 持久化，应用重启后也能识别。
+ *  找不到 record 时只记日志不报错（pending 阶段的 session 也可能触发）。 */
+function setTerminatedFlag(sessionId: string): void {
+  const list = readRecentSessions();
+  const record = list.find((r) => r.sessionId === sessionId);
+  if (!record) {
+    getLogger().info(`[exit-detect] setTerminatedFlag: sid=${sessionId.slice(0, 8)} not in recent list yet, skip`);
+    return;
+  }
+  if (record.terminated) return;  // 已标记，避免重复写盘
+  record.terminated = true;
+  writeRecentSessions(list);
+  getLogger().info(`[exit-detect] marked terminated sid=${sessionId.slice(0, 8)}`);
+}
+
+/** 清除 terminated 标志：在 openTerminal 成功用 PtyMode.New 拉起新 session 后调用，
+ *  让新 session 的后续 reconnect 走正常的 Resume 路径。 */
+function clearTerminatedFlag(sessionId: string): void {
+  const list = readRecentSessions();
+  const record = list.find((r) => r.sessionId === sessionId);
+  if (!record || !record.terminated) return;
+  delete record.terminated;
+  writeRecentSessions(list);
+  getLogger().info(`[exit-detect] cleared terminated sid=${sessionId.slice(0, 8)}`);
+}
+
+/** claude 终端里的"退出"命令集合。用户敲其中任意一个并按 Enter，
+ *  claude 内部就把该 session 标记为终止，后续 `--resume` 必失败。
+ *  严格匹配（不忽略大小写）：避免正常文本里出现 "exit" 字样被误判。
+ *  `/q` 不在列：claude 不支持，且与"问问题"语义容易冲突。 */
+const EXIT_COMMANDS = new Set(['/exit', 'exit', '/quit', 'quit']);
+
+/** 把 PTY 收到的一批字节按"当前行"维度消化，识别退出命令。
+ *  - \r / \n：行结束，检查 trim 后的内容是否匹配 EXIT_COMMANDS
+ *  - \x7f / \b：退格，删一个字
+ *  - \x03 (Ctrl+C)：清空当前行（claude 自己也清）
+ *  - \x15 (Ctrl+U)：清空当前行（kill）
+ *  - \x17 (Ctrl+W)：删一个词（按空白切）
+ *  - 其他控制字符：忽略（不影响行内容）
+ *  - 可打印字符 / Tab：累加到行尾
+ *  返回 { line, detected }：line 是消化完所有字节后的"当前行"，detected 表示本批字节是否触发了退出命令。 */
+export function consumeInputForExitDetect(
+  prevLine: string,
+  data: string,
+): { line: string; detected: boolean } {
+  let line = prevLine;
+  let detected = false;
+  for (let i = 0; i < data.length; i++) {
+    const ch = data[i];
+    if (ch === '\r' || ch === '\n') {
+      if (EXIT_COMMANDS.has(line.trim())) detected = true;
+      line = '';
+    } else if (ch === '\x7f' || ch === '\b') {
+      line = line.slice(0, -1);
+    } else if (ch === '\x03' || ch === '\x15') {
+      line = '';  // Ctrl+C / Ctrl+U 全清
+    } else if (ch === '\x17') {
+      // Ctrl+W：删到上一个空白之后
+      line = line.replace(/\S+\s*$/, '');
+    } else {
+      const code = ch.charCodeAt(0);
+      if (code >= 32 || ch === '\t') line += ch;
+    }
+  }
+  return { line, detected };
+}
+
 export class App {
   private window: BrowserWindow | null = null;
   private settingsStore = getStore('settings');
@@ -222,6 +304,9 @@ export class App {
   private recentSessionsLock = false;
   // 待写入 recent 列表的新会话元数据：spawn 时登记，收到首个 UserPromptSubmit 时落盘
   private pendingRecentWrites = new Map<string, { workdir: string; project: string; firstPrompt: string; botId?: string }>();
+  // 用户在 xterm.js 输入的"当前行"缓存：仅追踪到下一次 \r/\n，为 /exit 检测提供依据。
+  // 渲染端 writeTerminalInput 走 IPC 把字节送到这里。onExit 时清理。
+  private inputLineBuffers = new Map<string, string>();
   private aiTitleRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private apiProxies: import('./apiproxy.js').Proxy[] = [];
   private watchCleanup: (() => void) | null = null;
@@ -1207,6 +1292,13 @@ export class App {
 
     ipcMain.handle('app:writeTerminalInput', (_event, id: string, data: string) => {
       session.writeInput(id, data);
+      // /exit 检测：增量消化写入的字节，行内匹配到退出命令就标记 session。
+      // 写入 PTY 之后再做 detect 是有意为之：PTY 已经把字符送给 claude 了，
+      // 我们只是 side-channel 记录 intent，不影响输入流。
+      const prev = this.inputLineBuffers.get(id) ?? '';
+      const { line, detected } = consumeInputForExitDetect(prev, data);
+      this.inputLineBuffers.set(id, line);
+      if (detected) setTerminatedFlag(id);
     });
 
     ipcMain.handle('app:resizeTerminal', (_event, id: string, cols: number, rows: number) => {
@@ -1514,6 +1606,8 @@ export class App {
         s.process = null;
         s.state = 'done';
       }
+      // 进程已退出，丢掉未提交的输入行缓存，避免 /exit 误判串到下一次会话
+      this.inputLineBuffers.delete(id);
       this.ptyCleanups.delete(id);
     };
     proc.onData(onData);
@@ -1544,12 +1638,19 @@ export class App {
         const proxyUrl = `http://127.0.0.1:${proxy.port}`;
         const { args, cleanup } = createSettingsOverrideFile(proxyUrl);
         // 历史 session 重启时 jsonl 可能还没创建（用户新建后没发 prompt 就关闭），
-        // 此时 --resume 会失败并立即退出。fallback 用 --session-id 同 sid 重新拉起，
-        // 保持 id 一致；如果后续产生了消息，jsonl 会落在同一个路径上。
+        // 三种 fallback 触发 PtyMode.New：
+        // 1) 用户主动 /exit（terminated 标志）：claude 内部已拒绝 --resume
+        // 2) jsonl 不存在（phantom session 重启场景）
+        // 3) 否则默认 Resume
         const jsonlPath = jsonl.getSessionJsonlPath(id, workDir);
         const hasJsonl = fs.existsSync(jsonlPath);
-        const mode = hasJsonl ? PtyMode.Resume : PtyMode.New;
-        if (!hasJsonl) {
+        const isTerminated = getTerminatedFlag(id);
+        const mode = (isTerminated || !hasJsonl) ? PtyMode.New : PtyMode.Resume;
+        if (isTerminated) {
+          getLogger().info(`[app:openSessionTerminal] sid=${id.slice(0, 8)} marked terminated, force PtyMode.New`);
+          // 已用 New 模式拉起，标志就完成了使命：清掉，让后续 reconnect 走正常 Resume
+          clearTerminatedFlag(id);
+        } else if (!hasJsonl) {
           getLogger().warn(`[app:openSessionTerminal] jsonl missing for sid=${id} at ${jsonlPath}, fallback to PtyMode.New`);
         }
         getLogger().info(`[app:openSessionTerminal] proxyUrl=${proxyUrl} upstream=${upstream} sid=${id} mode=${mode}`);
