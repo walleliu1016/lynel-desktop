@@ -116,6 +116,7 @@ import { useBotsStore } from '../stores/bots'
 import { useSessionsStore } from '../stores/sessions'
 import type { RecentSession } from '../types/recent'
 import { PickDirectory } from '../composables/useElectron'
+import { useRecentSessionSearch } from '../composables/useRecentSessionSearch'
 
 const props = defineProps<{ open: boolean; loading?: boolean }>()
 const emit = defineEmits<{
@@ -134,19 +135,7 @@ const flagsOpen = ref(false)
 const selectedFlags = ref<string[]>([])
 const selectedBot = ref('')
 const botOptions = computed(() => botsStore.bots)
-const historySearch = ref('')
-
-// 历史会话按项目 / 标题 / 目录模糊匹配
-const filteredRecentSessions = computed(() => {
-  const q = historySearch.value.trim().toLowerCase()
-  if (!q) return recent.recentSessions
-  return recent.recentSessions.filter((s) => {
-    const pn = s.project.toLowerCase()
-    const wd = s.workdir.toLowerCase()
-    const title = (s.userTitle || s.firstPrompt || s.aiTitle || '').toLowerCase()
-    return pn.includes(q) || wd.includes(q) || title.includes(q)
-  })
-})
+const { search: historySearch, filtered: filteredRecentSessions } = useRecentSessionSearch()
 
 function isBotAvailable(botId: string): boolean {
   const sessionId = sessions.botBindings[botId] || sessions.sessionBots[botId]

@@ -17,15 +17,30 @@
         <div class="recent-section">
           <div class="section-header">
             <div class="section-title">Recent Sessions</div>
-            <span v-if="recent.recentSessions.length" class="count">{{ recent.recentSessions.length }}</span>
+            <span v-if="recent.recentSessions.length" class="count">{{ recentSearchText ? `${filteredRecent.length} / ${recent.recentSessions.length}` : recent.recentSessions.length }}</span>
           </div>
           <div v-if="recent.loading" class="loading">加载中...</div>
-          <RecentSessionList
-            v-else
-            :list="recent.recentSessions"
-            :limit="6"
-            @select="onSelectRecent"
-          />
+          <template v-else>
+            <div v-if="recent.recentSessions.length" class="recent-search">
+              <Icon name="search" :size="12" class="search-icon" />
+              <input
+                v-model="recentSearchText"
+                class="search-input"
+                placeholder="搜索（项目 / 标题 / 目录）"
+                @keydown.escape="recentSearchText = ''"
+              />
+              <button v-if="recentSearchText" class="search-clear" aria-label="清除搜索" title="清除搜索" @click="recentSearchText = ''">
+                <Icon name="close" :size="12" />
+              </button>
+            </div>
+            <div v-if="!filteredRecent.length" class="loading">{{ recentSearchText ? '无匹配结果' : '暂无历史会话' }}</div>
+            <RecentSessionList
+              v-else
+              :list="filteredRecent"
+              :limit="6"
+              @select="onSelectRecent"
+            />
+          </template>
         </div>
       </div>
     </div>
@@ -33,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import Icon from '../components/Icon.vue'
@@ -43,11 +58,13 @@ import { useSessionsStore } from '../stores/sessions'
 import type { RecentSession } from '../types/recent'
 import { PickDirectory, AdoptSession, OpenSessionTerminal } from '../composables/useElectron'
 import { useWindowState } from '../composables/useWindowState'
+import { useRecentSessionSearch } from '../composables/useRecentSessionSearch'
 
 const router = useRouter()
 const recent = useRecentStore()
 const sessions = useSessionsStore()
 const win = useWindowState()
+const { search: recentSearchText, filtered: filteredRecent } = useRecentSessionSearch()
 
 onMounted(() => {
   void recent.loadRecentSessions()
@@ -136,4 +153,26 @@ async function onSelectRecent(item: RecentSession) {
   padding: 16px; text-align: center;
   font-size: 12px; color: var(--text-secondary);
 }
+.recent-search {
+  position: relative; margin-bottom: 10px;
+}
+.recent-search .search-icon {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--text-tertiary); pointer-events: none;
+}
+.recent-search .search-input {
+  width: 100%; height: 32px;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 0 28px 0 30px;
+  color: var(--text-primary); font-size: 12px; font-family: inherit;
+  outline: none; transition: border-color 0.15s;
+}
+.recent-search .search-input:focus { border-color: var(--accent); }
+.recent-search .search-input::placeholder { color: var(--text-tertiary); }
+.recent-search .search-clear {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  color: var(--text-tertiary); border-radius: 50%;
+}
+.recent-search .search-clear:hover { background: var(--border); color: var(--text-primary); }
 </style>
