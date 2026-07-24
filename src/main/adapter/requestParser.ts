@@ -8,19 +8,34 @@ export interface ParsedToolResult {
   content: string;
 }
 
+// Claude Code TUI 会把上下文/模式横幅等非用户输入塞进 user 消息的 text 块：
+//   - <system-reminder>...</system-reminder>：自动注入的上下文（工作目录、env、token 用量等）
+//   - [SUGGESTION MODE: ...] / [AUTO MODE: ...] / [EXECUTE MODE: ...] 等顶栏横幅
+// 这些都不是用户实际输入，需要在源头剔除，否则会被作为 user 消息推到企微/SSE/Trace。
+// 返回清理后的文本；若清完为空则返回 null（调用方应当放弃该 envelope，不构造空消息）。
+const SYSTEM_REMINDER_RE = /<system-reminder>[\s\S]*?<\/system-reminder>\s*/g
+const TUI_MODE_PREFIX_RE = /^\s*\[[A-Z][A-Z _-]*MODE\s*[^\]]*\]\s*\n?/
+
+export function cleanUserText(raw: string): string | null {
+  if (!raw) return null
+  let text = raw.replace(SYSTEM_REMINDER_RE, '')
+  text = text.replace(TUI_MODE_PREFIX_RE, '')
+  text = text.trim()
+  return text || null
+}
+
 export function extractUserText(message: ApiMessage | undefined): string | null {
   if (!message || message.role !== 'user') return null;
+  let raw: string | null = null
   if (typeof message.content === 'string') {
-    return message.content;
-  }
-  if (Array.isArray(message.content)) {
+    raw = message.content;
+  } else if (Array.isArray(message.content)) {
     const texts = message.content
       .filter((b) => b.type === 'text' && typeof b.text === 'string')
       .map((b) => b.text as string);
-    if (texts.length) return texts.join('\n');
-    return null;
+    raw = texts.length ? texts.join('\n') : null;
   }
-  return null;
+  return raw == null ? null : cleanUserText(raw)
 }
 
 export function extractToolResults(message: ApiMessage | undefined): ParsedToolResult[] {

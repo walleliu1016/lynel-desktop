@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { SessionAdapter, type SseEvent } from '../../../src/main/adapter/sessionAdapter.js';
 import type { ApiRequest } from '../../../src/main/adapter/turnStateMachine.js';
+import { cleanUserText } from '../../../src/main/adapter/requestParser.js';
 
 describe('SessionAdapter turn boundaries', () => {
   it('user 纯文本请求：关闭上一 turn + user text', () => {
@@ -52,6 +53,92 @@ describe('SessionAdapter turn boundaries', () => {
     }
   });
 });
+
+describe('cleanUserText: 过滤 Claude Code TUI 注入内容', () => {
+  it('纯用户输入原样返回', () => {
+    expect(cleanUserText('帮我查 auth')).toBe('帮我查 auth')
+  })
+
+  it('去掉 <system-reminder> 块', () => {
+    const raw = '<system-reminder>这是自动注入的上下文</system-reminder>\n帮我看 auth.ts'
+    expect(cleanUserText(raw)).toBe('帮我看 auth.ts')
+  })
+
+  it('去掉多个 <system-reminder> 块', () => {
+    const raw = [
+      '<system-reminder>first</system-reminder>',
+      '实际输入',
+      '<system-reminder>second</system-reminder>',
+    ].join('\n')
+    expect(cleanUserText(raw)).toBe('实际输入')
+  })
+
+  it('去掉 [AUTO MODE: ...] 顶栏横幅', () => {
+    expect(cleanUserText('[AUTO MODE: enabled]\n帮我跑测试')).toBe('帮我跑测试')
+  })
+
+  it('去掉 [SUGGESTION MODE: ...] 顶栏横幅', () => {
+    expect(cleanUserText('[SUGGESTION MODE: 3 options]\n查一下 memory')).toBe('查一下 memory')
+  })
+
+  it('只剩 system-reminder 时返回 null', () => {
+    expect(cleanUserText('<system-reminder>only</system-reminder>')).toBeNull()
+  })
+
+  it('只剩 MODE 横幅时返回 null', () => {
+    expect(cleanUserText('[AUTO MODE: enabled]')).toBeNull()
+  })
+
+  it('空字符串返回 null', () => {
+    expect(cleanUserText('')).toBeNull()
+    expect(cleanUserText('   \n  ')).toBeNull()
+  })
+
+  it('同时含 system-reminder + MODE 横幅 + 真实输入', () => {
+    const raw = '<system-reminder>cwd=/work</system-reminder>\n[EXECUTE MODE: yes]\n帮我看 test'
+    expect(cleanUserText(raw)).toBe('帮我看 test')
+  })
+})
+
+describe('SessionAdapter: 过滤后的 user 消息', () => {
+  it('只剩 system-reminder 的 user 消息不产生 user text envelope', () => {
+    const adapter = new SessionAdapter()
+    adapter.state.turn.currentTurnId = 't-old'
+
+    const req: ApiRequest = {
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: 'toolu_1', content: 'ok' },
+          { type: 'text', text: '<system-reminder>auto</system-reminder>' },
+        ],
+      }],
+    }
+    const envs = adapter.handleRequest(req)
+    // tool-result 产生 tool-call-end，user text 被过滤后只剩 reminder → 不产生 user text
+    const userText = envs.find((e) => e.ev.t === 'text' && e.role === 'user')
+    expect(userText).toBeUndefined()
+  })
+
+  it('system-reminder + 真实输入：只保留真实输入', () => {
+    const adapter = new SessionAdapter()
+    const req: ApiRequest = {
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: '<system-reminder>auto-context</system-reminder>' },
+          { type: 'text', text: '帮我看 test' },
+        ],
+      }],
+    }
+    const envs = adapter.handleRequest(req)
+    const userText = envs.find((e) => e.ev.t === 'text' && e.role === 'user')
+    expect(userText).toBeDefined()
+    if (userText && userText.ev.t === 'text') {
+      expect(userText.ev.text).toBe('帮我看 test')
+    }
+  })
+})
 
 describe('SessionAdapter SSE flow', () => {
   it('简单 text 响应：turn-start + text', () => {

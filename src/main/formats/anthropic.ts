@@ -13,6 +13,7 @@ import type {
 } from './format.js';
 import type { SessionUsage } from '../protocol/usage.js';
 import { estimateTokens, costFromUsage } from '../cost/priceTable.js';
+import { cleanUserText } from '../adapter/requestParser.js';
 
 // ---- 通用文本渲染 -----------------------------------------------------------
 
@@ -39,12 +40,15 @@ function blockText(b: unknown): string {
 // ---- Request 解析 -----------------------------------------------------------
 
 function extractPromptText(content: unknown): string | undefined {
-  if (typeof content === 'string') return content;
+  if (typeof content === 'string') {
+    return cleanUserText(content) ?? undefined;
+  }
   if (Array.isArray(content)) {
-    return content
+    const raw = content
       .filter((block: any) => block?.type === 'text' && typeof block.text === 'string')
       .map((block: any) => block.text)
       .join('\n');
+    return cleanUserText(raw) ?? undefined;
   }
   return undefined;
 }
