@@ -186,8 +186,9 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       timeout: 10_000,
       // socket.io 默认 path：cloud 服务端通常挂在根路径 /socket.io
       path: '/socket.io',
-      // 忽略 TLS 证书校验（cloud 可能用自签证书）
-      agent: insecureHttpsAgent,
+      // HTTP 连接不能使用 https.Agent（会触发 ERR_INVALID_PROTOCOL），
+      // 只有 HTTPS 才注入跳过证书校验的 agent
+      agent: baseUrl.startsWith('https://') ? insecureHttpsAgent : undefined,
       // websocket transport 透传给 ws 库的选项
       extraHeaders: { 'User-Agent': 'lynel-desktop' },
     };

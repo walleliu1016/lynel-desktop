@@ -1160,10 +1160,11 @@ export class App {
     }));
 
     ipcMain.handle('app:getSettings', () => this.settingsStore.store);
-    // 登录页保存云服务配置：仅写 settings.json，登录时由 app:loginWithToken 触发连接
+    // 登录页保存云服务配置：写 settings + 立即应用到 desktopSocket
     ipcMain.handle('app:cloud:updateSettings', (_event, enabled: boolean, url: string) => {
       this.settingsStore.set('cloud_service_enabled', !!enabled);
       this.settingsStore.set('cloud_service_url', url.trim());
+      this.applyCloudSettings();
     });
     ipcMain.handle('app:updateSettings', (_event, cfg: any) => {
       this.settingsStore.set(cfg);
