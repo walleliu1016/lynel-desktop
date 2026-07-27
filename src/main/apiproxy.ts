@@ -17,8 +17,10 @@ import { writeRawExchange, listRawExchanges, type RawExchangeInput } from './arc
 
 export interface Proxy {
   port: number;
+  // token 即 session id，用于 onExit 时定位并清理对应 proxy 实例
+  sessionId: string;
   setSessionID(id: string): void;
-  close(): void;
+  close(): Promise<void>;
 }
 
 // 旧 ProxyStageEvent 已被 LynelEnvelope 替代
@@ -257,9 +259,13 @@ export function startProxy(
       console.log(`[apiproxy] listening on 127.0.0.1:${port} upstream=${up.href} token=${token.slice(0, 8)}...`);
       resolve({
         port,
+        sessionId: token,
         setSessionID: () => { /* token 即 session id，无需迁移 */ },
-        close: () => {
-          server.close();
+        close: async () => {
+          // closeAllConnections 主动关闭 keep-alive 连接，
+          // 否则 server.close() 会一直等待 keep-alive 自然结束（永不结束），进程退出时 OS 发 RST -> ECONNRESET
+          server.closeAllConnections?.();
+          await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
           const s = sessionStates.get(token);
           if (s) {
             s.jsonl.close();

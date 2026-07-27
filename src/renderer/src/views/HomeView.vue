@@ -1,6 +1,6 @@
 <template>
   <div class="home">
-    <TitleBar :username="username" show-guide @settings="openSettingsTab" @guide="openGuideTab" />
+    <TitleBar :username="username" show-guide @settings="openSettingsTab" @guide="openGuideTab" @logout="onLogout" />
     <div class="layout">
       <aside class="left" :class="{ collapsed: sidebarCollapsed }">
         <SessionList
@@ -97,10 +97,12 @@ import { useTabsStore } from '../stores/tabs'
 import { useTraceStore } from '../stores/trace'
 import type { RecentSession } from '../types/recent'
 import type { SessionState } from '../types/session'
-import { GetAppInfo, AdoptSession, OpenSessionTerminal, CloseSession } from '../composables/useElectron'
+import { GetAppInfo, AdoptSession, OpenSessionTerminal, CloseSession, Logout } from '../composables/useElectron'
 import { useEventStream } from '../composables/useEventStream'
+import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
+const auth = useAuthStore()
 const sessions = useSessionsStore()
 const tabsStore = useTabsStore()
 const trace = useTraceStore()
@@ -257,6 +259,12 @@ function openSettingsTab() {
 
 function openGuideTab() {
   tabsStore.openGuide()
+}
+
+async function onLogout() {
+  try { await Logout() } catch {}
+  auth.loggedIn = false
+  router.push('/login')
 }
 
 // 当 session 元信息加载后，同步更新对应 Tab 标题

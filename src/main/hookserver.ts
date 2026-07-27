@@ -82,7 +82,14 @@ export class HookServer {
 
   stop(): Promise<void> {
     return new Promise((resolve) => {
-      this.server?.close(() => resolve());
+      if (!this.server) {
+        resolve();
+        return;
+      }
+      // closeAllConnections 主动关闭所有 keep-alive 连接（含 SSE 长连接），
+      // 否则 server.close() 会因 SSE Response 永不 end 而悬挂，进程无法退出
+      this.server.closeAllConnections?.();
+      this.server.close(() => resolve());
     });
   }
 

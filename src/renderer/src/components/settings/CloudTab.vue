@@ -17,9 +17,6 @@
       <div class="v status-row">
         <span class="dot" :class="statusClass" />
         <span class="status-label">{{ statusText }}</span>
-        <button class="test-btn" :class="testStatus" :disabled="!cfg.cloud_service_enabled || testStatus === 'testing'" @click="onTest">
-          {{ testBtnText }}
-        </button>
       </div>
     </div>
 
@@ -52,7 +49,6 @@ const cfg = computed(() => settings.cfg ?? (settings.cfg = {
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'authenticated' | 'auth_failed'
 const connState = ref<ConnectionState>('disconnected')
-const testStatus = ref<'idle' | 'testing' | 'ok' | 'fail'>('idle')
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
@@ -86,17 +82,6 @@ async function refreshState() {
   try {
     const s = await CloudConnectionState()
     connState.value = s as ConnectionState
-    // 同步 testStatus：连接成功后从 testing 切到 ok
-    if (testStatus.value === 'testing') {
-      if (s === 'authenticated') testStatus.value = 'ok'
-      else if (s === 'auth_failed' || s === 'disconnected') testStatus.value = 'fail'
-    } else if (testStatus.value !== 'idle') {
-      // 已检测过：跟随实际状态
-      if (s === 'authenticated') testStatus.value = 'ok'
-      else if (s === 'auth_failed') testStatus.value = 'fail'
-      else if (s === 'disconnected' && cfg.value.cloud_service_enabled) testStatus.value = 'fail'
-      else if (s === 'connecting' || s === 'connected') testStatus.value = 'testing'
-    }
   } catch {
     // ignore
   }
@@ -105,10 +90,11 @@ async function refreshState() {
 const statusClass = computed(() => {
   if (!cfg.value.cloud_service_enabled) return ''
   switch (connState.value) {
-    case 'authenticated': return 'ok'
+    case 'authenticated':
+    case 'connected':
+      return 'ok'
     case 'auth_failed': return 'fail'
-    case 'connecting':
-    case 'connected': return 'testing'
+    case 'connecting': return 'testing'
     default: return ''
   }
 })
@@ -117,25 +103,12 @@ const statusText = computed(() => {
   if (!cfg.value.cloud_service_enabled) return '未启用'
   switch (connState.value) {
     case 'connecting': return '连接中...'
-    case 'connected': return '已连接，认证中...'
+    case 'connected': return '已连接'
     case 'authenticated': return '已连接'
     case 'auth_failed': return '认证失败'
     default: return '未连接'
   }
 })
-
-const testBtnText = computed(() => {
-  if (testStatus.value === 'testing') return '检测中...'
-  if (testStatus.value === 'ok') return '重新检测'
-  if (testStatus.value === 'fail') return '重新检测'
-  return '测试连接'
-})
-
-async function onTest() {
-  if (!cfg.value.cloud_service_url) return
-  testStatus.value = 'testing'
-  await refreshState()
-}
 </script>
 
 <style scoped>
@@ -167,16 +140,6 @@ async function onTest() {
 .dot.fail { background: #ef4444 !important; }
 .dot.testing { background: #f59e0b !important; animation: pulse 0.8s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-.test-btn {
-  padding: 5px 16px; border-radius: var(--radius-md); font-size: 12px; font-weight: 500;
-  border: 1px solid var(--accent); color: var(--accent); background: transparent;
-  cursor: pointer; transition: all .15s; white-space: nowrap;
-}
-.test-btn:hover:not(:disabled) { background: var(--accent); color: #fff; }
-.test-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.test-btn.ok { border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,.06); }
-.test-btn.fail { border-color: #ef4444; color: #ef4444; background: rgba(239,68,68,.06); }
-.test-btn.testing { border-color: #f59e0b; color: #f59e0b; }
 .toggle .v { display: flex; }
 .actions { display: flex; align-items: center; gap: 8px; margin-top: 24px; }
 .spacer { flex: 1; }

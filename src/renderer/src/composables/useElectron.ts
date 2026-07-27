@@ -18,6 +18,7 @@ export const Verify = (pw: string) => api().verify(pw);
 export const LockoutState = () => api().lockoutState();
 export const SetPassword = (pw: string) => api().setPassword(pw);
 export const ClearPassword = () => api().clearPassword();
+export const Logout = () => api().logout();
 export const ListSessions = (workDir?: string) => api().listSessions(workDir);
 export const CreateSession = (workDir: string, prompt: string, extraArgs: string[] = []) => api().createSession(workDir, prompt, extraArgs);
 export const SendMessage = (id: string, prompt: string) => api().sendMessage(id, prompt);

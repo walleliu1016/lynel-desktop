@@ -10,7 +10,7 @@
       <button v-if="props.showGuide" class="iconbtn" aria-label="使用指南" title="使用指南" @click="$emit('guide')">
         <Icon name="help" :size="14" />
       </button>
-      <div v-if="cloudEnabled" class="cloud-status" :class="cloudStatusClass" :title="cloudStatusTitle">
+      <div v-if="cloudEnabled && !props.hideCloud" class="cloud-status" :class="cloudStatusClass" :title="cloudStatusTitle">
         <span class="dot" />
         <span class="label">{{ cloudStatusText }}</span>
       </div>
@@ -23,6 +23,9 @@
           <b>{{ username }}</b>
           <span>本地</span>
         </div>
+        <button v-if="!props.hideLogout" class="logout-btn" aria-label="退出登录" title="退出登录" @click="$emit('logout')">
+          <Icon name="log-out" :size="13" />
+        </button>
       </div>
       <div v-if="!isMac" class="win-btns">
         <button class="win-btn" aria-label="最小化" title="最小化" @click="minimize">
@@ -49,8 +52,8 @@ import { useSessionsStore } from '../stores/sessions'
 import { CloudConnectionState, GetSettings } from '../composables/useElectron'
 import Icon from './Icon.vue'
 
-const props = defineProps<{ username?: string; showGuide?: boolean; center?: boolean; hideSettings?: boolean }>()
-defineEmits<{ (e: 'settings'): void; (e: 'guide'): void }>()
+const props = defineProps<{ username?: string; showGuide?: boolean; center?: boolean; hideSettings?: boolean; hideCloud?: boolean; hideLogout?: boolean }>()
+defineEmits<{ (e: 'settings'): void; (e: 'guide'): void; (e: 'logout'): void }>()
 
 const { isMaximized, minimize, toggleMaximize, hide } = useWindowState()
 const sessions = useSessionsStore()
@@ -77,10 +80,11 @@ let cloudPollTimer: ReturnType<typeof setInterval> | null = null
 
 const cloudStatusClass = computed(() => {
   switch (cloudState.value) {
-    case 'authenticated': return 'ok'
+    case 'authenticated':
+    case 'connected':
+      return 'ok'
     case 'auth_failed': return 'fail'
-    case 'connecting':
-    case 'connected': return 'testing'
+    case 'connecting': return 'testing'
     default: return ''
   }
 })
@@ -88,7 +92,7 @@ const cloudStatusClass = computed(() => {
 const cloudStatusText = computed(() => {
   switch (cloudState.value) {
     case 'connecting': return '连接中'
-    case 'connected': return '认证中'
+    case 'connected': return '已连接'
     case 'authenticated': return '已连接'
     case 'auth_failed': return '认证失败'
     default: return '未连接'
@@ -191,6 +195,16 @@ onBeforeUnmount(() => {
 .info { display: flex; flex-direction: column; }
 .info b { font-size: 11px; color: var(--text-primary); }
 .info span { font-size: 10px; color: var(--text-tertiary); }
+.logout-btn {
+  width: 22px; height: 22px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  margin-left: 4px;
+}
+.logout-btn:hover { color: var(--status-error); background: rgba(239,68,68,.08); }
 .win-btns { display: flex; align-items: center; gap: 2px; margin-left: 8px; }
 .win-btn {
   width: 32px; height: 26px; border-radius: 4px;

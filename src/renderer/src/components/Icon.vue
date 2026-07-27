@@ -6,6 +6,7 @@ import {
   Bot,
   BotMessageSquare,
   Link2Off,
+  LogOut,
   ChevronDown,
   ChevronLeft,
   ChevronRight,

@@ -1,6 +1,6 @@
 <template>
   <div class="login">
-    <TitleBar center hide-settings />
+    <TitleBar center hide-settings hide-cloud hide-logout />
     <div class="login-body">
       <div class="login-head">
         <div class="login-logo">L</div>

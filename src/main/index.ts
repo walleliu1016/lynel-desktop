@@ -166,19 +166,30 @@ if (!gotTheLock) {
     createNotchWindow(isDev, devUrl, path.join(__dirname, 'preload.js'), notchEnabled);
   });
 
-  app.on('before-quit', async () => {
+  // before-quit 是同步事件，Electron 不会 await async 回调。
+  // 必须用 event.preventDefault() 阻止立即退出，异步完成 shutdown 后再 app.exit(0)。
+  // 否则 PTY 子进程会被 OS 强杀成孤儿、apiproxy/hookserver 的 listening socket 被 RST，
+  // 下次启动 claude CLI POST hook 会收到 ECONNRESET。
+  let shuttingDown = false;
+  app.on('before-quit', (event) => {
+    if (shuttingDown) return;
+    event.preventDefault();
+    shuttingDown = true;
     closeNotchWindow();
-    if (appInstance) {
-      try {
-        await appInstance.shutdown();
-      } catch (err) {
-        console.error('[main] shutdown failed:', err);
+    void (async () => {
+      if (appInstance) {
+        try {
+          await appInstance.shutdown();
+        } catch (err) {
+          console.error('[main] shutdown failed:', err);
+        }
       }
-    }
-    if (tray) {
-      tray.destroy();
-      tray = null;
-    }
+      if (tray) {
+        tray.destroy();
+        tray = null;
+      }
+      app.exit(0);
+    })();
   });
 
   app.on('window-all-closed', () => {

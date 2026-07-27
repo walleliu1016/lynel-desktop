@@ -127,6 +127,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
 
   updateConfig(cfg: DesktopSocketConfig): void {
     const prevEnabled = this.enabled && this.url.length > 0;
+    const prevPassword = this.userPassword;
     if (cfg.url !== undefined) this.url = cfg.url.replace(/\/+$/, '');
     if (cfg.userId !== undefined) this.userId = cfg.userId;
     if (cfg.userPassword !== undefined) this.userPassword = cfg.userPassword;
@@ -136,6 +137,13 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     // url 变更或 enabled 状态切换都需要重连
     if (nextEnabled !== prevEnabled || (nextEnabled && this.socket)) {
       this.reconnect();
+      return;
+    }
+    // socket 已连接但停在 connected（未认证），且本次密码从无到有：
+    // 用户刚解锁，触发 ensureJwtAndAuth 用新密码换 JWT
+    if (this.socket?.connected && !this.authenticating && this.state !== 'authenticated' && !prevPassword && this.userPassword) {
+      getLogger().info('[desktop-socket] password set after connect, retry auth');
+      void this.ensureJwtAndAuth();
     }
   }
 
@@ -149,7 +157,19 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       return;
     }
 
-    getLogger().info(`[desktop-socket] connecting to ${this.url}`);
+    // URL 可能带反代路径前缀（如 https://host/lynel），但 cloud 服务端 socket.io
+    // 通常挂在根路径 /socket.io，反代前缀只用于 HTTP API（/lynel/api/auth/login）。
+    // 因此 socket.io 连接用 origin + 默认 path /socket.io，避免 /lynel/socket.io 404。
+    // 若服务端确实把 socket.io 挂在反代路径下，需在此调整。
+    let baseUrl = this.url;
+    try {
+      const u = new URL(this.url);
+      baseUrl = u.origin;
+    } catch {
+      // URL 解析失败，降级用原 url
+    }
+
+    getLogger().info(`[desktop-socket] connecting to ${baseUrl} path=/socket.io (http api=${this.url})`);
     this.setState('connecting');
 
     // socket.io-client 类型对 agent 选项声明不全，用 as any 绕过类型检查
@@ -162,12 +182,14 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 10_000,
       timeout: 10_000,
+      // socket.io 默认 path：cloud 服务端通常挂在根路径 /socket.io
+      path: '/socket.io',
       // 忽略 TLS 证书校验（cloud 可能用自签证书）
       agent: insecureHttpsAgent,
       // websocket transport 透传给 ws 库的选项
       extraHeaders: { 'User-Agent': 'lynel-desktop' },
     };
-    this.socket = io(this.url, socketOpts as any);
+    this.socket = io(baseUrl, socketOpts as any);
 
     this.socket.on('connect', () => {
       getLogger().info('[desktop-socket] connected, authenticating...');

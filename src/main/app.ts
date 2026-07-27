@@ -443,14 +443,18 @@ export class App {
         getLogger().error(`[app] shutdown close session failed sid=${s.id.slice(0, 8)}: ${err.message}`);
       }
     }
-    // 3. 关闭所有 API 代理
-    for (const proxy of this.apiProxies) {
-      try {
-        proxy.close();
-      } catch { /* ignore */ }
-    }
+    // 3. 关闭所有 API 代理（close 已改为 async，并行 await 确保 listening socket 真正释放）
+    await Promise.all(
+      this.apiProxies.map((p) =>
+        p.close().catch((err: any) => {
+          getLogger().error(`[app] shutdown proxy close failed: ${err.message}`);
+        }),
+      ),
+    );
     this.apiProxies = [];
-    // 4. 关闭 hook server
+    // 4. 关闭 SSE channel：结束所有 SSE Response，避免 hookServer.stop() 因长连接悬挂
+    try { this.sseChannel.close(); } catch { /* ignore */ }
+    // 5. 关闭 hook server
     if (this.hookServer) {
       try {
         await this.hookServer.stop();
@@ -459,19 +463,18 @@ export class App {
         getLogger().error(`[app] shutdown hook server stop failed: ${err.message}`);
       }
     }
-    // 5. 停止文件 watcher
+    // 6. 停止文件 watcher
     if (this.watchCleanup) {
       try {
         this.watchCleanup();
       } catch { /* ignore */ }
       this.watchCleanup = null;
     }
-    // 6. 关闭 channels
+    // 7. 关闭 channels
     try { await this.wecomChannel.close?.(); } catch { /* ignore */ }
     try { this.localFileChannel.close?.(); } catch { /* ignore */ }
     try { this.desktopSocket.close(); } catch { /* ignore */ }
     this.cachedPassword = undefined;
-    getLogger().info('[app] shutdown complete');
     getLogger().info('[app] shutdown complete');
   }
 
@@ -1177,6 +1180,15 @@ export class App {
       this.settingsStore.set('auth.hash', '');
     });
 
+    // 退出登录：清密码 + cachedPassword，触发 cloud 断开（重新进入登录页）
+    ipcMain.handle('app:logout', () => {
+      this.cachedPassword = undefined;
+      this.clearLockout();
+      this.settingsStore.set('auth.hash', '');
+      // 断开 cloud socket，下次登录走完整 reconnect
+      this.desktopSocket.updateConfig({ userPassword: undefined });
+    });
+
     ipcMain.handle('app:listSessions', async (_event, workDir?: string) => {
       const all = await jsonl.scanAll();
       const merged = this.mergeRecentTitles(all);
@@ -1708,7 +1720,7 @@ export class App {
     ipcMain.on('window:setMinSize', (_event, w: number, h: number) => this.window?.setMinimumSize(w, h));
     ipcMain.on('window:setMaxSize', (_event, w: number, h: number) => this.window?.setMaximumSize(w, h));
     ipcMain.on('window:center', () => this.window?.center());
-    ipcMain.on('window:quit', () => process.exit(0));
+    ipcMain.on('window:quit', () => app.quit());
   }
 
   private wirePty(id: string, proc: import('./pty.js').PtyProcess): void {
@@ -1732,6 +1744,14 @@ export class App {
       // 进程已退出，丢掉未提交的输入行缓存，避免 /exit 误判串到下一次会话
       this.inputLineBuffers.delete(id);
       this.ptyCleanups.delete(id);
+      // 清理对应的 apiproxy 实例，避免 listening socket / Buffer / jsonl 句柄泄露
+      const proxyIdx = this.apiProxies.findIndex((p) => p.sessionId === id);
+      if (proxyIdx >= 0) {
+        const [proxy] = this.apiProxies.splice(proxyIdx, 1);
+        proxy.close().catch((err: any) => {
+          getLogger().error(`[app:wirePty] proxy close failed sid=${id}: ${err.message}`);
+        });
+      }
     };
     proc.onData(onData);
     proc.onExit(onExit);

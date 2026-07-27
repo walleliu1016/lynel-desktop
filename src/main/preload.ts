@@ -8,6 +8,7 @@ const api = {
   lockoutState: () => ipcRenderer.invoke('app:lockoutState'),
   setPassword: (pw: string) => ipcRenderer.invoke('app:setPassword', pw),
   clearPassword: () => ipcRenderer.invoke('app:clearPassword'),
+  logout: () => ipcRenderer.invoke('app:logout'),
   listSessions: (workDir?: string) => ipcRenderer.invoke('app:listSessions', workDir),
   createSession: (workDir: string, prompt: string, extraArgs: string[] = []) =>
     ipcRenderer.invoke('app:createSession', workDir, prompt, extraArgs),
