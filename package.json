@@ -1,6 +1,6 @@
 {
   "name": "lynel-desktop",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "private": true,
   "main": "dist-electron/src/main/index.js",
   "type": "module",
