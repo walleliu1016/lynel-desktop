@@ -167,7 +167,8 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       const u = new URL(this.url);
       baseUrl = u.origin;
     } catch {
-      // URL 解析失败，降级用原 url
+      getLogger().error(`[desktop-socket] invalid url, missing protocol? url=${this.url}`);
+      return;
     }
 
     getLogger().info(`[desktop-socket] connecting to ${baseUrl} path=/socket.io (http api=${this.url})`);
