@@ -32,7 +32,7 @@
             :class="{ error: errorField === 'password' }"
             v-model="password"
             type="password"
-            placeholder="密码任意"
+            :placeholder="cloudEnabled ? 'PIN+Token' : '密码任意'"
             :disabled="locked"
             autocomplete="current-password"
           />
