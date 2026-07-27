@@ -123,6 +123,8 @@ function resizeWindowForCloud(enabled: boolean) {
 watch(cloudEnabled, (enabled) => resizeWindowForCloud(enabled))
 
 onMounted(async () => {
+  // 从最大化状态登出后，确保恢复到登录页尺寸
+  try { await win.applyLoginLayout() } catch {}
   try {
     const info = await GetAppInfo()
     version.value = info.version

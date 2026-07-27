@@ -94,6 +94,7 @@ const icons: Record<string, unknown> = {
   'panel-left-open': PanelLeftOpen,
   'panel-right-close': PanelRightClose,
   'panel-right-open': PanelRightOpen,
+  'log-out': LogOut,
   expand: Expand,
   shrink: Shrink,
 }
