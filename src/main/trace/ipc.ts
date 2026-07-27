@@ -101,19 +101,37 @@ export function registerTraceIpc(): void {
   ipcMain.handle('trace:listRequests', async (_event, workDir: string, sessionId: string, _modelFilter?: string) => {
     const dir = resolveDataDir(workDir, sessionId);
     const seqs = listRawExchanges(dir);
-    const out: TraceSummary[] = [];
-    for (const seq of seqs) {
-      const ex = readRawExchange(dir, seq);
-      if (ex) out.push(summarize(ex));
+    const cached = listRequestsCache.get(dir);
+    // 无新文件直接返回缓存
+    if (cached && cached.seqs.length === seqs.length &&
+        cached.seqs.every((s, i) => s === seqs[i])) {
+      return cached.summaries;
     }
-    return out;
+    // 仅读取新文件
+    const knownSet = new Set(cached?.seqs ?? []);
+    const newSeqs = seqs.filter((s) => !knownSet.has(s));
+    const summaries: TraceSummary[] = cached ? [...cached.summaries] : [];
+    for (const seq of newSeqs) {
+      const ex = readRawExchange(dir, seq);
+      if (ex) summaries.push(summarize(ex));
+    }
+    summaries.sort((a, b) => a.seq - b.seq);
+    listRequestsCache.set(dir, { seqs, summaries });
+    return summaries;
   });
 
   ipcMain.handle('trace:sessionStats', async (_event, workDir: string, sessionId: string, _modelFilter?: string) => {
     const dir = resolveDataDir(workDir, sessionId);
     const seqs = listRawExchanges(dir);
-    const records: RawExchange[] = [];
-    for (const seq of seqs) {
+    const cached = statsCache.get(dir);
+    if (cached && cached.seqs.length === seqs.length &&
+        cached.seqs.every((s, i) => s === seqs[i])) {
+      return cached.summary;
+    }
+    const knownSet = new Set(cached?.seqs ?? []);
+    const newSeqs = seqs.filter((s) => !knownSet.has(s));
+    const records: RawExchange[] = cached ? [...cached.records] : [];
+    for (const seq of newSeqs) {
       const ex = readRawExchange(dir, seq);
       if (ex) {
         records.push({
@@ -126,7 +144,10 @@ export function registerTraceIpc(): void {
         });
       }
     }
-    return summarizeUsage(records);
+    records.sort((a, b) => a.seq! - b.seq!);
+    const summary = summarizeUsage(records);
+    statsCache.set(dir, { seqs, records, summary });
+    return summary;
   });
 
   ipcMain.handle('trace:request', async (_event, workDir: string, sessionId: string, seq: number) => {
@@ -205,6 +226,8 @@ export function registerTraceIpc(): void {
   });
 
   // 文件变更通知：trace watcher
+  // 300ms debounce 合并批量文件写入为单次通知，避免每请求触发全量扫描
+  const watcherTimers = new Map<string, NodeJS.Timeout>();
   ipcMain.handle('trace:watch', async (_event, workDir: string, sessionId: string) => {
     const dir = resolveDataDir(workDir, sessionId);
     const rawDir = path.join(dir, 'raw');
@@ -215,7 +238,11 @@ export function registerTraceIpc(): void {
       depth: 0,
     });
     watcher.on('add', () => {
-      getBus().emit('trace:updated', workDir, sessionId);
+      const t = watcherTimers.get(rawDir);
+      if (t) clearTimeout(t);
+      watcherTimers.set(rawDir, setTimeout(() => {
+        getBus().emit('trace:updated', workDir, sessionId);
+      }, 300));
     });
     watchers.set(rawDir, watcher);
   });
@@ -225,6 +252,8 @@ export function registerTraceIpc(): void {
     const rawDir = path.join(dir, 'raw');
     const watcher = watchers.get(rawDir);
     if (watcher) {
+      const t = watcherTimers.get(rawDir);
+      if (t) { clearTimeout(t); watcherTimers.delete(rawDir); }
       await watcher.close();
       watchers.delete(rawDir);
     }
@@ -233,6 +262,12 @@ export function registerTraceIpc(): void {
 
 // session 维度 watcher 缓存，key = raw 目录绝对路径
 const watchers = new Map<string, FSWatcher>();
+
+// listRequests / sessionStats 增量缓存，避免每次全量 readFileSync + JSON.parse
+type ListRequestsCacheEntry = { seqs: number[]; summaries: TraceSummary[] };
+const listRequestsCache = new Map<string, ListRequestsCacheEntry>();
+type StatsCacheEntry = { seqs: number[]; records: RawExchange[]; summary: any };
+const statsCache = new Map<string, StatsCacheEntry>();
 
 function exportMarkdown(ex: any): string {
   const body = ex.request?.body || {};

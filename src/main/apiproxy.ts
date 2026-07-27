@@ -46,6 +46,11 @@ interface SessionState {
 
 const sessionStates = new Map<string, SessionState>();
 
+// 独立 Agent 禁用 keepAlive，避免托盘常驻期间空闲 socket 被服务端 RST 后 globalAgent 复用 stale socket 导致 ECONNRESET
+const noKeepAliveAgent = new https.Agent({ keepAlive: false });
+const RETRYABLE_CODES = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', 'ENOTFOUND']);
+const MAX_UPSTREAM_RETRIES = 1;
+
 export function resolveProxySession(token: string): { sessionId: string; workDir: string } | undefined {
   const s = sessionStates.get(token);
   if (!s) return undefined;
@@ -159,6 +164,10 @@ export function startProxy(
 
         const forwardHeaders = { ...req.headers, host: up.host };
         delete (forwardHeaders as Record<string, unknown>)['accept-encoding'];
+
+        let upstreamRetries = 0;
+        function doUpstream() {
+        const s = sessionStates.get(token)!;
         const proxyReq = upstreamClient.request({
           protocol: up.protocol,
           hostname: up.hostname,
@@ -166,6 +175,7 @@ export function startProxy(
           path: forwardPath,
           method: req.method,
           headers: forwardHeaders,
+          agent: up.protocol === 'https:' ? noKeepAliveAgent : undefined,
         }, (proxyRes) => {
           s.resStatus = proxyRes.statusCode || 0;
           s.resHeaders = proxyRes.headers as Record<string, string | string[] | undefined>;
@@ -237,6 +247,12 @@ export function startProxy(
         });
 
         proxyReq.on('error', (err: any) => {
+          if (RETRYABLE_CODES.has(err.code) && upstreamRetries < MAX_UPSTREAM_RETRIES) {
+            upstreamRetries++;
+            console.warn(`[apiproxy] upstream retry ${upstreamRetries}/${MAX_UPSTREAM_RETRIES}: code=${err.code} message=${err.message}`);
+            doUpstream();
+            return;
+          }
           console.error(`[apiproxy] upstream request error: upstream=${up.href} path=${forwardPath} code=${err.code} syscall=${err.syscall} hostname=${err.hostname} port=${err.port} message=${err.message}`);
           if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' });
           res.end('apiproxy upstream error');
@@ -246,6 +262,8 @@ export function startProxy(
         });
 
         proxyReq.end(bodyBuf);
+        } // doUpstream
+        doUpstream();
       });
 
       req.on('error', (err) => {

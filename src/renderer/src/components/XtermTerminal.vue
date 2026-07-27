@@ -204,10 +204,12 @@ async function applyTerminalConfig(cfg: TerminalConfig) {
     }
   }
   if (needsRefit) {
-    // **关键顺序**：先等新字体加载完成再写 term.options，否则 xterm 的 CharSizeService
-    // 同步 measure 时会拿到回退字体的 metrics，把 cell.width 锁死。
-    await waitForFontReady(cfg.fontFamily, cfg.fontSize)
-    if (!term) return
+    // 只有容器可见且有有效尺寸时才等字体加载（后续 fit 依赖正确的 char metrics）
+    const container = terminalEl.value
+    if (props.visible && container && container.clientWidth > 0 && container.clientHeight > 0) {
+      await waitForFontReady(cfg.fontFamily, cfg.fontSize)
+      if (!term) return
+    }
   }
   if (!prev || prev.fontSize !== cfg.fontSize) term.options.fontSize = cfg.fontSize
   if (!prev || prev.fontFamily !== cfg.fontFamily) term.options.fontFamily = cfg.fontFamily
@@ -216,6 +218,13 @@ async function applyTerminalConfig(cfg: TerminalConfig) {
   if (!prev || prev.cursorBlink !== cfg.cursorBlink) term.options.cursorBlink = cfg.cursorBlink
   if (!prev || prev.scrollback !== cfg.scrollback) term.options.scrollback = cfg.scrollback
   if (needsRefit) {
+    const container = terminalEl.value
+    if (!props.visible || !container || container.clientWidth <= 0 || container.clientHeight <= 0) {
+      // 容器不可见：仅更新 lastApplied，跳过 refit（reset/fit/resize）
+      // visible 回调中会重新 fit，此时 term.options 已是新值
+      lastApplied = { ...cfg }
+      return
+    }
     // 清空老 buffer：旧 cell 已经按旧 cols 摆放，必须丢掉
     term.reset()
     // fit 重新计算 cols/rows（依赖新字体已加载）

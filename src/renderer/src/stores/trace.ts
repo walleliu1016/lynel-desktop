@@ -95,20 +95,35 @@ export const useTraceStore = defineStore('trace', () => {
     }
   }
 
-  // 监听文件变更自动刷新
+  // 监听文件变更自动刷新（200ms 节流 + 防重入）
   let watchCleanup: (() => void) | null = null
+  let loadPending = false
+  let loadThrottle: ReturnType<typeof setTimeout> | null = null
   function initWatcher() {
     watchCleanup?.()
     watchCleanup = EventsOn('trace:updated', (wd: string, sid: string) => {
       if (wd === workDir.value && sid === sessionId.value) {
-        load()
+        scheduleLoad()
       }
     })
   }
   initWatcher()
 
-  async function load() {
+  function scheduleLoad() {
+    if (loadThrottle) return
+    loadThrottle = setTimeout(() => {
+      loadThrottle = null
+      doLoad()
+    }, 200)
+  }
+
+  async function doLoad() {
     if (!workDir.value || !sessionId.value) return
+    if (loading.value) {
+      loadPending = true
+      return
+    }
+    loadPending = false
     loading.value = true
     loadError.value = null
     try {
@@ -124,7 +139,16 @@ export const useTraceStore = defineStore('trace', () => {
       loadError.value = e?.message || '加载失败'
     } finally {
       loading.value = false
+      if (loadPending) {
+        loadPending = false
+        doLoad()
+      }
     }
+  }
+
+  // 公开 load 供手动刷新 / session 切换调用，不走节流
+  async function load() {
+    await doLoad()
   }
 
   async function select(seq: number) {
