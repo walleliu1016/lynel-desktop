@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import {
+  AlertCircle,
   AlertTriangle,
   ArrowLeft,
   Bot,
@@ -62,6 +63,7 @@ const icons: Record<string, unknown> = {
   'chevron-down': ChevronDown,
   plus: Plus,
   trash: Trash2,
+  'alert-circle': AlertCircle,
   warning: AlertTriangle,
   user: User,
   zap: Zap,

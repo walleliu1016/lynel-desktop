@@ -47,10 +47,6 @@
           <span class="switch-label">推送工具调用</span>
           <Switch v-model="cfg.push_tool_calls" @change="markDirty" />
         </label>
-        <label v-if="false" class="switch-row">
-          <span class="switch-label">显示灵动岛</span>
-          <Switch v-model="cfg.notch_enabled" @change="markDirty" />
-        </label>
         <label class="switch-row">
           <span class="switch-label">防止系统休眠</span>
           <Switch v-model="cfg.prevent_sleep" @change="markDirty" />
@@ -59,7 +55,6 @@
     </div>
 
     <div class="actions">
-      <button class="btn-danger" @click="onClear">清除账户密码</button>
       <div class="spacer" />
       <button class="btn-cancel" :disabled="!settings.dirty" @click="settings.load">取消</button>
       <button class="btn-save" :disabled="!settings.dirty" @click="onSave">保存</button>
@@ -71,7 +66,6 @@
 import { onMounted, computed } from 'vue'
 import Switch from '../../components/Switch.vue'
 import { useSettingsStore } from '../../stores/settings'
-import { ClearPassword } from '../../composables/useElectron'
 import { showToast } from '../../composables/useToast'
 
 const settings = useSettingsStore()
@@ -83,7 +77,6 @@ const cfg = computed(() => settings.cfg ?? (settings.cfg = {
   auto_lock_minutes: 5,
   auto_start: false,
   minimize_on_start: false,
-  notch_enabled: false,
   cloud_service_enabled: false,
   cloud_service_url: '',
   push_thinking: false,
@@ -101,12 +94,6 @@ async function onSave() {
   } catch (e: any) {
     showToast('保存失败：' + (e?.message ?? e), 'error')
   }
-}
-
-async function onClear() {
-  if (!confirm('清除账户密码后下次启动会进入「未初始化」状态。继续？')) return
-  try { await ClearPassword() }
-  catch (e: any) { alert('清除失败：' + (e?.message ?? e)) }
 }
 </script>
 

@@ -6,7 +6,6 @@ import path from 'node:path';
 import { getStore } from './store.js';
 import { getBus } from './events.js';
 import { getLogger } from './log.js';
-import * as auth from './auth.js';
 import * as jsonl from './jsonl.js';
 import * as session from './session.js';
 
@@ -19,7 +18,6 @@ import { StateChannel } from './channels/state-channel.js';
 import { DesktopSocket, type SyncSession as DesktopSyncSession } from './channels/desktop-socket.js';
 import { OutputChannel, type HookEventLike } from './channels/channel.js';
 import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
-import { setNotchMousePassthrough, resizeNotchWindow, showNotchWindow, hideNotchWindow, getNotchWindow } from './notch-window.js';
 import { startProxy } from './apiproxy.js';
 import { start as startPty, PtyMode, PtySize, preloadShellEnv } from './pty.js';
 import { registerTraceIpc } from './trace/ipc.js';
@@ -311,9 +309,7 @@ export class App {
   private apiProxies: import('./apiproxy.js').Proxy[] = [];
   private watchCleanup: (() => void) | null = null;
   private sleepBlockerId: number | null = null;
-  // App 解锁时缓存的明文密码；用于 cloud /api/auth/login 换 JWT。
-  // 锁定/退出时清空。密码变更后 cloud 那边会校验失败，desktop 重新解锁即可。
-  private cachedPassword: string | undefined;
+  // cloud 密码 + token 只存内存（desktopSocket），进程重启即失效，每次启动都需重新登录
 
   constructor() {
     this.dispatcher.register(this.sseChannel);
@@ -335,10 +331,6 @@ export class App {
         if (!this.window?.isDestroyed()) {
           this.window?.webContents.send(event, ...args);
         }
-        const notch = getNotchWindow();
-        if (notch && !notch.isDestroyed()) {
-          notch.webContents.send(event, ...args);
-        }
       }
       return originalEmit(event, ...args);
     };
@@ -347,26 +339,12 @@ export class App {
     });
   }
 
-  private clearLockout(): void {
-    this.settingsStore.set('lockout.attempts', 0);
-    this.settingsStore.set('lockout.until', 0);
-  }
-
   private setSessionState(id: string, state: string, persist = true): void {
     if (persist) {
       this.instanceStore.set(`sessions.${id}.state`, state);
     }
     session.setState(id, state as import('./session.js').SessionState);
     getBus().emit('sessions:state:changed', id, state);
-  }
-
-  private recordFailedAttempt(): void {
-    const attempts = ((this.settingsStore.get('lockout.attempts', 0) as number) ?? 0) + 1;
-    this.settingsStore.set('lockout.attempts', attempts);
-    if (attempts >= 5) {
-      this.settingsStore.set('lockout.until', Date.now() + 5 * 60 * 1000);
-      getLogger().warn('[app] lockout triggered: 5 failed attempts');
-    }
   }
 
   async init(): Promise<void> {
@@ -474,7 +452,6 @@ export class App {
     try { await this.wecomChannel.close?.(); } catch { /* ignore */ }
     try { this.localFileChannel.close?.(); } catch { /* ignore */ }
     try { this.desktopSocket.close(); } catch { /* ignore */ }
-    this.cachedPassword = undefined;
     getLogger().info('[app] shutdown complete');
   }
 
@@ -572,18 +549,10 @@ export class App {
     const url = (this.settingsStore.get('cloud_service_url', '') as string) || '';
     const userId = this.getCurrentUserAccount();
 
-    // 注入 JWT 持久化回调（仅在首次注入；后续 updateConfig 不重复设置）
-    this.desktopSocket.setPersistence({
-      load: () => (this.settingsStore.get('cloud_jwt', '') as string) || undefined,
-      save: (jwt: string) => this.settingsStore.set('cloud_jwt', jwt),
-      clear: () => this.settingsStore.delete('cloud_jwt'),
-    });
-
     this.desktopSocket.updateConfig({
       enabled,
       url,
       userId,
-      userPassword: this.cachedPassword,
     });
 
     // updateConfig 只在已有 socket 时重连；首次启用需要显式 connect
@@ -1129,64 +1098,29 @@ export class App {
       clipboard.writeText(typeof text === 'string' ? text : String(text ?? ''))
       return true
     })
-    ipcMain.handle('app:isInitialized', () => {
-      // cloud 未启用：跳过密码初始化，登录页直接放行
-      if (!this.isCloudEnabled()) return true;
-      const hash = this.settingsStore.get('auth.hash', '');
-      return auth.isInitialized(hash as string);
-    });
 
-    ipcMain.handle('app:verify', async (_event, pw: string) => {
-      // cloud 未启用：默认返回成功，不校验密码（本地无敏感数据需要保护）
+    // 登录：调 cloud /api/auth/login 校验密码，成功即进主页
+    // 密码 + token 纯内存保存，进程重启需重新登录
+    ipcMain.handle('app:loginWithToken', async (_event, userId: string, password: string) => {
+      if (!userId || !password) return { ok: false, error: '请填写用户名和密码' };
       if (!this.isCloudEnabled()) {
-        this.clearLockout();
-        return true;
+        // cloud 未启用：直接放行
+        return { ok: true };
       }
-      const hash = this.settingsStore.get('auth.hash', '') as string;
-      const ok = await auth.verifyPassword(hash, pw);
-      if (ok) {
-        this.clearLockout();
-        // 缓存明文密码，供 cloud /api/auth/login 换 JWT 使用
-        // 密码变更后 cloud 那边会校验失败，desktop 重新解锁即可
-        this.cachedPassword = pw;
-        // 触发 cloud 重连：有密码后可以走完整的 login 流程
-        this.applyCloudSettings();
-      } else {
-        this.recordFailedAttempt();
-        getLogger().warn('[app] password verification failed');
+      // 保存 user_id（用于 socket 认证 + 机器人默认 ChatId）
+      try { this.setCurrentUserAccount(userId); } catch { /* ignore */ }
+      // 调 cloud /api/auth/login 校验密码，成功会自动触发 socket 重连
+      const ok = await this.desktopSocket.verifyLogin(userId, password);
+      if (!ok) {
+        return { ok: false, error: '登录失败，请检查用户名和密码' };
       }
-      return ok;
+      return { ok: true };
     });
 
-    ipcMain.handle('app:lockoutState', () => {
-      const attempts = (this.settingsStore.get('lockout.attempts', 0) as number) ?? 0;
-      const until = (this.settingsStore.get('lockout.until', 0) as number) ?? 0;
-      return [attempts, until > 0 ? until : null];
-    });
-
-    ipcMain.handle('app:setPassword', (_event, pw: string) => {
-      this.clearLockout();
-      return auth.hashPassword(pw).then((hash) => {
-        this.settingsStore.set('auth.hash', hash);
-        // 首次设置密码时也要缓存明文密码 + 触发 cloud 重连
-        // 否则 desktop-socket 还是没密码，cloud /api/auth/login 没法走
-        this.cachedPassword = pw;
-        this.applyCloudSettings();
-      });
-    });
-
-    ipcMain.handle('app:clearPassword', () => {
-      this.clearLockout();
-      this.settingsStore.set('auth.hash', '');
-    });
-
-    // 退出登录：清密码 + cachedPassword，触发 cloud 断开（重新进入登录页）
+    // 退出登录：清内存凭据 + 断开 cloud socket
     ipcMain.handle('app:logout', () => {
-      this.cachedPassword = undefined;
-      this.clearLockout();
-      this.settingsStore.set('auth.hash', '');
-      // 断开 cloud socket，下次登录走完整 reconnect
-      this.desktopSocket.updateConfig({ userPassword: undefined });
+      this.desktopSocket.clearCredentials();
+      this.desktopSocket.disconnect();
     });
 
     ipcMain.handle('app:listSessions', async (_event, workDir?: string) => {
@@ -1226,24 +1160,16 @@ export class App {
     }));
 
     ipcMain.handle('app:getSettings', () => this.settingsStore.store);
-    // 登录页保存云服务配置：URL 变更时清掉旧 JWT（cloud 实例变了，旧 JWT 必然失效）
-    // 这里只写 settings.json，不触发 applyCloudSettings；后续 app:verify / app:setPassword 会触发
+    // 登录页保存云服务配置：仅写 settings.json，登录时由 app:loginWithToken 触发连接
     ipcMain.handle('app:cloud:updateSettings', (_event, enabled: boolean, url: string) => {
-      const prevUrl = (this.settingsStore.get('cloud_service_url', '') as string) || '';
       this.settingsStore.set('cloud_service_enabled', !!enabled);
       this.settingsStore.set('cloud_service_url', url.trim());
-      if (url.trim() !== prevUrl) {
-        // URL 变更：清掉旧 JWT，强制下次走密码换 JWT
-        this.settingsStore.delete('cloud_jwt');
-      }
     });
     ipcMain.handle('app:updateSettings', (_event, cfg: any) => {
       this.settingsStore.set(cfg);
       this.applyAutoSettings();
       this.applyPushSettings();
       this.applyCloudSettings();
-      // 灵动岛开关已隐藏，强制保持关闭
-      hideNotchWindow();
     });
 
     ipcMain.handle('app:getWeComConfig', () => {
@@ -1684,21 +1610,6 @@ export class App {
 
     ipcMain.handle('permission:isPending', (_event, id: string) => {
       return permissionBroker.isPending(id);
-    });
-
-    // 灵动岛窗口控制
-    ipcMain.on('notch:setPassthrough', (_event, passthrough: boolean) => {
-      setNotchMousePassthrough(passthrough);
-    });
-    ipcMain.on('notch:setSize', (_event, w: number, h: number) => {
-      resizeNotchWindow(w, h);
-    });
-    ipcMain.on('notch:setVisibility', (_event, visible: boolean) => {
-      if (visible) {
-        showNotchWindow();
-      } else {
-        hideNotchWindow();
-      }
     });
 
     // Window controls

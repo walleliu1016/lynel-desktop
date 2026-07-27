@@ -17,7 +17,6 @@
             :class="{ error: errorField === 'username' }"
             v-model="username"
             placeholder="UM账户"
-            :disabled="locked"
             autocomplete="username"
           />
           <div class="form-hint">
@@ -29,26 +28,24 @@
           <label class="form-label">密码</label>
           <input
             class="form-input"
-            :class="{ error: errorField === 'password' }"
-            v-model="password"
+            :class="{ error: errorField === 'token' }"
+            v-model="token"
             type="password"
             :placeholder="cloudEnabled ? 'PIN+Token' : '密码任意'"
-            :disabled="locked"
-            autocomplete="current-password"
+            autocomplete="off"
           />
           <div class="form-hint">
-            <template v-if="locked">已锁定 · {{ lockCountdown }} 后重试</template>
-            <template v-else-if="errorField === 'password'">{{ error }}</template>
+            <template v-if="errorField === 'token'">{{ error }}</template>
           </div>
         </div>
 
         <div class="cloud-section">
           <div class="cloud-toggle-row">
             <Switch v-model="cloudEnabled" @change="onCloudToggle" />
-            <span class="cloud-toggle-label">启用云服务</span>
-          </div>
-          <div class="cloud-hint" v-if="cloudEnabled">
-            开启后，会话消息与权限请求将实时推送到移动 App，便于远程审批与查看进度
+            <span class="cloud-toggle-label">启用云服务<span class="cloud-beta-text">（测试阶段）</span></span>
+            <span class="cloud-info-icon" data-tooltip="开启后，会话消息与权限请求将实时推送到移动 App，便于远程审批与查看进度">
+              <Icon name="alert-circle" :size="14" />
+            </span>
           </div>
           <div class="cloud-url-group" v-if="cloudEnabled">
             <label class="form-label">服务地址</label>
@@ -56,13 +53,12 @@
               class="form-input"
               v-model="cloudUrl"
               placeholder="https://ease.example.com"
-              :disabled="locked"
             />
           </div>
         </div>
 
-        <button class="login-btn" type="submit" :disabled="locked || !canSubmit">
-          登录
+        <button class="login-btn" type="submit" :disabled="!canSubmit || loading">
+          {{ loading ? '登录中...' : '登录' }}
         </button>
         <div class="login-footer">
           <span>Lynel Desktop v{{ version }}</span>
@@ -78,7 +74,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import SettingsDialog from '../components/SettingsDialog.vue'
@@ -93,43 +89,30 @@ const auth = useAuthStore()
 const win = useWindowState()
 
 const username = ref('')
-const password = ref('')
+const token = ref('')
 const error = ref<string | null>(null)
-const errorField = ref<'username' | 'password' | null>(null)
+const errorField = ref<'username' | 'token' | null>(null)
 const version = ref('')
 const showSettings = ref(false)
 const cloudEnabled = ref(false)
 const cloudUrl = ref('')
-
-const locked = computed(() => !!auth.lockedUntil)
-const lockCountdown = computed(() => {
-  if (!auth.lockedUntil) return ''
-  const ms = auth.lockedUntil.getTime() - Date.now()
-  if (ms <= 0) return '00:00'
-  const s = Math.floor(ms / 1000)
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
-})
+const loading = ref(false)
 
 const canSubmit = computed(() => {
-  if (!username.value.trim() || !password.value) return false
-  // 启用云服务时必须填 URL
+  if (!username.value.trim() || !token.value) return false
   if (cloudEnabled.value && !cloudUrl.value.trim()) return false
   return true
 })
 
 const onCloudToggle = () => {
-  // 开关切换时不需要立刻保存配置，登录时会统一保存
-  // 但需要立即调整窗口高度，避免内容超出把登录按钮挤出可视区域
   resizeWindowForCloud(cloudEnabled.value)
 }
 
-// 开启云服务时窗口高度 +120 容纳开关 + 提示 + URL 输入框
 const BASE_HEIGHT = 400
-const CLOUD_EXTRA_HEIGHT = 120
+const CLOUD_EXTRA_HEIGHT = 80
 function resizeWindowForCloud(enabled: boolean) {
   const h = enabled ? BASE_HEIGHT + CLOUD_EXTRA_HEIGHT : BASE_HEIGHT
   try {
-    // 先解除 min/max 限制，否则 setSize 会被 clamp
     WindowSetMinSize(0, 0)
     WindowSetMaxSize(0, 0)
     WindowSetSize(320, h)
@@ -137,30 +120,20 @@ function resizeWindowForCloud(enabled: boolean) {
   } catch {}
 }
 
-// 监听 cloudEnabled 变化，确保任何路径（包括 onMounted 预填）都能调整窗口
 watch(cloudEnabled, (enabled) => resizeWindowForCloud(enabled))
 
-let timer: number | null = null
 onMounted(async () => {
   try {
     const info = await GetAppInfo()
     version.value = info.version
   } catch {}
 
-  // 读取已保存的云服务配置，预填到界面
   try {
     const cfg = await GetSettings()
     cloudEnabled.value = !!cfg.cloud_service_enabled
     cloudUrl.value = cfg.cloud_service_url || ''
   } catch {}
-
-  timer = window.setInterval(() => {
-    if (auth.lockedUntil && auth.lockedUntil.getTime() <= Date.now()) {
-      auth.lockedUntil = null
-    }
-  }, 1000)
 })
-onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 
 async function onSubmit() {
   error.value = null
@@ -171,38 +144,39 @@ async function onSubmit() {
     errorField.value = 'username'
     return
   }
-  if (!password.value) {
-    error.value = '请输入密码'
-    errorField.value = 'password'
+  if (!token.value) {
+    error.value = '请输入 Token'
+    errorField.value = 'token'
     return
   }
   if (cloudEnabled.value && !cloudUrl.value.trim()) {
     error.value = '请填写云服务地址'
-    errorField.value = 'password'
+    errorField.value = 'token'
     return
   }
 
-  // 先保存云服务配置（URL 变更会清旧 JWT），再走密码校验/设置流程
-  // app:verify / app:setPassword 内部会触发 applyCloudSettings 连接 cloud
+  // 先保存云服务配置（URL 变更会清旧 JWT），再走 token 登录
   try {
     await UpdateCloudSettings(cloudEnabled.value, cloudUrl.value.trim())
   } catch (e: any) {
     error.value = '保存云服务配置失败：' + (e?.message ?? e)
-    errorField.value = 'password'
+    errorField.value = 'token'
     return
   }
 
-  const err = await auth.login(password.value)
+  loading.value = true
+  const err = await auth.login(username.value.trim(), token.value)
+  loading.value = false
   if (err) {
     error.value = err
-    errorField.value = 'password'
+    errorField.value = 'token'
     return
   }
   // 保存当前登录 UM 账户，作为机器人默认 ChatId
   try {
     if (username.value.trim()) await SetCurrentUser(username.value.trim())
   } catch {}
-  // 进入主页前先把窗口切到主布局，避免 HomeView 挂载后闪现小窗口再变大
+  // 进入主页前先把窗口切到主布局
   try { await win.applyHomeLayout() } catch {}
   try { WindowCenter() } catch {}
   router.push('/home')
@@ -210,12 +184,10 @@ async function onSubmit() {
 
 async function goSettings() {
   showSettings.value = true
-  // 弹窗需要更大空间，临时放大窗口
   try { await win.applySettingsLayout() } catch {}
 }
 async function closeSettings() {
   showSettings.value = false
-  // 关闭弹窗后恢复登录小窗口
   try { await win.applyLoginLayout() } catch {}
 }
 </script>
@@ -240,15 +212,6 @@ async function closeSettings() {
 }
 .login-title-row { display: flex; align-items: center; gap: 8px; }
 .login-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-.settings-btn {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 3px 8px; border-radius: var(--radius-md);
-  color: var(--text-secondary); font-size: 10px; font-weight: 500;
-  background: var(--bg-input); border: 1px solid var(--border);
-  cursor: pointer;
-}
-.settings-btn:hover { color: var(--text-primary); background: var(--bg-panel); border-color: var(--accent); }
-.settings-btn > svg { display: inline-block; }
 .form { flex: 1; display: flex; flex-direction: column; }
 .form-group { margin-bottom: 6px; }
 .form-label {
@@ -264,7 +227,6 @@ async function closeSettings() {
 }
 .form-input.error { border-color: var(--status-error); }
 .form-input:focus { outline: none; border-color: var(--accent); }
-.form-input:disabled { opacity: 0.5; cursor: not-allowed; }
 .form-hint { font-size: 10px; color: var(--status-error); margin-top: 3px; min-height: 14px; }
 .cloud-section {
   margin: 8px 0 6px;
@@ -279,14 +241,34 @@ async function closeSettings() {
 .cloud-toggle-label {
   font-size: 12px; color: var(--text-primary); font-weight: 500;
 }
-.cloud-hint {
-  font-size: 10px; color: var(--text-tertiary);
+.cloud-beta-text {
+  font-size: 10px; font-weight: 400;
+  color: var(--text-secondary);
+}
+.cloud-info-icon {
+  display: inline-flex; align-items: center;
+  margin-left: auto;
+  color: var(--accent);
+  cursor: help;
+  flex-shrink: 0;
+  position: relative;
+}
+.cloud-info-icon:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: -6px;
+  width: 220px;
+  padding: 8px 12px;
+  background: var(--bg-tooltip, #2d2d2d);
+  color: var(--text-tooltip, #e0e0e0);
+  font-size: 11px;
   line-height: 1.5;
-  margin-top: 6px;
-  padding: 6px 8px;
-  background: var(--bg-panel);
-  border-radius: var(--radius-sm);
-  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  white-space: normal;
+  z-index: 1000;
+  pointer-events: none;
 }
 .cloud-url-group { margin-top: 6px; }
 .login-btn {

@@ -12,7 +12,6 @@ function defaultSettings(): Settings {
     auto_lock_minutes: 5,
     auto_start: false,
     minimize_on_start: false,
-    notch_enabled: false,
     cloud_service_enabled: false,
     cloud_service_url: '',
     push_thinking: false,

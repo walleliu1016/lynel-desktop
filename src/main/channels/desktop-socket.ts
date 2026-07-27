@@ -1,14 +1,15 @@
-// DesktopSocket: Socket.IO 上行通道 -> 云服务（取代 CloudChannel 的所有 HTTP 调用）
-// 认证流程：
-//   1. 启动时读本地 JWT（settingsStore.cloud_jwt）
-//   2. 有 JWT -> POST /api/auth/login { user_id, token: jwt } -> 拿新 JWT
-//   3. 无 JWT 或 JWT 失效 -> POST /api/auth/login { user_id, user_password }
-//   4. 拿到 JWT -> 持久化 -> emit desktop:auth { user_id, token: jwt }
-//   5. socket 重连时重新走 1-4
+// DesktopSocket: Socket.IO 上行通道 -> 云服务
+// 认证流程（token 纯内存，每次启动需重新登录）：
+//   1. 用户在登录页输入 user_id + token -> app:loginWithToken
+//   2. 主进程 desktopSocket.setToken(token) 内存缓存 + applyCloudSettings 触发 reconnect
+//   3. socket 连接建立 -> ensureJwtAndAuth -> POST /api/auth/login { user_id, token }
+//   4. cloud 校验 token 通过 -> emit desktop:auth { user_id, token }
+//   5. cloud 返回 auth:success -> 状态 authenticated -> 进 home
+//   6. token 无效 -> auth:failed -> 前端报错留在登录页
 //
 // 事件命名约定：所有 Desktop 上行事件统一 desktop: 前缀，与 Mobile 事件完全隔离
-//   desktop:auth            连接后认证（携带 JWT）
-//   desktop:session:sync    会话元数据同步（取代 POST /api/sessions/sync）
+//   desktop:auth            连接后认证（携带 token）
+//   desktop:session:sync    会话元数据同步
 //   desktop:envelope:push   批量推 LynelEnvelope（buffer + 定时 flush）
 //   desktop:hook:batch      非审批 hook 批量上报
 //   desktop:hook:permission 单个 PermissionRequest（阻塞，等 desktop:hook:result）
@@ -16,7 +17,7 @@
 //
 // 下行事件：
 //   auth:success            认证成功 -> 自动 syncSessions
-//   auth:failed             认证失败 -> 重新 login（JWT 失效走密码登录）
+//   auth:failed             认证失败 -> 清内存 token，等用户重新登录
 //   desktop:hook:result     PermissionRequest 决策结果（匹配 request_id）
 //   desktop:chat            Mobile 转发的消息 -> 路由到对应 session 的 PTY
 
@@ -35,15 +36,6 @@ export interface DesktopSocketConfig {
   url?: string;
   enabled?: boolean;
   userId?: string;
-  // App 解锁时缓存的明文密码；锁定时传 undefined。无 JWT 时用密码换 JWT
-  userPassword?: string;
-}
-
-// JWT 持久化回调：由 app.ts 注入，写入 settingsStore.cloud_jwt
-export interface JwtPersistence {
-  load(): string | undefined;
-  save(jwt: string): void;
-  clear(): void;
 }
 
 export interface SyncSession {
@@ -81,11 +73,10 @@ export class DesktopSocket implements OutputChannel, HookChannel {
   private url = '';
   private enabled = false;
   private userId = '';
-  private userPassword: string | undefined;
-  private jwt: string | undefined;          // 内存缓存，与 persistence 同步
-  private persistence: JwtPersistence | null = null;
+  private password: string | undefined;       // 用户输入的密码，纯内存，进程重启即失效
+  private token: string | undefined;          // cloud 返回的 token（用于 socket 认证），纯内存
   private state: ConnectionState = 'disconnected';
-  private authenticating = false;           // 防止重入 login 流程
+  private authenticating = false;             // 防止重入 login 流程
 
   // envelope buffer：3s flush 或满 50 条
   private buffer: LynelEnvelope[] = [];
@@ -120,30 +111,40 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     return this.state;
   }
 
-  setPersistence(p: JwtPersistence): void {
-    this.persistence = p;
-    this.jwt = p.load();
+  // 由 app:loginWithToken 调用：用密码调 /api/auth/login 校验
+  // 成功 -> 存密码 + token，触发 reconnect 让 socket 走 emit desktop:auth
+  // 失败 -> 返回 false
+  async verifyLogin(userId: string, password: string): Promise<boolean> {
+    if (!this.url) return false;
+    this.userId = userId;
+    const token = await this.login(password);
+    if (!token) return false;
+    this.password = password;
+    this.token = token;
+    // 触发重连，新 socket 连接后 ensureJwtAndAuth 会直接 emit desktop:auth（已有 token）
+    this.reconnect();
+    return true;
+  }
+
+  setPassword(pw: string): void {
+    this.password = pw;
+  }
+
+  clearCredentials(): void {
+    this.password = undefined;
+    this.token = undefined;
   }
 
   updateConfig(cfg: DesktopSocketConfig): void {
     const prevEnabled = this.enabled && this.url.length > 0;
-    const prevPassword = this.userPassword;
     if (cfg.url !== undefined) this.url = cfg.url.replace(/\/+$/, '');
     if (cfg.userId !== undefined) this.userId = cfg.userId;
-    if (cfg.userPassword !== undefined) this.userPassword = cfg.userPassword;
     if (cfg.enabled !== undefined) this.enabled = cfg.enabled;
 
     const nextEnabled = this.isEnabled();
     // url 变更或 enabled 状态切换都需要重连
     if (nextEnabled !== prevEnabled || (nextEnabled && this.socket)) {
       this.reconnect();
-      return;
-    }
-    // socket 已连接但停在 connected（未认证），且本次密码从无到有：
-    // 用户刚解锁，触发 ensureJwtAndAuth 用新密码换 JWT
-    if (this.socket?.connected && !this.authenticating && this.state !== 'authenticated' && !prevPassword && this.userPassword) {
-      getLogger().info('[desktop-socket] password set after connect, retry auth');
-      void this.ensureJwtAndAuth();
     }
   }
 
@@ -198,26 +199,26 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       this.ensureJwtAndAuth();
     });
 
-    this.socket.on('auth:success', () => {
-      getLogger().info('[desktop-socket] authenticated');
+    this.socket.on('auth:success', (data: unknown) => {
+      getLogger().info(`[desktop-socket] authenticated data=${JSON.stringify(data).slice(0, 200)}`);
       this.setState('authenticated');
       // 认证成功后立刻同步会话
       this.emitAllPendingBatches();
     });
 
     this.socket.on('auth:failed', (data: { reason?: string } | undefined) => {
-      getLogger().error('[desktop-socket] auth failed:', data?.reason);
+      getLogger().error('[desktop-socket] auth failed:', data?.reason, data ? JSON.stringify(data).slice(0, 200) : '');
       this.setState('auth_failed');
-      // JWT 失效：清掉本地 JWT，重新走 login 流程（用密码换新 JWT）
-      // 如果没有密码（App 未解锁），等用户解锁后 updateConfig 触发重连
-      this.clearJwt();
+      // token 无效：清掉内存 token，用密码重新 login
+      this.token = undefined;
       void this.ensureJwtAndAuth();
     });
 
     this.socket.on('desktop:hook:result', (data: DesktopHookResult) => {
+      getLogger().info(`[desktop-socket] hook result req_id=${data.request_id?.slice(0, 8)} decision=${data.decision} output=${JSON.stringify(data.output).slice(0, 300)}`);
       const pending = this.pendingPermissions.get(data.request_id);
       if (!pending) {
-        getLogger().warn(`[desktop-socket] orphan hook result req_id=${data.request_id.slice(0, 8)}`);
+        getLogger().warn(`[desktop-socket] orphan hook result req_id=${data.request_id?.slice(0, 8)}`);
         return;
       }
       clearTimeout(pending.timer);
@@ -245,99 +246,75 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     });
   }
 
-  // 确保 jwt 存在（必要时调 /api/auth/login），然后 emit desktop:auth
+  // socket 连接后调 /api/auth/login 用密码换 token，然后 emit desktop:auth
   // 防止重入：authenticating 标志保证同一时刻只有一个 login 在跑
   private async ensureJwtAndAuth(): Promise<void> {
     if (this.authenticating) return;
     if (!this.socket?.connected) return;
     this.authenticating = true;
     try {
-      // 1. 已有 JWT -> 直接 emit
-      if (this.jwt) {
-        this.emit('desktop:auth', { user_id: this.userId, token: this.jwt });
+      if (!this.password) {
+        getLogger().warn('[desktop-socket] no password, waiting for login');
         return;
       }
-      // 2. 无 JWT -> 调 /api/auth/login 换 JWT
-      //    需要密码（App 已解锁）；无密码时打日志等用户解锁
-      if (!this.userPassword) {
-        getLogger().warn('[desktop-socket] no JWT and no password (app locked?), waiting for unlock');
+      // 已有 token -> 直接 emit（重连复用，避免重复 login）
+      if (this.token) {
+        this.emit('desktop:auth', { user_id: this.userId, token: this.token });
         return;
       }
-      const jwt = await this.login(this.userPassword);
-      if (!jwt) return;  // login 失败已打日志
-      this.setJwt(jwt);
-      this.emit('desktop:auth', { user_id: this.userId, token: jwt });
+      // 无 token -> 调 /api/auth/login 用密码换 token
+      const token = await this.login(this.password);
+      if (!token) {
+        this.setState('auth_failed');
+        return;
+      }
+      this.token = token;
+      this.emit('desktop:auth', { user_id: this.userId, token });
     } finally {
       this.authenticating = false;
     }
   }
 
-  // 调 POST /api/auth/login 换 JWT
-  // 优先用 token（已有 JWT），失败再用 user_password
-  // cloud 端会校验 token，无效则返回 401，desktop 改用密码重试
-  private async login(password: string): Promise<string | null> {
+  // 调 POST /api/auth/login 用 { user_id, user_password } 换 token
+  // 用户在登录页输入的"密码"实际就是 user_password，cloud 校验后返回 token
+  // 拿到 token 后 emit desktop:auth，cloud 端 socket.io 用 token 完成 socket 认证
+  private async login(userPassword: string): Promise<string | null> {
     if (!this.url) return null;
 
-    const tryLogin = async (body: Record<string, string>): Promise<{ success: boolean; token?: string; error?: string } | null> => {
+    try {
+      // 忽略 TLS 证书校验：临时设全局环境变量（fetch 不支持 dispatcher 选项的类型声明）
+      const savedEnv = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      let res: Response;
       try {
-        // 忽略 TLS 证书校验：临时设全局环境变量（fetch 不支持 dispatcher 选项的类型声明）
-        // login 是串行调用，不会有并发问题；finally 里恢复原值
-        const savedEnv = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-        let res: Response;
-        try {
-          res = await fetch(`${this.url}/api/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            signal: AbortSignal.timeout(10_000),
-          });
-        } finally {
-          if (savedEnv === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-          else process.env.NODE_TLS_REJECT_UNAUTHORIZED = savedEnv;
+        res = await fetch(`${this.url}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: this.userId, user_password: userPassword }),
+          signal: AbortSignal.timeout(10_000),
+        });
+      } finally {
+        if (savedEnv === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+        else process.env.NODE_TLS_REJECT_UNAUTHORIZED = savedEnv;
+      }
+      const text = await res.text();
+      try {
+        const parsed = JSON.parse(text);
+        getLogger().info(`[desktop-socket] /api/auth/login status=${res.status} body=${text.slice(0, 300)}`);
+        if (parsed?.success && parsed.token) {
+          getLogger().info(`[desktop-socket] login ok user=${this.userId}`);
+          return parsed.token as string;
         }
-        const text = await res.text();
-        try {
-          return JSON.parse(text);
-        } catch {
-          getLogger().warn(`[desktop-socket] /api/auth/login non-JSON response status=${res.status}: ${text.slice(0, 120)}`);
-          return null;
-        }
-      } catch (err: any) {
-        getLogger().warn(`[desktop-socket] /api/auth/login error: ${err.message}`);
+        getLogger().error(`[desktop-socket] login failed: ${parsed?.error ?? 'unknown'}`);
+        return null;
+      } catch {
+        getLogger().warn(`[desktop-socket] /api/auth/login non-JSON response status=${res.status}: ${text.slice(0, 120)}`);
         return null;
       }
-    };
-
-    // 优先用 JWT 复用
-    if (this.jwt) {
-      const r = await tryLogin({ user_id: this.userId, token: this.jwt });
-      if (r?.success && r.token) {
-        getLogger().info(`[desktop-socket] login with jwt ok user=${this.userId}`);
-        return r.token;
-      }
-      getLogger().warn(`[desktop-socket] login with jwt failed: ${r?.error ?? 'unknown'}, fallback to password`);
-      this.clearJwt();
+    } catch (err: any) {
+      getLogger().warn(`[desktop-socket] /api/auth/login error: ${err.message}`);
+      return null;
     }
-
-    // JWT 失效或没有 -> 用密码
-    const r = await tryLogin({ user_id: this.userId, user_password: password });
-    if (r?.success && r.token) {
-      getLogger().info(`[desktop-socket] login with password ok user=${this.userId}`);
-      return r.token;
-    }
-    getLogger().error(`[desktop-socket] login with password failed: ${r?.error ?? 'unknown'}`);
-    return null;
-  }
-
-  private setJwt(jwt: string): void {
-    this.jwt = jwt;
-    this.persistence?.save(jwt);
-  }
-
-  private clearJwt(): void {
-    this.jwt = undefined;
-    this.persistence?.clear();
   }
 
   private setState(s: ConnectionState): void {
@@ -461,6 +438,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       getLogger().warn(`[desktop-socket] not authenticated, dropping ${event}`);
       return;
     }
+    getLogger().info(`[desktop-socket] emit ${event} data=${JSON.stringify(data).slice(0, 200)}`);
     this.socket.emit(event, data);
   }
 
@@ -498,6 +476,5 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     this.pendingPermissions.clear();
     this.disconnect();
     this.enabled = false;
-    this.userPassword = undefined;
   }
 }

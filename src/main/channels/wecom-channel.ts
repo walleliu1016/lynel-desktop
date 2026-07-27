@@ -432,8 +432,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
       if (p?.source === 'terminal') {
         this.sendContent(this.buildMessage(header, '✅ **权限已在终端处理**', ''), event.sessionId).catch(() => {});
       } else {
-        const src = p?.source === 'notch' ? '桌面端' : '终端';
-        this.sendContent(this.buildMessage(header, `✅ **权限已处理: ${p?.decision}**`, `(${src})`), event.sessionId).catch(() => {});
+        this.sendContent(this.buildMessage(header, `✅ **权限已处理: ${p?.decision}**`, ''), event.sessionId).catch(() => {});
       }
       return;
     }

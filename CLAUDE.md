@@ -70,13 +70,12 @@ npm run dist:linux
 - 所有主进程方法通过 `ipcMain.handle` / `ipcRenderer.invoke` 调用。
 
 ### 2. 主进程结构
-- `src/main/app.ts`：组装 store、events、log、auth、jsonl、session、hookserver、channels、apiproxy、permission-broker、notch-window，注册所有 IPC handler。
+- `src/main/app.ts`：组装 store、events、log、auth、jsonl、session、hookserver、channels、apiproxy、permission-broker，注册所有 IPC handler。
 - `src/main/session.ts`：会话状态机与 orchestrator。
 - `src/main/pty.ts`：基于 `node-pty` 启动交互式 Claude。
 - `src/main/hookserver.ts`：Express HTTP server，接收 Claude hooks，端点 `/hook`、`/api/send`、`/api/sessions/{id}/calls`、`/api/sessions/{id}/calls/stream`、`/api/calls/{seq}`。
 - `src/main/apiproxy.ts`：本地 HTTP→HTTPS 代理，拦截 Claude API 流量并 emit 阶段事件。
-- `src/main/permission-broker.ts`：权限仲裁器单例，统一管理权限请求的 raise/resolve/cancel，预分配序号（`allocateSeq`），通过 EventBus 同步状态到灵动岛，支持 `cancelBySessionTool` 联动关闭 UI。
-- `src/main/notch-window.ts`：灵动岛浮动 BrowserWindow（透明无边框、alwaysOnTop、skipTaskbar），闭口态 240×34 药丸，开口态动态尺寸最高 400×500，鼠标穿透切换。
+- `src/main/permission-broker.ts`：权限仲裁器单例，统一管理权限请求的 raise/resolve/cancel，预分配序号（`allocateSeq`），支持 `cancelBySessionTool` 联动关闭 UI。
 - `src/main/channels/`：Channel Dispatcher，将 apiproxy 阶段事件路由到 SSE / WeCom 等输出通道。
 
 ### 3. Session 生命周期与 PTY
@@ -133,17 +132,12 @@ npm run dist:linux
 - `src/main/channels/wecom-cards/event-handler.ts`：解析 `template_card_event` 回调，驱动权限仲裁器完成审批或问答提交；多问题场景通过 `onQuestionProgress`/`onAllQuestionsDone` 回调实现逐题发送。
 - `src/main/channels/localfile-channel.ts`：将阶段事件写入本地 JSONL/JSON 文件，过滤流式 text/thinking 碎片。
 
-### 9. 权限仲裁器与灵动岛
+### 9. 权限仲裁器
 - `PermissionBroker` 是主进程单例，管理所有待审批权限请求。
 - `allocateSeq(id)` 在 dispatch 前预分配全局自增序号，确保企业微信消息中展示 `#1` 而非 UUID。
 - `wait(request)` 返回 Promise，挂起等待决策；任一通道 resolve 后 Promise 解除。
 - `resolve(id, decision, source)` 先到先生效（Map 保护），后续调用返回 false。
 - `cancelBySessionTool(sessionId, toolName)` 在终端自行解决权限时清理所有 UI。
-- `onResolve` 通过 EventBus (`getBus().emit('permission:cancelled', ...)`) 通知灵动岛渲染进程关闭权限 UI。
-- `NotchView.vue` 是独立入口页面（Vite 多入口构建），通过 `window.electronAPI` 与主进程通信。
-- 灵动岛窗口初始为鼠标穿透模式（`setIgnoreMouseEvents(true, {forward: true})`），hover 时关闭穿透展开面板，leave 后恢复穿透。
-- resize 后需强制重算鼠标命中区域：`setIgnoreMouseEvents(true, {forward: true})` → `setIgnoreMouseEvents(false)`。
-- 灵动岛通过 `SetNotchSize(w, h)` IPC 动态调整窗口尺寸，AskUserQuestion 场景下根据内容高度自适应。
 
 ### 10. 企业微信模板卡片交互
 

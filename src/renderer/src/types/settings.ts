@@ -42,7 +42,6 @@ export interface Settings {
   auto_lock_minutes: number
   auto_start: boolean
   minimize_on_start: boolean
-  notch_enabled: boolean
   cloud_service_enabled: boolean
   cloud_service_url: string
   push_thinking: boolean

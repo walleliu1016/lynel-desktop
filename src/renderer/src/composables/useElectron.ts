@@ -13,11 +13,8 @@ function api(): ElectronAPI {
 
 export const GetAppInfo = () => api().getAppInfo();
 export const ClipboardWrite = (text: string) => api().clipboardWrite(text);
-export const IsInitialized = () => api().isInitialized();
-export const Verify = (pw: string) => api().verify(pw);
-export const LockoutState = () => api().lockoutState();
-export const SetPassword = (pw: string) => api().setPassword(pw);
-export const ClearPassword = () => api().clearPassword();
+export const LoginWithToken = (userId: string, token: string) =>
+  api().loginWithToken(userId, token);
 export const Logout = () => api().logout();
 export const ListSessions = (workDir?: string) => api().listSessions(workDir);
 export const CreateSession = (workDir: string, prompt: string, extraArgs: string[] = []) => api().createSession(workDir, prompt, extraArgs);
@@ -65,10 +62,6 @@ export const FetchProviderModels = (baseUrl: string, authToken: string) => api()
 
 export const ResolvePermission = (id: string, decision: 'allow' | 'deny', source: string, answers?: Record<string, string | string[]>) => api().resolvePermission(id, decision, source, answers);
 export const IsPermissionPending = (id: string) => api().isPermissionPending(id);
-
-export const SetNotchPassthrough = (passthrough: boolean) => api().setNotchPassthrough(passthrough);
-export const SetNotchSize = (w: number, h: number) => api().setNotchSize(w, h);
-export const SetNotchVisibility = (visible: boolean) => api().setNotchVisibility(visible);
 
 export const EventsOn = (channel: string, cb: (...args: any[]) => void) => api().eventsOn(channel, cb);
 

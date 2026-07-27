@@ -3,11 +3,8 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 const api = {
   getAppInfo: () => ipcRenderer.invoke('app:getAppInfo'),
   clipboardWrite: (text: string) => ipcRenderer.invoke('app:clipboardWrite', text),
-  isInitialized: () => ipcRenderer.invoke('app:isInitialized'),
-  verify: (pw: string) => ipcRenderer.invoke('app:verify', pw),
-  lockoutState: () => ipcRenderer.invoke('app:lockoutState'),
-  setPassword: (pw: string) => ipcRenderer.invoke('app:setPassword', pw),
-  clearPassword: () => ipcRenderer.invoke('app:clearPassword'),
+  loginWithToken: (userId: string, token: string) =>
+    ipcRenderer.invoke('app:loginWithToken', userId, token),
   logout: () => ipcRenderer.invoke('app:logout'),
   listSessions: (workDir?: string) => ipcRenderer.invoke('app:listSessions', workDir),
   createSession: (workDir: string, prompt: string, extraArgs: string[] = []) =>
@@ -69,13 +66,6 @@ const api = {
   resolvePermission: (id: string, decision: 'allow' | 'deny', source: string, answers?: Record<string, string | string[]>) =>
     ipcRenderer.invoke('permission:resolve', id, decision, source, answers),
   isPermissionPending: (id: string) => ipcRenderer.invoke('permission:isPending', id),
-
-  setNotchPassthrough: (passthrough: boolean) =>
-    ipcRenderer.send('notch:setPassthrough', passthrough),
-  setNotchSize: (w: number, h: number) =>
-    ipcRenderer.send('notch:setSize', w, h),
-  setNotchVisibility: (visible: boolean) =>
-    ipcRenderer.send('notch:setVisibility', visible),
 
   eventsOn: (channel: string, callback: (...args: any[]) => void) => {
     const handler = (_event: IpcRendererEvent, ...args: any[]) => callback(...args);

@@ -2,7 +2,6 @@ import { app, BrowserWindow, Tray, Menu, nativeImage } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { App } from './app.js';
-import { createNotchWindow, closeNotchWindow } from './notch-window.js';
 import { getStore } from './store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -157,13 +156,6 @@ if (!gotTheLock) {
     } catch (err) {
       console.error('[main] app init failed:', err);
     }
-
-    // 创建灵动岛浮动窗口
-    const devUrl = mainWindow?.webContents.getURL() || 'http://localhost:5173/';
-    const settingsStore = getStore('settings');
-    // 灵动岛开关临时隐藏并强制关闭，避免设置异常导致窗口自动弹出
-    const notchEnabled = false;
-    createNotchWindow(isDev, devUrl, path.join(__dirname, 'preload.js'), notchEnabled);
   });
 
   // before-quit 是同步事件，Electron 不会 await async 回调。
@@ -175,7 +167,6 @@ if (!gotTheLock) {
     if (shuttingDown) return;
     event.preventDefault();
     shuttingDown = true;
-    closeNotchWindow();
     void (async () => {
       if (appInstance) {
         try {

@@ -263,7 +263,7 @@ function openGuideTab() {
 
 async function onLogout() {
   try { await Logout() } catch {}
-  auth.loggedIn = false
+  auth.logout()
   router.push('/login')
 }
 

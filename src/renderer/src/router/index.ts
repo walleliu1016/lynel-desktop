@@ -1,7 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import HomeView from '../views/HomeView.vue'
-import NotchView from '../views/NotchView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const router = createRouter({
@@ -10,7 +9,6 @@ const router = createRouter({
     { path: '/', redirect: '/login' },
     { path: '/login', component: LoginView },
     { path: '/home', component: HomeView, meta: { requiresAuth: true } },
-    { path: '/notch', component: NotchView },
   ],
 })
 
