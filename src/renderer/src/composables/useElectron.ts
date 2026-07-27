@@ -24,6 +24,8 @@ export const SendMessage = (id: string, prompt: string) => api().sendMessage(id,
 export const CloseSession = (id: string) => api().closeSession(id);
 export const GetSettings = () => api().getSettings();
 export const UpdateSettings = (cfg: any) => api().updateSettings(cfg);
+export const UpdateCloudSettings = (enabled: boolean, url: string) =>
+  api().updateCloudSettings(enabled, url);
 export const GetWeComConfig = () => api().getWeComConfig();
 export const UpdateWeComConfig = (cfg: any) => api().updateWeComConfig(cfg);
 export const GetChannelsConfig = () => api().getChannelsConfig();
@@ -36,6 +38,7 @@ export const AddRecentSession = (record: any) => api().addRecentSession(record);
 export const RemoveRecentSession = (sessionId: string) => api().removeRecentSession(sessionId);
 export const GetHookServerPort = () => api().getHookServerPort();
 export const CheckAndFixHooks = () => api().checkAndFixHooks();
+export const CloudConnectionState = () => api().cloudConnectionState();
 export const ListBots = () => api().listBots();
 export const SaveBot = (bot: any) => api().saveBot(bot);
 export const DeleteBot = (id: string) => api().deleteBot(id);

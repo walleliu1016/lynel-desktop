@@ -9,13 +9,16 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(password: string): Promise<string | null> {
     try {
-      await Verify(password)
-      attempts.value = 0
-      lockedUntil.value = null
-      loggedIn.value = true
-      return null
+      const ok = await Verify(password)
+      if (ok) {
+        attempts.value = 0
+        lockedUntil.value = null
+        loggedIn.value = true
+        return null
+      }
+      // Verify 返回 false：可能是未初始化或密码错。统一走 SetPassword
     } catch {
-      // Verify 失败：可能未初始化或密码错。统一走 SetPassword
+      // Verify 抛错：也走 SetPassword 兜底
     }
 
     try {

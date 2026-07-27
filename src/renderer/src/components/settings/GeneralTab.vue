@@ -86,7 +86,6 @@ const cfg = computed(() => settings.cfg ?? (settings.cfg = {
   notch_enabled: false,
   cloud_service_enabled: false,
   cloud_service_url: '',
-  cloud_service_token: '',
   push_thinking: false,
   push_tool_calls: false,
   prevent_sleep: false,

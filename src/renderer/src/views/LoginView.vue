@@ -42,6 +42,25 @@
           </div>
         </div>
 
+        <div class="cloud-section">
+          <div class="cloud-toggle-row">
+            <Switch v-model="cloudEnabled" @change="onCloudToggle" />
+            <span class="cloud-toggle-label">启用云服务</span>
+          </div>
+          <div class="cloud-hint" v-if="cloudEnabled">
+            开启后，会话消息与权限请求将实时推送到移动 App，便于远程审批与查看进度
+          </div>
+          <div class="cloud-url-group" v-if="cloudEnabled">
+            <label class="form-label">服务地址</label>
+            <input
+              class="form-input"
+              v-model="cloudUrl"
+              placeholder="https://ease.example.com"
+              :disabled="locked"
+            />
+          </div>
+        </div>
+
         <button class="login-btn" type="submit" :disabled="locked || !canSubmit">
           登录
         </button>
@@ -59,13 +78,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import SettingsDialog from '../components/SettingsDialog.vue'
+import Switch from '../components/Switch.vue'
 import Icon from '../components/Icon.vue'
 import { useAuthStore } from '../stores/auth'
-import { WindowCenter, GetAppInfo, SetCurrentUser } from '../composables/useElectron'
+import { WindowCenter, GetAppInfo, SetCurrentUser, GetSettings, UpdateCloudSettings, WindowSetSize, WindowSetMinSize, WindowSetMaxSize } from '../composables/useElectron'
 import { useWindowState } from '../composables/useWindowState'
 
 const router = useRouter()
@@ -78,6 +98,8 @@ const error = ref<string | null>(null)
 const errorField = ref<'username' | 'password' | null>(null)
 const version = ref('')
 const showSettings = ref(false)
+const cloudEnabled = ref(false)
+const cloudUrl = ref('')
 
 const locked = computed(() => !!auth.lockedUntil)
 const lockCountdown = computed(() => {
@@ -89,14 +111,47 @@ const lockCountdown = computed(() => {
 })
 
 const canSubmit = computed(() => {
-  return username.value.trim().length > 0 && password.value.length > 0
+  if (!username.value.trim() || !password.value) return false
+  // 启用云服务时必须填 URL
+  if (cloudEnabled.value && !cloudUrl.value.trim()) return false
+  return true
 })
+
+const onCloudToggle = () => {
+  // 开关切换时不需要立刻保存配置，登录时会统一保存
+  // 但需要立即调整窗口高度，避免内容超出把登录按钮挤出可视区域
+  resizeWindowForCloud(cloudEnabled.value)
+}
+
+// 开启云服务时窗口高度 +120 容纳开关 + 提示 + URL 输入框
+const BASE_HEIGHT = 400
+const CLOUD_EXTRA_HEIGHT = 120
+function resizeWindowForCloud(enabled: boolean) {
+  const h = enabled ? BASE_HEIGHT + CLOUD_EXTRA_HEIGHT : BASE_HEIGHT
+  try {
+    // 先解除 min/max 限制，否则 setSize 会被 clamp
+    WindowSetMinSize(0, 0)
+    WindowSetMaxSize(0, 0)
+    WindowSetSize(320, h)
+    WindowSetMinSize(320, h)
+  } catch {}
+}
+
+// 监听 cloudEnabled 变化，确保任何路径（包括 onMounted 预填）都能调整窗口
+watch(cloudEnabled, (enabled) => resizeWindowForCloud(enabled))
 
 let timer: number | null = null
 onMounted(async () => {
   try {
     const info = await GetAppInfo()
     version.value = info.version
+  } catch {}
+
+  // 读取已保存的云服务配置，预填到界面
+  try {
+    const cfg = await GetSettings()
+    cloudEnabled.value = !!cfg.cloud_service_enabled
+    cloudUrl.value = cfg.cloud_service_url || ''
   } catch {}
 
   timer = window.setInterval(() => {
@@ -118,6 +173,21 @@ async function onSubmit() {
   }
   if (!password.value) {
     error.value = '请输入密码'
+    errorField.value = 'password'
+    return
+  }
+  if (cloudEnabled.value && !cloudUrl.value.trim()) {
+    error.value = '请填写云服务地址'
+    errorField.value = 'password'
+    return
+  }
+
+  // 先保存云服务配置（URL 变更会清旧 JWT），再走密码校验/设置流程
+  // app:verify / app:setPassword 内部会触发 applyCloudSettings 连接 cloud
+  try {
+    await UpdateCloudSettings(cloudEnabled.value, cloudUrl.value.trim())
+  } catch (e: any) {
+    error.value = '保存云服务配置失败：' + (e?.message ?? e)
     errorField.value = 'password'
     return
   }
@@ -196,6 +266,29 @@ async function closeSettings() {
 .form-input:focus { outline: none; border-color: var(--accent); }
 .form-input:disabled { opacity: 0.5; cursor: not-allowed; }
 .form-hint { font-size: 10px; color: var(--status-error); margin-top: 3px; min-height: 14px; }
+.cloud-section {
+  margin: 8px 0 6px;
+  padding: 8px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.cloud-toggle-row {
+  display: flex; align-items: center; gap: 8px;
+}
+.cloud-toggle-label {
+  font-size: 12px; color: var(--text-primary); font-weight: 500;
+}
+.cloud-hint {
+  font-size: 10px; color: var(--text-tertiary);
+  line-height: 1.5;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--bg-panel);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--accent);
+}
+.cloud-url-group { margin-top: 6px; }
 .login-btn {
   width: 100%;
   background: linear-gradient(135deg, var(--accent), var(--accent-deep));

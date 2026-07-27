@@ -13,11 +13,6 @@
     </div>
 
     <div class="row">
-      <label class="k">鉴权 Token</label>
-      <input class="v" type="password" v-model="cfg.cloud_service_token" @change="markDirty" :disabled="!cfg.cloud_service_enabled" />
-    </div>
-
-    <div class="row">
       <label class="k">连接状态</label>
       <div class="v status-row">
         <span class="dot" :class="statusClass" />
@@ -37,9 +32,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed, ref } from 'vue'
+import { onMounted, onUnmounted, computed, ref } from 'vue'
 import Switch from '../../components/Switch.vue'
 import { useSettingsStore } from '../../stores/settings'
+import { CloudConnectionState } from '../../composables/useElectron'
 
 const settings = useSettingsStore()
 const cfg = computed(() => settings.cfg ?? (settings.cfg = {
@@ -52,36 +48,82 @@ const cfg = computed(() => settings.cfg ?? (settings.cfg = {
   minimize_on_start: false,
   cloud_service_enabled: false,
   cloud_service_url: '',
-  cloud_service_token: '',
 } as any))
+
+type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'authenticated' | 'auth_failed'
+const connState = ref<ConnectionState>('disconnected')
+const testStatus = ref<'idle' | 'testing' | 'ok' | 'fail'>('idle')
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
   await settings.load()
-  if (cfg.value.cloud_service_enabled) onTest()
+  startPolling()
 })
+
+onUnmounted(() => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+})
+
 function markDirty() { settings.markDirty() }
 
 async function onSave() {
   try { await settings.save() }
   catch (e: any) { alert('保存失败：' + (e?.message ?? e)) }
+  // 保存后立刻刷新一次状态
+  refreshState()
 }
 
-const testStatus = ref<'idle' | 'testing' | 'ok' | 'fail'>('idle')
+function startPolling() {
+  refreshState()
+  // 2s 轮询：socket 重连/认证是异步过程，需要持续刷新
+  pollTimer = setInterval(refreshState, 2000)
+}
+
+async function refreshState() {
+  try {
+    const s = await CloudConnectionState()
+    connState.value = s as ConnectionState
+    // 同步 testStatus：连接成功后从 testing 切到 ok
+    if (testStatus.value === 'testing') {
+      if (s === 'authenticated') testStatus.value = 'ok'
+      else if (s === 'auth_failed' || s === 'disconnected') testStatus.value = 'fail'
+    } else if (testStatus.value !== 'idle') {
+      // 已检测过：跟随实际状态
+      if (s === 'authenticated') testStatus.value = 'ok'
+      else if (s === 'auth_failed') testStatus.value = 'fail'
+      else if (s === 'disconnected' && cfg.value.cloud_service_enabled) testStatus.value = 'fail'
+      else if (s === 'connecting' || s === 'connected') testStatus.value = 'testing'
+    }
+  } catch {
+    // ignore
+  }
+}
 
 const statusClass = computed(() => {
   if (!cfg.value.cloud_service_enabled) return ''
-  if (testStatus.value === 'ok') return 'ok'
-  if (testStatus.value === 'fail') return 'fail'
-  if (testStatus.value === 'testing') return 'testing'
-  return ''
+  switch (connState.value) {
+    case 'authenticated': return 'ok'
+    case 'auth_failed': return 'fail'
+    case 'connecting':
+    case 'connected': return 'testing'
+    default: return ''
+  }
 })
+
 const statusText = computed(() => {
   if (!cfg.value.cloud_service_enabled) return '未启用'
-  if (testStatus.value === 'testing') return '检测中...'
-  if (testStatus.value === 'ok') return '已连接'
-  if (testStatus.value === 'fail') return '连接失败'
-  return '未检测'
+  switch (connState.value) {
+    case 'connecting': return '连接中...'
+    case 'connected': return '已连接，认证中...'
+    case 'authenticated': return '已连接'
+    case 'auth_failed': return '认证失败'
+    default: return '未连接'
+  }
 })
+
 const testBtnText = computed(() => {
   if (testStatus.value === 'testing') return '检测中...'
   if (testStatus.value === 'ok') return '重新检测'
@@ -90,22 +132,9 @@ const testBtnText = computed(() => {
 })
 
 async function onTest() {
-  if (!cfg.value.cloud_service_url || !cfg.value.cloud_service_token) return
+  if (!cfg.value.cloud_service_url) return
   testStatus.value = 'testing'
-  try {
-    const res = await fetch(`${cfg.value.cloud_service_url.replace(/\/+$/, '')}/api/health`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${cfg.value.cloud_service_token}`,
-      },
-      body: JSON.stringify({}),
-      signal: AbortSignal.timeout(5000),
-    })
-    testStatus.value = res.ok ? 'ok' : 'fail'
-  } catch {
-    testStatus.value = 'fail'
-  }
+  await refreshState()
 }
 </script>
 

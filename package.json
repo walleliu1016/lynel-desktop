@@ -28,6 +28,7 @@
     "concurrently": "^9.0.0",
     "electron": "^43.0.0",
     "electron-builder": "^26.15.0",
+    "socket.io": "^4.8.3",
     "typescript": "^5.3.3",
     "vitest": "^2.0.0",
     "wait-on": "^9.0.10"
@@ -44,6 +45,7 @@
     "express": "^4.21.0",
     "node-pty": "^1.0.0",
     "openclaw": "file:vendor/openclaw-stub",
+    "socket.io-client": "^4.8.3",
     "undici": "^7.24.6"
   },
   "engines": {

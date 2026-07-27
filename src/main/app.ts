@@ -16,7 +16,7 @@ import { SSEChannel } from './channels/sse-channel.js';
 import { WeComChannel, WeComChannelConfig } from './channels/wecom-channel.js';
 import { LocalFileChannel } from './channels/localfile-channel.js';
 import { StateChannel } from './channels/state-channel.js';
-import { CloudChannel, CloudChannelConfig } from './channels/cloud-channel.js';
+import { DesktopSocket, type SyncSession as DesktopSyncSession } from './channels/desktop-socket.js';
 import { OutputChannel, type HookEventLike } from './channels/channel.js';
 import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
 import { setNotchMousePassthrough, resizeNotchWindow, showNotchWindow, hideNotchWindow, getNotchWindow } from './notch-window.js';
@@ -293,12 +293,12 @@ export class App {
     onActivity: (id, activity) =>
       getBus().emit('sessions:activity', JSON.stringify({ sessionId: id, ...activity })),
   });
-  private cloudChannel = new CloudChannel();
+  private desktopSocket = new DesktopSocket();
   // type → singleton 通道实例；与 settingsStore.channels 的 key 对齐（key === type）
   private channelInstances = new Map<string, OutputChannel>([
     ['wecom', this.wecomChannel],
     ['localfile', this.localFileChannel],
-    ['cloud', this.cloudChannel],
+    ['cloud', this.desktopSocket],
   ]);
   private ptyCleanups = new Map<string, (() => void) | null>();
   private recentSessionsLock = false;
@@ -311,15 +311,19 @@ export class App {
   private apiProxies: import('./apiproxy.js').Proxy[] = [];
   private watchCleanup: (() => void) | null = null;
   private sleepBlockerId: number | null = null;
+  // App 解锁时缓存的明文密码；用于 cloud /api/auth/login 换 JWT。
+  // 锁定/退出时清空。密码变更后 cloud 那边会校验失败，desktop 重新解锁即可。
+  private cachedPassword: string | undefined;
 
   constructor() {
     this.dispatcher.register(this.sseChannel);
     this.dispatcher.register(this.wecomChannel);
     this.dispatcher.register(this.localFileChannel);
-    this.dispatcher.register(this.cloudChannel);
+    this.dispatcher.register(this.desktopSocket);
     this.dispatcher.register(this.stateChannel);
     this.dispatcher.registerHook(this.stateChannel);
     this.dispatcher.registerHook(this.wecomChannel);
+    this.dispatcher.registerHook(this.desktopSocket);
   }
 
   setWindow(win: BrowserWindow): void {
@@ -409,6 +413,14 @@ export class App {
     });
     // 当前登录 UM 账户作为默认 chatId
     this.wecomChannel.setCurrentUserAccount(this.getCurrentUserAccount());
+    // cloud: Mobile -> Desktop chat 路由到对应 session 的 PTY
+    this.desktopSocket.onChatMessage = (sessionId, question) => {
+      try {
+        session.send(sessionId, question);
+      } catch (err: any) {
+        getLogger().warn(`[app] desktop chat forward failed sid=${sessionId.slice(0, 8)}: ${err.message}`);
+      }
+    };
     await this.ensureHookServer();
     this.watchJsonl();
     this.startAiTitleRefresh();
@@ -457,7 +469,8 @@ export class App {
     // 6. 关闭 channels
     try { await this.wecomChannel.close?.(); } catch { /* ignore */ }
     try { this.localFileChannel.close?.(); } catch { /* ignore */ }
-    try { this.cloudChannel.close(); } catch { /* ignore */ }
+    try { this.desktopSocket.close(); } catch { /* ignore */ }
+    this.cachedPassword = undefined;
     getLogger().info('[app] shutdown complete');
     getLogger().info('[app] shutdown complete');
   }
@@ -554,18 +567,39 @@ export class App {
   private applyCloudSettings(): void {
     const enabled = (this.settingsStore.get('cloud_service_enabled', false) as boolean) || false;
     const url = (this.settingsStore.get('cloud_service_url', '') as string) || '';
-    const token = (this.settingsStore.get('cloud_service_token', '') as string) || '';
     const userId = this.getCurrentUserAccount();
-    this.cloudChannel.updateConfig({ enabled, url, token, userId });
+
+    // 注入 JWT 持久化回调（仅在首次注入；后续 updateConfig 不重复设置）
+    this.desktopSocket.setPersistence({
+      load: () => (this.settingsStore.get('cloud_jwt', '') as string) || undefined,
+      save: (jwt: string) => this.settingsStore.set('cloud_jwt', jwt),
+      clear: () => this.settingsStore.delete('cloud_jwt'),
+    });
+
+    this.desktopSocket.updateConfig({
+      enabled,
+      url,
+      userId,
+      userPassword: this.cachedPassword,
+    });
+
+    // updateConfig 只在已有 socket 时重连；首次启用需要显式 connect
+    if (this.desktopSocket.isEnabled() && !this.desktopSocket.isConnected()) {
+      this.desktopSocket.connect();
+    }
+  }
+
+  private isCloudEnabled(): boolean {
+    return (this.settingsStore.get('cloud_service_enabled', false) as boolean) || false;
   }
 
   private syncCloudSession(sessionId: string, workDir: string): void {
-    if (!this.cloudChannel.isEnabled()) return;
+    if (!this.desktopSocket.isEnabled()) return;
     const list = this.withRecentLock(() => readRecentSessions());
     const r = list.find((x) => x.sessionId === sessionId);
     const project = workDir.split(/[\\/]/).filter(Boolean).pop() || workDir;
     const title = r ? (r.userTitle || r.aiTitle || r.firstPrompt || undefined) : undefined;
-    const sessionData = {
+    const sessionData: DesktopSyncSession = {
       session_id: sessionId,
       jsonl_path: jsonl.getSessionJsonlPath(sessionId, workDir),
       cwd: workDir,
@@ -573,7 +607,7 @@ export class App {
       title,
       last_activity_at: Math.floor(Date.now() / 1000),
     };
-    this.cloudChannel.syncSessions([sessionData]).catch((err) => {
+    this.desktopSocket.syncSessions([sessionData]).catch((err) => {
       getLogger().warn(`[app] syncCloudSession failed for ${sessionId.slice(0, 8)}: ${(err as Error).message}`);
     });
   }
@@ -735,10 +769,10 @@ export class App {
       // 本地 broker.wait：始终参与
       const brokerP = permissionBroker.wait(req).then((r) => ({ source: 'broker' as const, response: r }));
 
-      // Cloud 同步 forward：仅在 enabled 时参与；2h 超时由 cloud-channel 内部控制，超时后抛错走 broker
-      const cloudEnabled = this.cloudChannel.isEnabled();
+      // Cloud 同步 forward：仅在 enabled 时参与；2h 超时由 desktop-socket 内部控制，超时后抛错走 broker
+      const cloudEnabled = this.desktopSocket.isEnabled();
       const cloudP = cloudEnabled
-        ? this.cloudChannel.sendPermissionRequest(reqId, rawBody).then(
+        ? this.desktopSocket.sendPermissionRequest(reqId, rawBody).then(
             (r) => ({ source: 'cloud' as const, response: r }),
             (err) => ({ source: 'cloud-error' as const, error: err as Error }),
           )
@@ -755,27 +789,34 @@ export class App {
 
       if (winner.source === 'cloud') {
         // cloud 胜：原样透传 cloud 响应给 Claude；清理 broker pending
-        const parsed = winner.response.parsed;
-        const cloudBehavior = parsed && typeof parsed === 'object'
-          ? (parsed as any).hookSpecificOutput?.decision?.behavior
-          : undefined;
-        permissionBroker.resolve(reqId, cloudBehavior === 'deny' ? 'deny' : 'allow', 'cloud');
-        getLogger().info(`[permission] cloud wins sid=${sid.slice(0, 8)} tool=${toolName} status=${winner.response.status}`);
-        return { id: reqId, allowed: true, rawResponse: parsed ?? {} };
+        const cloudDecision: 'allow' | 'deny' = winner.response.decision === 'deny' ? 'deny' : 'allow';
+        permissionBroker.resolve(reqId, cloudDecision, 'cloud');
+        getLogger().info(`[permission] cloud wins sid=${sid.slice(0, 8)} tool=${toolName} decision=${cloudDecision}`);
+        const result: { id: string; allowed: boolean; answers?: Record<string, string | string[]>; rawResponse?: unknown } = {
+          id: reqId,
+          allowed: cloudDecision === 'allow',
+        };
+        // output 是 Claude 标准 hook output，原样透传给 hookserver -> Claude
+        if (winner.response.output !== undefined) {
+          result.rawResponse = winner.response.output;
+        }
+        return result;
       }
 
       if (winner.source === 'cloud-error') {
         // cloud 报错或超时：清理云端状态后继续等 broker（云不通就走本地）
         getLogger().warn(`[permission] cloud error, fall back to broker: ${winner.error.message}`);
-        this.cloudChannel.abortPermissionRequest(reqId, rawBody).catch(() => { /* 忽略 */ });
+        try { this.desktopSocket.abortPermissionRequest(reqId, rawBody); } catch { /* 忽略 */ }
         const r = await brokerP;
         return { id: reqId, allowed: r.response.decision === 'allow', answers: r.response.answers };
       }
 
       // broker 胜：发 abort 通知 cloud 取消，返回本地 decision
-      this.cloudChannel
-        .abortPermissionRequest(reqId, rawBody, winner.response.decision)
-        .catch((err) => getLogger().warn(`[permission] cloud abort failed: ${(err as Error).message}`));
+      try {
+        this.desktopSocket.abortPermissionRequest(reqId, rawBody, winner.response.decision);
+      } catch (err) {
+        getLogger().warn(`[permission] cloud abort failed: ${(err as Error).message}`);
+      }
       return { id: reqId, allowed: winner.response.decision === 'allow', answers: winner.response.answers };
     });
 
@@ -1086,15 +1127,27 @@ export class App {
       return true
     })
     ipcMain.handle('app:isInitialized', () => {
+      // cloud 未启用：跳过密码初始化，登录页直接放行
+      if (!this.isCloudEnabled()) return true;
       const hash = this.settingsStore.get('auth.hash', '');
       return auth.isInitialized(hash as string);
     });
 
     ipcMain.handle('app:verify', async (_event, pw: string) => {
+      // cloud 未启用：默认返回成功，不校验密码（本地无敏感数据需要保护）
+      if (!this.isCloudEnabled()) {
+        this.clearLockout();
+        return true;
+      }
       const hash = this.settingsStore.get('auth.hash', '') as string;
       const ok = await auth.verifyPassword(hash, pw);
       if (ok) {
         this.clearLockout();
+        // 缓存明文密码，供 cloud /api/auth/login 换 JWT 使用
+        // 密码变更后 cloud 那边会校验失败，desktop 重新解锁即可
+        this.cachedPassword = pw;
+        // 触发 cloud 重连：有密码后可以走完整的 login 流程
+        this.applyCloudSettings();
       } else {
         this.recordFailedAttempt();
         getLogger().warn('[app] password verification failed');
@@ -1112,6 +1165,10 @@ export class App {
       this.clearLockout();
       return auth.hashPassword(pw).then((hash) => {
         this.settingsStore.set('auth.hash', hash);
+        // 首次设置密码时也要缓存明文密码 + 触发 cloud 重连
+        // 否则 desktop-socket 还是没密码，cloud /api/auth/login 没法走
+        this.cachedPassword = pw;
+        this.applyCloudSettings();
       });
     });
 
@@ -1157,6 +1214,17 @@ export class App {
     }));
 
     ipcMain.handle('app:getSettings', () => this.settingsStore.store);
+    // 登录页保存云服务配置：URL 变更时清掉旧 JWT（cloud 实例变了，旧 JWT 必然失效）
+    // 这里只写 settings.json，不触发 applyCloudSettings；后续 app:verify / app:setPassword 会触发
+    ipcMain.handle('app:cloud:updateSettings', (_event, enabled: boolean, url: string) => {
+      const prevUrl = (this.settingsStore.get('cloud_service_url', '') as string) || '';
+      this.settingsStore.set('cloud_service_enabled', !!enabled);
+      this.settingsStore.set('cloud_service_url', url.trim());
+      if (url.trim() !== prevUrl) {
+        // URL 变更：清掉旧 JWT，强制下次走密码换 JWT
+        this.settingsStore.delete('cloud_jwt');
+      }
+    });
     ipcMain.handle('app:updateSettings', (_event, cfg: any) => {
       this.settingsStore.set(cfg);
       this.applyAutoSettings();
@@ -1590,6 +1658,12 @@ export class App {
     }
 
     ipcMain.handle('app:checkAndFixHooks', () => this.checkAndFixHooks());
+
+    // cloud 连接状态查询：返回 socket 当前状态
+    // 'disconnected' | 'connecting' | 'connected' | 'authenticated' | 'auth_failed'
+    ipcMain.handle('app:cloud:connectionState', () => {
+      return this.desktopSocket.getState();
+    });
 
     // 权限审批
     ipcMain.handle('permission:resolve', (_event, id: string, decision: 'allow' | 'deny', source: string, answers?: Record<string, string | string[]>) => {

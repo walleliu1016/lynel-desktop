@@ -10,6 +10,10 @@
       <button v-if="props.showGuide" class="iconbtn" aria-label="使用指南" title="使用指南" @click="$emit('guide')">
         <Icon name="help" :size="14" />
       </button>
+      <div v-if="cloudEnabled" class="cloud-status" :class="cloudStatusClass" :title="cloudStatusTitle">
+        <span class="dot" />
+        <span class="label">{{ cloudStatusText }}</span>
+      </div>
       <button v-if="!props.hideSettings" class="iconbtn" aria-label="设置" title="设置" @click="$emit('settings')">
         <Icon name="settings" :size="14" />
       </button>
@@ -39,9 +43,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useWindowState } from '../composables/useWindowState'
 import { useSessionsStore } from '../stores/sessions'
+import { CloudConnectionState, GetSettings } from '../composables/useElectron'
 import Icon from './Icon.vue'
 
 const props = defineProps<{ username?: string; showGuide?: boolean; center?: boolean; hideSettings?: boolean }>()
@@ -63,6 +68,59 @@ const runningCount = computed(() => {
     if (st !== 'idle' && st !== 'done' && st !== 'ended') count++
   }
   return count
+})
+
+// 云服务连接状态：仅 cloud_service_enabled 时显示
+const cloudEnabled = ref(false)
+const cloudState = ref<'disconnected' | 'connecting' | 'connected' | 'authenticated' | 'auth_failed'>('disconnected')
+let cloudPollTimer: ReturnType<typeof setInterval> | null = null
+
+const cloudStatusClass = computed(() => {
+  switch (cloudState.value) {
+    case 'authenticated': return 'ok'
+    case 'auth_failed': return 'fail'
+    case 'connecting':
+    case 'connected': return 'testing'
+    default: return ''
+  }
+})
+
+const cloudStatusText = computed(() => {
+  switch (cloudState.value) {
+    case 'connecting': return '连接中'
+    case 'connected': return '认证中'
+    case 'authenticated': return '已连接'
+    case 'auth_failed': return '认证失败'
+    default: return '未连接'
+  }
+})
+
+const cloudStatusTitle = computed(() => `云服务：${cloudStatusText.value}`)
+
+async function refreshCloudState() {
+  try {
+    const s = await CloudConnectionState()
+    cloudState.value = s as typeof cloudState.value
+  } catch {}
+}
+
+onMounted(async () => {
+  try {
+    const cfg = await GetSettings()
+    cloudEnabled.value = !!cfg.cloud_service_enabled
+  } catch {}
+  if (cloudEnabled.value) {
+    refreshCloudState()
+    // 2s 轮询：socket 重连/认证是异步过程，需要持续刷新
+    cloudPollTimer = setInterval(refreshCloudState, 2000)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (cloudPollTimer) {
+    clearInterval(cloudPollTimer)
+    cloudPollTimer = null
+  }
 })
 </script>
 
@@ -105,6 +163,21 @@ const runningCount = computed(() => {
   display: flex; align-items: center; justify-content: center;
 }
 .iconbtn:hover { color: var(--text-primary); border-color: var(--accent); }
+.cloud-status {
+  display: flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 10px;
+  border-radius: 20px; font-size: 11px; font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--bg-panel); color: var(--text-secondary);
+}
+.cloud-status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
+.cloud-status.ok { border-color: #a7f3d0; background: var(--status-success-soft); color: #047857; }
+.cloud-status.ok .dot { background: var(--status-success); box-shadow: 0 0 6px rgba(34,197,94,.4); }
+.cloud-status.fail { border-color: #fecaca; background: rgba(239,68,68,.08); color: #b91c1c; }
+.cloud-status.fail .dot { background: #ef4444; }
+.cloud-status.testing { border-color: #fde68a; background: rgba(245,158,11,.08); color: #b45309; }
+.cloud-status.testing .dot { background: #f59e0b; animation: cloud-pulse 0.8s infinite; }
+@keyframes cloud-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 .account {
   display: flex; align-items: center; gap: 8px;
   padding-left: 12px; border-left: 1px solid var(--border);

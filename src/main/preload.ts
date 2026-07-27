@@ -15,6 +15,8 @@ const api = {
   closeSession: (id: string) => ipcRenderer.invoke('app:closeSession', id),
   getSettings: () => ipcRenderer.invoke('app:getSettings'),
   updateSettings: (cfg: any) => ipcRenderer.invoke('app:updateSettings', cfg),
+  updateCloudSettings: (enabled: boolean, url: string) =>
+    ipcRenderer.invoke('app:cloud:updateSettings', enabled, url),
   getWeComConfig: () => ipcRenderer.invoke('app:getWeComConfig'),
   updateWeComConfig: (cfg: any) => ipcRenderer.invoke('app:updateWeComConfig', cfg),
   getChannelsConfig: () => ipcRenderer.invoke('app:getChannelsConfig'),
@@ -28,6 +30,7 @@ const api = {
   removeRecentSession: (sessionId: string) => ipcRenderer.invoke('app:removeRecentSession', sessionId),
   getHookServerPort: () => ipcRenderer.invoke('app:getHookServerPort'),
   checkAndFixHooks: () => ipcRenderer.invoke('app:checkAndFixHooks'),
+  cloudConnectionState: () => ipcRenderer.invoke('app:cloud:connectionState'),
   listBots: () => ipcRenderer.invoke('app:listBots'),
   saveBot: (bot: any) => ipcRenderer.invoke('app:saveBot', bot),
   deleteBot: (id: string) => ipcRenderer.invoke('app:deleteBot', id),
