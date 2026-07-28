@@ -210,7 +210,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     });
 
     this.socket.on('auth:success', (data: unknown) => {
-      getLogger().info(`[desktop-socket] authenticated data=${JSON.stringify(data).slice(0, 200)}`);
+      getLogger().info(`[desktop-socket] authenticated data=${JSON.stringify(data ?? '').slice(0, 200)}`);
       this.setState('authenticated');
       // 认证成功后立刻同步会话
       this.emitAllPendingBatches();
@@ -225,7 +225,8 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     });
 
     this.socket.on('desktop:hook:result', (data: DesktopHookResult) => {
-      getLogger().info(`[desktop-socket] hook result req_id=${data.request_id?.slice(0, 8)} decision=${data.decision} output=${JSON.stringify(data.output).slice(0, 300)}`);
+      getLogger().info(`[desktop-socket] hook result req_id=${data.request_id?.slice(0, 8)} decision=${data.decision} output=${JSON.stringify(data.output ?? '').slice(0, 300)}`);
+
       const pending = this.pendingPermissions.get(data.request_id);
       if (!pending) {
         getLogger().warn(`[desktop-socket] orphan hook result req_id=${data.request_id?.slice(0, 8)}`);
@@ -471,7 +472,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       getLogger().warn(`[desktop-socket] not authenticated, dropping ${event}`);
       return;
     }
-    getLogger().info(`[desktop-socket] emit ${event} data=${JSON.stringify(data).slice(0, 200)}`);
+    getLogger().info(`[desktop-socket] emit ${event} data=${JSON.stringify(data ?? '').slice(0, 200)}`);
     this.socket.emit(event, data);
   }
 
