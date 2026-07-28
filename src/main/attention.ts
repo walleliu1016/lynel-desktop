@@ -178,7 +178,7 @@ class WindowAttention {
   }
 
   /** 通知点击 / tray "待审批"点击：恢复 + 强制前置 + 聚焦 + 切 tab */
-  private focusSession(sessionId: string): void {
+  focusSession(sessionId: string): void {
     const w = this.win;
     if (!w || w.isDestroyed()) return;
 

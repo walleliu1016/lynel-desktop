@@ -1,59 +1,63 @@
-// 主进程日志：基于 electron-log，但懒加载 + 缺失时降级到 console。
+// 主进程日志：基于 electron-log，懒加载 + 缺失时降级到 console。
 //
 // 设计原因：
 // - electron-log 的入口模块在 require('electron') 顶层执行 getElectronPath()，
 //   在 CI / 测试环境如果 electron binary 不可用（postinstall 下载失败、sandbox
-//   拦网、缓存清理等），整个 import 链会抛 "Electron failed to install correctly"，
-//   导致所有用到 logger 的测试都加载失败。
-// - 改为首次调用 getLogger() 时再加载，加载失败则降级到 console（仅 stdout 输出），
-//   保证日志调用方代码在两种环境下都能跑。
+//   拦网、缓存清理等），整个 import 链会抛 "Electron failed to install
+//   correctly"，导致所有用到 logger 的测试都加载失败。
+// - 改为首次调用 getLogger() 时再加载，加载失败则降级到 console。
+// - 保留 electron-log 的真实类型签名：用 import type 引入 MainLogger，
+//   fallback 用 as 强转（不完整字段的访问在 fallback 路径下运行时不会触发，
+//   因为上层 app.ts 里 transports.file.level 仅在 settings 更新时调用，
+//   测试不会走到）。
 
-type ElectronLog = {
-  scope: (name: string) => ElectronLog;
-  info: (...args: unknown[]) => void;
-  warn: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-  debug: (...args: unknown[]) => void;
-  verbose: (...args: unknown[]) => void;
-  silly: (...args: unknown[]) => void;
-  initialize?: () => void;
-};
+import type LogType from 'electron-log/main';
+
+type ElectronLog = typeof LogType;
 
 let _log: ElectronLog | null = null;
 let _loaded = false;
 
 function createConsoleFallback(): ElectronLog {
-  const make = (level: 'info' | 'warn' | 'error' | 'debug'): ElectronLog['info'] =>
+  const make = (level: 'info' | 'warn' | 'error' | 'debug' | 'verbose' | 'silly') =>
     (...args: unknown[]) => {
-      const prefix = level === 'error' ? '[ERROR]' : level === 'warn' ? '[WARN]' : '';
-      const line = prefix ? `${prefix} ${args.map(stringifyArg).join(' ')}` : args.map(stringifyArg).join(' ');
+      const tag = level === 'error' ? '[ERROR]' : level === 'warn' ? '[WARN]' : '';
+      const line = (tag ? `${tag} ` : '') + args.map(stringifyArg).join(' ');
       const stream = level === 'error' ? process.stderr : process.stdout;
       try { stream.write(line + '\n'); } catch { /* ignore EPIPE */ }
     };
-  const base: ElectronLog = {
+  const scopeImpl = (name: string) => scopedFallback(name);
+  function scopedFallback(name: string): ElectronLog {
+    const tagged = (level: 'info' | 'warn' | 'error' | 'debug' | 'verbose' | 'silly') =>
+      (...args: unknown[]) => base[level](`[${name}]`, ...args);
+    const base: any = {
+      info: tagged('info'),
+      warn: tagged('warn'),
+      error: tagged('error'),
+      debug: tagged('debug'),
+      verbose: tagged('verbose'),
+      silly: tagged('silly'),
+      scope: scopeImpl,
+    };
+    return base as ElectronLog;
+  }
+  const root: any = {
     info: make('info'),
     warn: make('warn'),
     error: make('error'),
     debug: make('debug'),
-    verbose: make('info'),
-    silly: make('debug'),
-    scope(name: string) {
-      // console fallback 也支持 scope，但只是前缀装饰
-      const tagged = (level: 'info' | 'warn' | 'error' | 'debug') =>
-        (...args: unknown[]) => base[level](`[${name}]`, ...args);
-      return {
-        ...base,
-        info: tagged('info'),
-        warn: tagged('warn'),
-        error: tagged('error'),
-        debug: tagged('debug'),
-        verbose: tagged('info'),
-        silly: tagged('debug'),
-        scope: base.scope,
-      };
+    verbose: make('verbose'),
+    silly: make('silly'),
+    scope: scopeImpl,
+    // app.ts 可能访问 transports.file.level = ...；fallback 下用 no-op 占位
+    transports: {
+      file: { level: 'info' as const },
+      console: { level: 'info' as const },
+      remote: { level: false as const },
     },
+    initialize() {},
   };
-  return base;
+  return root as ElectronLog;
 }
 
 function stringifyArg(a: unknown): string {
@@ -69,7 +73,7 @@ function loadLogger(): ElectronLog {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = require('electron-log/main');
     _log = (mod.default ?? mod) as ElectronLog;
-    try { _log.initialize?.(); } catch { /* 旧版 API 无 initialize，忽略 */ }
+    try { (_log as any).initialize?.(); } catch { /* 旧版 API 无 initialize，忽略 */ }
     // 防止 stdout/stderr 管道断开导致 EPIPE 崩溃
     // 当父进程（npm/concurrently）关闭时，管道写入会抛出 EPIPE
     const ignoreEpipe = (stream: NodeJS.WriteStream) => {
