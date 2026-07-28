@@ -47,8 +47,8 @@ const cfg = computed(() => settings.cfg ?? (settings.cfg = {
   cloud_service_url: '',
 } as any))
 
-type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'authenticated' | 'auth_failed'
-const connState = ref<ConnectionState>('disconnected')
+interface ConnState { state: string; reconnectAttempt: number }
+const connState = ref<ConnState>({ state: 'disconnected', reconnectAttempt: 0 })
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
@@ -81,7 +81,7 @@ function startPolling() {
 async function refreshState() {
   try {
     const s = await CloudConnectionState()
-    connState.value = s as ConnectionState
+    connState.value = s as ConnState
   } catch {
     // ignore
   }
@@ -89,23 +89,25 @@ async function refreshState() {
 
 const statusClass = computed(() => {
   if (!cfg.value.cloud_service_enabled) return ''
-  switch (connState.value) {
+  switch (connState.value.state) {
     case 'authenticated':
     case 'connected':
       return 'ok'
     case 'auth_failed': return 'fail'
-    case 'connecting': return 'testing'
+    case 'connecting':
+    case 'reconnecting': return 'testing'
     default: return ''
   }
 })
 
 const statusText = computed(() => {
   if (!cfg.value.cloud_service_enabled) return '未启用'
-  switch (connState.value) {
+  switch (connState.value.state) {
     case 'connecting': return '连接中...'
     case 'connected': return '已连接'
     case 'authenticated': return '已连接'
     case 'auth_failed': return '认证失败'
+    case 'reconnecting': return `重连中(${connState.value.reconnectAttempt})`
     default: return '未连接'
   }
 })

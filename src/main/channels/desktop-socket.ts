@@ -63,7 +63,12 @@ interface PendingRequest {
   timer: NodeJS.Timeout;
 }
 
-type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'authenticated' | 'auth_failed';
+type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'authenticated' | 'auth_failed' | 'reconnecting';
+
+export interface ConnectionStateInfo {
+  state: ConnectionState;
+  reconnectAttempt: number;
+}
 
 export class DesktopSocket implements OutputChannel, HookChannel {
   readonly id = 'cloud';
@@ -77,6 +82,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
   private token: string | undefined;          // cloud 返回的 token（用于 socket 认证），纯内存
   private state: ConnectionState = 'disconnected';
   private authenticating = false;             // 防止重入 login 流程
+  private reconnectAttempt = 0;               // 当前重连次数（0 = 未在重连）
 
   // envelope buffer：3s flush 或满 50 条
   private buffer: LynelEnvelope[] = [];
@@ -107,8 +113,8 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     return this.state === 'authenticated';
   }
 
-  getState(): ConnectionState {
-    return this.state;
+  getState(): ConnectionStateInfo {
+    return { state: this.state, reconnectAttempt: this.reconnectAttempt };
   }
 
   // 由 app:loginWithToken 调用：用密码调 /api/auth/login 校验
@@ -172,6 +178,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     }
 
     getLogger().info(`[desktop-socket] connecting to ${baseUrl} path=/socket.io (http api=${this.url})`);
+    this.reconnectAttempt = 0;
     this.setState('connecting');
 
     // socket.io-client 类型对 agent 选项声明不全，用 as any 绕过类型检查
@@ -196,6 +203,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
 
     this.socket.on('connect', () => {
       getLogger().info('[desktop-socket] connected, authenticating...');
+      this.reconnectAttempt = 0;
       this.setState('connected');
       // socket 连接建立后，确保有 JWT 再 emit desktop:auth
       this.ensureJwtAndAuth();
@@ -236,7 +244,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     });
 
     this.socket.on('disconnect', (reason: string) => {
-      getLogger().info(`[desktop-socket] disconnected: ${reason}`);
+      getLogger().info(`[desktop-socket] disconnected: ${reason} (socket.io will auto-reconnect in ~1s, max 10s backoff)`);
       this.setState('disconnected');
       // pending permission 请求不清理：
       //   1. cloud 端如果还保留 popup 等待，重连后 mobile 响应仍会通过 desktop:hook:result 回来
@@ -244,7 +252,24 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     });
 
     this.socket.on('connect_error', (err: Error & { description?: unknown; context?: unknown }) => {
-      getLogger().warn(`[desktop-socket] connect error: ${err.message} description=${JSON.stringify(err.description)} context=${JSON.stringify(err.context)}`);
+      getLogger().warn(`[desktop-socket] connect error: ${err.message} desc=${JSON.stringify(err.description)} ctx=${JSON.stringify(err.context)}`);
+    });
+
+    // socket.io Manager 级别事件：每次重连尝试触发
+    this.socket.io.on('reconnect_attempt', (attempt: number) => {
+      getLogger().info(`[desktop-socket] reconnect attempt #${attempt}...`);
+      this.reconnectAttempt = attempt;
+      this.setState('reconnecting');
+    });
+    this.socket.io.on('reconnect', (attempt: number) => {
+      getLogger().info(`[desktop-socket] reconnect success after ${attempt} attempts`);
+      this.reconnectAttempt = 0;
+    });
+    this.socket.io.on('reconnect_error', (err: Error) => {
+      getLogger().warn(`[desktop-socket] reconnect error: ${err.message}`);
+    });
+    this.socket.io.on('reconnect_failed', () => {
+      getLogger().error('[desktop-socket] reconnect failed after max attempts');
     });
   }
 
@@ -271,6 +296,12 @@ export class DesktopSocket implements OutputChannel, HookChannel {
         return;
       }
       this.token = token;
+      // 异步 login 期间 socket 可能已断开，此时不 emit，
+      // token 已缓存，下次 connect 事件会走 token 复用路径同步 emit
+      if (!this.socket?.connected) {
+        getLogger().warn('[desktop-socket] socket disconnected during login, defer auth to next connect');
+        return;
+      }
       this.emit('desktop:auth', { user_id: this.userId, token });
     } finally {
       this.authenticating = false;

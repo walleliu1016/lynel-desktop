@@ -75,26 +75,29 @@ const runningCount = computed(() => {
 
 // 云服务连接状态：仅 cloud_service_enabled 时显示
 const cloudEnabled = ref(false)
-const cloudState = ref<'disconnected' | 'connecting' | 'connected' | 'authenticated' | 'auth_failed'>('disconnected')
+interface CloudStateInfo { state: string; reconnectAttempt: number }
+const cloudState = ref<CloudStateInfo>({ state: 'disconnected', reconnectAttempt: 0 })
 let cloudPollTimer: ReturnType<typeof setInterval> | null = null
 
 const cloudStatusClass = computed(() => {
-  switch (cloudState.value) {
+  switch (cloudState.value.state) {
     case 'authenticated':
     case 'connected':
       return 'ok'
     case 'auth_failed': return 'fail'
-    case 'connecting': return 'testing'
+    case 'connecting':
+    case 'reconnecting': return 'testing'
     default: return ''
   }
 })
 
 const cloudStatusText = computed(() => {
-  switch (cloudState.value) {
+  switch (cloudState.value.state) {
     case 'connecting': return '连接中'
     case 'connected': return '已连接'
     case 'authenticated': return '已连接'
     case 'auth_failed': return '认证失败'
+    case 'reconnecting': return `重连中(${cloudState.value.reconnectAttempt})`
     default: return '未连接'
   }
 })
@@ -104,7 +107,7 @@ const cloudStatusTitle = computed(() => `云服务：${cloudStatusText.value}`)
 async function refreshCloudState() {
   try {
     const s = await CloudConnectionState()
-    cloudState.value = s as typeof cloudState.value
+    cloudState.value = s as CloudStateInfo
   } catch {}
 }
 
