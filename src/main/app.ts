@@ -23,6 +23,7 @@ import { startProxy } from './apiproxy.js';
 import { start as startPty, PtyMode, PtySize, preloadShellEnv } from './pty.js';
 import { registerTraceIpc } from './trace/ipc.js';
 import type { BotConfig } from './types/bot.js';
+import { notifyExternal, errMessage } from './channels/notify-error.js';
 
 const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
 
@@ -74,6 +75,7 @@ function createSettingsOverrideFile(proxyUrl: string): { args: string[]; cleanup
     };
   } catch (err: any) {
     getLogger().error(`[app] failed to create settings override: ${err.message}`);
+    notifyExternal({ source: 'session:setup', level: 'warn', message: `生成 Claude 临时配置失败，将使用默认代理路径: ${errMessage(err)}` });
     return { args: [], cleanup: () => {} };
   }
 }
@@ -83,6 +85,44 @@ function mapHookToKind(name: string): HookEventLike['kind'] | null {
     case 'SessionStart': return 'SessionStart';
     default: return null;
   }
+}
+
+/** 把 PTY 早期失败诊断信息格式化成人类可读 string，
+ *  给 toast + log + 终端内 echo 三处共用 */
+function formatPtyFailureDiagnosis(info: import('./pty.js').PtyExitInfo): string {
+  const lines: string[] = [];
+  let cmd: string;
+  if (info.spawnArgs.length) {
+    cmd = `${info.resolvedBin} ${info.spawnArgs.map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' ')}`;
+  } else {
+    cmd = info.resolvedBin;
+  }
+  lines.push(`命令: ${cmd}`);
+  lines.push(`cwd: ${info.cwd}`);
+  lines.push(`退出码: ${info.code}`);
+  lines.push(`运行时长: ${info.durationMs}ms`);
+
+  if (info.binExists === false) {
+    lines.push(`binary 不存在: ${info.resolvedBin}`);
+    lines.push('请检查 "设置 -> Claude 路径" 是否正确，或 claude 是否在 PATH 里');
+  } else if (info.binExists === 'unknown') {
+    lines.push(`binary 未解析为绝对路径（PATH 内查找）: ${info.resolvedBin}`);
+    lines.push('若 claude 已安装但报 "binary 不存在"，可能是 macOS GUI 启动 PATH 不全；可在 shell 中 `which claude` 拿绝对路径配置进设置');
+  }
+
+  if (info.spawnArgs.some((a) => a === '--resume')) {
+    lines.push('注：使用 --resume 模式；该会话 ID 可能在 ~/.claude/projects/<cwd-encoded>/ 下没有对应 jsonl，或被其他 claude 实例占用');
+  }
+
+  const tail = info.outputTail.trim();
+  if (tail) {
+    lines.push('终端输出:');
+    lines.push(tail);
+  } else {
+    lines.push('终端无任何输出（典型为 binary 找不到 / spawn 立即失败）');
+  }
+
+  return lines.join('\n');
 }
 
 interface SessionActivity {
@@ -616,6 +656,7 @@ export class App {
       instance.updateConfig(inner);
     } catch (err) {
       getLogger().error(`[app] channel ${wrapper.id} updateConfig failed:`, err);
+      notifyExternal({ source: `channel:${wrapper.id}`, level: 'warn', message: `通道配置更新失败: ${errMessage(err)}` });
     }
   }
 
@@ -815,6 +856,7 @@ export class App {
       getLogger().info(`[app] hook server started on port ${this.hookServer.getPort()}`);
     } catch (err: any) {
       getLogger().error(`[app] hook server failed to start: ${err.message}`);
+      notifyExternal({ source: 'hookserver', level: 'error', message: `Hook 服务启动失败，Claude hooks 将不工作: ${errMessage(err)}` });
       return;
     }
     this.checkAndFixHooks();
@@ -837,6 +879,7 @@ export class App {
     } catch (err: any) {
       if (err.code !== 'ENOENT') {
         getLogger().error(`[app] read settings.json failed: ${err.message}`);
+        notifyExternal({ source: 'hooks:setup', level: 'error', message: `读取 ~/.claude/settings.json 失败，无法配置 hooks: ${errMessage(err)}` });
         return false;
       }
     }
@@ -877,6 +920,7 @@ export class App {
       return true;
     } catch (err: any) {
       getLogger().error(`[app] write settings.json failed: ${err.message}`);
+      notifyExternal({ source: 'hooks:setup', level: 'error', message: `写入 ~/.claude/settings.json 失败，hooks 配置未持久化: ${errMessage(err)}` });
       return false;
     }
   }
@@ -909,6 +953,7 @@ export class App {
     } catch (err: any) {
       if (err.code !== 'ENOENT') {
         getLogger().error(`[app] read settings.json for provider failed: ${err.message}`);
+        notifyExternal({ source: 'provider', level: 'error', message: `读取 ~/.claude/settings.json 失败，无法切换供应商: ${errMessage(err)}` });
         return false;
       }
     }
@@ -929,6 +974,7 @@ export class App {
       return true;
     } catch (err: any) {
       getLogger().error(`[app] write settings.json for provider failed: ${err.message}`);
+      notifyExternal({ source: 'provider', level: 'error', message: `写入 ~/.claude/settings.json 失败，供应商切换未生效: ${errMessage(err)}` });
       return false;
     }
   }
@@ -1154,7 +1200,13 @@ export class App {
     });
 
     ipcMain.handle('app:createSession', async (_event, workDir: string, prompt: string, extraArgs: string[] = []) => {
-      return this.createSessionInternal(workDir, prompt, extraArgs);
+      try {
+        return await this.createSessionInternal(workDir, prompt, extraArgs);
+      } catch (err: any) {
+        getLogger().error(`[app:createSession] failed: ${err?.message ?? err}`);
+        notifyExternal({ source: 'session:start', level: 'error', message: `新建会话失败: ${errMessage(err)}` });
+        throw err;
+      }
     });
 
     ipcMain.handle('app:sendMessage', (_event, id: string, prompt: string) => {
@@ -1162,6 +1214,7 @@ export class App {
         session.send(id, prompt);
       } catch (err: any) {
         getLogger().error(`[app:sendMessage] failed for sid=${id}: ${err.message}`);
+        notifyExternal({ source: 'session:send', level: 'error', message: `消息发送失败 (${id.slice(0, 8)}): ${errMessage(err)}` });
         throw err;
       }
     });
@@ -1261,6 +1314,7 @@ export class App {
             instance.updateConfig({ enabled: false });
           } catch (err) {
             getLogger().error(`[app] channel ${id} updateConfig(reset) failed:`, err);
+            notifyExternal({ source: `channel:${id}`, level: 'warn', message: `通道删除后重置失败: ${errMessage(err)}` });
           }
         }
         const closeResult = instance.close?.();
@@ -1659,10 +1713,31 @@ export class App {
       getBus().emit(`session:${id}`, data);
       session.appendBuffer(id, data);
     };
-    const onExit = (code: number) => {
+
+    const onExit = (info: import('./pty.js').PtyExitInfo) => {
       if (exited) return;
       exited = true;
-      getLogger().info(`[app:wirePty] pty exited sid=${id} code=${code}`);
+      const code = info.code;
+      getLogger().info(`[app:wirePty] pty exited sid=${id} code=${code} duration=${info.durationMs}ms outputLen=${info.outputTail.length}`);
+
+      // 启动失败判定：非 0 + 启动后 5s 内 + 输出短（< 500 字符）
+      // → 通常是 binary 找不到 / --resume 找不到 conversation / --settings 文件无效等
+      // 长时间运行后退出（用户 /exit / ctrl-c）buffer 长，不视为启动失败
+      const isEarlyFailure = code !== 0 && info.durationMs < 5000 && info.outputTail.length < 500;
+      if (isEarlyFailure) {
+        const diagnosis = formatPtyFailureDiagnosis(info);
+        getLogger().error(`[app:wirePty] Claude 启动失败 sid=${id}: ${diagnosis}`);
+        const detail = `启动失败 (code=${code}, ${info.durationMs}ms): ${diagnosis}`;
+        // 终端内展示（用户可能正看终端）
+        getBus().emit(`session:${id}`, `\r\n\x1b[31m${detail}\x1b[0m\r\n`);
+        // 右侧 Toast 弹详细诊断
+        notifyExternal({
+          source: `session:start:${id.slice(0, 8)}`,
+          level: 'error',
+          message: detail,
+        });
+      }
+
       getBus().emit(`session:${id}`, JSON.stringify({ type: 'done' }));
       this.setSessionState(id, 'done');
       const s = session.lookup(id);
@@ -1670,10 +1745,8 @@ export class App {
         s.process = null;
         s.state = 'done';
       }
-      // 进程已退出，丢掉未提交的输入行缓存，避免 /exit 误判串到下一次会话
       this.inputLineBuffers.delete(id);
       this.ptyCleanups.delete(id);
-      // 清理对应的 apiproxy 实例，避免 listening socket / Buffer / jsonl 句柄泄露
       const proxyIdx = this.apiProxies.findIndex((p) => p.sessionId === id);
       if (proxyIdx >= 0) {
         const [proxy] = this.apiProxies.splice(proxyIdx, 1);
@@ -1741,12 +1814,14 @@ export class App {
         } catch (err: any) {
           getLogger().error(`[app:openSessionTerminal] startPty failed for sid=${id}: ${err.message}`);
           getBus().emit(`session:${id}`, `\r\n启动终端失败：${err.message}\r\n`);
+          notifyExternal({ source: 'session:start', level: 'error', message: `启动 Claude 终端失败 (${id.slice(0, 8)}): ${errMessage(err)}` });
           this.setSessionState(id, 'done');
           resolvePty(false);
         }
       }).catch((err: any) => {
         getLogger().error(`[app:openSessionTerminal] proxy failed for sid=${id}: ${err?.message ?? err}`);
         getBus().emit(`session:${id}`, `\r\n启动终端失败：${err?.message ?? err}\r\n`);
+        notifyExternal({ source: 'session:start', level: 'error', message: `启动 API 代理失败 (${id.slice(0, 8)}): ${errMessage(err)}` });
         this.setSessionState(id, 'done');
         // proxy 启动失败也 resolve，让前端能继续（终端内会显示错误）
         resolvePty(false);

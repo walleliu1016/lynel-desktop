@@ -19,10 +19,31 @@ export interface PtySize {
 export interface PtyProcess {
   pid: number;
   onData: (cb: (data: string) => void) => void;
-  onExit: (cb: (code: number) => void) => void;
+  /** onExit 回调收到详细退出信息（含运行时长、输出尾部、bin 路径诊断），便于上层区分"启动失败 vs 正常退出" */
+  onExit: (cb: (info: PtyExitInfo) => void) => void;
   write: (data: string) => void;
   resize: (cols: number, rows: number) => void;
   kill: (signal?: string) => void;
+}
+
+/** PTY 退出时的诊断信息。运行时长 + 输出尾部对识别"早期失败"至关重要：
+ *  node-pty 的早期 spawn 失败（ENOENT / EACCES）通常 24~ms 内退出且 buffer 几乎为空，
+ *  需要用 spawn 时长 + 输出长度共同判定，再 toast 详细诊断给用户。 */
+export interface PtyExitInfo {
+  /** 进程退出码；node-pty spawn 失败时通常是 1，但部分平台是 127 / 126 */
+  code: number;
+  /** 从 spawn 到 exit 的毫秒数；< 2000ms 基本是早期失败 */
+  durationMs: number;
+  /** 退出前 PTY 累计输出尾部最多 4KB；用于把 Claude 启动时的报错（如 conversation not found、ENOENT）一起带到 toast */
+  outputTail: string;
+  /** spawn 时实际使用的 bin 路径（已 resolve）；可能是 'claude' 没解析到绝对路径 */
+  resolvedBin: string;
+  /** spawn 前 resolvedBin 是否存在（绝对路径才检查）；false 说明 binary 找不到 */
+  binExists: boolean | 'unknown';
+  /** 传给 spawn 的全部 args（--resume sid --settings xxx 等），诊断专用 */
+  spawnArgs: string[];
+  /** 启动 cwd */
+  cwd: string;
 }
 
 // macOS GUI 应用从 Finder 启动时 PATH 不完整，这里用用户的 login shell 解析完整环境变量，
@@ -180,6 +201,7 @@ function resolveShellEnv(): Record<string, string> {
 
 // 如果 bin 是相对路径（如 'claude'），在解析后的 PATH 中查找绝对路径，
 // 避免 node-pty 因 PATH 不完整找不到命令而直接退出。
+// 找不到时返回原始 bin，上层仍会被 spawn，由 node-pty 的 onExit(code=1) 兜底。
 function resolveBin(bin: string, env: Record<string, string>): string {
   if (path.isAbsolute(bin) || bin.includes(path.sep)) return bin;
   const pathEnv = env.PATH || process.env.PATH || '';
@@ -193,6 +215,43 @@ function resolveBin(bin: string, env: Record<string, string>): string {
     }
   }
   return bin;
+}
+
+/** stat resolvedBin，识别"命令真实存在但路径错误"这种 silent 失败 */
+function statBin(bin: string): boolean | 'unknown' {
+  if (!bin) return false;
+  if (!path.isAbsolute(bin) && !bin.includes(path.sep)) return 'unknown';
+  try {
+    return fs.statSync(bin).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** 输出 ring buffer：保留最近 N 字节，避免长会话内存无限增长 */
+class OutputRing {
+  private chunks: string[] = [];
+  private totalLen = 0;
+  private readonly MAX = 4 * 1024; // 4 KB tail
+  push(data: string): void {
+    this.chunks.push(data);
+    this.totalLen += data.length;
+    // 超过 MAX 的 1.5 倍时 trim
+    while (this.totalLen > this.MAX * 1.5 && this.chunks.length > 1) {
+      const oldest = this.chunks.shift()!;
+      this.totalLen -= oldest.length;
+    }
+  }
+  /** 取尾部最多 maxBytes 字节（带省略号指示是 tail） */
+  tail(maxBytes = 1024): string {
+    const all = this.chunks.join('');
+    if (all.length <= maxBytes) return all;
+    return '...' + all.slice(-maxBytes);
+  }
+  /** 全量长度（不含省略号），用于判定缓冲是否"短" */
+  get length(): number {
+    return this.totalLen;
+  }
 }
 
 function buildCommand(
@@ -235,21 +294,36 @@ export function start(
 ): PtyProcess {
   const darwinEnv = resolveShellEnv();
   const resolvedBin = resolveBin(bin, darwinEnv);
+  const binExists = statBin(resolvedBin);
   const { file, args } = buildCommand(resolvedBin, sessionId, mode, env, extraArgs);
   const mergedEnv = { ...process.env, ...darwinEnv, ...env } as { [key: string]: string };
 
   const logger = getLogger();
-  logger.info(`[pty] spawn ${file} ${args.map((a) => `"${a}"`).join(' ')} (cwd=${cwd})`);
+  logger.info(`[pty] spawn ${file} ${args.map((a) => `"${a}"`).join(' ')} (cwd=${cwd}) resolvedBin=${resolvedBin} binExists=${binExists}`);
 
-  const proc = pty.spawn(file, args, {
-    name: 'xterm-256color',
-    cols: size.cols,
-    rows: size.rows,
-    cwd,
-    env: mergedEnv,
-  });
+  // spawn 前 warn：bin 路径绝对路径但文件不存在，node-pty 会立即 exit code=1
+  if (binExists === false) {
+    logger.error(`[pty] bin not found: ${resolvedBin} (configured=${bin})，spawn 将失败`);
+  }
 
+  const spawnAt = Date.now();
+  const ring = new OutputRing();
   let firstData: string | null = null;
+  let proc: ReturnType<typeof pty.spawn>;
+  try {
+    proc = pty.spawn(file, args, {
+      name: 'xterm-256color',
+      cols: size.cols,
+      rows: size.rows,
+      cwd,
+      env: mergedEnv,
+    });
+  } catch (err: any) {
+    // node-pty 在某些情况下同步抛 EAGAIN / EMFILE 等，包装成带 bin 路径诊断的 error
+    const msg = err?.message || String(err);
+    logger.error(`[pty] spawn 同步抛出 bin=${resolvedBin} cwd=${cwd} args=${args.join(' ')}: ${msg}`);
+    throw new Error(`启动 PTY 失败 (bin=${resolvedBin}, ${msg})`);
+  }
 
   return {
     pid: proc.pid,
@@ -259,12 +333,23 @@ export function start(
           firstData = data;
           logger.info(`[pty] first data (sid=${sessionId.slice(0, 8)}...): ${data.slice(0, 200)}`);
         }
+        ring.push(data);
         cb(data);
       });
     },
     onExit: (cb) => proc.onExit(({ exitCode }) => {
-      logger.info(`[pty] exited sid=${sessionId.slice(0, 8)}... code=${exitCode ?? 0} firstData=${firstData ? firstData.slice(0, 120) : 'none'}`);
-      cb(exitCode ?? 0);
+      const durationMs = Date.now() - spawnAt;
+      const info: PtyExitInfo = {
+        code: exitCode ?? 0,
+        durationMs,
+        outputTail: ring.tail(2048),
+        resolvedBin,
+        binExists,
+        spawnArgs: args,
+        cwd,
+      };
+      logger.info(`[pty] exited sid=${sessionId.slice(0, 8)}... code=${info.code} duration=${durationMs}ms outputLen=${ring.length} firstData=${firstData ? firstData.slice(0, 120) : 'none'}`);
+      cb(info);
     }),
     write: (data) => proc.write(data),
     resize: (cols, rows) => proc.resize(cols, rows),

@@ -14,6 +14,7 @@ import { requestTiming, recordModel } from './trace/timing.js';
 import { costFromUsage, type CostBreakdown } from './cost/priceTable.js';
 import { HappyJsonlWriter } from './archive/happyJsonl.js';
 import { writeRawExchange, listRawExchanges, type RawExchangeInput } from './archive/rawArchive.js';
+import { notifyExternal, errMessage } from './channels/notify-error.js';
 
 export interface Proxy {
   port: number;
@@ -238,6 +239,7 @@ export function startProxy(
 
           proxyRes.on('error', (err: any) => {
             console.error(`[apiproxy] upstream response error: upstream=${up.href} path=${forwardPath} code=${err.code} syscall=${err.syscall} message=${err.message}`);
+            notifyExternal({ source: 'apiproxy', level: 'warn', message: `上游响应错误 (${up.host}): ${errMessage(err)}`, throttleMs: 60_000 });
             if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' });
             res.end('apiproxy upstream error');
             const errEnvs = s.adapter.handleNetworkError(err.message);
@@ -254,6 +256,7 @@ export function startProxy(
             return;
           }
           console.error(`[apiproxy] upstream request error: upstream=${up.href} path=${forwardPath} code=${err.code} syscall=${err.syscall} hostname=${err.hostname} port=${err.port} message=${err.message}`);
+          notifyExternal({ source: 'apiproxy', level: 'warn', message: `Claude 上游请求失败 (${err.hostname ?? up.host}): ${errMessage(err)}`, throttleMs: 60_000 });
           if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' });
           res.end('apiproxy upstream error');
           const errEnvs = s.adapter.handleNetworkError(err.message);
@@ -268,6 +271,7 @@ export function startProxy(
 
       req.on('error', (err) => {
         console.error('[apiproxy] client request error:', err);
+        notifyExternal({ source: 'apiproxy', level: 'warn', message: `代理客户端错误: ${errMessage(err)}`, throttleMs: 60_000 });
       });
     });
 
