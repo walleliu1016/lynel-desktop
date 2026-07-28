@@ -8,6 +8,7 @@ lynel-desktop
 dist/
 dist-electron/
 .claude/
+.claude/settings.local.json
 .worktrees/
 src/main/**/*.js
 src/main/**/*.js.map
