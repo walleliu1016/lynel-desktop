@@ -15,7 +15,7 @@
     "build:electron": "tsc",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
-    "dist:mac": "electron-builder --mac",
+    "dist:mac": "node scripts/pre-dist-mac.mjs && electron-builder --mac",
     "dist:linux": "electron-builder --linux",
     "test": "vitest run --dir tests/main",
     "test:main": "vitest run --dir tests/main",
