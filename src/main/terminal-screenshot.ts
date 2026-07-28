@@ -1,13 +1,41 @@
 // src/main/terminal-screenshot.ts
 
 import fs from 'node:fs';
-import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
+
+// @napi-rs/canvas 原生绑定在跨架构场景（如 Intel Mac）可能缺失，
+// 使用懒加载避免主进程启动时崩溃，截图功能在模块不可用时降级报错。
+let canvasModule: any = null;
+let canvasLoadError: Error | null = null;
+
+function loadCanvas(): any {
+  if (canvasModule) return canvasModule;
+  if (canvasLoadError) throw canvasLoadError;
+  try {
+    canvasModule = require('@napi-rs/canvas');
+  } catch (err: any) {
+    canvasLoadError = err;
+    throw err;
+  }
+  return canvasModule;
+}
+
+function getCreateCanvas(): any {
+  return loadCanvas().createCanvas;
+}
+
+function getGlobalFonts(): any {
+  return loadCanvas().GlobalFonts;
+}
+
 import xtermHeadless from '@xterm/headless';
 const { Terminal } = xtermHeadless as any;
 
 // ── CJK font registration ──────────────────────────────────────────
 
+let fontsRegistered = false;
 function registerCJKFont(): void {
+  if (fontsRegistered) return;
+  fontsRegistered = true;
   const candidates = [
     'C:\\Windows\\Fonts\\msyh.ttc',
     'C:\\Windows\\Fonts\\msgothic.ttc',
@@ -21,10 +49,9 @@ function registerCJKFont(): void {
     '/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc',
   ];
   for (const p of candidates) {
-    if (fs.existsSync(p)) { GlobalFonts.registerFromPath(p, 'CJK Mono'); return; }
+    if (fs.existsSync(p)) { getGlobalFonts().registerFromPath(p, 'CJK Mono'); return; }
   }
 }
-registerCJKFont();
 
 // ── Constants ──────────────────────────────────────────────────────
 
@@ -55,8 +82,6 @@ interface RenderOptions {
 
 // ── Color conversion ───────────────────────────────────────────────
 
-// 调暗 RGB/调色板颜色：用于 dim 单元 (\x1b[2m) 在白底上增强可读性
-// 白色背景下，原色按 factor 调暗，避免淡色文字看不见
 function darkenColor(css: string, factor: number): string {
   const m = css.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
   if (m) {
@@ -72,25 +97,21 @@ function darkenColor(css: string, factor: number): string {
   return css;
 }
 
-// ColorMode: 0 = default, 1 = palette (0-255), 2 = RGB (0xRRGGBB)
 function cellFgToCSS(cell: any): string {
   const mode = cell.getFgColorMode();
   let css: string;
   if (mode === 0) css = DEFAULT_FG;
   else if (mode === 2) css = `#${cell.getFgColor().toString(16).padStart(6, '0')}`;
   else {
-    // palette
     const c = cell.getFgColor();
     if (c < 16) css = PALETTE_16[c] ?? DEFAULT_FG;
     else if (c < 232) {
-      // 216-color cube: 6x6x6, index 16-231
       const i = c - 16;
       const r = Math.floor(i / 36) * 51;
       const g = Math.floor((i % 36) / 6) * 51;
       const b = (i % 6) * 51;
       css = `rgb(${r},${g},${b})`;
     } else {
-      // grayscale 232-255
       const g = (c - 232) * 10 + 8;
       css = `rgb(${g},${g},${g})`;
     }
@@ -121,6 +142,9 @@ export async function renderBufferToPng(
   rawBuffer: string,
   opts: RenderOptions = {},
 ): Promise<Buffer> {
+  const createCanvas = getCreateCanvas();
+  registerCJKFont();
+
   const fontSize = opts.fontSize ?? 14;
   const fontFamily = opts.fontFamily ?? DEFAULT_FONT_FAMILY;
   const padding = opts.padding ?? 16;
@@ -135,11 +159,6 @@ export async function renderBufferToPng(
     scrollback: 500,
   });
 
-  // 直接写入原始字节流，由 headless xterm 按 ANSI 语义处理 \r（行首覆盖）、
-  // \x1b[2K（擦行）等控制序列。替换 \r 为 \n 会导致重绘场景产生多余行、位置错乱。
-  //
-  // 前置 \x1b[0m 重置 headless 起始状态到默认，避免 raw buffer 在颜色开启但未 reset 的位置
-  // 截断时（如 session.buffer 的 65536 字符硬截断）导致后续内容带着错误颜色渲染。
   await new Promise<void>(resolve => {
     term.write('\x1b[0m' + rawBuffer, resolve);
   });
@@ -148,7 +167,6 @@ export async function renderBufferToPng(
   const totalLines = buf.length;
   const cursorY = buf.baseY + buf.cursorY;
 
-  // 从 cursor 位置向上扫描，找到最后一个有实际内容的行
   let contentEnd = 0;
   for (let y = Math.min(cursorY, totalLines - 1); y >= 0; y--) {
     const line = buf.getLine(y);
@@ -203,14 +221,12 @@ export async function renderBufferToPng(
     for (let x = 0; x < cols; x++) {
       const cell = line.getCell(x);
       if (!cell) {
-        // 没有 cell：按空格推进 xPixel，保持后续 cell 位置正确
         xPixel += charWidth;
         continue;
       }
 
       const width = cell.getWidth();
       if (width === 0) {
-        // 宽字符第二列：不占独立 cell，跳过
         continue;
       }
 
@@ -268,6 +284,7 @@ export async function renderTextToPng(
 }
 
 function createEmptyImage(padding: number): Buffer {
+  const createCanvas = getCreateCanvas();
   const cw = padding * 2;
   const canvas = createCanvas(cw, cw);
   const ctx = canvas.getContext('2d');

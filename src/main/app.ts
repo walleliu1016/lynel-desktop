@@ -300,8 +300,6 @@ export class App {
   ]);
   private ptyCleanups = new Map<string, (() => void) | null>();
   private recentSessionsLock = false;
-  // 待写入 recent 列表的新会话元数据：spawn 时登记，收到首个 UserPromptSubmit 时落盘
-  private pendingRecentWrites = new Map<string, { workdir: string; project: string; firstPrompt: string; botId?: string }>();
   // 用户在 xterm.js 输入的"当前行"缓存：仅追踪到下一次 \r/\n，为 /exit 检测提供依据。
   // 渲染端 writeTerminalInput 走 IPC 把字节送到这里。onExit 时清理。
   private inputLineBuffers = new Map<string, string>();
@@ -655,24 +653,6 @@ export class App {
       const name = evt.hook_event_name ?? evt.type ?? '';
       const toolName = evt.tool_name || (evt as any).tool || '';
 
-      // 收到首个 UserPromptSubmit 才把会话写入 recent 列表，
-      // 避免新建后未发 prompt 就关闭/重启产生 phantom session。
-      if (name === 'UserPromptSubmit' && sid && this.pendingRecentWrites.has(sid)) {
-        const meta = this.pendingRecentWrites.get(sid)!;
-        this.pendingRecentWrites.delete(sid);
-        const hookPrompt = typeof (evt as any).prompt === 'string' ? (evt as any).prompt : meta.firstPrompt;
-        addRecentSession({
-          sessionId: sid,
-          workdir: meta.workdir,
-          project: meta.project,
-          aiTitle: '',
-          firstPrompt: hookPrompt,
-          lastOpenedAt: Date.now(),
-          state: 'running',
-          botId: meta.botId,
-        }).catch((err) => getLogger().error(`[app] deferred addRecentSession failed: ${err?.message ?? err}`));
-      }
-
       getBus().emit(`hook:${sid}`, JSON.stringify(evt));
 
       // 广播结构化活动事件（供灵动岛等 UI 消费）
@@ -1001,14 +981,18 @@ export class App {
       session.send(realId, prompt);
     }
     const project = workDir.split(/[\\/]/).filter(Boolean).pop() || workDir;
-    // 延迟到首个 UserPromptSubmit hook 再写 recent 列表，
-    // 避免新建后未发 prompt 就关闭/重启产生 phantom session（jsonl 永远不存在）。
-    this.pendingRecentWrites.set(realId, {
+    // 直接写 recent 列表；UserPromptSubmit hook 未配置，不能依赖它。
+    // phantom session（无 jsonl）在 openTerminal 时通过 jsonl 存在性检查处理。
+    addRecentSession({
+      sessionId: realId,
       workdir: workDir,
       project,
+      aiTitle: '',
       firstPrompt: prompt,
+      lastOpenedAt: Date.now(),
+      state: 'running',
       botId,
-    });
+    }).catch((err) => getLogger().error(`[app] addRecentSession failed: ${err?.message ?? err}`));
     if (botId) {
       this.wecomChannel.setSessionBot(realId, botId);
       this.wecomChannel.sendSessionStarted(realId, workDir);
@@ -1117,10 +1101,31 @@ export class App {
       return { ok: true };
     });
 
-    // 退出登录：清内存凭据 + 断开 cloud socket
-    ipcMain.handle('app:logout', () => {
+    // 退出登录：释放所有会话资源 + 清内存凭据 + 断开 cloud socket
+    ipcMain.handle('app:logout', async () => {
+      // 1. 关闭所有 API 代理（先于 PTY，避免 onExit 重复关闭）
+      await Promise.all(
+        this.apiProxies.map((p) =>
+          p.close().catch((err: any) => {
+            getLogger().error(`[app:logout] proxy close failed: ${err.message}`);
+          }),
+        ),
+      );
+      this.apiProxies = [];
+      // 2. 关闭所有 PTY 会话
+      for (const s of session.list()) {
+        try {
+          session.close(s.id, 'SIGTERM');
+          getLogger().info(`[app:logout] closed session sid=${s.id.slice(0, 8)}`);
+        } catch (err: any) {
+          getLogger().error(`[app:logout] close session failed: ${err.message}`);
+        }
+      }
+      // 3. 清 cloud 凭据 + 断开 socket
       this.desktopSocket.clearCredentials();
       this.desktopSocket.disconnect();
+      // 4. 通知前端刷新
+      getBus().emit('sessions:list:changed');
     });
 
     ipcMain.handle('app:listSessions', async (_event, workDir?: string) => {

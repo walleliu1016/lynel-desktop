@@ -493,6 +493,24 @@ export const useSessionsStore = defineStore('sessions', () => {
     return botId ? botNames.value[botId] : undefined
   }
 
+  function reset() {
+    list.value = []
+    activeId.value = null
+    messages.value = {}
+    streaming.value = {}
+    state.value = {}
+    historyOffset.value = {}
+    hasMore.value = {}
+    creating.value = false
+    adopted.value = {}
+    drafts.value = {}
+    hookPermissions.value = {}
+    opened.value = {}
+    userTitles.value = {}
+    titleSources.value = {}
+    sessionBots.value = {}
+  }
+
   // 初始加载会话列表
   setTimeout(() => refreshList(), 0)
 
@@ -501,7 +519,8 @@ export const useSessionsStore = defineStore('sessions', () => {
     userTitles, titleSources, sessionBots, botNames, botBindings,
     setDraft, create, open, select, send, setHookPermission,
     reloadFromJsonl, refreshList, handleHookEvent, loadMore, remove, renameSession, applyTitleChange,
-    loadBotNames, bindBot, getSessionBotName, loadBotBindings, getBotBoundSessionName }
+    loadBotNames, bindBot, getSessionBotName, loadBotBindings, getBotBoundSessionName,
+    reset }
 })
 
 export function sessionDisplayTitle(meta?: { id?: string; user_title?: string; ai_title?: string; first_prompt?: string; project?: string } | null): string {

@@ -264,6 +264,9 @@ function openGuideTab() {
 async function onLogout() {
   try { await Logout() } catch {}
   auth.logout()
+  sessions.reset()
+  tabsStore.tabs = [{ id: 'welcome', type: 'welcome' as const, title: '首页' }]
+  tabsStore.activeId = 'welcome'
   router.push('/login')
 }
 
