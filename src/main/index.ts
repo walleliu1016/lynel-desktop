@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { App } from './app.js';
 import { getStore } from './store.js';
+import { windowAttention, type AttentionPendingEntry } from './attention.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -11,6 +12,11 @@ let tray: Tray | null = null;
 let appInstance: App | null = null;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+
+// Windows 通知需要稳定的 AppUserModelId，否则可能不显示或归到 generic host 下
+// 同步把 app name 设成产品名（dev 模式默认是 "Electron"），通知中显示才正确
+app.setName('Lynel Desktop');
+app.setAppUserModelId('com.lynel.desktop');
 
 function getBuildAssetPath(...segments: string[]): string {
   return path.join(app.getAppPath(), 'build', ...segments);
@@ -97,14 +103,30 @@ function createWindow(): void {
   });
 }
 
-function createTray(): void {
-  const iconPath = getTrayIconPath();
-  const icon = nativeImage.createFromPath(iconPath);
-  tray = new Tray(icon.resize({ width: 16, height: 16 }));
-  tray.setToolTip('Lynel Desktop');
+function rebuildTrayMenu(pendingEntries: AttentionPendingEntry[]): void {
+  if (!tray) return;
+  const count = pendingEntries.length;
+  tray.setToolTip(count > 0 ? `Lynel Desktop · ${count} 个权限待审批` : 'Lynel Desktop');
+
+  // 取最多 5 条作为子菜单项；超出的展示"+N"
+  const top = pendingEntries
+    .sort((a, b) => a.requestAt - b.requestAt)
+    .slice(0, 5);
+  const rest = Math.max(0, count - top.length);
+
+  const pendingItems: Electron.MenuItemConstructorOptions[] = top.map((e) => ({
+    label: `${e.title} · ${e.projectName}`,
+    click: () => windowAttention.focusSession(e.sessionId),
+  }));
+  if (rest > 0) pendingItems.push({ label: `其余 ${rest} 条…`, enabled: false });
+
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: '显示', click: () => mainWindow?.show() },
+      { label: '显示主窗口', click: () => windowAttention.focusMainWindow() },
+      { type: 'separator' },
+      { label: count > 0 ? `待审批 (${count})` : '待审批 (0)', enabled: false },
+      ...pendingItems,
+      { type: 'separator' },
       {
         label: '退出',
         click: () => {
@@ -117,6 +139,19 @@ function createTray(): void {
       },
     ]),
   );
+}
+
+function createTray(): void {
+  const iconPath = getTrayIconPath();
+  const icon = nativeImage.createFromPath(iconPath);
+  tray = new Tray(icon.resize({ width: 16, height: 16 }));
+  // 初次构建空菜单 + tooltip
+  rebuildTrayMenu([]);
+
+  // 接入 attention 回调：pending 变化时重建
+  windowAttention.setOnPendingChange((_count, entries) => {
+    rebuildTrayMenu(entries);
+  });
 }
 
 const gotTheLock = app.requestSingleInstanceLock();

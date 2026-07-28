@@ -18,6 +18,7 @@ import { StateChannel } from './channels/state-channel.js';
 import { DesktopSocket, type SyncSession as DesktopSyncSession } from './channels/desktop-socket.js';
 import { OutputChannel, type HookEventLike } from './channels/channel.js';
 import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
+import { windowAttention } from './attention.js';
 import { startProxy } from './apiproxy.js';
 import { start as startPty, PtyMode, PtySize, preloadShellEnv } from './pty.js';
 import { registerTraceIpc } from './trace/ipc.js';
@@ -332,6 +333,8 @@ export class App {
       }
       return originalEmit(event, ...args);
     };
+    // 把"待审批注意力信号"挂到主窗口
+    windowAttention.attachToWindow(win);
     win.on('closed', () => {
       this.window = null;
     });
@@ -789,6 +792,8 @@ export class App {
         const workDir = session.lookup(sessionId)?.workDir ?? '';
         this.dispatcher.dispatchHook({ kind: 'PermissionResolved', sessionId, workDir, payload: { id, decision, source, toolName } });
       } catch {}
+      // 通知注意力中心：清掉闪烁/badge
+      windowAttention.onPermissionSettled(id);
     });
     permissionBroker.onCancel((id, sessionId, toolName) => {
       try {
@@ -796,6 +801,13 @@ export class App {
         const workDir = session.lookup(sessionId)?.workDir ?? '';
         this.dispatcher.dispatchHook({ kind: 'PermissionResolved', sessionId, workDir, payload: { id, source: 'terminal', toolName } });
       } catch {}
+      windowAttention.onPermissionSettled(id);
+    });
+
+    // broker raise 回调 → 通知注意力中心
+    permissionBroker.onRaise((req) => {
+      const workDir = session.lookup(req.sessionId)?.workDir ?? '';
+      windowAttention.onPermissionRequest({ id: req.id, sessionId: req.sessionId, workDir, toolName: req.toolName });
     });
 
     try {
