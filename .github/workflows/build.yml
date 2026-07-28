@@ -58,7 +58,7 @@ jobs:
       # 补齐缺失架构的 @napi-rs/canvas 原生绑定。
       # macos-latest 是 arm64 runner，npm ci 只装 darwin-arm64；x64 dmg 需要 darwin-x64 子包，
       # 否则 Intel Mac 用户 require('@napi-rs/canvas') 时 js-binding 抛 "Cannot find native binding"。
-      - name: Pre-build: install opposite-arch canvas native binding
+      - name: Pre-build - install opposite-arch canvas native binding
         if: matrix.target == 'mac'
         run: node scripts/pre-dist-mac.mjs
 
