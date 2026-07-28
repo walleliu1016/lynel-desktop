@@ -91,7 +91,7 @@ import { onMounted, ref, computed, watch } from 'vue'
 import Icon from '../../components/Icon.vue'
 import { useProvidersStore } from '../../stores/providers'
 import { TestProviderConnection, FetchProviderModels } from '../../composables/useElectron'
-import { showToast } from '../../composables/useToast'
+import { pushToast } from '../../composables/useToast'
 
 const store = useProvidersStore()
 const selectedId = ref('')
@@ -130,14 +130,14 @@ async function fetchModels() {
     const result = await FetchProviderModels(provider.value.base_url, provider.value.auth_token || '')
     if (result.ok && result.models?.length) {
       availableModels.value = result.models
-      showToast(`已获取 ${result.models.length} 个模型`, 'success', 3000)
+      pushToast({ level: 'info', source: 'provider', message: `已获取 ${result.models.length} 个模型`, duration: 3000 })
     } else {
       availableModels.value = []
-      showToast('获取模型列表失败，请手动输入模型名称', 'error', 5000)
+      pushToast({ level: 'error', source: 'provider', message: '获取模型列表失败，请手动输入模型名称', duration: 5000 })
     }
   } catch {
     availableModels.value = []
-    showToast('获取模型列表失败，请手动输入模型名称', 'error', 5000)
+    pushToast({ level: 'error', source: 'provider', message: '获取模型列表失败，请手动输入模型名称', duration: 5000 })
   } finally {
     fetchingModels.value = false
   }
@@ -176,7 +176,7 @@ async function onAdd() {
   try {
     selectedId.value = await store.addProvider()
   } catch (e: any) {
-    showToast('新增失败：' + (e?.message ?? e), 'error')
+    pushToast({ level: 'error', source: 'provider', message: '新增失败：' + (e?.message ?? e) })
   }
 }
 
@@ -185,9 +185,9 @@ async function onDelete() {
   if (!confirm(`确定删除供应商「${provider.value.name || '未命名'}」吗？`)) return
   try {
     selectedId.value = await store.removeProvider(selectedId.value)
-    showToast('已删除')
+    pushToast({ level: 'info', source: 'provider', message: '已删除' })
   } catch (e: any) {
-    showToast('删除失败：' + (e?.message ?? e), 'error')
+    pushToast({ level: 'error', source: 'provider', message: '删除失败：' + (e?.message ?? e) })
   }
 }
 
@@ -195,18 +195,18 @@ async function onSetActive() {
   if (!provider.value) return
   try {
     await store.setActive(provider.value.id)
-    showToast('已切换为当前供应商')
+    pushToast({ level: 'info', source: 'provider', message: '已切换为当前供应商' })
   } catch (e: any) {
-    showToast('切换失败：' + (e?.message ?? e), 'error')
+    pushToast({ level: 'error', source: 'provider', message: '切换失败：' + (e?.message ?? e) })
   }
 }
 
 async function onSave() {
   try {
     await store.save()
-    showToast('保存成功')
+    pushToast({ level: 'info', source: 'provider', message: '保存成功' })
   } catch (e: any) {
-    showToast('保存失败：' + (e?.message ?? e), 'error')
+    pushToast({ level: 'error', source: 'provider', message: '保存失败：' + (e?.message ?? e) })
   }
 }
 
@@ -227,18 +227,18 @@ async function onTest() {
   if (!provider.value) return
   const { base_url, auth_token, default_model } = provider.value
   if (!base_url) return
-  showToast('正在测试连接...', 'success', 5000)
+  pushToast({ level: 'info', source: 'provider', message: '正在测试连接...', duration: 5000 })
   const result = await TestProviderConnection(base_url, auth_token || '', default_model || '')
   if (result.ok) {
     const fmt = (result as any).format === 'openai' ? 'OpenAI' : 'Anthropic'
     const warn = (result as any).warning
     if (warn) {
-      showToast(`连接成功（${fmt} 格式）⚠️ ${warn}`, 'error', 8000)
+      pushToast({ level: 'error', source: 'provider', message: `连接成功（${fmt} 格式）⚠️ ${warn}`, duration: 8000 })
     } else {
-      showToast(`连接成功（${fmt} 格式）`, 'success', 5000)
+      pushToast({ level: 'info', source: 'provider', message: `连接成功（${fmt} 格式）`, duration: 5000 })
     }
   } else {
-    showToast('连接失败：' + (result.error || '未知错误'), 'error', 8000)
+    pushToast({ level: 'error', source: 'provider', message: '连接失败：' + (result.error || '未知错误'), duration: 8000 })
   }
 }
 

@@ -112,7 +112,7 @@ import FeishuConfig from './FeishuConfig.vue'
 import LocalFileConfig from './LocalFileConfig.vue'
 import { useChannelsStore } from '../../stores/channels'
 import { CHANNEL_TYPES, type ChannelTypeInfo } from '../../types/channels'
-import { showToast } from '../../composables/useToast'
+import { pushToast } from '../../composables/useToast'
 
 const store = useChannelsStore()
 const selectedId = ref('')
@@ -133,9 +133,9 @@ async function onEnable() {
   if (!selected.value) return
   try {
     await store.setActive(selected.value.id)
-    showToast('已启用')
+    pushToast({ level: 'info', source: 'channel', message: '已启用' })
   } catch (e: any) {
-    showToast('启用失败：' + (e?.message ?? e), 'error')
+    pushToast({ level: 'error', source: 'channel', message: '启用失败：' + (e?.message ?? e) })
   }
 }
 
@@ -143,9 +143,9 @@ async function onSave() {
   try {
     if (!selected.value) return
     await store.save(selected.value.id)
-    showToast('保存成功')
+    pushToast({ level: 'info', source: 'channel', message: '保存成功' })
   } catch (e: any) {
-    showToast('保存失败：' + (e?.message ?? e), 'error')
+    pushToast({ level: 'error', source: 'channel', message: '保存失败：' + (e?.message ?? e) })
   }
 }
 
@@ -163,9 +163,9 @@ async function onDelete() {
   selectedId.value = store.list.find(c => c.id !== id)?.id ?? ''
   try {
     await store.removeChannel(id)
-    showToast('已删除')
+    pushToast({ level: 'info', source: 'channel', message: '已删除' })
   } catch (e: any) {
-    showToast('删除失败：' + (e?.message ?? e), 'error')
+    pushToast({ level: 'error', source: 'channel', message: '删除失败：' + (e?.message ?? e) })
     await store.load()
     selectedId.value = id
   }

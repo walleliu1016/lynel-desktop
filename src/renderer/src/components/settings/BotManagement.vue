@@ -158,7 +158,7 @@ import Icon from '../Icon.vue'
 import type { BotItem, BotSource } from '../../types/bots'
 import { useBotsStore } from '../../stores/bots'
 import { useSessionsStore, sessionDisplayTitle } from '../../stores/sessions'
-import { showToast } from '../../composables/useToast'
+import { pushToast } from '../../composables/useToast'
 
 const store = useBotsStore()
 const sessions = useSessionsStore()
@@ -209,9 +209,9 @@ async function onUnbind(botId: string) {
   try {
     await sessions.bindBot(sessionId, null)
     await sessions.loadBotBindings()
-    showToast('已解绑', 'success')
+    pushToast({ level: 'info', source: 'bot', message: '已解绑' })
   } catch (e: any) {
-    showToast('解绑失败：' + (e?.message ?? e), 'error')
+    pushToast({ level: 'error', source: 'bot', message: '解绑失败：' + (e?.message ?? e) })
   }
 }
 
@@ -264,9 +264,9 @@ async function onSaveEdit() {
     }
     await store.save(bot)
     editingId.value = null
-    showToast('保存成功')
+    pushToast({ level: 'info', source: 'bot', message: '保存成功' })
   } catch (e: any) {
-    showToast('保存失败：' + (e?.message ?? e), 'error')
+    pushToast({ level: 'error', source: 'bot', message: '保存失败：' + (e?.message ?? e) })
   }
 }
 
@@ -275,9 +275,9 @@ async function onDelete(id: string) {
   try {
     await store.remove(id)
     if (editingId.value === id) editingId.value = null
-    showToast('已删除')
+    pushToast({ level: 'info', source: 'bot', message: '已删除' })
   } catch (e: any) {
-    showToast('删除失败：' + (e?.message ?? e), 'error')
+    pushToast({ level: 'error', source: 'bot', message: '删除失败：' + (e?.message ?? e) })
   }
 }
 

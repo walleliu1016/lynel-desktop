@@ -26,6 +26,7 @@ import https from 'node:https';
 import type { OutputChannel, HookChannel, HookEventLike } from './channel.js';
 import type { LynelEnvelope } from '../protocol/envelope.js';
 import { getLogger } from '../log.js';
+import { notifyExternal, errMessage } from './notify-error.js';
 
 // 忽略 TLS 证书校验：cloud 服务可能用自签证书，desktop 端不强制校验
 // 影响：socket.io 握手（polling + websocket）跳过证书验证
@@ -254,6 +255,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
 
     this.socket.on('connect_error', (err: Error & { description?: unknown; context?: unknown }) => {
       getLogger().warn(`[desktop-socket] connect error: ${err.message} desc=${JSON.stringify(err.description)} ctx=${JSON.stringify(err.context)}`);
+      notifyExternal({ source: 'cloud:connect', level: 'warn', message: `云端连接失败: ${errMessage(err)}`, throttleMs: 30_000 });
     });
 
     // socket.io Manager 级别事件：每次重连尝试触发
@@ -271,6 +273,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     });
     this.socket.io.on('reconnect_failed', () => {
       getLogger().error('[desktop-socket] reconnect failed after max attempts');
+      notifyExternal({ source: 'cloud:reconnect', level: 'error', message: '云端重连失败：达到最大重试次数，请检查云服务是否在线' });
     });
   }
 
@@ -347,6 +350,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       }
     } catch (err: any) {
       getLogger().warn(`[desktop-socket] /api/auth/login error: ${err.message}`);
+      notifyExternal({ source: 'cloud:auth', level: 'error', message: `云端登录失败: ${errMessage(err)}` });
       return null;
     }
   }
@@ -466,10 +470,12 @@ export class DesktopSocket implements OutputChannel, HookChannel {
   private emit(event: string, data: unknown): void {
     if (!this.socket?.connected) {
       getLogger().warn(`[desktop-socket] not connected, dropping ${event}`);
+      notifyExternal({ source: 'cloud:send', level: 'warn', message: `云端未连接，事件已丢弃 (${event})`, throttleMs: 30_000 });
       return;
     }
     if (this.state !== 'authenticated' && event !== 'desktop:auth') {
       getLogger().warn(`[desktop-socket] not authenticated, dropping ${event}`);
+      notifyExternal({ source: 'cloud:auth', level: 'warn', message: `云端未认证，事件已丢弃 (${event})`, throttleMs: 30_000 });
       return;
     }
     getLogger().info(`[desktop-socket] emit ${event} data=${JSON.stringify(data ?? '').slice(0, 200)}`);
@@ -493,6 +499,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       this.socket.disconnect();
     } catch (err) {
       getLogger().warn('[desktop-socket] disconnect error:', (err as Error).message);
+      notifyExternal({ source: 'cloud:socket', level: 'warn', message: `云端连接断开异常: ${errMessage(err)}` });
     }
     this.socket = null;
     this.setState('disconnected');

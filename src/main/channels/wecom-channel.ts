@@ -13,6 +13,7 @@ import { buildPermissionCard, buildAskQuestionCard, buildExitPlanCard } from './
 import { WeComCardStore } from './wecom-cards/card-store.js';
 import { WeComCardEventHandler, type TemplateCardEventFrame } from './wecom-cards/event-handler.js';
 import { renderBufferToPng } from '../terminal-screenshot.js';
+import { notifyExternal, errMessage } from './notify-error.js';
 
 const logger = getLogger().scope('wecom-channel');
 
@@ -114,6 +115,7 @@ async function loadPlugin(): Promise<any> {
     logger.info(`[wecom-channel] loadPlugin success defaultKeys=${pluginModule?.default ? Object.keys(pluginModule.default) : 'none'}`);
   } catch (err) {
     logger.error('[wecom-channel] failed to load plugin:', err);
+    notifyExternal({ source: 'wecom:plugin', level: 'error', message: `企微插件加载失败: ${errMessage(err)}` });
   }
   return pluginModule;
 }
@@ -268,9 +270,10 @@ export class WeComChannel implements OutputChannel, HookChannel {
       } else {
         logger.info(`[wecom-channel] adding bot ${bot.id}`);
         this.botPool.set(bot.id, { config: bot, wsClient: null, connecting: null, isConnected: false });
-        this.connectBot(bot.id).catch((err) =>
-          logger.error(`[wecom-channel] bot ${bot.id} connect failed:`, err)
-        );
+        this.connectBot(bot.id).catch((err) => {
+          logger.error(`[wecom-channel] bot ${bot.id} connect failed:`, err);
+          notifyExternal({ source: 'wecom:connect', level: 'warn', message: `企微 Bot 连接失败: ${errMessage(err)}` });
+        });
       }
     }
   }
@@ -282,7 +285,10 @@ export class WeComChannel implements OutputChannel, HookChannel {
     if (!entry) return;
     const project = path.basename(workDir);
     const content = `**${project}** · \`${sessionId.slice(0, 8)}\`\n\n**${project}**，工作目录 **${workDir}**，会话已启动。`;
-    this.sendContent(content, sessionId).catch((e) => logger.error('[wecom] sendSessionStarted failed:', e));
+    this.sendContent(content, sessionId).catch((e) => {
+      logger.error('[wecom] sendSessionStarted failed:', e);
+      notifyExternal({ source: 'wecom:send', level: 'warn', message: `企微启动通知失败: ${errMessage(e)}` });
+    });
   }
 
   setSessionBot(sessionId: string, botId: string): void {
@@ -352,28 +358,43 @@ export class WeComChannel implements OutputChannel, HookChannel {
           if (!cleanText) break;
           if (/^\[[A-Z][A-Z _-]*MODE\s*:/.test(cleanText)) break;
           const content = this.buildMessage(header, '👤 **用户**', cleanText);
-          this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] user text send failed:', e));
+          this.sendContent(content, event.sessionId).catch((e) => {
+            logger.error('[wecom] user text send failed:', e);
+            notifyExternal({ source: 'wecom:send', level: 'warn', message: `企微推送用户消息失败: ${errMessage(e)}` });
+          });
         } else if (event.role === 'agent') {
           const prefix = ev.thinking ? '💭 **思考**' : '🤖 **Agent**';
           const content = this.buildMessage(header, prefix, ev.text);
-          this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] agent text send failed:', e));
+          this.sendContent(content, event.sessionId).catch((e) => {
+            logger.error('[wecom] agent text send failed:', e);
+            notifyExternal({ source: 'wecom:send', level: 'warn', message: `企微推送 Agent 消息失败: ${errMessage(e)}` });
+          });
         }
         break;
       }
       case 'tool-call-start': {
         const argsStr = this.formatToolArgs(ev.args);
         const content = this.buildMessage(header, `🔧 **${ev.name}**`, '') + argsStr;
-        this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] tool-call-start send failed:', e));
+        this.sendContent(content, event.sessionId).catch((e) => {
+          logger.error('[wecom] tool-call-start send failed:', e);
+          notifyExternal({ source: 'wecom:send', level: 'warn', message: `企微推送工具开始失败: ${errMessage(e)}` });
+        });
         break;
       }
       case 'tool-call-end': {
         const resultStr = ev.result ? this.formatToolResult(ev.result, !!ev.is_error) : '';
         if (ev.is_error) {
           const content = this.buildMessage(header, '❌ **工具执行失败**', `${ev.error ?? '未知错误'} (${ev.call})`) + resultStr;
-          this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] tool-call-end send failed:', e));
+          this.sendContent(content, event.sessionId).catch((e) => {
+            logger.error('[wecom] tool-call-end send failed:', e);
+            notifyExternal({ source: 'wecom:send', level: 'warn', message: `企微推送工具失败结果失败: ${errMessage(e)}` });
+          });
         } else {
           const content = this.buildMessage(header, '✅ **工具执行完成**', `(${ev.call})`) + resultStr;
-          this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] tool-call-end send failed:', e));
+          this.sendContent(content, event.sessionId).catch((e) => {
+            logger.error('[wecom] tool-call-end send failed:', e);
+            notifyExternal({ source: 'wecom:send', level: 'warn', message: `企微推送工具完成失败: ${errMessage(e)}` });
+          });
         }
         break;
       }
@@ -382,7 +403,10 @@ export class WeComChannel implements OutputChannel, HookChannel {
         break;
       case 'service': {
         const content = this.buildMessage(header, '⚠️ **系统通知**', ev.text);
-        this.sendContent(content, event.sessionId).catch((e) => logger.error('[wecom] service send failed:', e));
+        this.sendContent(content, event.sessionId).catch((e) => {
+          logger.error('[wecom] service send failed:', e);
+          notifyExternal({ source: 'wecom:send', level: 'warn', message: `企微推送系统通知失败: ${errMessage(e)}` });
+        });
         break;
       }
       default:
@@ -409,11 +433,20 @@ export class WeComChannel implements OutputChannel, HookChannel {
       const p = event.payload as any;
       const toolName = p?.toolName || 'unknown';
       if (toolName === 'AskUserQuestion') {
-        this.sendAskQuestionCard(event, msgSeq).catch((err) => logger.error('[wecom-channel] sendAskQuestionCard failed:', err));
+        this.sendAskQuestionCard(event, msgSeq).catch((err) => {
+          logger.error('[wecom-channel] sendAskQuestionCard failed:', err);
+          notifyExternal({ source: 'wecom:card', level: 'error', message: `企微发送提问卡片失败: ${errMessage(err)}` });
+        });
       } else if (toolName === 'ExitPlanMode') {
-        this.sendExitPlanCard(event, msgSeq).catch((err) => logger.error('[wecom-channel] sendExitPlanCard failed:', err));
+        this.sendExitPlanCard(event, msgSeq).catch((err) => {
+          logger.error('[wecom-channel] sendExitPlanCard failed:', err);
+          notifyExternal({ source: 'wecom:card', level: 'error', message: `企微发送计划审批卡片失败: ${errMessage(err)}` });
+        });
       } else {
-        this.sendPermissionCard(event, msgSeq).catch((err) => logger.error('[wecom-channel] sendPermissionCard failed:', err));
+        this.sendPermissionCard(event, msgSeq).catch((err) => {
+          logger.error('[wecom-channel] sendPermissionCard failed:', err);
+          notifyExternal({ source: 'wecom:card', level: 'error', message: `企微发送权限卡片失败: ${errMessage(err)}` });
+        });
       }
       const entry = this.getBotForSession(event.sessionId);
       const chatId = entry ? this.getEffectiveChatId(entry) : '';
@@ -498,10 +531,12 @@ export class WeComChannel implements OutputChannel, HookChannel {
     } catch (err: any) {
       const msg = err?.message ?? String(err);
       logger.error(`[wecom] content send failed sid=${sessionId.slice(0, 8)} len=${content.length}: ${msg}`);
-      // 通过 EventBus 推 toast，前端 useEventStream 订阅 app:toast 调 showToast
-      try {
-        getBus().emit('app:toast', 'error', `企微发送失败 (${sessionId.slice(0, 8)}): ${msg.slice(0, 100)}`);
-      } catch { /* bus 不可用时静默 */ }
+      // 通过 EventBus 推 toast，前端 ToastCenter 订阅 app:toast
+      notifyExternal({
+        source: `wecom:send:${sessionId.slice(0, 8)}`,
+        level: 'error',
+        message: `企微发送失败 (${sessionId.slice(0, 8)}): ${msg.slice(0, 100)}`,
+      });
       throw err; // 保留 throw，让外层 .catch 仍能感知
     }
   }

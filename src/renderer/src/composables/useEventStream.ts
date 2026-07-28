@@ -2,17 +2,39 @@ import { onMounted, onBeforeUnmount, watch } from 'vue'
 import { EventsOn } from './useElectron'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useTabsStore } from '../stores/tabs'
-import { showToast } from './useToast'
+import { pushToast, type ToastLevel } from './useToast'
 import type { SessionState } from '../types/session'
 
 export function useEventStream() {
   const sessions = useSessionsStore()
+  const tabs = useTabsStore()
   const cleanups: Array<() => void> = []
   let hookCleanup: (() => void) | null = null
 
   onMounted(() => {
-    cleanups.push(EventsOn('app:toast', (level: string, message: string) => {
-      showToast(message, level === 'error' ? 'error' : 'success')
+    cleanups.push(EventsOn('app:toast', (...args: any[]) => {
+      // 新 payload: 单一 JSON 字符串 { level, source, message, duration? }
+      if (args.length === 1 && typeof args[0] === 'string') {
+        try {
+          const obj = JSON.parse(args[0])
+          if (obj && typeof obj === 'object' && 'level' in obj && 'message' in obj) {
+            pushToast({
+              level: (['error', 'warn', 'info'].includes(obj.level) ? obj.level : 'error') as ToastLevel,
+              source: String(obj.source ?? 'main'),
+              message: String(obj.message ?? ''),
+              duration: typeof obj.duration === 'number' ? obj.duration : undefined,
+            })
+            return
+          }
+        } catch { /* fall through to legacy */ }
+      }
+      // 兼容旧 (level, message) 两参数
+      const [level, message] = args
+      pushToast({
+        level: level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'info',
+        source: 'main',
+        message: String(message ?? ''),
+      })
     }))
     cleanups.push(EventsOn('app:fatal', (msg: string) => {
       console.error('[fatal]', msg)
@@ -44,7 +66,6 @@ export function useEventStream() {
         }
         sessions.list = [meta, ...sessions.list]
         sessions.activeId = data.id
-        const tabs = useTabsStore()
         tabs.openSession(data.id, data.workDir, sessionDisplayTitle(meta))
         void sessions.select(data.id)
       } catch {}
@@ -124,6 +145,22 @@ export function useEventStream() {
       },
       { immediate: true }
     )
+
+    // 通知 / 托盘点击：恢复 + 聚焦主窗口 + 切到对应 session tab
+    cleanups.push(EventsOn('attention:focus-session', (payload: string) => {
+      try {
+        const data = JSON.parse(payload)
+        const sessionId: string | undefined = data?.sessionId
+        if (!sessionId) return
+        const meta = sessions.list.find((s) => s.id === sessionId)
+        const workDir = data?.workDir || meta?.workdir || ''
+        const title = meta ? sessionDisplayTitle(meta) : undefined
+        tabs.openSession(sessionId, workDir, title)
+        void sessions.select(sessionId)
+      } catch (e) {
+        console.error('[attention] focus-session parse failed:', e)
+      }
+    }))
   })
 
   onBeforeUnmount(() => {

@@ -89,7 +89,8 @@ import SessionTooltip from './SessionTooltip.vue'
 import Icon from './Icon.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useBotsStore } from '../stores/bots'
-import { showToast } from '../composables/useToast'
+import { pushToast } from '../composables/useToast'
+
 import { ClipboardWrite } from '../composables/useElectron'
 import type { SessionMeta } from '../types/session'
 
@@ -169,9 +170,9 @@ function cancelRename() {
 function copySessionId() {
   menuOpen.value = false
   void ClipboardWrite(props.meta.id).then(() => {
-    showToast('已复制', 'success')
+    pushToast({ level: 'info', source: 'session', message: '已复制' })
   }).catch(() => {
-    showToast('复制失败', 'error')
+    pushToast({ level: 'error', source: 'session', message: '复制失败' })
   })
 }
 
@@ -289,10 +290,9 @@ async function onSelectBot(botId: string | null) {
   try {
     await sessions.bindBot(props.meta.id, botId)
     console.log('[session-item] bindBot succeeded')
-    showToast(botId ? '已绑定 Bot' : '已解除绑定', 'success')
+    pushToast({ level: 'info', source: 'session', message: botId ? '已绑定 Bot' : '已解除绑定' })
   } catch (e: any) {
-    console.error('[session-item] bindBot failed:', e)
-    showToast('操作失败：' + (e?.message ?? e), 'error')
+    pushToast({ level: 'error', source: 'session', message: '操作失败：' + (e?.message ?? e) })
   }
 }
 
@@ -300,9 +300,9 @@ async function unbindBot() {
   menuOpen.value = false
   try {
     await sessions.bindBot(props.meta.id, null)
-    showToast('已解除绑定', 'success')
+    pushToast({ level: 'info', source: 'session', message: '已解除绑定' })
   } catch (e: any) {
-    showToast('解除绑定失败：' + (e?.message ?? e), 'error')
+    pushToast({ level: 'error', source: 'session', message: '解除绑定失败：' + (e?.message ?? e) })
   }
 }
 </script>

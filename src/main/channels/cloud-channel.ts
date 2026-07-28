@@ -9,6 +9,7 @@
 import type { OutputChannel, HookChannel, HookEventLike } from './channel.js';
 import type { LynelEnvelope } from '../protocol/envelope.js';
 import { getLogger } from '../log.js';
+import { notifyExternal, errMessage } from './notify-error.js';
 
 export interface CloudChannelConfig {
   url?: string;
@@ -198,6 +199,7 @@ export class CloudChannel implements OutputChannel, HookChannel {
     const batch = this.buffer.splice(0);
     this.postEnvelopes(batch).catch((err) => {
       getLogger().warn('[cloud-channel] flush error:', (err as Error).message);
+      notifyExternal({ source: 'cloud:push', level: 'warn', message: `云端推送失败: ${errMessage(err)}` });
     });
   }
 
@@ -222,6 +224,7 @@ export class CloudChannel implements OutputChannel, HookChannel {
       getLogger().warn(
         `[cloud-channel] POST /api/envelope/push ${res.status}: ${res.statusText}`,
       );
+      notifyExternal({ source: 'cloud:push', level: 'warn', message: `云端 envelope/push 失败: HTTP ${res.status}` });
     }
   }
 
@@ -234,6 +237,7 @@ export class CloudChannel implements OutputChannel, HookChannel {
     const batch = this.hookBuffer.splice(0);
     this.postHooks(batch).catch((err) => {
       getLogger().warn('[cloud-channel] hook flush error:', (err as Error).message);
+      notifyExternal({ source: 'cloud:hook', level: 'warn', message: `云端 hook 转发失败: ${errMessage(err)}` });
     });
   }
 
@@ -259,6 +263,7 @@ export class CloudChannel implements OutputChannel, HookChannel {
       getLogger().warn(
         `[cloud-channel] POST /api/hook (batch) ${res.status}: ${res.statusText}`,
       );
+      notifyExternal({ source: 'cloud:hook', level: 'warn', message: `云端 hook 批量转发失败: HTTP ${res.status}` });
     }
   }
 

@@ -66,7 +66,7 @@
 import { onMounted, computed } from 'vue'
 import Switch from '../../components/Switch.vue'
 import { useSettingsStore } from '../../stores/settings'
-import { showToast } from '../../composables/useToast'
+import { pushToast } from '../../composables/useToast'
 
 const settings = useSettingsStore()
 const cfg = computed(() => settings.cfg ?? (settings.cfg = {
@@ -90,9 +90,9 @@ function markDirty() { settings.markDirty() }
 async function onSave() {
   try {
     await settings.save()
-    showToast('保存成功')
+    pushToast({ level: 'info', source: 'settings', message: '保存成功' })
   } catch (e: any) {
-    showToast('保存失败：' + (e?.message ?? e), 'error')
+    pushToast({ level: 'error', source: 'settings', message: '保存失败：' + (e?.message ?? e) })
   }
 }
 </script>

@@ -129,7 +129,7 @@ import { ref, watch, onMounted } from 'vue'
 import Switch from '../Switch.vue'
 import { useSettingsStore } from '../../stores/settings'
 import { defaultTerminalConfig, type TerminalConfig, type TerminalTheme, type TerminalCursorStyle } from '../../types/settings'
-import { showToast } from '../../composables/useToast'
+import { pushToast } from '../../composables/useToast'
 
 const settings = useSettingsStore()
 /**
@@ -239,9 +239,9 @@ function onFontSizeInput() {
 async function onSave() {
   try {
     await settings.save()
-    showToast('保存成功')
+    pushToast({ level: 'info', source: 'settings', message: '保存成功' })
   } catch (e: any) {
-    showToast('保存失败：' + (e?.message ?? e), 'error')
+    pushToast({ level: 'error', source: 'settings', message: '保存失败：' + (e?.message ?? e) })
   }
 }
 </script>

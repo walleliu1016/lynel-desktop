@@ -41,7 +41,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import '@xterm/xterm/css/xterm.css'
 import { EventsOn, ResizeTerminal, OpenSessionTerminalSized, ClipboardWrite } from '../composables/useElectron'
-import { showToast } from '../composables/useToast'
+import { pushToast } from '../composables/useToast'
 import { useSettingsStore } from '../stores/settings'
 import { defaultTerminalConfig, type TerminalConfig, type TerminalTheme } from '../types/settings'
 
@@ -262,9 +262,9 @@ function copyTermSelection() {
   const text = term?.getSelection()
   if (text) {
     void ClipboardWrite(text).then(() => {
-      showToast('已复制', 'success')
+      pushToast({ level: 'info', source: 'terminal', message: '已复制' })
     }).catch(() => {
-      showToast('复制失败', 'error')
+      pushToast({ level: 'error', source: 'terminal', message: '复制失败' })
     })
   }
   closeTermCtx()
@@ -302,7 +302,7 @@ function onWheel(e: WheelEvent) {
   settings.cfg.terminal.fontSize = next
   settings.markDirty()
   applyTerminalConfig(settings.cfg.terminal)
-  showToast(`字号 ${next}px`, 'success')
+  pushToast({ level: 'info', source: 'terminal', message: `字号 ${next}px` })
 }
 
 async function reconnect() {

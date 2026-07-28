@@ -3,6 +3,7 @@
 import type { Response } from 'express';
 import type { OutputChannel } from './channel.js';
 import type { LynelEnvelope } from '../protocol/envelope.js';
+import { notifyExternal, errMessage } from './notify-error.js';
 
 export class SSEChannel implements OutputChannel {
   readonly id = 'sse';
@@ -43,6 +44,7 @@ export class SSEChannel implements OutputChannel {
         res.write(data);
       } catch (err) {
         console.error('[sse-channel] write failed:', err);
+        notifyExternal({ source: 'sse', level: 'warn', message: `SSE 推送失败: ${errMessage(err)}` });
       }
     }
   }

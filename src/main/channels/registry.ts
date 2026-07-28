@@ -2,6 +2,7 @@
 
 import type { OutputChannel, HookChannel, HookEventLike } from './channel.js';
 import type { LynelEnvelope } from '../protocol/envelope.js';
+import { notifyExternal, errMessage } from './notify-error.js';
 
 export class ChannelDispatcher {
   private channels = new Map<string, OutputChannel>();
@@ -27,6 +28,7 @@ export class ChannelDispatcher {
         await channel.send(event);
       } catch (err) {
         console.error(`[channel ${channel.id}] dispatch failed:`, err);
+        notifyExternal({ source: `channel:${channel.id}`, level: 'error', message: `channel ${channel.id} dispatch 失败: ${errMessage(err)}` });
       }
     }
   }
@@ -38,6 +40,7 @@ export class ChannelDispatcher {
         await channel.sendHook(event);
       } catch (err) {
         console.error(`[hook ${channel.id}] dispatch failed:`, err);
+        notifyExternal({ source: `hook:${channel.id}`, level: 'error', message: `channel ${channel.id} hook 转发失败: ${errMessage(err)}` });
       }
     }
   }
