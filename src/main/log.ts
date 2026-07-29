@@ -19,6 +19,7 @@ let _log: ElectronLog | null = null;
 let _loaded = false;
 
 function createConsoleFallback(): ElectronLog {
+  // 底层 single-shot 写流函数；scope 只是前缀标签，不递归
   const make = (level: 'info' | 'warn' | 'error' | 'debug' | 'verbose' | 'silly') =>
     (...args: unknown[]) => {
       const tag = level === 'error' ? '[ERROR]' : level === 'warn' ? '[WARN]' : '';
@@ -26,21 +27,7 @@ function createConsoleFallback(): ElectronLog {
       const stream = level === 'error' ? process.stderr : process.stdout;
       try { stream.write(line + '\n'); } catch { /* ignore EPIPE */ }
     };
-  const scopeImpl = (name: string) => scopedFallback(name);
-  function scopedFallback(name: string): ElectronLog {
-    const tagged = (level: 'info' | 'warn' | 'error' | 'debug' | 'verbose' | 'silly') =>
-      (...args: unknown[]) => base[level](`[${name}]`, ...args);
-    const base: any = {
-      info: tagged('info'),
-      warn: tagged('warn'),
-      error: tagged('error'),
-      debug: tagged('debug'),
-      verbose: tagged('verbose'),
-      silly: tagged('silly'),
-      scope: scopeImpl,
-    };
-    return base as ElectronLog;
-  }
+  // 先声明 root，scopeImpl 闭包到 root（const TDZ 在 make 函数被调用时已过）
   const root: any = {
     info: make('info'),
     warn: make('warn'),
@@ -48,7 +35,6 @@ function createConsoleFallback(): ElectronLog {
     debug: make('debug'),
     verbose: make('verbose'),
     silly: make('silly'),
-    scope: scopeImpl,
     // app.ts 可能访问 transports.file.level = ...；fallback 下用 no-op 占位
     transports: {
       file: { level: 'info' as const },
@@ -57,6 +43,26 @@ function createConsoleFallback(): ElectronLog {
     },
     initialize() {},
   };
+  // scope 返回的 logger 复用 root.<level> 的底层写流函数，加 [name] 前缀
+  // 关键：调用 root[level] 而非 base[level]，否则 base[level] === tagged(level)
+  // 自调用形成无限递归（nest 时深度爆栈）
+  const scopeImpl = (name: string): ElectronLog => {
+    const tagged = (level: 'info' | 'warn' | 'error' | 'debug' | 'verbose' | 'silly') =>
+      (...args: unknown[]) => root[level](`[${name}]`, ...args);
+    const scoped: any = {
+      info: tagged('info'),
+      warn: tagged('warn'),
+      error: tagged('error'),
+      debug: tagged('debug'),
+      verbose: tagged('verbose'),
+      silly: tagged('silly'),
+      scope: scopeImpl,
+      transports: root.transports,
+      initialize() {},
+    };
+    return scoped as ElectronLog;
+  };
+  root.scope = scopeImpl;
   return root as ElectronLog;
 }
 
