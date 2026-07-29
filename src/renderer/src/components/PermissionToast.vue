@@ -34,7 +34,7 @@ const props = defineProps<{
   toolName: string
   toolInput?: Record<string, unknown>
   sessionId: string
-  requestId: string
+  id: string
 }>()
 
 const emit = defineEmits<{
@@ -71,15 +71,15 @@ const displayDesc = computed(() => {
 const impactScope = computed(() => '当前项目')
 
 function onAllow() {
-  if (props.requestId) {
-    try { ResolvePermission(props.requestId, 'allow', 'main-window') } catch {}
+  if (props.id) {
+    try { ResolvePermission(props.id, 'allow', 'main-window') } catch {}
   }
   visible.value = false
 }
 
 function onDeny() {
-  if (props.requestId) {
-    try { ResolvePermission(props.requestId, 'deny', 'main-window') } catch {}
+  if (props.id) {
+    try { ResolvePermission(props.id, 'deny', 'main-window') } catch {}
   }
   visible.value = false
 }

@@ -118,7 +118,7 @@ export function useEventStream() {
     cleanups.push(EventsOn('permission:request', (payload: string) => {
       let req: any
       try { req = JSON.parse(payload) } catch { return }
-      if (!req?.sessionId || !req?.requestId) return
+      if (!req?.sessionId || !req?.id) return
       sessions.setHookPermission(req.sessionId, req)
     }))
 

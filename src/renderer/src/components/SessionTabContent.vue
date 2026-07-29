@@ -16,7 +16,7 @@
       :tool-name="permissionToastName"
       :tool-input="permissionToolInput"
       :session-id="sessionId"
-      :request-id="permissionRequestId"
+      :id="permissionRequestId"
     />
   </div>
 </template>
@@ -75,7 +75,7 @@ const permissionToastName = computed(() => {
 
 const permissionRequestId = computed(() => {
   const req = sessions.hookPermissions[props.sessionId]
-  return req?.requestId || ''
+  return req?.id || ''
 })
 
 const permissionToolInput = computed(() => {

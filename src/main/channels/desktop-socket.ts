@@ -210,24 +210,37 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       this.ensureJwtAndAuth();
     });
 
-    this.socket.on('auth:success', (data: unknown) => {
-      getLogger().info(`[desktop-socket] authenticated data=${JSON.stringify(data ?? '').slice(0, 200)}`);
+    this.socket.on('auth:success', (...args: any[]) => {
+      let raw = args[0];
+      if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch {} }
+      getLogger().info(`[desktop-socket] authenticated type=${typeof args[0]} data=${JSON.stringify(raw ?? '').slice(0, 200)}`);
       this.setState('authenticated');
-      // 认证成功后立刻同步会话
       this.emitAllPendingBatches();
     });
 
-    this.socket.on('auth:failed', (data: { reason?: string } | undefined) => {
-      getLogger().error('[desktop-socket] auth failed:', data?.reason, data ? JSON.stringify(data).slice(0, 200) : '');
+    this.socket.on('auth:failed', (...args: any[]) => {
+      let raw = args[0];
+      if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch {} }
+      const data = raw as { reason?: string } | undefined;
+      getLogger().error('[desktop-socket] auth failed:', data?.reason, raw ? JSON.stringify(raw).slice(0, 200) : '');
       this.setState('auth_failed');
-      // token 无效：清掉内存 token，用密码重新 login
       this.token = undefined;
       void this.ensureJwtAndAuth();
     });
 
-    this.socket.on('desktop:hook:result', (data: DesktopHookResult) => {
-      getLogger().info(`[desktop-socket] hook result req_id=${data.request_id?.slice(0, 8)} decision=${data.decision} output=${JSON.stringify(data.output ?? '').slice(0, 300)}`);
+    this.socket.on('desktop:hook:result', (...args: any[]) => {
+      // cloud 端可能 JSON.stringify 了 payload，需要先 parse
+      let raw = args[0];
+      if (typeof raw === 'string') {
+        try { raw = JSON.parse(raw); } catch { /* ignore parse error */ }
+      }
+      const data = raw as DesktopHookResult;
+      getLogger().info(`[desktop-socket] hook result type=${typeof args[0]} req_id=${data?.request_id?.slice(0, 8)} decision=${data?.decision} output=${JSON.stringify(data?.output ?? '').slice(0, 300)}`);
 
+      if (!data?.request_id || !data?.decision) {
+        getLogger().warn(`[desktop-socket] hook result payload invalid: ${JSON.stringify(data ?? null).slice(0, 200)}`);
+        return;
+      }
       const pending = this.pendingPermissions.get(data.request_id);
       if (!pending) {
         getLogger().warn(`[desktop-socket] orphan hook result req_id=${data.request_id?.slice(0, 8)}`);
@@ -238,10 +251,28 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       pending.resolve(data);
     });
 
-    this.socket.on('desktop:chat', (data: { session_id: string; question: string; user_id?: string }) => {
-      getLogger().info(`[desktop-socket] chat from mobile sid=${data.session_id?.slice(0, 8)} q=${data.question?.slice(0, 40)}`);
-      if (data.session_id && typeof data.question === 'string') {
-        this.onChatMessage?.(data.session_id, data.question);
+    this.socket.on('desktop:chat', (...args: any[]) => {
+      // socket.io v4 监听器 args 可能是 [data] 或 [data, ack]；
+      // cloud 端可能 JSON.stringify 了 payload，导致 data 是 string 而非 object
+      let raw = args[0];
+      getLogger().info(`[desktop:chat] raw args=${args.length} type=${typeof raw} data=${JSON.stringify(raw ?? null).slice(0, 200)}`);
+
+      // 如果 data 是 JSON string，先 parse
+      if (typeof raw === 'string') {
+        try {
+          raw = JSON.parse(raw);
+        } catch {
+          getLogger().warn(`[desktop:chat] data is string but not valid JSON: ${(raw as string).slice(0, 200)}`);
+        }
+      }
+
+      const sid = raw?.session_id;
+      const question = raw?.question;
+      if (sid && typeof question === 'string') {
+        this.onChatMessage?.(sid, question);
+      } else {
+        getLogger().warn(`[desktop:chat] payload invalid: sid=${sid} q=${question}`);
+        notifyExternal({ source: 'cloud:chat', level: 'warn', message: `云端 chat payload 无效: sid=${sid} q=${question}` });
       }
     });
 

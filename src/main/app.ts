@@ -763,8 +763,7 @@ export class App {
       const req: BrokerPermissionRequest = { id: reqId, sessionId: sid, workDir, toolName, toolInput };
       const rawBody = evt as Record<string, unknown>;
 
-      // 通知主窗口（保持兼容现有 PermissionToast）
-      getBus().emit('permission:request', JSON.stringify({ ...req, seq }));
+      // PermissionToast 已禁用：权限审批走 WeCom 卡片或终端直接处理
       getBus().emit(`hook:${sid}`, JSON.stringify(evt));
 
       // 通知其他 channel 展示 UI（WeCom 卡片、StateChannel 状态等）；cloud 通道跳过 PermissionRequest

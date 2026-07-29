@@ -6,7 +6,7 @@ import type { ContentBlock, ToolResultBlock, RawContent } from '../types/blocks'
 import { CreateSession, ListSessions, SendMessage, GetSessionMessages, AdoptSession, RenameSession, BindSessionBot, ListBots, ListBotBindings } from '../composables/useElectron'
 
 export interface HookPermissionRequest {
-  requestId: string
+  id: string
   sessionId: string
   toolName: string
   toolInput: any
