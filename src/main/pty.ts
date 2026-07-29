@@ -201,8 +201,9 @@ function resolveShellEnv(): Record<string, string> {
 
 // 如果 bin 是相对路径（如 'claude'），在解析后的 PATH 中查找绝对路径，
 // 避免 node-pty 因 PATH 不完整找不到命令而直接退出。
-// 找不到时返回原始 bin，上层仍会被 spawn，由 node-pty 的 onExit(code=1) 兜底。
-function resolveBin(bin: string, env: Record<string, string>): string {
+// 找不到时返回 null：node-pty 的 forkpty 在 macOS 上失败时静默 exit code=1
+// 拿不到 errno，不行的话让上层主动 throw 明确错误。
+function resolveBin(bin: string, env: Record<string, string>): string | null {
   if (path.isAbsolute(bin) || bin.includes(path.sep)) return bin;
   const pathEnv = env.PATH || process.env.PATH || '';
   for (const dir of pathEnv.split(path.delimiter)) {
@@ -214,7 +215,7 @@ function resolveBin(bin: string, env: Record<string, string>): string {
       // continue searching
     }
   }
-  return bin;
+  return null;
 }
 
 /** stat resolvedBin，识别"命令真实存在但路径错误"这种 silent 失败 */
@@ -226,6 +227,80 @@ function statBin(bin: string): boolean | 'unknown' {
   } catch {
     return false;
   }
+}
+
+/**
+ * Spawn 前 sync 探测一次 bin 是否可执行。
+ *
+ * 核心动机：node-pty 在 macOS 用 forkpty(3)，子进程 exec 失败时直接 exit(1)，
+ * 父进程只拿到 onExit=1，**没有 ENOENT/EACCES/EPERM 等 errno**——forkpty 之后
+ * PTY 尚未就绪，子进程 stderr 直接进 /dev/null，用户看到"无任何输出 code=1"
+ * 完全没法定位。这是 lynel-desktop 在 macOS 上偶发"启动失败"的关键差异点：
+ * ccglass 用 child_process.spawn + stdio:inherit，子进程能在 exit 前把 ENOENT
+ * 写到 stderr。
+ *
+ * 这里用 execFileSync 同步探测：拿到明确 errno 就立即 throw，让上层走 toast
+ * + log 给用户可读诊断；探测成功只多 ~100ms 启动延迟，性价比高。
+ *
+ * Windows 上 `claude` 通常是 `.cmd` shim（Node 不直接支持），用 `cmd.exe /c` 包一层。
+ */
+function probeBin(resolvedBin: string, env: Record<string, string>): void {
+  const logger = getLogger();
+  const PLATFORM = process.platform;
+  const isWin = PLATFORM === 'win32';
+  try {
+    if (isWin) {
+      // Windows: claude 在 PATH 里通常是 claude.cmd shim；execFileSync 不支持
+      // .cmd/.bat/.ps1，需要经 cmd.exe 调用
+      execFileSync('cmd.exe', ['/d', '/c', resolvedBin, '--version'], {
+        stdio: 'ignore',
+        timeout: 3000,
+        windowsHide: true,
+        env,
+      });
+    } else {
+      execFileSync(resolvedBin, ['--version'], {
+        stdio: 'ignore',
+        timeout: 3000,
+        env,
+      });
+    }
+  } catch (err: any) {
+    const code = err?.code || 'UNKNOWN';
+    const msg = err?.message || String(err);
+    // ENOENT: 命令在 PATH 里找不到（resolveBin 已尽量解析，但可能 darwin shell env 解析失败）
+    // EACCES: 文件存在但无执行权限（macOS Gatekeeper 隔离、chmod -x）
+    // EPERM: macOS sandbox / 系统完整性保护拒绝
+    // ETIMEDOUT: 探测 timeout，binary 可能挂在 --version（罕见但需要让用户知道）
+    logger.error(`[pty] probe 失败 bin=${resolvedBin} code=${code}: ${msg}`);
+    const hint = formatProbeFailureHint(code, resolvedBin, PLATFORM);
+    throw new Error(`Claude binary 探测失败 (${code}): ${msg}${hint ? `\n${hint}` : ''}`);
+  }
+}
+
+/** 针对常见错误码给出可执行的 user-facing 提示 */
+function formatProbeFailureHint(code: string, resolvedBin: string, platform: string): string {
+  if (code === 'ENOENT') {
+    return [
+      '可能原因：',
+      '- claude 未安装或不在 PATH 里',
+      '- macOS GUI 启动时 PATH 不完整；在"设置 -> Claude 路径"里配置绝对路径',
+      platform === 'darwin' ? `  终端执行 \`which claude\` 拿到绝对路径后填入设置` : '',
+    ].filter(Boolean).join('\n');
+  }
+  if (code === 'EACCES') {
+    return [
+      '可能原因：',
+      '- 文件存在但无执行权限',
+      platform === 'darwin'
+        ? '  macOS 可能因 Gatekeeper 隔离；终端执行 `sudo xattr -dr com.apple.quarantine ' + resolvedBin + '` 解除'
+        : '  终端执行 `chmod +x ' + resolvedBin + '` 给执行权限',
+    ].join('\n');
+  }
+  if (code === 'ETIMEDOUT') {
+    return '可能原因：claude --version 响应超过 3s；binary 可能在尝试连网络，请检查 ANTHROPIC_BASE_URL 或上游可达性';
+  }
+  return '';
 }
 
 /** 输出 ring buffer：保留最近 N 字节，避免长会话内存无限增长 */
@@ -283,6 +358,16 @@ function buildCommand(
   return { file: bin, args };
 }
 
+export interface StartOptions {
+  /**
+   * Spawn 前 sync 探测一次（execFileSync --version），把 forkpty 静默失败转成带
+   * errno 的明确 throw。**仅当 spawn 的是 claude**（对话用的 binary）才开启。
+   * 通用 spawn 应保持 false：探测用 --version 是 claude 专属，cmd.exe / sh 等会失败。
+   * macOS forkpty 失败只 onExit=1 拿不到 errno，故此开关专门用来消除 macOS 偶发失败。
+   */
+  probe?: boolean;
+}
+
 export function start(
   cwd: string,
   sessionId: string,
@@ -291,20 +376,40 @@ export function start(
   env: Record<string, string> = {},
   size: PtySize = { cols: 80, rows: 24 },
   extraArgs: string[] = [],
+  opts: StartOptions = {},
 ): PtyProcess {
+  const logger = getLogger();
   const darwinEnv = resolveShellEnv();
   const resolvedBin = resolveBin(bin, darwinEnv);
+
+  // resolveBin 返回 null 说明 PATH 全程找不到该命令 —— 直接 throw 而不是让
+  // node-pty forkpty 静默 exit code=1 拿不到 errno
+  if (!resolvedBin) {
+    const msg = `Claude binary 未在 PATH 中找到: ${bin}\n请在"设置 -> Claude 路径"配置绝对路径，或检查 claude 是否已安装`;
+    logger.error(`[pty] ${msg}`);
+    throw new Error(msg);
+  }
+
+  // 真正的 bin 存在性检查（绝对路径或带 sep 的相对路径才 stat）
   const binExists = statBin(resolvedBin);
+  if (binExists === false) {
+    const msg = `Claude binary 不存在: ${resolvedBin}`;
+    logger.error(`[pty] ${msg}`);
+    throw new Error(msg);
+  }
+
+  // spawn 前 sync 探测：execFileSync 能拿到 ENOENT/EACCES/EPERM 等 errno，
+  // 而 node-pty 在 macOS forkpty 失败时只能在 exit code=1 静默退出（无 errno）。
+  // 仅在 spawn 的是 claude（opts.probe=true）时运行，避免对通用 binary（cmd.exe /
+  // /bin/sh 等）误判：--version 是 claude 专属，cmd.exe 不认会 exit 1。
+  if (opts.probe) {
+    probeBin(resolvedBin, { ...process.env, ...darwinEnv, ...env } as { [key: string]: string });
+  }
+
   const { file, args } = buildCommand(resolvedBin, sessionId, mode, env, extraArgs);
   const mergedEnv = { ...process.env, ...darwinEnv, ...env } as { [key: string]: string };
 
-  const logger = getLogger();
-  logger.info(`[pty] spawn ${file} ${args.map((a) => `"${a}"`).join(' ')} (cwd=${cwd}) resolvedBin=${resolvedBin} binExists=${binExists}`);
-
-  // spawn 前 warn：bin 路径绝对路径但文件不存在，node-pty 会立即 exit code=1
-  if (binExists === false) {
-    logger.error(`[pty] bin not found: ${resolvedBin} (configured=${bin})，spawn 将失败`);
-  }
+  logger.info(`[pty] spawn ${file} ${args.map((a) => `"${a}"`).join(' ')} (cwd=${cwd}) resolvedBin=${resolvedBin} binExists=${binExists} probe=${!!opts.probe}`);
 
   const spawnAt = Date.now();
   const ring = new OutputRing();

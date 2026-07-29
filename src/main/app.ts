@@ -989,7 +989,7 @@ export class App {
     const allArgs = [...args, ...extraArgs];
     getLogger().info(`[app:createSession] proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId} extraArgs=${extraArgs.join(',')}`);
     const claudeBin = (this.settingsStore.get('claude_path', '') as string) || 'claude';
-    const proc = startPty(workDir, realId, claudeBin, PtyMode.New, {}, { cols: 80, rows: 24 }, allArgs);
+    const proc = startPty(workDir, realId, claudeBin, PtyMode.New, {}, { cols: 80, rows: 24 }, allArgs, { probe: true });
     const s = session.newSession(realId, workDir);
     s.process = proc;
     s.state = 'running';
@@ -1801,7 +1801,7 @@ export class App {
         getLogger().info(`[app:openSessionTerminal] proxyUrl=${proxyUrl} upstream=${upstream} sid=${id} mode=${mode}`);
         try {
           const claudeBin = (this.settingsStore.get('claude_path', '') as string) || 'claude';
-          const proc = startPty(workDir, id, claudeBin, mode, {}, size, args);
+          const proc = startPty(workDir, id, claudeBin, mode, {}, size, args, { probe: true });
           session.setProcess(id, proc, size);
           proc.onExit(() => cleanup());
           this.setSessionState(id, 'running');
