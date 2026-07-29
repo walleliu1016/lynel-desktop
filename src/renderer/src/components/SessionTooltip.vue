@@ -1,8 +1,12 @@
 <template>
-  <div class="tip" :style="{ left: anchor.x + 'px', top: anchor.y + 'px' }" @mouseenter="$emit('mouseenter')" @mouseleave="$emit('mouseleave')">
+  <div class="tip" :style="{ left: anchor.x + 'px', top: anchor.y + 'px' }" @mouseenter="$emit('mouseenter')" @mouseleave="onMouseLeave" @contextmenu.stop="onCtx">
     <div class="section">
       <div class="label">Session ID</div>
       <div class="mono-value">{{ meta.id }}</div>
+    </div>
+    <div class="section" v-if="settingsPath">
+      <div class="label">Settings</div>
+      <div class="mono-value">{{ settingsPath }}</div>
     </div>
     <div class="section">
       <div class="label">Project</div>
@@ -44,11 +48,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { SessionMeta } from '../types/session'
 
-const props = defineProps<{ meta: SessionMeta; anchor: { x: number; y: number } }>()
-defineEmits<{ (e: 'mouseenter'): void; (e: 'mouseleave'): void }>()
+const props = defineProps<{ meta: SessionMeta; anchor: { x: number; y: number }; settingsPath?: string }>()
+const emit = defineEmits<{ (e: 'mouseenter'): void; (e: 'mouseleave'): void }>()
+
+const ctxOpen = ref(false)
+
+function onCtx() {
+  ctxOpen.value = true
+  setTimeout(() => { ctxOpen.value = false }, 3000)
+}
+
+function onMouseLeave() {
+  if (ctxOpen.value) return
+  emit('mouseleave')
+}
 
 const formatDate = computed(() => {
   const d = new Date(props.meta.mtime * 1000)

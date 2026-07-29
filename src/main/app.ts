@@ -46,17 +46,31 @@ function resolveAnthropicBaseUrl(): string {
   return DEFAULT_ANTHROPIC_BASE_URL;
 }
 
-function createSettingsOverrideFile(proxyUrl: string): { args: string[]; cleanup: () => void } {
+function createSettingsOverrideFile(proxyUrl: string, hookUrl?: string): { args: string[]; tmpFile: string; cleanup: () => void } {
   const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
   const tmpDir = path.join(os.tmpdir(), 'lynel-desktop');
   try {
-    // 读取现有 settings.json，在此基础上覆盖 ANTHROPIC_BASE_URL，保留 hooks 等配置
+    // 读取现有 settings.json，在此基础上覆盖 ANTHROPIC_BASE_URL 和 hooks
     let data: Record<string, any> = {};
     try {
       const raw = fs.readFileSync(settingsPath, 'utf8');
       if (raw.trim()) data = JSON.parse(raw);
     } catch {}
     data.env = { ...(data.env || {}), ANTHROPIC_BASE_URL: proxyUrl };
+    // hooks 直接注入临时文件，不修改全局 ~/.claude/settings.json
+    if (hookUrl) {
+      const hookTypes: Record<string, number> = {
+        PermissionRequest: 7200,
+        PreToolUse: 5,
+        PostToolUse: 5,
+        PostToolUseFailure: 5,
+      };
+      const hooksObj: Record<string, any> = {};
+      for (const [name, timeout] of Object.entries(hookTypes)) {
+        hooksObj[name] = [{ hooks: [{ type: 'http', url: hookUrl, timeout, continueOnError: true }] }];
+      }
+      data.hooks = hooksObj;
+    }
     const settings = JSON.stringify(data, null, 2);
     fs.mkdirSync(tmpDir, { recursive: true });
     const tmpFile = path.join(tmpDir, `claude-settings-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
@@ -66,6 +80,7 @@ function createSettingsOverrideFile(proxyUrl: string): { args: string[]; cleanup
     getLogger().info(`[app] created settings override: ${tmpFile} size=${fileSize} hasHooks=${hasHooks}`);
     return {
       args: ['--settings', tmpFile],
+      tmpFile,
       cleanup: () => {
         try {
           fs.unlinkSync(tmpFile);
@@ -76,7 +91,7 @@ function createSettingsOverrideFile(proxyUrl: string): { args: string[]; cleanup
   } catch (err: any) {
     getLogger().error(`[app] failed to create settings override: ${err.message}`);
     notifyExternal({ source: 'session:setup', level: 'warn', message: `生成 Claude 临时配置失败，将使用默认代理路径: ${errMessage(err)}` });
-    return { args: [], cleanup: () => {} };
+    return { args: [], tmpFile: '', cleanup: () => {} };
   }
 }
 
@@ -622,7 +637,7 @@ export class App {
     return (this.settingsStore.get('cloud_service_enabled', false) as boolean) || false;
   }
 
-  private syncCloudSession(sessionId: string, workDir: string): void {
+  private syncCloudSession(sessionId: string, workDir: string, status: 'open' | 'closed' = 'open'): void {
     if (!this.desktopSocket.isEnabled()) return;
     const list = this.withRecentLock(() => readRecentSessions());
     const r = list.find((x) => x.sessionId === sessionId);
@@ -635,6 +650,7 @@ export class App {
       project_name: project,
       title,
       last_activity_at: Math.floor(Date.now() / 1000),
+      status,
     };
     this.desktopSocket.syncSessions([sessionData]).catch((err) => {
       getLogger().warn(`[app] syncCloudSession failed for ${sessionId.slice(0, 8)}: ${(err as Error).message}`);
@@ -874,71 +890,8 @@ export class App {
       notifyExternal({ source: 'hookserver', level: 'error', message: `Hook 服务启动失败，Claude hooks 将不工作: ${errMessage(err)}` });
       return;
     }
-    this.checkAndFixHooks();
   }
 
-  private checkAndFixHooks(): boolean {
-    const port = this.hookServer?.getPort() ?? 0;
-    if (port === 0) {
-      getLogger().error('[app] hook server not running, skip hook fix');
-      return false;
-    }
-
-    const hookURL = `http://127.0.0.1:${port}/hook`;
-    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
-
-    let data: Record<string, any> = {};
-    try {
-      const raw = fs.readFileSync(settingsPath, 'utf8');
-      if (raw.trim()) data = JSON.parse(raw);
-    } catch (err: any) {
-      if (err.code !== 'ENOENT') {
-        getLogger().error(`[app] read settings.json failed: ${err.message}`);
-        notifyExternal({ source: 'hooks:setup', level: 'error', message: `读取 ~/.claude/settings.json 失败，无法配置 hooks: ${errMessage(err)}` });
-        return false;
-      }
-    }
-
-    const hookTypes: Record<string, number> = {
-      PermissionRequest: 7200,
-      PreToolUse: 5,
-      PostToolUse: 5,
-      PostToolUseFailure: 5,
-    };
-
-    const hooksObj: Record<string, any> = {};
-    for (const [name, timeout] of Object.entries(hookTypes)) {
-      hooksObj[name] = [{ hooks: [{ type: 'http', url: hookURL, timeout }] }];
-    }
-
-    // 检查是否已正确配置，避免重复写入
-    if (data.hooks && JSON.stringify(data.hooks) === JSON.stringify(hooksObj)) {
-      getLogger().info('[app] hooks already configured correctly, skip');
-      return true;
-    }
-
-    getLogger().info('[app] hooks config outdated or missing, fixing...');
-    if (fs.existsSync(settingsPath)) {
-      try {
-        fs.copyFileSync(settingsPath, settingsPath + '.lynel-desktop.bak');
-      } catch (err: any) {
-        getLogger().warn(`[app] backup settings.json failed: ${err.message}`);
-      }
-    }
-
-    data.hooks = hooksObj;
-
-    try {
-      fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-      fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2), 'utf8');
-      getLogger().info(`[app] hooks configured for ${hookURL}`);
-      return true;
-    } catch (err: any) {
-      getLogger().error(`[app] write settings.json failed: ${err.message}`);
-      notifyExternal({ source: 'hooks:setup', level: 'error', message: `写入 ~/.claude/settings.json 失败，hooks 配置未持久化: ${errMessage(err)}` });
-      return false;
-    }
-  }
 
   private applyActiveProvider(): boolean {
     const cfg = (this.providersStore.get('config', {}) as Record<string, any>) || {};
@@ -1000,7 +953,8 @@ export class App {
     const proxy = await startProxy(workDir, realId, (env) => this.dispatcher.dispatch(env), undefined, upstream);
     this.apiProxies.push(proxy);
     const proxyUrl = `http://127.0.0.1:${proxy.port}`;
-    const { args, cleanup } = createSettingsOverrideFile(proxyUrl);
+    const hookUrl = this.hookServer ? `http://127.0.0.1:${this.hookServer.getPort()}/hook` : undefined;
+    const { args, cleanup, tmpFile } = createSettingsOverrideFile(proxyUrl, hookUrl);
     const allArgs = [...args, ...extraArgs];
     getLogger().info(`[app:createSession] proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId} extraArgs=${extraArgs.join(',')}`);
     const claudeBin = (this.settingsStore.get('claude_path', '') as string) || 'claude';
@@ -1008,6 +962,7 @@ export class App {
     const s = session.newSession(realId, workDir);
     s.process = proc;
     s.state = 'running';
+    s.settingsFile = tmpFile || undefined;
     session.register(s);
     this.setSessionState(realId, 'running');
     this.wirePty(realId, proc);
@@ -1239,7 +1194,7 @@ export class App {
       const s = session.lookup(id);
       const workDir = s?.workDir || '';
       session.close(id);
-      if (workDir) this.syncCloudSession(id, workDir);
+      if (workDir) this.syncCloudSession(id, workDir, 'closed');
     });
 
     ipcMain.handle('app:getAppInfo', () => ({
@@ -1550,6 +1505,10 @@ export class App {
     ipcMain.handle('app:getCurrentUser', () => this.getCurrentUserAccount());
 
     ipcMain.handle('app:getHookServerPort', () => this.hookServer?.getPort() ?? 0);
+    ipcMain.handle('app:getSessionSettingsPath', (_e, sessionId: string) => {
+      const s = session.lookup(sessionId);
+      return s?.settingsFile ?? '';
+    });
 
     ipcMain.handle('app:getProvidersConfig', () => {
       const cfg = (this.providersStore.get('config', {}) as Record<string, any>) || {};
@@ -1685,8 +1644,6 @@ export class App {
       }
     }
 
-    ipcMain.handle('app:checkAndFixHooks', () => this.checkAndFixHooks());
-
     // cloud 连接状态查询：返回 socket 当前状态
     // 'disconnected' | 'connecting' | 'connected' | 'authenticated' | 'auth_failed'
     ipcMain.handle('app:cloud:connectionState', () => {
@@ -1773,7 +1730,7 @@ export class App {
         });
       }
       // 通知 cloud session 已关闭
-      if (s?.workDir) this.syncCloudSession(id, s.workDir);
+      if (s?.workDir) this.syncCloudSession(id, s.workDir, 'closed');
     };
     proc.onData(onData);
     proc.onExit(onExit);
@@ -1793,6 +1750,7 @@ export class App {
         // 回放缓冲内容到前端，避免新 xterm 实例白屏等待
         getBus().emit(`session:${id}`, buf);
       }
+      this.syncCloudSession(id, workDir);
       return Promise.resolve(true);
     }
     const upstream = resolveAnthropicBaseUrl();
@@ -1801,7 +1759,8 @@ export class App {
       startProxy(workDir, id, (env) => this.dispatcher.dispatch(env), undefined, upstream).then((proxy) => {
         this.apiProxies.push(proxy);
         const proxyUrl = `http://127.0.0.1:${proxy.port}`;
-        const { args, cleanup } = createSettingsOverrideFile(proxyUrl);
+        const hookUrl = this.hookServer ? `http://127.0.0.1:${this.hookServer.getPort()}/hook` : undefined;
+        const { args, cleanup, tmpFile } = createSettingsOverrideFile(proxyUrl, hookUrl);
         // 历史 session 重启时 jsonl 可能还没创建（用户新建后没发 prompt 就关闭），
         // 三种 fallback 触发 PtyMode.New：
         // 1) 用户主动 /exit（terminated 标志）：claude 内部已拒绝 --resume
@@ -1823,6 +1782,8 @@ export class App {
           const claudeBin = (this.settingsStore.get('claude_path', '') as string) || 'claude';
           const proc = startPty(workDir, id, claudeBin, mode, {}, size, args, { probe: true });
           session.setProcess(id, proc, size);
+          const ls = session.lookup(id);
+          if (ls) ls.settingsFile = tmpFile || undefined;
           proc.onExit(() => cleanup());
           this.setSessionState(id, 'running');
           this.wirePty(id, proc);

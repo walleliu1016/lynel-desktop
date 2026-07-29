@@ -11,6 +11,7 @@ export interface Session {
   buffer: string;
   cols: number;
   rows: number;
+  settingsFile?: string;
 }
 
 const MAX_BUFFER = 65536

@@ -35,7 +35,7 @@ export const GetRecentSessions = () => api().getRecentSessions();
 export const AddRecentSession = (record: any) => api().addRecentSession(record);
 export const RemoveRecentSession = (sessionId: string) => api().removeRecentSession(sessionId);
 export const GetHookServerPort = () => api().getHookServerPort();
-export const CheckAndFixHooks = () => api().checkAndFixHooks();
+export const GetSessionSettingsPath = (sessionId: string) => api().getSessionSettingsPath(sessionId);
 export const CloudConnectionState = () => api().cloudConnectionState();
 export const ListBots = () => api().listBots();
 export const SaveBot = (bot: any) => api().saveBot(bot);

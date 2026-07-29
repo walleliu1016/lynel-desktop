@@ -77,6 +77,7 @@
       v-if="showTip"
       :meta="meta"
       :anchor="tipAnchor"
+      :settings-path="settingsPath"
       @mouseenter="cancelHide"
       @mouseleave="onLeave"
     />
@@ -91,7 +92,7 @@ import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useBotsStore } from '../stores/bots'
 import { pushToast } from '../composables/useToast'
 
-import { ClipboardWrite } from '../composables/useElectron'
+import { ClipboardWrite, GetSessionSettingsPath } from '../composables/useElectron'
 import type { SessionMeta } from '../types/session'
 
 const props = defineProps<{ meta: SessionMeta; isActive: boolean; dup?: boolean }>()
@@ -113,6 +114,8 @@ const inputEl = ref<HTMLInputElement | null>(null)
 const menuOpen = ref(false)
 const menuStyle = ref({ top: '0px', left: '0px' })
 
+const settingsPath = ref('')
+
 function onEnter() {
   if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
   showTimer = setTimeout(() => {
@@ -121,6 +124,7 @@ function onEnter() {
       const r = itemEl.value.getBoundingClientRect()
       tipAnchor.value = { x: r.right + 8, y: r.top }
     }
+    GetSessionSettingsPath(props.meta.id).then((p) => { settingsPath.value = p }).catch(() => {})
   }, 1000)
 }
 function onLeave() {

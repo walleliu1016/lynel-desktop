@@ -46,6 +46,7 @@ export interface SyncSession {
   project_name?: string;
   title?: string;
   last_activity_at?: number;
+  status: 'open' | 'closed';
 }
 
 // sendPermissionRequest 同步等待 cloud 决策后的结果
