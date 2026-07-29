@@ -16,7 +16,7 @@
 //   desktop:hook:abort      本地 race 胜出时通知 cloud 取消
 //
 // 下行事件：
-//   auth:success            认证成功 -> 自动 syncSessions
+//   auth:success            认证成功 -> emitAllPendingBatches
 //   auth:failed             认证失败 -> 清内存 token，等用户重新登录
 //   desktop:hook:result     PermissionRequest 决策结果（匹配 request_id）
 //   desktop:chat            Mobile 转发的消息 -> 路由到对应 session 的 PTY

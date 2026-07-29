@@ -1236,7 +1236,10 @@ export class App {
 
     ipcMain.handle('app:closeSession', (_event, id: string) => {
       getLogger().info(`[app:closeSession] closing sid=${id}`);
+      const s = session.lookup(id);
+      const workDir = s?.workDir || '';
       session.close(id);
+      if (workDir) this.syncCloudSession(id, workDir);
     });
 
     ipcMain.handle('app:getAppInfo', () => ({
@@ -1769,6 +1772,8 @@ export class App {
           getLogger().error(`[app:wirePty] proxy close failed sid=${id}: ${err.message}`);
         });
       }
+      // 通知 cloud session 已关闭
+      if (s?.workDir) this.syncCloudSession(id, s.workDir);
     };
     proc.onData(onData);
     proc.onExit(onExit);
