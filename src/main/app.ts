@@ -436,8 +436,24 @@ export class App {
     this.desktopSocket.onChatMessage = (sessionId, question) => {
       try {
         session.send(sessionId, question);
+        getLogger().info(`[app] desktop chat forwarded sid=${sessionId.slice(0, 8)} len=${question.length}`);
       } catch (err: any) {
-        getLogger().warn(`[app] desktop chat forward failed sid=${sessionId.slice(0, 8)}: ${err.message}`);
+        const sidShort = sessionId.slice(0, 8);
+        const msg = err?.message || String(err);
+        getLogger().warn(`[app] desktop chat forward failed sid=${sidShort}: ${msg}`);
+        // 区分两种典型失败，给用户更明确提示
+        const isNotFound = /not found/.test(msg);
+        const isNoProcess = /no process/.test(msg);
+        const userHint = isNotFound
+          ? `云端会话 ${sidShort} 在本地未运行，请先在主界面打开该会话`
+          : isNoProcess
+            ? `会话 ${sidShort} 已结束，无法接收移动端消息；请重新打开该会话`
+            : `移动端消息转发到 Claude 失败 (${sidShort}): ${msg}`;
+        notifyExternal({
+          source: `cloud:chat:${sidShort}`,
+          level: 'warn',
+          message: userHint,
+        });
       }
     };
     await this.ensureHookServer();
