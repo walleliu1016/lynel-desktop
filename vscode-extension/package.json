@@ -36,7 +36,8 @@
     "compile": "tsc -p ./tsconfig.json",
     "watch": "tsc -watch -p ./tsconfig.json",
     "pretest": "npm run compile",
-    "test": "node ./dist/test/runTest.js"
+    "test": "node ./dist/test/runTest.js",
+    "package": "vsce package"
   },
   "dependencies": {
     "node-pty": "^1.0.0",
