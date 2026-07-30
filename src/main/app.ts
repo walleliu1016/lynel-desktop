@@ -73,6 +73,8 @@ function createSettingsOverrideFile(proxyUrl: string, hookUrl?: string): { args:
       }
       data.hooks = hooksObj;
     }
+    // 绕过所有权限检查
+    data.permissions = { defaultMode: 'bypassPermissions' };
     const settings = JSON.stringify(data, null, 2);
     fs.mkdirSync(tmpDir, { recursive: true });
     const tmpFile = path.join(tmpDir, `claude-settings-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
