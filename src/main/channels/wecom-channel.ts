@@ -1079,8 +1079,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
       '- 选择题：单选或多选后点击 **提交**',
     ].join('\n');
 
-    const time = this.formatTime();
-    const msg = `**Lynel Desktop** · 使用帮助\n\n> ${time} | /help\n\n${help}`;
+    const msg = `**Lynel Desktop** · 使用帮助\n\n/help\n\n${help}`;
     try {
       await entry.wsClient.sendMessage(chatId, { msgtype: 'markdown', markdown: { content: msg } });
       logger.info(`[wecom-channel] help sent to chatId=${chatId}`);
@@ -1247,7 +1246,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
   /** 发送文本反馈，自动带上指定会话的头部（如果找得到会话）。 */
   private async sendWeComReplyWithHeader(chatId: string, text: string, sessionId?: string): Promise<void> {
     const header = sessionId ? this.formatSessionHeader(sessionId) : undefined;
-    const fullText = header ? `${header}\n\n> ${this.formatTime()} ${text}` : text;
+    const fullText = header ? `${header}\n\n${text}` : text;
     await this.sendWeComReply(chatId, fullText);
   }
 
@@ -1270,15 +1269,9 @@ export class WeComChannel implements OutputChannel, HookChannel {
     return this.formatSessionHeader(event.sessionId) ?? '';
   }
 
-  private formatTime(): string {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-  }
-
   private buildMessage(header: string, role: string, body: string): string {
     const quotedBody = body ? '\n\n' + body.split('\n').map((l) => `> ${l}`).join('\n') : '';
-    return `${header}\n\n${role} ${this.formatTime()}\n**━━━━━━━━━━━━━━━━**${quotedBody}`;
+    return `${header}\n\n${role}\n**━━━━━━━━━━━━━━━━**${quotedBody}`;
   }
 
   private formatToolInputPreview(input: unknown): string {
@@ -1370,7 +1363,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
   private formatPermissionRequest(header: string, toolName: string, input: unknown): string {
     const preview = this.formatToolInputPreview(input);
     const inputBlock = preview ? `\n\`\`\`\n${preview}\n\`\`\`` : '';
-    return `${header}\n\n🔐 **权限请求：${toolName}** ${this.formatTime()}\n**━━━━━━━━━━━━━━━━**${inputBlock}`;
+    return `${header}\n\n🔐 **权限请求：${toolName}**\n**━━━━━━━━━━━━━━━━**${inputBlock}`;
   }
 
   private formatExitPlanRequest(header: string, input: unknown): string {
@@ -1393,13 +1386,13 @@ export class WeComChannel implements OutputChannel, HookChannel {
     }
     const body = lines.join('\n');
     const quotedBody = body ? '\n\n' + body.split('\n').map((l) => `> ${l}`).join('\n') : '';
-    return `${header}\n\n🗂️ **退出计划模式** ${this.formatTime()}\n**━━━━━━━━━━━━━━━━**${quotedBody}`;
+    return `${header}\n\n🗂️ **退出计划模式**\n**━━━━━━━━━━━━━━━━**${quotedBody}`;
   }
 
   private formatAskUserQuestion(header: string, input: unknown): string {
     const questions = this.parseAskQuestions(input);
     if (questions.length === 0) {
-      return `${header}\n\n❓ **Agent 向你提问** ${this.formatTime()}\n**━━━━━━━━━━━━━━━━**`;
+      return `${header}\n\n❓ **Agent 向你提问**\n**━━━━━━━━━━━━━━━━**`;
     }
 
     const lines: string[] = ['', '**Agent 向你提问：**', ''];
@@ -1421,7 +1414,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
 
     const body = lines.slice(2).join('\n');
     const quotedBody = body ? '\n\n' + body.split('\n').map((l) => `> ${l}`).join('\n') : '';
-    return `${header}\n\n❓ **Agent 向你提问：** ${this.formatTime()}\n**━━━━━━━━━━━━━━━━**${quotedBody}`;
+    return `${header}\n\n❓ **Agent 向你提问：**\n**━━━━━━━━━━━━━━━━**${quotedBody}`;
   }
 
   private parseAskQuestions(input: unknown): AskQuestion[] {
