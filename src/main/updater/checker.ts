@@ -2,7 +2,7 @@ import { getLogger } from '../log.js';
 import type { CheckResult, CloudCheckResponse, UpdateConfig } from './types.js';
 import os from 'node:os';
 
-const logger = getLogger('updater:checker');
+const logger = getLogger();
 const TIMEOUT_MS = 10_000;
 
 function platformParam(): string {

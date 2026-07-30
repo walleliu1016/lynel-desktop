@@ -85,7 +85,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import Switch from '../Switch.vue'
 import {
   CheckUpdate, DownloadUpdate, QuitAndInstall,
-  GetUpdateConfig, UpdateUpdateConfig,
+  GetUpdateStatus, GetUpdateConfig, UpdateUpdateConfig,
   EventsOn,
 } from '../../composables/useElectron'
 import { pushToast } from '../../composables/useToast'

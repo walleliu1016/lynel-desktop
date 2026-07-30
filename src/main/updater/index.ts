@@ -5,7 +5,7 @@ import { checkForUpdates } from './checker.js';
 import { downloadUpdate, quitAndInstall } from './downloader.js';
 import type { UpdateConfig, UpdateState } from './types.js';
 
-const logger = getLogger('updater');
+const logger = getLogger();
 
 const DEFAULT_CONFIG: UpdateConfig = {
   githubEnabled: true,
