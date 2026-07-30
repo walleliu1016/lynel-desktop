@@ -59,12 +59,14 @@
       <button class="btn-cancel" :disabled="!settings.dirty" @click="settings.load">取消</button>
       <button class="btn-save" :disabled="!settings.dirty" @click="onSave">保存</button>
     </div>
+    <UpdaterSection />
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
 import Switch from '../../components/Switch.vue'
+import UpdaterSection from './UpdaterSection.vue'
 import { useSettingsStore } from '../../stores/settings'
 import { pushToast } from '../../composables/useToast'
 
