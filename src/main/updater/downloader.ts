@@ -1,9 +1,22 @@
-import { autoUpdater } from 'electron-updater';
+import { createRequire } from 'node:module';
 import { getLogger } from '../log.js';
 import type { CheckResult, UpdateState } from './types.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+
+const require = createRequire(import.meta.url);
+const { autoUpdater } = require('electron-updater') as {
+  autoUpdater: {
+    setFeedURL(opts: { provider: string; url: string }): void;
+    on(event: 'download-progress', cb: (progress: { percent: number; bytesPerSecond: number }) => void): void;
+    on(event: 'update-downloaded', cb: () => void): void;
+    on(event: 'error', cb: (err: Error) => void): void;
+    checkForUpdates(): Promise<unknown>;
+    downloadUpdate(): Promise<unknown>;
+    quitAndInstall(): void;
+  };
+};
 
 const logger = getLogger();
 
