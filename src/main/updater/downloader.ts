@@ -1,18 +1,35 @@
 import { autoUpdater } from 'electron-updater';
 import { getLogger } from '../log.js';
 import type { CheckResult, UpdateState } from './types.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const logger = getLogger('updater:downloader');
+
+function writeTempLatestYml(info: CheckResult): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lynel-update-'));
+  const yml = [
+    `version: ${info.version}`,
+    `releaseDate: ${info.releaseDate}`,
+    `path: ${info.downloadUrl}`,
+    info.sha512 ? `sha512: ${info.sha512}` : '',
+  ].filter(Boolean).join('\n');
+  fs.writeFileSync(path.join(dir, 'latest.yml'), yml, 'utf8');
+  logger.info(`[downloader] 临时 latest.yml 写入: ${dir}`);
+  return dir;
+}
 
 export function downloadUpdate(
   info: CheckResult,
   onProgress: (state: UpdateState) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    // 不依赖 autoUpdater 内置 provider，手动传入更新信息触发下载
+    const tempDir = writeTempLatestYml(info);
+
     autoUpdater.setFeedURL({
       provider: 'generic',
-      url: new URL(info.downloadUrl!).origin,
+      url: `file://${tempDir}`,
     });
 
     let resolved = false;
@@ -30,6 +47,8 @@ export function downloadUpdate(
 
     autoUpdater.on('update-downloaded', () => {
       logger.info(`[downloader] 下载完成: ${info.version}`);
+      // 清理临时文件
+      try { fs.rmSync(tempDir, { recursive: true }); } catch {}
       if (!resolved) {
         resolved = true;
         onProgress({ status: 'downloaded', data: { version: info.version } });
@@ -39,20 +58,18 @@ export function downloadUpdate(
 
     autoUpdater.on('error', (err) => {
       logger.error(`[downloader] 下载失败: ${err.message}`);
+      try { fs.rmSync(tempDir, { recursive: true }); } catch {}
       if (!resolved) {
         resolved = true;
         reject(err);
       }
     });
 
-    // 直接传入 UpdateInfo 触发下载
-    autoUpdater.downloadUpdate({
-      version: info.version!,
-      files: [{ url: info.downloadUrl!, sha512: info.sha512, size: info.size }],
-      path: info.downloadUrl!,
-      releaseDate: info.releaseDate!,
-      releaseNotes: info.releaseNotes,
+    // checkForUpdates 读取临时 latest.yml 发现更新，再 downloadUpdate 执行下载
+    autoUpdater.checkForUpdates().then(() => {
+      return autoUpdater.downloadUpdate();
     }).catch((err) => {
+      try { fs.rmSync(tempDir, { recursive: true }); } catch {}
       if (!resolved) {
         resolved = true;
         reject(err);
