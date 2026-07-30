@@ -1,5 +1,5 @@
 <template>
-  <div class="updater-section">
+  <div class="updater-tab">
     <h2>在线升级</h2>
 
     <div class="form-group">
@@ -19,24 +19,14 @@
     </div>
 
     <div class="form-group">
-      <label class="form-label">更新源</label>
-      <div class="switch-list">
-        <label class="switch-row">
-          <span class="switch-label">主：GitHub Releases</span>
-          <Switch v-model="cfg.githubEnabled" @change="onSourceChange" />
-        </label>
-        <label class="switch-row">
-          <span class="switch-label">备：HTTP 云服务</span>
-          <Switch v-model="cfg.httpEnabled" @change="onSourceChange" />
-        </label>
-      </div>
+      <label class="form-label">云服务地址</label>
       <input
-        v-if="cfg.httpEnabled"
         class="form-input"
         v-model="cfg.httpBaseUrl"
-        @change="onSourceChange"
+        @change="onConfigChange"
         placeholder="https://your-api.example.com"
       />
+      <p class="form-hint">用于 GitHub 不可达时的 fallback，留空则仅使用 GitHub</p>
     </div>
 
     <div class="status-area" v-if="statusText">
@@ -49,25 +39,21 @@
           @click="onDownload"
         >立即下载</button>
       </div>
-      <!-- 下载进度条 -->
       <div v-if="state.status === 'downloading'" class="progress-wrap">
         <div class="progress-bar">
           <div class="progress-fill" :style="{ width: (state.data?.percent ?? 0) + '%' }" />
         </div>
         <span class="progress-text">{{ Math.round(state.data?.percent ?? 0) }}%</span>
       </div>
-      <!-- 下载完成 -->
       <div v-if="state.status === 'downloaded'" class="install-hint">
         下载完成，重启应用以安装新版本。
         <button class="btn-restart" @click="onRestart">立即重启</button>
         <button class="btn-later" @click="state.status = 'idle'">稍后</button>
       </div>
-      <!-- 错误 -->
       <div v-if="state.status === 'error'" class="error-hint">
         {{ state.data?.error }}
         <button class="btn-retry" @click="onCheckUpdate">重试</button>
       </div>
-      <!-- 强制更新弹窗 -->
       <div v-if="state.status === 'available' && checkResult?.forceUpdate" class="force-overlay">
         <div class="force-dialog">
           <h3>必须更新</h3>
@@ -82,7 +68,6 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import Switch from '../Switch.vue'
 import {
   CheckUpdate, DownloadUpdate, QuitAndInstall,
   GetUpdateStatus, GetUpdateConfig, UpdateUpdateConfig,
@@ -90,38 +75,16 @@ import {
 } from '../../composables/useElectron'
 import { pushToast } from '../../composables/useToast'
 
-interface UpdateConfig {
-  githubEnabled: boolean
-  httpEnabled: boolean
-  httpBaseUrl: string
-  channel: 'stable'
-}
-
-interface UpdateState {
-  status: string
-  data?: { version?: string; percent?: number; speed?: number; error?: string }
-}
-
-const cfg = reactive<UpdateConfig>({
+const cfg = reactive({
   githubEnabled: true,
   httpEnabled: false,
   httpBaseUrl: '',
-  channel: 'stable',
+  channel: 'stable' as const,
 })
 
-const state = reactive<UpdateState>({ status: 'idle' })
+const state = reactive<{ status: string; data?: Record<string, any> }>({ status: 'idle' })
 const checking = ref(false)
-const checkResult = ref<{
-  hasUpdate: boolean
-  version?: string
-  releaseDate?: string
-  releaseNotes?: string
-  forceUpdate?: boolean
-  downloadUrl?: string
-  sha512?: string
-  size?: number
-  error?: string
-} | null>(null)
+const checkResult = ref<Record<string, any> | null>(null)
 const currentVersion = ref('')
 
 const statusText = computed(() => {
@@ -147,7 +110,10 @@ const statusClass = computed(() => {
 onMounted(async () => {
   try {
     const remote = await GetUpdateConfig()
-    if (remote) Object.assign(cfg, remote)
+    if (remote) {
+      cfg.httpBaseUrl = remote.httpBaseUrl ?? ''
+      cfg.httpEnabled = !!remote.httpBaseUrl
+    }
   } catch {}
   try {
     const status = await GetUpdateStatus()
@@ -155,13 +121,19 @@ onMounted(async () => {
   } catch {}
 })
 
-EventsOn('update:state', (s: UpdateState) => {
+EventsOn('update:state', (s: any) => {
   Object.assign(state, s)
 })
 
-async function onSourceChange() {
+async function onConfigChange() {
+  const newCfg = {
+    githubEnabled: true,
+    httpEnabled: !!cfg.httpBaseUrl,
+    httpBaseUrl: cfg.httpBaseUrl,
+    channel: 'stable' as const,
+  }
   try {
-    await UpdateUpdateConfig({ ...cfg })
+    await UpdateUpdateConfig(newCfg)
   } catch {}
 }
 
@@ -200,7 +172,7 @@ function onRestart() {
 </script>
 
 <style scoped>
-.updater-section { }
+.updater-tab { padding: 20px 24px; max-width: 560px; }
 h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-bottom: 20px; }
 
 .form-group { margin-bottom: 18px; }
@@ -210,7 +182,7 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 .form-input {
   width: 100%; background: var(--bg-input); border: 1px solid var(--border);
   border-radius: var(--radius-md); padding: 7px 10px;
-  color: var(--text-primary); font-size: 13px; font-family: inherit; margin-top: 8px;
+  color: var(--text-primary); font-size: 13px; font-family: inherit;
 }
 .form-input:focus { outline: none; border-color: var(--accent); }
 .form-input::placeholder { color: var(--text-tertiary); }
@@ -223,14 +195,6 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 }
 .btn-check:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .btn-check:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.switch-list { display: flex; flex-direction: column; gap: 2px; }
-.switch-row {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 10px; border-radius: var(--radius-md); cursor: pointer;
-}
-.switch-row:hover { background: var(--bg-input); }
-.switch-label { font-size: 13px; color: var(--text-primary); }
 
 .status-area { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); }
 .status-line { display: flex; align-items: center; gap: 8px; font-size: 13px; }

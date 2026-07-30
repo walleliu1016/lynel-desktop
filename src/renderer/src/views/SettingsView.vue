@@ -9,12 +9,6 @@
         </button>
         <div class="sep" />
         <SettingsTabs v-model="active" layout="vertical" />
-        <div class="sidebar-footer">
-          <div class="hook-port" v-if="hookPort">
-            <span class="port-dot" />
-            Hook :{{ hookPort }}
-          </div>
-        </div>
       </nav>
       <main class="content">
         <GeneralTab v-if="active === 'general'" />
@@ -22,13 +16,14 @@
         <CloudTab v-else-if="active === 'cloud'" />
         <ProviderTab v-else-if="active === 'provider'" />
         <BotManagement v-else-if="active === 'bot'" />
+        <UpdaterTab v-else-if="active === 'updater'" />
       </main>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import Icon from '../components/Icon.vue'
@@ -38,15 +33,10 @@ import AppearanceTab from '../components/settings/AppearanceTab.vue'
 import CloudTab from '../components/settings/CloudTab.vue'
 import ProviderTab from '../components/settings/ProviderTab.vue'
 import BotManagement from '../components/settings/BotManagement.vue'
-import { GetHookServerPort } from '../composables/useElectron'
+import UpdaterTab from '../components/settings/UpdaterTab.vue'
 
 const router = useRouter()
 const active = ref<Tab>('general')
-const hookPort = ref(0)
-
-onMounted(async () => {
-  try { hookPort.value = await GetHookServerPort() } catch {}
-})
 
 function goBack() { router.push('/home') }
 </script>
@@ -67,13 +57,6 @@ function goBack() { router.push('/home') }
 }
 .back:hover { color: var(--text-primary); background: var(--bg-input); }
 .sep { border-top: 1px solid var(--border); margin: 6px 10px; }
-.sidebar-footer { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
-.hook-port {
-  display: flex; align-items: center; gap: 6px;
-  padding: 6px 10px; font-size: 11px; color: var(--text-tertiary);
-  font-family: var(--font-mono);
-}
-.port-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--status-success); flex-shrink: 0; }
 .content { flex: 1; overflow-y: auto; min-width: 0; }
 </style>
 
