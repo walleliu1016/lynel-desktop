@@ -96,4 +96,12 @@ export const WatchTraceSession = (workDir: string, sessionId: string) =>
 export const UnwatchTraceSession = (workDir: string, sessionId: string) =>
   api().unwatchTraceSession(workDir, sessionId);
 
+// 在线升级
+export const CheckUpdate = () => api().checkUpdate();
+export const DownloadUpdate = (info: any) => api().downloadUpdate(info);
+export const QuitAndInstall = () => api().quitAndInstall();
+export const GetUpdateStatus = () => api().getUpdateStatus();
+export const GetUpdateConfig = () => api().getUpdateConfig();
+export const UpdateUpdateConfig = (cfg: any) => api().updateUpdateConfig(cfg);
+
 export const isElectronDev = import.meta.env.DEV;

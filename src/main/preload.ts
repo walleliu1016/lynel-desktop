@@ -110,6 +110,14 @@ const api = {
     ipcRenderer.invoke('trace:watch', workDir, sessionId),
   unwatchTraceSession: (workDir: string, sessionId: string) =>
     ipcRenderer.invoke('trace:unwatch', workDir, sessionId),
+
+  // 在线升级
+  checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
+  downloadUpdate: (info: any) => ipcRenderer.invoke('app:downloadUpdate', info),
+  quitAndInstall: () => ipcRenderer.invoke('app:quitAndInstall'),
+  getUpdateStatus: () => ipcRenderer.invoke('app:getUpdateStatus'),
+  getUpdateConfig: () => ipcRenderer.invoke('app:getUpdateConfig'),
+  updateUpdateConfig: (cfg: any) => ipcRenderer.invoke('app:updateUpdateConfig', cfg),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);
