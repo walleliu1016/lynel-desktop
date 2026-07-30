@@ -25,6 +25,7 @@ import { registerTraceIpc } from './trace/ipc.js';
 import type { BotConfig } from './types/bot.js';
 import { notifyExternal, errMessage } from './channels/notify-error.js';
 import { OutputBatcher } from './output-batcher.js';
+import { initUpdater } from './updater/index.js';
 
 const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
 
@@ -1140,6 +1141,8 @@ export class App {
 
   private registerIpcHandlers(): void {
     registerTraceIpc();
+    // 初始化在线升级
+    initUpdater(() => this.window!);
     // 系统剪贴板写入：渲染端 navigator.clipboard 在 file:// + contextIsolation 下
     // 经常静默失败（权限/激活上下文），改走主进程 electron.clipboard 模块，
     // 保证写出的内容能被企业微信、浏览器等外部应用读到。
