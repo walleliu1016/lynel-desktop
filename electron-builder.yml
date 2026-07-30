@@ -39,6 +39,6 @@ nsis:
 
 publish:
   - provider: github
-    owner: akke
+    owner: walleliu1016
     repo: lynel-desktop
     releaseType: release

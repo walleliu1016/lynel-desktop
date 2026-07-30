@@ -145,10 +145,11 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 .version-row { display: flex; align-items: center; gap: 12px; }
 .version-text { font-size: 13px; color: var(--text-primary); font-family: var(--font-mono); }
 .btn-check {
-  padding: 5px 14px; background: var(--bg-input); border: 1px solid var(--border);
-  color: var(--text-primary); border-radius: var(--radius-md); font-size: 12px; cursor: pointer;
+  padding: 5px 14px; background: var(--accent); border: none;
+  color: #fff; border-radius: var(--radius-md); font-size: 12px; cursor: pointer;
+  font-weight: 500;
 }
-.btn-check:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-check:hover:not(:disabled) { background: var(--accent-deep); }
 .btn-check:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .status-area { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); }

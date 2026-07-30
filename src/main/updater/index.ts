@@ -62,6 +62,7 @@ export function initUpdater(getMainWindow: () => BrowserWindow): void {
       };
     } catch (err: any) {
       const msg = err?.message ?? String(err);
+      logger.error(`[updater] checkUpdate failed: ${msg}`);
       send({ status: 'error', data: { error: msg } });
       return { hasUpdate: false, error: msg };
     }
