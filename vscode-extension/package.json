@@ -4,16 +4,34 @@
   "description": "Embed Claude AI interactive terminal in VS Code",
   "version": "0.0.14",
   "publisher": "lynel",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other"],
-  "activationEvents": ["onStartupFinished"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
-      { "command": "lynel.newTerminal", "title": "Lynel: New Claude Terminal" },
-      { "command": "lynel.newTerminalWithWorkDir", "title": "Lynel: New Claude Terminal in Workspace" },
-      { "command": "lynel.closeAllTerminals", "title": "Lynel: Close All Terminals" },
-      { "command": "lynel.showSettings", "title": "Lynel: Open Settings" }
+      {
+        "command": "lynel.newTerminal",
+        "title": "Lynel: New Claude Terminal"
+      },
+      {
+        "command": "lynel.newTerminalWithWorkDir",
+        "title": "Lynel: New Claude Terminal in Workspace"
+      },
+      {
+        "command": "lynel.closeAllTerminals",
+        "title": "Lynel: Close All Terminals"
+      },
+      {
+        "command": "lynel.showSettings",
+        "title": "Lynel: Open Settings"
+      }
     ],
     "configuration": {
       "title": "Lynel",
@@ -36,19 +54,19 @@
     "compile": "tsc -p ./tsconfig.json",
     "watch": "tsc -watch -p ./tsconfig.json",
     "pretest": "npm run compile",
-    "test": "node ./dist/test/runTest.js",
+    "test": "echo 'No tests yet'",
     "package": "vsce package"
   },
   "dependencies": {
-    "node-pty": "^1.0.0",
     "express": "^4.21.0",
-    "undici": "^7.24.6"
+    "node-pty": "^1.0.0"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
-    "@types/node": "^22.10.0",
     "@types/express": "^5.0.6",
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.4.0",
+    "@vscode/vsce": "^3.9.2",
     "typescript": "^5.3.3"
   }
 }

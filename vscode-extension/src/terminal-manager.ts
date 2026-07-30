@@ -4,7 +4,7 @@ import {
   PtyMode, startPty, type PtyProcess, type PtyExitInfo,
 } from './pty-bridge.js';
 import {
-  newSession, register, lookup, remove, setProcess, writeInput,
+  newSession, register, remove, setProcess, writeInput,
   resize as sessionResize, appendBuffer,
 } from './session.js';
 import { OutputBatcher } from './output-batcher.js';
@@ -113,6 +113,8 @@ class LynelPseudoterminal implements vscode.Pseudoterminal {
 
 export class TerminalManager implements vscode.Disposable {
   private terminals = new Map<string, { terminal: vscode.Terminal; pty: LynelPseudoterminal }>();
+  private _onDidChangeCount = new vscode.EventEmitter<number>();
+  readonly onDidChangeCount: vscode.Event<number> = this._onDidChangeCount.event;
 
   async createTerminal(workDir?: string): Promise<vscode.Terminal> {
     const sessionId = randomUUID();
@@ -121,6 +123,7 @@ export class TerminalManager implements vscode.Disposable {
 
     const pty = new LynelPseudoterminal(sessionId, cwd, (id) => {
       this.terminals.delete(id);
+      this._onDidChangeCount.fire(this.terminals.size);
     });
 
     const terminal = vscode.window.createTerminal({
@@ -130,6 +133,7 @@ export class TerminalManager implements vscode.Disposable {
     });
 
     this.terminals.set(sessionId, { terminal, pty });
+    this._onDidChangeCount.fire(this.terminals.size);
     terminal.show();
     return terminal;
   }
@@ -146,5 +150,6 @@ export class TerminalManager implements vscode.Disposable {
 
   dispose(): void {
     this.closeAll();
+    this._onDidChangeCount.dispose();
   }
 }
