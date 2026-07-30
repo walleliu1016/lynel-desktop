@@ -29,7 +29,6 @@ export const UpdateWeComConfig = (cfg: any) => api().updateWeComConfig(cfg);
 export const GetChannelsConfig = () => api().getChannelsConfig();
 export const UpdateChannelConfig = (id: string, cfg: any) => api().updateChannelConfig(id, cfg);
 export const DeleteChannelConfig = (id: string) => api().deleteChannelConfig(id);
-export const GetSessionMessages = (id: string, workDir: string, offset: number, limit: number) => api().getSessionMessages(id, workDir, offset, limit);
 export const PickDirectory = () => api().pickDirectory();
 export const GetRecentSessions = () => api().getRecentSessions();
 export const AddRecentSession = (record: any) => api().addRecentSession(record);
@@ -92,8 +91,6 @@ export const DiffTraceRequests = (workDir: string, sessionId: string, seqA: numb
 export const GetUsageSummary = () => api().getUsageSummary();
 export const ExportTraceRequest = (workDir: string, sessionId: string, seq: number, format: 'raw' | 'md' | 'json' | 'har') =>
   api().exportTraceRequest(workDir, sessionId, seq, format);
-export const ListHappyEnvelopes = (workDir: string, sessionId: string) =>
-  api().listHappyEnvelopes(workDir, sessionId);
 export const WatchTraceSession = (workDir: string, sessionId: string) =>
   api().watchTraceSession(workDir, sessionId);
 export const UnwatchTraceSession = (workDir: string, sessionId: string) =>

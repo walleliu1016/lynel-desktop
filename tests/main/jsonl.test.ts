@@ -9,6 +9,8 @@ import {
   watchProjects,
   encodeProjectDirName,
   decodeProjectDirName,
+  clearFileMetaCache,
+  scanFileMeta,
 } from '../../src/main/jsonl.js';
 
 describe('jsonl', () => {
@@ -68,4 +70,42 @@ describe('jsonl', () => {
       }, 800);
     });
   }, 10000);
+
+  it('scanFileMeta 缓存：mtime/size 未变直接命中，变化后失效', async () => {
+    const workDir = '/work_cache';
+    const p = getSessionJsonlPath('sess-cache', workDir);
+    await fs.mkdir(path.dirname(p), { recursive: true });
+
+    // 两行内容长度一致，仅 first_prompt 不同
+    const line = (text: string) =>
+      JSON.stringify({ message: { role: 'user', content: text }, cwd: workDir }) + '\n';
+    const contentA = line('aaaa');
+    const contentB = line('bbbb');
+    expect(contentA.length).toBe(contentB.length);
+
+    await fs.writeFile(p, contentA);
+    const stat1 = await fs.stat(p);
+    const meta1 = await scanFileMeta(p, stat1);
+    expect(meta1.firstPrompt).toBe('aaaa');
+
+    // 文件内容已变，但传入相同的 (mtimeMs, size) → 命中缓存返回旧值
+    await fs.writeFile(p, contentB);
+    const meta2 = await scanFileMeta(p, stat1);
+    expect(meta2.firstPrompt).toBe('aaaa');
+
+    // size 变化 → 缓存失效，拿到新值
+    const stat2 = { ...stat1, size: stat1.size + 1 } as typeof stat1;
+    const meta3 = await scanFileMeta(p, stat2);
+    expect(meta3.firstPrompt).toBe('bbbb');
+
+    // mtime 变化 → 缓存同样失效
+    const stat3 = { ...stat1, mtimeMs: stat1.mtimeMs + 1000 } as typeof stat1;
+    const meta4 = await scanFileMeta(p, stat3);
+    expect(meta4.firstPrompt).toBe('bbbb');
+
+    // 清缓存后按原 stat 也重新读盘
+    clearFileMetaCache();
+    const meta5 = await scanFileMeta(p, stat1);
+    expect(meta5.firstPrompt).toBe('bbbb');
+  });
 });

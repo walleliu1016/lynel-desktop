@@ -1,9 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { SessionMeta, ChatMessage, SessionState } from '../types/session'
+import type { SessionMeta, SessionState } from '../types/session'
 import type { RecentSession } from '../types/recent'
-import type { ContentBlock, ToolResultBlock, RawContent } from '../types/blocks'
-import { CreateSession, ListSessions, SendMessage, GetSessionMessages, AdoptSession, RenameSession, BindSessionBot, ListBots, ListBotBindings } from '../composables/useElectron'
+import { CreateSession, ListSessions, SendMessage, AdoptSession, RenameSession, BindSessionBot, ListBots, ListBotBindings } from '../composables/useElectron'
 
 export interface HookPermissionRequest {
   id: string
@@ -11,93 +10,6 @@ export interface HookPermissionRequest {
   toolName: string
   toolInput: any
 }
-
-// parseBlocks 把 Wails 序列化后的 m.content 归一化成 ContentBlock[]。
-// m.content 可能是 JSON 字符串、对象/数组、null/undefined。
-function parseBlocks(raw: RawContent): ContentBlock[] {
-  let parsed: any = raw
-  if (typeof parsed === 'string') {
-    if (!parsed) return []
-    try { parsed = JSON.parse(parsed) } catch { return [{ type: 'text', text: parsed }] }
-  }
-  if (!Array.isArray(parsed)) {
-    if (parsed && typeof parsed === 'object' && (parsed as any).type) {
-      return [parseBlock(parsed) || { type: 'text', text: String(JSON.stringify(parsed)) }]
-    }
-    return parsed == null ? [] : [{ type: 'text', text: String(parsed) }]
-  }
-  const out: ContentBlock[] = []
-  for (const item of parsed) {
-    const b = parseBlock(item)
-    if (b) out.push(b)
-  }
-  return out
-}
-
-function parseBlock(b: any): ContentBlock | null {
-  if (!b || typeof b !== 'object') return null
-  const t = b.type
-  switch (t) {
-    case 'text':
-      return typeof b.text === 'string' ? { type: 'text', text: b.text } : null
-    case 'thinking':
-      return b.thinking ? { type: 'thinking', text: b.thinking } : null
-    case 'image': {
-      const src = b.source || {}
-      const mediaType = src.media_type || src.mediaType || 'image/png'
-      const data = src.data || ''
-      if (!data) return null
-      return { type: 'image', mediaType, data }
-    }
-    case 'tool_use':
-      return {
-        type: 'tool_use',
-        id: b.id,
-        name: b.name || 'Unknown',
-        input: b.input && typeof b.input === 'object' ? b.input : {},
-      }
-    case 'tool_result': {
-      const isError = !!b.is_error
-      const content = parseToolResultContent(b.content)
-      return { type: 'tool_result', toolUseId: b.tool_use_id, content, isError }
-    }
-    case 'toolUseResult':
-      return null
-    default:
-      if (typeof b.name === 'string' || typeof t === 'string') {
-        return {
-          type: 'tool_use',
-          id: b.id,
-          name: (b.name as string) || (t as string),
-          input: (b.input && typeof b.input === 'object') ? b.input : b,
-        }
-      }
-      return null
-  }
-}
-
-function parseToolResultContent(raw: any): ToolResultBlock[] {
-  if (raw == null) return []
-  if (typeof raw === 'string') return raw ? [{ type: 'text', text: raw }] : []
-  if (Array.isArray(raw)) {
-    const out: ToolResultBlock[] = []
-    for (const item of raw) {
-      if (!item || typeof item !== 'object') continue
-      if (item.type === 'text' && typeof item.text === 'string') {
-        out.push({ type: 'text', text: item.text })
-      } else if (item.type === 'image') {
-        const src = item.source || {}
-        const mediaType = src.media_type || src.mediaType || 'image/png'
-        if (src.data) out.push({ type: 'image', mediaType, data: src.data })
-      }
-    }
-    return out
-  }
-  if (typeof raw === 'object') return [{ type: 'text', text: JSON.stringify(raw, null, 2) }]
-  return []
-}
-
-const PAGE_SIZE = 100
 
 function omit<T extends Record<string, any>>(obj: T, key: string): T {
   const { [key]: _, ...rest } = obj
@@ -114,11 +26,8 @@ function normalizeLastOpenedAt(v: number | undefined): number {
 export const useSessionsStore = defineStore('sessions', () => {
   const list = ref<SessionMeta[]>([])
   const activeId = ref<string | null>(null)
-  const messages = ref<Record<string, ChatMessage[]>>({})
   const streaming = ref<Record<string, boolean>>({})
   const state = ref<Record<string, SessionState>>({})
-  const historyOffset = ref<Record<string, number>>({})
-  const hasMore = ref<Record<string, boolean>>({})
   const creating = ref(false)
   const adopted = ref<Record<string, boolean>>({})
   const drafts = ref<Record<string, string>>({})
@@ -168,55 +77,6 @@ export const useSessionsStore = defineStore('sessions', () => {
       updated.title_source = source
       list.value = [...list.value.slice(0, idx), updated, ...list.value.slice(idx + 1)]
     }
-  }
-
-  function toolInputSummary(name: string, input: Record<string, unknown>): string {
-    if (!input || typeof input !== 'object') return ''
-    switch (name) {
-      case 'Bash':
-        return truncate(String(input.command || ''), 120)
-      case 'Read':
-      case 'Write':
-      case 'Edit':
-      case 'MultiEdit':
-        return truncate(String(input.file_path || ''), 120)
-      case 'Glob':
-        return truncate(String(input.pattern || ''), 120)
-      case 'Grep': {
-        const pat = String(input.pattern || '')
-        const path = String(input.path || '')
-        if (!pat) return ''
-        return path ? `${truncate(pat, 60)} in ${path}` : truncate(pat, 120)
-      }
-      case 'WebFetch':
-        return truncate(String(input.url || ''), 120)
-      case 'WebSearch':
-        return truncate(String(input.query || ''), 120)
-      case 'Skill':
-        return truncate(String(input.skill || ''), 120)
-    }
-    for (const v of Object.values(input)) {
-      if (typeof v === 'string' && v) return truncate(v, 120)
-    }
-    return ''
-  }
-
-  function llmOutputSummary(blocks: ContentBlock[]): string {
-    const parts: string[] = []
-    for (const b of blocks) {
-      if (b.type === 'text' && (b as any).text) {
-        parts.push((b as any).text)
-      } else if (b.type === 'thinking' && (b as any).text) {
-        parts.push((b as any).text)
-      }
-    }
-    return truncate(parts.join(' '), 200)
-  }
-
-  function truncate(s: string, max: number): string {
-    if (!s) return ''
-    if (s.length <= max) return s
-    return s.slice(0, max) + '…'
   }
 
   async function create(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string) {
@@ -286,44 +146,6 @@ export const useSessionsStore = defineStore('sessions', () => {
     if (titleInfo) {
       applyTitleChange(id, titleInfo.title, titleInfo.source)
     }
-    if (!messages.value[id]) {
-      const total = meta.msg_count
-      await loadHistory(id, meta.workdir, Math.max(0, total - PAGE_SIZE), PAGE_SIZE, true)
-    }
-  }
-
-  async function loadHistory(sid: string, workdir: string, offset: number, limit: number, isFirst: boolean) {
-    try {
-      const raw = await GetSessionMessages(sid, workdir, offset, limit)
-      const msgs = (raw || []).map((m: any, i: number) => ({
-        id: `${sid}-${offset + i}`,
-        msgId: m.msgId,
-        role: m.role || m.Role || 'assistant',
-        blocks: parseBlocks(m.content || m.Content),
-        ts: m.Timestamp || m.timestamp || Date.now(),
-      } as ChatMessage))
-      if (isFirst) {
-        messages.value = { ...messages.value, [sid]: msgs }
-      } else {
-        const prev = messages.value[sid] || []
-        messages.value = { ...messages.value, [sid]: [...msgs, ...prev] }
-      }
-      historyOffset.value = { ...historyOffset.value, [sid]: offset + (raw?.length || 0) }
-      hasMore.value = { ...hasMore.value, [sid]: offset > 0 }
-    } catch (e: any) {
-      console.error('[sessions] loadHistory failed:', e?.message || e)
-    }
-  }
-
-  async function loadMore() {
-    const id = activeId.value
-    if (!id) return
-    const meta = list.value.find((s) => s.id === id)
-    if (!meta) return
-    const loaded = historyOffset.value[id] || meta.msg_count
-    const nextStart = Math.max(0, loaded - PAGE_SIZE)
-    if (nextStart >= loaded) return
-    await loadHistory(id, meta.workdir, nextStart, loaded - nextStart, false)
   }
 
   async function refreshList() {
@@ -341,34 +163,6 @@ export const useSessionsStore = defineStore('sessions', () => {
       }
     } catch (e: any) {
       console.error('[sessions] refreshList failed:', e?.message || e)
-    }
-  }
-
-  async function reloadFromJsonl(sid: string) {
-    const meta = list.value.find((s) => s.id === sid)
-    if (!meta) return
-    try {
-      const raw = await GetSessionMessages(sid, meta.workdir, 0, 0)
-      const msgs = (raw || []).map((m: any, i: number) => ({
-        id: `${sid}-${i}`,
-        msgId: m.msgId,
-        role: m.role || m.Role || 'assistant',
-        blocks: parseBlocks(m.content || m.Content),
-        ts: m.Timestamp || m.timestamp || Date.now(),
-      } as ChatMessage))
-      historyOffset.value = { ...historyOffset.value, [sid]: raw?.length || 0 }
-      hasMore.value = { ...hasMore.value, [sid]: false }
-      messages.value = { ...messages.value, [sid]: msgs }
-      // 更新 msg_count
-      if (raw?.length) {
-        const idx = list.value.findIndex((s) => s.id === sid)
-        if (idx >= 0) {
-          const updated = { ...list.value[idx], msg_count: raw.length }
-          list.value = [...list.value.slice(0, idx), updated, ...list.value.slice(idx + 1)]
-        }
-      }
-    } catch (e: any) {
-      console.error('[sessions] reloadFromJsonl failed:', e?.message || e)
     }
   }
 
@@ -417,11 +211,8 @@ export const useSessionsStore = defineStore('sessions', () => {
     if (activeId.value === id) {
       activeId.value = null
     }
-    messages.value = omit(messages.value, id)
     streaming.value = omit(streaming.value, id)
     state.value = omit(state.value, id)
-    historyOffset.value = omit(historyOffset.value, id)
-    hasMore.value = omit(hasMore.value, id)
     adopted.value = omit(adopted.value, id)
     drafts.value = omit(drafts.value, id)
     hookPermissions.value = omit(hookPermissions.value, id)
@@ -496,11 +287,8 @@ export const useSessionsStore = defineStore('sessions', () => {
   function reset() {
     list.value = []
     activeId.value = null
-    messages.value = {}
     streaming.value = {}
     state.value = {}
-    historyOffset.value = {}
-    hasMore.value = {}
     creating.value = false
     adopted.value = {}
     drafts.value = {}
@@ -514,11 +302,11 @@ export const useSessionsStore = defineStore('sessions', () => {
   // 初始加载会话列表
   setTimeout(() => refreshList(), 0)
 
-  return { list, activeId, active, messages, streaming, state,
-    hasMore, creating, loading, adopted, drafts, hookPermissions, opened,
+  return { list, activeId, active, streaming, state,
+    creating, loading, adopted, drafts, hookPermissions, opened,
     userTitles, titleSources, sessionBots, botNames, botBindings,
     setDraft, create, open, select, send, setHookPermission,
-    reloadFromJsonl, refreshList, handleHookEvent, loadMore, remove, renameSession, applyTitleChange,
+    refreshList, handleHookEvent, remove, renameSession, applyTitleChange,
     loadBotNames, bindBot, getSessionBotName, loadBotBindings, getBotBoundSessionName,
     reset }
 })

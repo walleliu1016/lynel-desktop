@@ -30,6 +30,8 @@ let rootDir = path.join(os.homedir(), '.claude', 'projects');
 
 export function setRoot(dir: string): void {
   rootDir = dir;
+  // root 变了缓存的路径空间整体失效
+  fileMetaCache.clear();
 }
 
 export function getRoot(): string {
@@ -80,7 +82,7 @@ export async function scanAll(): Promise<SessionMeta[]> {
         const filePath = path.join(dirPath, file);
         const stat = await fs.stat(filePath);
         const id = file.replace('.jsonl', '');
-        const meta = await scanFileMeta(filePath);
+        const meta = await scanFileMeta(filePath, stat);
         if (meta.cwd) workDir = meta.cwd;
         results.push({
           id,
@@ -118,7 +120,28 @@ interface FileMeta {
   msgCount: number;
 }
 
-async function scanFileMeta(filePath: string): Promise<FileMeta> {
+// scanFileMeta 结果缓存：key=文件路径，(mtimeMs, size) 未变则直接命中，
+// 把 sessions 列表的全量重扫变成 stat-only。文件截断/重写（size 或 mtime 变化）自然失效。
+// 简单 LRU：超过上限逐出最久未用的条目。
+const FILE_META_CACHE_MAX = 1024;
+const fileMetaCache = new Map<string, { mtimeMs: number; size: number; meta: FileMeta }>();
+
+// 测试/外部清理用：清空 scanFileMeta 缓存
+export function clearFileMetaCache(): void {
+  fileMetaCache.clear();
+}
+
+// 测试也需要直接调用（构造固定 stat 验证缓存命中/失效）
+export async function scanFileMeta(filePath: string, stat?: fsSync.Stats): Promise<FileMeta> {
+  if (stat) {
+    const hit = fileMetaCache.get(filePath);
+    if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) {
+      // LRU：命中后移到末尾
+      fileMetaCache.delete(filePath);
+      fileMetaCache.set(filePath, hit);
+      return hit.meta;
+    }
+  }
   const result: FileMeta = { firstPrompt: '', aiTitle: '', cwd: '', msgCount: 0 };
   try {
     const stream = fsSync.createReadStream(filePath, { encoding: 'utf-8' });
@@ -140,6 +163,13 @@ async function scanFileMeta(filePath: string): Promise<FileMeta> {
     }
   } catch {
     // ignore read errors
+  }
+  if (stat) {
+    if (fileMetaCache.size >= FILE_META_CACHE_MAX) {
+      const oldest = fileMetaCache.keys().next().value;
+      if (oldest !== undefined) fileMetaCache.delete(oldest);
+    }
+    fileMetaCache.set(filePath, { mtimeMs: stat.mtimeMs, size: stat.size, meta: result });
   }
   return result;
 }
@@ -320,7 +350,11 @@ export function watchProjects(onChange: () => void): () => void {
     timeout = setTimeout(onChange, 500);
   };
 
-  watcher.on('add', emit).on('change', emit).on('unlink', emit);
+  watcher.on('add', emit).on('change', emit).on('unlink', (p) => {
+    // 文件删除时清掉对应 meta 缓存，避免同路径重建后命中旧缓存
+    fileMetaCache.delete(p);
+    emit(p);
+  });
   return () => {
     if (timeout) clearTimeout(timeout);
     return watcher.close();

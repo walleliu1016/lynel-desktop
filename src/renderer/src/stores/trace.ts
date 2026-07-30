@@ -1,13 +1,12 @@
 // trace Pinia store: trace 面板的状态管理
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, shallowRef, computed } from 'vue'
 import {
   ListTraceRequests,
   GetSessionTraceStats,
   GetTraceRequest,
   DiffTraceRequests,
   GetUsageSummary,
-  ListHappyEnvelopes,
   ExportTraceRequest,
   WatchTraceSession,
   UnwatchTraceSession,
@@ -47,8 +46,8 @@ export const useTraceStore = defineStore('trace', () => {
   const modelFilter = ref<string>('all')
   const errorsOnly = ref<boolean>(false)
   const selectedSeq = ref<number | null>(null)
-  const detail = ref<any | null>(null)
-  const envelopes = ref<any[]>([])
+  // detail 是 MB 级 raw exchange 大对象且只读展示，用浅响应避免深度响应化开销
+  const detail = shallowRef<any | null>(null)
   const diffResult = ref<any | null>(null)
   const usage = ref<any | null>(null)
   const picks = ref<number[]>([])
@@ -127,14 +126,12 @@ export const useTraceStore = defineStore('trace', () => {
     loading.value = true
     loadError.value = null
     try {
-      const [reqs, s, envs] = await Promise.all([
+      const [reqs, s] = await Promise.all([
         ListTraceRequests(workDir.value, sessionId.value, modelFilter.value),
         GetSessionTraceStats(workDir.value, sessionId.value, modelFilter.value),
-        ListHappyEnvelopes(workDir.value, sessionId.value),
       ])
       requests.value = reqs
       stats.value = s
-      envelopes.value = envs
     } catch (e: any) {
       loadError.value = e?.message || '加载失败'
     } finally {
@@ -193,7 +190,7 @@ export const useTraceStore = defineStore('trace', () => {
 
   return {
     workDir, sessionId, requests, stats, modelFilter, errorsOnly, selectedSeq, detail,
-    envelopes, diffResult, usage, picks, loading, diffMode, loadError,
+    diffResult, usage, picks, loading, diffMode, loadError,
     filteredRequests, availableModels, errorCount,
     setSession, load, select, loadUsage, diff, toggleDiff, togglePick, exportRequest,
     cleanupWatcher: () => { watchCleanup?.(); watchCleanup = null },

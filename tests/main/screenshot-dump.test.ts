@@ -57,14 +57,22 @@ function buildClaudeTuiBuffer(cols: number, rows: number): string {
 }
 
 describe('screenshot dump', () => {
+  const outDir = path.join(process.cwd(), 'scripts');
+
+  function writeAndCleanup(name: string, png: Buffer) {
+    const outPath = path.join(outDir, name);
+    fs.writeFileSync(outPath, png);
+    console.log(`${name} -> ${outPath} (${png.length} bytes)`);
+    // 用完即删，不留测试产物
+    try { fs.unlinkSync(outPath); } catch {}
+  }
+
   it('dump rows=24 PNG (与 PTY 一致)', async () => {
     const cols = 80;
     const rows = 24;
     const raw = buildClaudeTuiBuffer(cols, rows);
     const png = await renderBufferToPng(raw, { cols, rows });
-    const outPath = path.join(process.cwd(), 'scripts', 'dump-rows24.png');
-    fs.writeFileSync(outPath, png);
-    console.log(`rows=24 -> ${outPath} (${png.length} bytes)`);
+    writeAndCleanup('dump-rows24.png', png);
     expect(Buffer.isBuffer(png)).toBe(true);
   });
 
@@ -72,9 +80,7 @@ describe('screenshot dump', () => {
     const cols = 80;
     const raw = buildClaudeTuiBuffer(cols, 24);
     const png = await renderBufferToPng(raw, { cols, rows: 100 });
-    const outPath = path.join(process.cwd(), 'scripts', 'dump-rows100.png');
-    fs.writeFileSync(outPath, png);
-    console.log(`rows=100 -> ${outPath} (${png.length} bytes)`);
+    writeAndCleanup('dump-rows100.png', png);
     expect(Buffer.isBuffer(png)).toBe(true);
   });
 
@@ -82,9 +88,7 @@ describe('screenshot dump', () => {
     const cols = 80;
     const raw = buildClaudeTuiBuffer(cols, 24);
     const png = await renderBufferToPng(raw, { cols });
-    const outPath = path.join(process.cwd(), 'scripts', 'dump-default.png');
-    fs.writeFileSync(outPath, png);
-    console.log(`default -> ${outPath} (${png.length} bytes)`);
+    writeAndCleanup('dump-default.png', png);
     expect(Buffer.isBuffer(png)).toBe(true);
   });
 
@@ -93,9 +97,7 @@ describe('screenshot dump', () => {
     const rows = 30;
     const raw = buildClaudeTuiBuffer(cols, rows);
     const png = await renderBufferToPng(raw, { cols, rows });
-    const outPath = path.join(process.cwd(), 'scripts', 'dump-120x30.png');
-    fs.writeFileSync(outPath, png);
-    console.log(`120x30 -> ${outPath} (${png.length} bytes)`);
+    writeAndCleanup('dump-120x30.png', png);
     expect(Buffer.isBuffer(png)).toBe(true);
   });
 });

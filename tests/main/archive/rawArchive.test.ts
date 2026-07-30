@@ -65,8 +65,8 @@ describe('rawArchive', () => {
     _clearBlobCacheForTests();
   });
 
-  it('write + read raw exchange（v2 manifest）', () => {
-    writeRawExchange({ ...makeInput(), sessionDir: tmp });
+  it('write + read raw exchange（v2 manifest）', async () => {
+    await writeRawExchange({ ...makeInput(), sessionDir: tmp });
     const r = readRawExchange(tmp, 1);
     expect(r).not.toBeNull();
     expect(r!.seq).toBe(1);
@@ -81,8 +81,8 @@ describe('rawArchive', () => {
     });
   });
 
-  it('blob 文件实际生成在 <sessionDir>/blobs/', () => {
-    writeRawExchange({ ...makeInput(), sessionDir: tmp });
+  it('blob 文件实际生成在 <sessionDir>/blobs/', async () => {
+    await writeRawExchange({ ...makeInput(), sessionDir: tmp });
     // manifest 文件
     expect(fs.existsSync(path.join(tmp, 'raw', '0001.json'))).toBe(true);
     // blob 目录存在
@@ -98,11 +98,11 @@ describe('rawArchive', () => {
     expect(blobFiles.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('跨请求去重：相同 system/tools/message 共享同一 blob', () => {
+  it('跨请求去重：相同 system/tools/message 共享同一 blob', async () => {
     // 第一次写
-    writeRawExchange({ ...makeInput(), sessionDir: tmp, seq: 1 });
+    await writeRawExchange({ ...makeInput(), sessionDir: tmp, seq: 1 });
     // 第二次写：body 完全相同，只改 seq
-    writeRawExchange({ ...makeInput(), sessionDir: tmp, seq: 2 });
+    await writeRawExchange({ ...makeInput(), sessionDir: tmp, seq: 2 });
 
     // blobs 目录下文件数应等于第一次的 blob 数（去重命中）
     const blobFiles = new Set<string>();
@@ -124,9 +124,9 @@ describe('rawArchive', () => {
     expect(r1!.request.body).toEqual(r2!.request.body);
   });
 
-  it('不同 system/tools 产生不同 blob', () => {
-    writeRawExchange({ ...makeInput(), sessionDir: tmp, seq: 1 });
-    writeRawExchange({
+  it('不同 system/tools 产生不同 blob', async () => {
+    await writeRawExchange({ ...makeInput(), sessionDir: tmp, seq: 1 });
+    await writeRawExchange({
       ...makeInput(),
       sessionDir: tmp,
       seq: 2,
@@ -158,8 +158,8 @@ describe('rawArchive', () => {
     expect(blobFiles.size).toBe(4);
   });
 
-  it('error=true 标记失败', () => {
-    writeRawExchange({
+  it('error=true 标记失败', async () => {
+    await writeRawExchange({
       ...makeInput(),
       sessionDir: tmp,
       error: true,
@@ -170,14 +170,14 @@ describe('rawArchive', () => {
     expect(r!.error).toBe(true);
   });
 
-  it('listRawExchanges 排序', () => {
-    writeRawExchange({ ...makeInput(), sessionDir: tmp, seq: 3 });
-    writeRawExchange({ ...makeInput(), sessionDir: tmp, seq: 1 });
+  it('listRawExchanges 排序', async () => {
+    await writeRawExchange({ ...makeInput(), sessionDir: tmp, seq: 3 });
+    await writeRawExchange({ ...makeInput(), sessionDir: tmp, seq: 1 });
     expect(listRawExchanges(tmp)).toEqual([1, 3]);
   });
 
-  it('非 JSON 对象 body 走 rawBody 旁路', () => {
-    writeRawExchange({
+  it('非 JSON 对象 body 走 rawBody 旁路', async () => {
+    await writeRawExchange({
       ...makeInput(),
       sessionDir: tmp,
       request: {
@@ -193,7 +193,7 @@ describe('rawArchive', () => {
     expect(fs.existsSync(path.join(tmp, 'blobs'))).toBe(false);
   });
 
-  it('v1 旧格式（无 v 字段）兼容读取', () => {
+  it('v1 旧格式（无 v 字段）兼容读取', async () => {
     // 手写一个 v1 格式的文件
     const v1Record = {
       id: 's1/0001',
@@ -228,8 +228,8 @@ describe('rawArchive', () => {
     expect(r!.request.headers['x-api-key']).toBe('sk-ant-1234567890abcdef');
   });
 
-  it('blob 缓存命中：第二次 readRawExchange 不再访问磁盘', () => {
-    writeRawExchange({ ...makeInput(), sessionDir: tmp });
+  it('blob 缓存命中：第二次 readRawExchange 不再访问磁盘', async () => {
+    await writeRawExchange({ ...makeInput(), sessionDir: tmp });
     // 第一次读会填充缓存
     const r1 = readRawExchange(tmp, 1);
     expect(r1).not.toBeNull();

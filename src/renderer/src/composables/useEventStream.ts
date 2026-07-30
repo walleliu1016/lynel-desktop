@@ -40,12 +40,9 @@ export function useEventStream() {
       console.error('[fatal]', msg)
     }))
 
-    // 后端 fsnotify 监听 jsonl 变化后推送 → 刷新列表（msg_count 等）+ 重载当前 session 消息。
+    // 后端 fsnotify 监听 jsonl 变化后推送 → 刷新列表（msg_count 等）。
     cleanups.push(EventsOn('sessions:list:changed', () => {
       void sessions.refreshList()
-      if (sessions.activeId) {
-        void sessions.reloadFromJsonl(sessions.activeId)
-      }
     }))
 
     // 企业微信 /create 等外部入口创建会话后，同步到会话列表并自动打开。

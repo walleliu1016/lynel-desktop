@@ -24,6 +24,7 @@ import { start as startPty, PtyMode, PtySize, preloadShellEnv } from './pty.js';
 import { registerTraceIpc } from './trace/ipc.js';
 import type { BotConfig } from './types/bot.js';
 import { notifyExternal, errMessage } from './channels/notify-error.js';
+import { OutputBatcher } from './output-batcher.js';
 
 const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
 
@@ -355,6 +356,10 @@ export class App {
     ['cloud', this.desktopSocket],
   ]);
   private ptyCleanups = new Map<string, (() => void) | null>();
+  // PTY 输出推送合帧：~16ms 窗口拼成一条 emit，避免每 chunk 一条 webContents.send IPC
+  private ptyOutBatcher = new OutputBatcher((sid, data) => {
+    getBus().emit(`session:${sid}`, data);
+  });
   private recentSessionsLock = false;
   // 用户在 xterm.js 输入的"当前行"缓存：仅追踪到下一次 \r/\n，为 /exit 检测提供依据。
   // 渲染端 writeTerminalInput 走 IPC 把字节送到这里。onExit 时清理。
@@ -395,9 +400,36 @@ export class App {
     });
   }
 
+  // instanceStore 写防抖：activity persist 每次 set 都是全量同步写盘，
+  // 高频状态切换时按 1s 窗口合并（per-key 只保留最新值），退出时 flush
+  private pendingStoreWrites = new Map<string, unknown>();
+  private storeFlushTimer: NodeJS.Timeout | null = null;
+
+  private debouncedStoreSet(key: string, value: unknown): void {
+    this.pendingStoreWrites.set(key, value);
+    if (!this.storeFlushTimer) {
+      this.storeFlushTimer = setTimeout(() => this.flushStoreWrites(), 1000);
+    }
+  }
+
+  private flushStoreWrites(): void {
+    if (this.storeFlushTimer) {
+      clearTimeout(this.storeFlushTimer);
+      this.storeFlushTimer = null;
+    }
+    for (const [key, value] of this.pendingStoreWrites) {
+      try {
+        this.instanceStore.set(key, value);
+      } catch (err: any) {
+        getLogger().error(`[app] instanceStore flush failed key=${key}: ${err?.message || err}`);
+      }
+    }
+    this.pendingStoreWrites.clear();
+  }
+
   private setSessionState(id: string, state: string, persist = true): void {
     if (persist) {
-      this.instanceStore.set(`sessions.${id}.state`, state);
+      this.debouncedStoreSet(`sessions.${id}.state`, state);
     }
     session.setState(id, state as import('./session.js').SessionState);
     getBus().emit('sessions:state:changed', id, state);
@@ -412,7 +444,10 @@ export class App {
     void preloadShellEnv().catch((err) => {
       getLogger().warn(`[app] preload shell env failed: ${err?.message || err}`);
     });
-    session.setOnRemove((id) => this.wecomChannel.clearSessionMappings(id));
+    session.setOnRemove((id) => {
+      this.wecomChannel.clearSessionMappings(id);
+      this.ptyOutBatcher.clear(id);
+    });
     this.wecomChannel.setSessionTitleResolver((sessionId: string) => {
       const list = this.withRecentLock(() => readRecentSessions());
       const r = list.find((x) => x.sessionId === sessionId);
@@ -479,6 +514,8 @@ export class App {
 
   async shutdown(): Promise<void> {
     getLogger().info('[app] shutdown begin');
+    // 0. flush 防抖窗口内的 instanceStore 待写值，避免退出丢状态
+    this.flushStoreWrites();
     // 1. 停止 AI title 定时轮询
     if (this.aiTitleRefreshTimer) {
       clearInterval(this.aiTitleRefreshTimer);
@@ -1305,7 +1342,10 @@ export class App {
       const states: Record<string, string> = {};
       const list = await jsonl.scanAll();
       for (const meta of list) {
-        const state = this.instanceStore.get(`sessions.${meta.id}.state`, 'idle') as string;
+        const key = `sessions.${meta.id}.state`;
+        // 读穿透：防抖窗口内的待写值优先于磁盘上的旧值
+        const pending = this.pendingStoreWrites.get(key);
+        const state = (pending as string) ?? this.instanceStore.get(key, 'idle') as string;
         const hasProcess = !!session.lookup(meta.id)?.process;
         if (state === 'running' && !hasProcess) {
           states[meta.id] = 'idle';
@@ -1685,13 +1725,15 @@ export class App {
     this.ptyCleanups.get(id)?.();
     let exited = false;
     const onData = (data: string) => {
-      getBus().emit(`session:${id}`, data);
+      this.ptyOutBatcher.push(id, data);
       session.appendBuffer(id, data);
     };
 
     const onExit = (info: import('./pty.js').PtyExitInfo) => {
       if (exited) return;
       exited = true;
+      // 先把窗口期内的 PTY 输出 flush 掉，保证后续的 done/诊断消息不越位
+      this.ptyOutBatcher.flush(id);
       const code = info.code;
       getLogger().info(`[app:wirePty] pty exited sid=${id} code=${code} duration=${info.durationMs}ms outputLen=${info.outputTail.length}`);
 
@@ -1737,6 +1779,8 @@ export class App {
     this.ptyCleanups.set(id, () => {
       proc.onData(() => {});
       proc.onExit(() => {});
+      // 重挂/销毁时清掉 pending timer，避免 timer 持有已销毁 session 引用
+      this.ptyOutBatcher.clear(id);
     });
   }
 
@@ -1747,7 +1791,9 @@ export class App {
       getLogger().info(`[app:openSessionTerminal] pty already running for sid=${id}`);
       const buf = session.getBuffer(id);
       if (buf) {
-        // 回放缓冲内容到前端，避免新 xterm 实例白屏等待
+        // 回放缓冲内容到前端，避免新 xterm 实例白屏等待；
+        // 先 flush 合帧窗口内的残余数据，保证回放内容不越位
+        this.ptyOutBatcher.flush(id);
         getBus().emit(`session:${id}`, buf);
       }
       this.syncCloudSession(id, workDir);

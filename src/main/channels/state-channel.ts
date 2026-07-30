@@ -25,11 +25,28 @@ export class StateChannel implements OutputChannel, HookChannel {
   readonly name = 'Session State';
 
   private pendingPermission = new Set<string>();
+  // activity 去重：流式期间大量重复的 streaming/thinking envelope 没必要逐条 IPC，
+  // 同一 session 的 (phase, tool, toolInput) 与上次相同则跳过
+  private lastActivityKey = new Map<string, string>();
 
   constructor(private callbacks: StateChannelCallbacks) {}
 
   isEnabled(): boolean {
     return true;
+  }
+
+  private emitActivity(
+    sessionId: string,
+    activity: {
+      phase: 'thinking' | 'working' | 'streaming' | 'idle' | 'awaiting_permission';
+      tool?: string;
+      toolInput?: string;
+    },
+  ): void {
+    const key = `${activity.phase}|${activity.tool ?? ''}|${activity.toolInput ?? ''}`;
+    if (this.lastActivityKey.get(sessionId) === key) return;
+    this.lastActivityKey.set(sessionId, key);
+    this.callbacks.onActivity(sessionId, activity);
   }
 
   send(event: LynelEnvelope): void {
@@ -40,11 +57,11 @@ export class StateChannel implements OutputChannel, HookChannel {
       case 'text': {
         if (event.role === 'user') {
           this.callbacks.onStableState(event.sessionId, 'running', true);
-          this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
+          this.emitActivity(event.sessionId, { phase: 'thinking' });
         } else if (ev.thinking) {
-          this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
+          this.emitActivity(event.sessionId, { phase: 'thinking' });
         } else {
-          this.callbacks.onActivity(event.sessionId, { phase: 'streaming' });
+          this.emitActivity(event.sessionId, { phase: 'streaming' });
         }
         break;
       }
@@ -58,7 +75,7 @@ export class StateChannel implements OutputChannel, HookChannel {
           (input as any).query ||
           ''
         );
-        this.callbacks.onActivity(event.sessionId, {
+        this.emitActivity(event.sessionId, {
           phase: 'working',
           tool: ev.name,
           toolInput,
@@ -66,22 +83,22 @@ export class StateChannel implements OutputChannel, HookChannel {
         break;
       }
       case 'tool-call-end': {
-        this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
+        this.emitActivity(event.sessionId, { phase: 'thinking' });
         break;
       }
       case 'service': {
-        this.callbacks.onActivity(event.sessionId, { phase: 'streaming' });
+        this.emitActivity(event.sessionId, { phase: 'streaming' });
         break;
       }
       case 'turn-end': {
         if (this.pendingPermission.has(event.sessionId)) break;
         this.callbacks.onStableState(event.sessionId, 'idle', true);
-        this.callbacks.onActivity(event.sessionId, { phase: 'idle' });
+        this.emitActivity(event.sessionId, { phase: 'idle' });
         break;
       }
       case 'turn-start': {
         this.callbacks.onStableState(event.sessionId, 'running', true);
-        this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
+        this.emitActivity(event.sessionId, { phase: 'thinking' });
         break;
       }
       case 'file':
@@ -97,19 +114,19 @@ export class StateChannel implements OutputChannel, HookChannel {
     switch (event.kind) {
       case 'SessionStart': {
         this.callbacks.onStableState(event.sessionId, 'running', true);
-        this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
+        this.emitActivity(event.sessionId, { phase: 'thinking' });
         break;
       }
       case 'SessionEnd':
       case 'Stop': {
         if (this.pendingPermission.has(event.sessionId)) break;
         this.callbacks.onStableState(event.sessionId, 'idle', true);
-        this.callbacks.onActivity(event.sessionId, { phase: 'idle' });
+        this.emitActivity(event.sessionId, { phase: 'idle' });
         break;
       }
       case 'UserPromptSubmit': {
         this.callbacks.onStableState(event.sessionId, 'running', true);
-        this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
+        this.emitActivity(event.sessionId, { phase: 'thinking' });
         break;
       }
       case 'PreToolUse': {
@@ -123,7 +140,7 @@ export class StateChannel implements OutputChannel, HookChannel {
           (input as any).query ||
           ''
         );
-        this.callbacks.onActivity(event.sessionId, {
+        this.emitActivity(event.sessionId, {
           phase: 'working',
           tool,
           toolInput,
@@ -131,7 +148,7 @@ export class StateChannel implements OutputChannel, HookChannel {
         break;
       }
       case 'PostToolUse': {
-        this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
+        this.emitActivity(event.sessionId, { phase: 'thinking' });
         break;
       }
       case 'PermissionRequest': {
@@ -147,7 +164,7 @@ export class StateChannel implements OutputChannel, HookChannel {
           ''
         );
         this.callbacks.onStableState(event.sessionId, 'awaiting_permission', false);
-        this.callbacks.onActivity(event.sessionId, {
+        this.emitActivity(event.sessionId, {
           phase: 'awaiting_permission',
           tool,
           toolInput,
@@ -157,7 +174,7 @@ export class StateChannel implements OutputChannel, HookChannel {
       case 'PermissionResolved': {
         this.pendingPermission.delete(event.sessionId);
         this.callbacks.onStableState(event.sessionId, 'running', true);
-        this.callbacks.onActivity(event.sessionId, { phase: 'thinking' });
+        this.emitActivity(event.sessionId, { phase: 'thinking' });
         break;
       }
     }

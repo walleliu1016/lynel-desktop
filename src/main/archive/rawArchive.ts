@@ -99,9 +99,11 @@ function blobRoot(sessionDir: string): string {
   return sessionDir;
 }
 
-export function writeRawExchange(input: RawExchangeInput): string {
+// 异步化：每轮 API 调用的 manifest 写盘不再阻塞主进程事件循环。
+// 调用方可 await（测试），也可 fire-and-forget + catch（apiproxy 热路径）。
+export async function writeRawExchange(input: RawExchangeInput): Promise<string> {
   const dir = path.join(input.sessionDir, 'raw');
-  fs.mkdirSync(dir, { recursive: true });
+  await fs.promises.mkdir(dir, { recursive: true });
   const filePath = rawArchivePath(input.sessionDir, input.seq);
 
   // mask headers 后再 pack，避免敏感信息进入 blob
@@ -136,8 +138,9 @@ export function writeRawExchange(input: RawExchangeInput): string {
   const record: PackManifest = manifest;
 
   const tmp = `${filePath}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(record, null, 2));
-  fs.renameSync(tmp, filePath);
+  // 紧凑序列化：pretty-print 在大 record 上是纯额外 CPU，trace 读取侧不依赖格式
+  await fs.promises.writeFile(tmp, JSON.stringify(record));
+  await fs.promises.rename(tmp, filePath);
   return filePath;
 }
 

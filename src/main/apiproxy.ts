@@ -15,6 +15,7 @@ import { costFromUsage, type CostBreakdown } from './cost/priceTable.js';
 import { HappyJsonlWriter } from './archive/happyJsonl.js';
 import { writeRawExchange, listRawExchanges, type RawExchangeInput } from './archive/rawArchive.js';
 import { notifyExternal, errMessage } from './channels/notify-error.js';
+import { getLogger } from './log.js';
 
 export interface Proxy {
   port: number;
@@ -351,7 +352,8 @@ function finalizeExchange(token: string, isStream: boolean, networkError = false
     parsedBody = s.reqBody ? JSON.parse(s.reqBody.toString('utf8')) : null;
   } catch { /* ignore */ }
 
-  writeRawExchange({
+  // fire-and-forget：落盘慢不阻塞代理主流程；失败只打日志
+  void writeRawExchange({
     sessionId: token,
     sessionDir: s.sessionDir,
     seq: s.roundtripSeq,
@@ -376,5 +378,7 @@ function finalizeExchange(token: string, isStream: boolean, networkError = false
     reassembled,
     cost,
     error: errorFlag,
+  }).catch((err) => {
+    getLogger().error(`[apiproxy] writeRawExchange failed sid=${token} seq=${s.roundtripSeq}: ${err?.message || err}`);
   });
 }
