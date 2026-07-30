@@ -40,14 +40,22 @@ class LynelPseudoterminal implements vscode.Pseudoterminal {
     register(session);
 
     const config = getConfig();
-    const proc = startPty({
-      bin: config.claudeBin,
-      mode: PtyMode.New,
-      sessionId: this.sessionId,
-      workDir: this.workDir,
-      cols,
-      rows,
-    });
+    let proc: PtyProcess;
+    try {
+      proc = startPty({
+        bin: config.claudeBin,
+        mode: PtyMode.New,
+        sessionId: this.sessionId,
+        workDir: this.workDir,
+        cols,
+        rows,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.writeEmitter.fire(`\r\n\x1b[31m[Lynel] PTY 启动失败: ${msg}\x1b[0m\r\n`);
+      this.closeEmitter.fire(1);
+      return;
+    }
 
     this.proc = proc;
     setProcess(this.sessionId, proc, { cols, rows });
