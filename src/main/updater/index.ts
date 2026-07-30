@@ -7,25 +7,28 @@ import type { UpdateConfig, UpdateState } from './types.js';
 
 const logger = getLogger();
 
-const DEFAULT_CONFIG: UpdateConfig = {
-  githubEnabled: true,
-  httpEnabled: false,
-  httpBaseUrl: '',
-  channel: 'stable',
-};
+// 读取云服务配置作为 HTTP fallback 地址
+function cloudFallbackConfig(): { httpEnabled: boolean; httpBaseUrl: string } {
+  try {
+    const store = getStore('default');
+    const enabled = store.get('cloud_service_enabled') as boolean | undefined;
+    const url = store.get('cloud_service_url') as string | undefined;
+    return {
+      httpEnabled: !!enabled && !!url,
+      httpBaseUrl: url ?? '',
+    };
+  } catch {
+    return { httpEnabled: false, httpBaseUrl: '' };
+  }
+}
 
 function config(): UpdateConfig {
-  const store = getStore('updater');
-  return { ...DEFAULT_CONFIG, ...(store.get('config') as Partial<UpdateConfig> | undefined) };
-}
-
-export function getConfig(): UpdateConfig {
-  return config();
-}
-
-function saveConfig(cfg: UpdateConfig): void {
-  const store = getStore('updater');
-  store.set('config', cfg);
+  const fallback = cloudFallbackConfig();
+  return {
+    githubEnabled: true,
+    channel: 'stable',
+    ...fallback,
+  };
 }
 
 export function initUpdater(getMainWindow: () => BrowserWindow): void {
@@ -95,16 +98,6 @@ export function initUpdater(getMainWindow: () => BrowserWindow): void {
     lastCheckTime: 0,
     currentVersion: app.getVersion(),
   }));
-
-  ipcMain.handle('app:getUpdateConfig', async () => config());
-
-  ipcMain.handle('app:updateUpdateConfig', async (_event, cfg: Partial<UpdateConfig>) => {
-    const current = config();
-    const updated = { ...current, ...cfg };
-    saveConfig(updated);
-    logger.info('[updater] config updated');
-    return updated;
-  });
 
   async function scheduledCheck() {
     try {

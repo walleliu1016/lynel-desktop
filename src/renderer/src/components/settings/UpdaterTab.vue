@@ -15,18 +15,7 @@
     <div class="form-group">
       <label class="form-label">更新通道</label>
       <span class="form-static">Stable</span>
-      <p class="form-hint">Beta 版本请手动下载安装</p>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">云服务地址</label>
-      <input
-        class="form-input"
-        v-model="cfg.httpBaseUrl"
-        @change="onConfigChange"
-        placeholder="https://your-api.example.com"
-      />
-      <p class="form-hint">用于 GitHub 不可达时的 fallback，留空则仅使用 GitHub</p>
+      <p class="form-hint">Beta 版本请手动下载安装。更新源优先使用 GitHub Releases，云服务地址已配置时作为 fallback。</p>
     </div>
 
     <div class="status-area" v-if="statusText">
@@ -70,17 +59,9 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import {
   CheckUpdate, DownloadUpdate, QuitAndInstall,
-  GetUpdateStatus, GetUpdateConfig, UpdateUpdateConfig,
-  EventsOn,
+  GetUpdateStatus, EventsOn,
 } from '../../composables/useElectron'
 import { pushToast } from '../../composables/useToast'
-
-const cfg = reactive({
-  githubEnabled: true,
-  httpEnabled: false,
-  httpBaseUrl: '',
-  channel: 'stable' as const,
-})
 
 const state = reactive<{ status: string; data?: Record<string, any> }>({ status: 'idle' })
 const checking = ref(false)
@@ -109,13 +90,6 @@ const statusClass = computed(() => {
 
 onMounted(async () => {
   try {
-    const remote = await GetUpdateConfig()
-    if (remote) {
-      cfg.httpBaseUrl = remote.httpBaseUrl ?? ''
-      cfg.httpEnabled = !!remote.httpBaseUrl
-    }
-  } catch {}
-  try {
     const status = await GetUpdateStatus()
     currentVersion.value = status?.currentVersion ?? ''
   } catch {}
@@ -124,18 +98,6 @@ onMounted(async () => {
 EventsOn('update:state', (s: any) => {
   Object.assign(state, s)
 })
-
-async function onConfigChange() {
-  const newCfg = {
-    githubEnabled: true,
-    httpEnabled: !!cfg.httpBaseUrl,
-    httpBaseUrl: cfg.httpBaseUrl,
-    channel: 'stable' as const,
-  }
-  try {
-    await UpdateUpdateConfig(newCfg)
-  } catch {}
-}
 
 async function onCheckUpdate() {
   checking.value = true
@@ -179,13 +141,6 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 .form-label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 500; }
 .form-static { font-size: 13px; color: var(--text-primary); }
 .form-hint { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
-.form-input {
-  width: 100%; background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 7px 10px;
-  color: var(--text-primary); font-size: 13px; font-family: inherit;
-}
-.form-input:focus { outline: none; border-color: var(--accent); }
-.form-input::placeholder { color: var(--text-tertiary); }
 
 .version-row { display: flex; align-items: center; gap: 12px; }
 .version-text { font-size: 13px; color: var(--text-primary); font-family: var(--font-mono); }
