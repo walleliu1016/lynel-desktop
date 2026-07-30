@@ -9,11 +9,13 @@ import {
 } from './session.js';
 import { OutputBatcher } from './output-batcher.js';
 import { getConfig } from './config.js';
+import { APIProxy } from './apiproxy.js';
 
 class LynelPseudoterminal implements vscode.Pseudoterminal {
   private writeEmitter = new vscode.EventEmitter<string>();
   private closeEmitter = new vscode.EventEmitter<number>();
   private proc: PtyProcess | null = null;
+  private proxy: APIProxy | null = null;
   private batcher: OutputBatcher;
   private sessionId: string;
   private workDir: string;
@@ -32,7 +34,7 @@ class LynelPseudoterminal implements vscode.Pseudoterminal {
     });
   }
 
-  open(initialDimensions: vscode.TerminalDimensions | undefined): void {
+  async open(initialDimensions: vscode.TerminalDimensions | undefined): Promise<void> {
     const cols = initialDimensions?.columns ?? 80;
     const rows = initialDimensions?.rows ?? 24;
 
@@ -40,6 +42,18 @@ class LynelPseudoterminal implements vscode.Pseudoterminal {
     register(session);
 
     const config = getConfig();
+
+    // 启动 APIProxy 拦截 Claude API 流量，失败不阻塞 PTY
+    let envPatch: Record<string, string> = {};
+    try {
+      this.proxy = new APIProxy(this.sessionId, this.workDir);
+      const proxyPort = await this.proxy.start();
+      envPatch = { ANTHROPIC_BASE_URL: `http://127.0.0.1:${proxyPort}` };
+    } catch (err) {
+      console.error(`[terminal-manager] APIProxy 启动失败: ${err}`);
+      this.proxy = null;
+    }
+
     let proc: PtyProcess;
     try {
       proc = startPty({
@@ -49,6 +63,7 @@ class LynelPseudoterminal implements vscode.Pseudoterminal {
         workDir: this.workDir,
         cols,
         rows,
+        env: envPatch,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -76,6 +91,7 @@ class LynelPseudoterminal implements vscode.Pseudoterminal {
 
   close(): void {
     this.batcher.clear(this.sessionId);
+    this.proxy?.close();
     if (this.proc) {
       this.proc.kill();
       this.proc = null;
