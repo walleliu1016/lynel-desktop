@@ -121,17 +121,17 @@ export class DesktopSocket implements OutputChannel, HookChannel {
 
   // 由 app:loginWithToken 调用：用密码调 /api/auth/login 校验
   // 成功 -> 存密码 + token，触发 reconnect 让 socket 走 emit desktop:auth
-  // 失败 -> 返回 false
-  async verifyLogin(userId: string, password: string): Promise<boolean> {
-    if (!this.url) return false;
+  // 失败 -> 返回具体错误原因
+  async verifyLogin(userId: string, password: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    if (!this.url) return { ok: false, error: '云服务地址未配置' };
     this.userId = userId;
-    const token = await this.login(password);
-    if (!token) return false;
+    const result = await this.login(password);
+    if ('error' in result) return { ok: false, error: result.error };
     this.password = password;
-    this.token = token;
+    this.token = result.token;
     // 触发重连，新 socket 连接后 ensureJwtAndAuth 会直接 emit desktop:auth（已有 token）
     this.reconnect();
-    return true;
+    return { ok: true };
   }
 
   setPassword(pw: string): void {
@@ -326,19 +326,19 @@ export class DesktopSocket implements OutputChannel, HookChannel {
         return;
       }
       // 无 token -> 调 /api/auth/login 用密码换 token
-      const token = await this.login(this.password);
-      if (!token) {
+      const result = await this.login(this.password);
+      if ('error' in result) {
         this.setState('auth_failed');
         return;
       }
-      this.token = token;
+      this.token = result.token;
       // 异步 login 期间 socket 可能已断开，此时不 emit，
       // token 已缓存，下次 connect 事件会走 token 复用路径同步 emit
       if (!this.socket?.connected) {
         getLogger().warn('[desktop-socket] socket disconnected during login, defer auth to next connect');
         return;
       }
-      this.emit('desktop:auth', { user_id: this.userId, token });
+      this.emit('desktop:auth', { user_id: this.userId, token: result.token });
     } finally {
       this.authenticating = false;
     }
@@ -347,8 +347,9 @@ export class DesktopSocket implements OutputChannel, HookChannel {
   // 调 POST /api/auth/login 用 { user_id, user_password } 换 token
   // 用户在登录页输入的"密码"实际就是 user_password，cloud 校验后返回 token
   // 拿到 token 后 emit desktop:auth，cloud 端 socket.io 用 token 完成 socket 认证
-  private async login(userPassword: string): Promise<string | null> {
-    if (!this.url) return null;
+  // 返回: { token } 或 { error } —— 将实际错误原因逐层传递到 UI
+  private async login(userPassword: string): Promise<{ token: string } | { error: string }> {
+    if (!this.url) return { error: '云服务地址未配置' };
 
     try {
       // 忽略 TLS 证书校验：临时设全局环境变量（fetch 不支持 dispatcher 选项的类型声明）
@@ -372,18 +373,32 @@ export class DesktopSocket implements OutputChannel, HookChannel {
         getLogger().info(`[desktop-socket] /api/auth/login status=${res.status} body=${text.slice(0, 300)}`);
         if (parsed?.success && parsed.token) {
           getLogger().info(`[desktop-socket] login ok user=${this.userId}`);
-          return parsed.token as string;
+          return { token: parsed.token as string };
         }
-        getLogger().error(`[desktop-socket] login failed: ${parsed?.error ?? 'unknown'}`);
-        return null;
+        // API 返回了 JSON 但 success=false 或没有 token
+        const apiError = parsed?.error
+          || (res.status === 401 || res.status === 403 ? '用户名或密码错误' : '')
+          || (res.status >= 500 ? `服务器内部错误 (${res.status})` : `登录失败 (${res.status})`);
+        getLogger().error(`[desktop-socket] login failed: ${apiError}`);
+        return { error: apiError };
       } catch {
+        // 非 JSON 响应
         getLogger().warn(`[desktop-socket] /api/auth/login non-JSON response status=${res.status}: ${text.slice(0, 120)}`);
-        return null;
+        if (res.status >= 500) return { error: `服务器内部错误 (${res.status})` };
+        if (res.status === 404) return { error: '云服务地址不正确，接口不存在 (404)' };
+        return { error: `服务器返回了无效的响应格式 (${res.status})` };
       }
     } catch (err: any) {
-      getLogger().warn(`[desktop-socket] /api/auth/login error: ${err.message}`);
+      const msg = err?.message ?? String(err);
+      getLogger().warn(`[desktop-socket] /api/auth/login error: ${msg}`);
       notifyExternal({ source: 'cloud:auth', level: 'error', message: `云端登录失败: ${errMessage(err)}` });
-      return null;
+      if (msg.includes('timeout') || msg.includes('abort') || msg.includes('AbortError')) {
+        return { error: '连接超时，请检查网络或云服务地址是否正确' };
+      }
+      if (msg.includes('fetch') || msg.includes('ENOTFOUND') || msg.includes('ECONNREFUSED') || msg.includes('ECONNRESET')) {
+        return { error: `网络连接失败：${msg}` };
+      }
+      return { error: `登录请求失败：${msg}` };
     }
   }
 

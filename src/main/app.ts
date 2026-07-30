@@ -1161,10 +1161,10 @@ export class App {
       }
       // 保存 user_id（用于 socket 认证 + 机器人默认 ChatId）
       try { this.setCurrentUserAccount(userId); } catch { /* ignore */ }
-      // 调 cloud /api/auth/login 校验密码，成功会自动触发 socket 重连
-      const ok = await this.desktopSocket.verifyLogin(userId, password);
-      if (!ok) {
-        return { ok: false, error: '登录失败，请检查用户名和密码' };
+      // 调 cloud /api/auth/login 校验密码
+      const result = await this.desktopSocket.verifyLogin(userId, password);
+      if (!result.ok) {
+        return { ok: false, error: result.error };
       }
       return { ok: true };
     });
