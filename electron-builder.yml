@@ -36,3 +36,9 @@ artifactName: lynel-desktop-${version}-${arch}.${ext}
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+
+publish:
+  - provider: github
+    owner: akke
+    repo: lynel-desktop
+    releaseType: release
