@@ -1,9 +1,12 @@
 // src/main/terminal-screenshot.ts
 
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 
+// ESM 环境下没有全局 require，用 createRequire 构造一个。
 // @napi-rs/canvas 原生绑定在跨架构场景（如 Intel Mac）可能缺失，
 // 使用懒加载避免主进程启动时崩溃，截图功能在模块不可用时降级报错。
+const esmRequire = createRequire(import.meta.url);
 let canvasModule: any = null;
 let canvasLoadError: Error | null = null;
 
@@ -11,7 +14,7 @@ function loadCanvas(): any {
   if (canvasModule) return canvasModule;
   if (canvasLoadError) throw canvasLoadError;
   try {
-    canvasModule = require('@napi-rs/canvas');
+    canvasModule = esmRequire('@napi-rs/canvas');
   } catch (err: any) {
     canvasLoadError = err;
     throw err;

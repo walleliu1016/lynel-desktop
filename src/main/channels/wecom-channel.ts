@@ -718,6 +718,15 @@ export class WeComChannel implements OutputChannel, HookChannel {
     if (!entry) return;
     const { botId: wecomBotId, secret } = entry.config;
 
+    // 先断开旧连接，避免旧实例的内部重连与新实例竞争同一 botId，
+    // 导致企微服务器来回踢连接、卡片永远发送失败。
+    const oldClient = entry.wsClient;
+    if (oldClient) {
+      try { oldClient.disconnect(); } catch { /* 忽略 */ }
+      entry.wsClient = null;
+      entry.isConnected = false;
+    }
+
     logger.info(`[wecom-channel] connecting websocket for bot ${botId}...`);
     const [WSClient, setWeComWebSocket] = await Promise.all([getWSClientClass(), getSetWeComWebSocket()]);
 
@@ -727,7 +736,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
         secret,
         wsUrl: 'wss://openws.work.weixin.qq.com',
         heartbeatInterval: 30000,
-        maxReconnectAttempts: 3,
+        maxReconnectAttempts: 10,
         maxAuthFailureAttempts: 2,
         logger: {
           debug: () => {},
@@ -767,9 +776,15 @@ export class WeComChannel implements OutputChannel, HookChannel {
         reject(err);
       });
 
-      wsClient.on('close', () => {
+      // SDK 的 WSClient 发的是 'disconnected' 而非 'close'；
+      // 断开后清理状态，让 ensureBotWebSocket 下次能重建连接。
+      wsClient.on('disconnected', (reason: any) => {
+        logger.warn(`[wecom-channel] bot ${botId} disconnected: ${reason}`);
         entry.isConnected = false;
-        entry.wsClient = null;
+        // 仅当当前 entry.wsClient 仍指向本实例时才清空，避免清掉更新的连接
+        if (entry.wsClient === wsClient) {
+          entry.wsClient = null;
+        }
       });
 
       wsClient.connect();
