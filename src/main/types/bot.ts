@@ -16,4 +16,6 @@ export interface BotConnectionState {
   wsClient: any | null;
   connecting: Promise<void> | null;
   isConnected: boolean;
+  /** 主动重连定时器（断连 / SDK 重连耗尽后调度，指数退避） */
+  reconnectTimer: NodeJS.Timeout | null;
 }

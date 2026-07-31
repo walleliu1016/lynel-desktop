@@ -253,6 +253,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
     for (const [id, state] of this.botPool) {
       if (!newIds.has(id)) {
         logger.info(`[wecom-channel] removing bot ${id}`);
+        this.cancelReconnect(id);
         state.wsClient?.disconnect();
         this.botPool.delete(id);
       }
@@ -263,13 +264,14 @@ export class WeComChannel implements OutputChannel, HookChannel {
       if (existing) {
         if (existing.config.secret !== bot.secret || existing.config.botId !== bot.botId) {
           logger.info(`[wecom-channel] bot ${bot.id} credentials changed, reconnecting`);
+          this.cancelReconnect(bot.id);
           existing.wsClient?.disconnect();
           existing.wsClient = null;
         }
         existing.config = bot;
       } else {
         logger.info(`[wecom-channel] adding bot ${bot.id}`);
-        this.botPool.set(bot.id, { config: bot, wsClient: null, connecting: null, isConnected: false });
+        this.botPool.set(bot.id, { config: bot, wsClient: null, connecting: null, isConnected: false, reconnectTimer: null });
         this.connectBot(bot.id).catch((err) => {
           logger.error(`[wecom-channel] bot ${bot.id} connect failed:`, err);
           notifyExternal({ source: 'wecom:connect', level: 'warn', message: `企微 Bot 连接失败: ${errMessage(err)}` });
@@ -702,6 +704,8 @@ export class WeComChannel implements OutputChannel, HookChannel {
     if (entry.wsClient?.isConnected) return;
     if (entry.connecting) {
       await entry.connecting;
+      // 重连竞态：await 期间 SDK 可能已恢复，二次检查
+      if (entry.wsClient?.isConnected) return;
       return;
     }
     entry.connecting = this.connectBot(botId);
@@ -717,6 +721,9 @@ export class WeComChannel implements OutputChannel, HookChannel {
     const entry = this.botPool.get(botId);
     if (!entry) return;
     const { botId: wecomBotId, secret } = entry.config;
+
+    // 取消已存在的重连定时器
+    this.cancelReconnect(botId);
 
     // 先断开旧连接，避免旧实例的内部重连与新实例竞争同一 botId，
     // 导致企微服务器来回踢连接、卡片永远发送失败。
@@ -751,14 +758,39 @@ export class WeComChannel implements OutputChannel, HookChannel {
         reject(new Error('WeCom WebSocket 认证超时'));
       }, 15000);
 
-      wsClient.on('authenticated', () => {
-        logger.info(`[wecom-channel] websocket authenticated for bot ${botId}`);
+      // 标记初始 Promise 是否已 resolve（首次 authenticated → true，之后都是 reconnect）
+      let initialResolved = false;
+
+      const onAuthenticated = (): void => {
         clearTimeout(timer);
+        if (!initialResolved) {
+          // 首次认证
+          initialResolved = true;
+          entry.wsClient = wsClient;
+          entry.isConnected = true;
+          setWeComWebSocket(botId, wsClient);
+          this.cancelReconnect(botId);
+          logger.info(`[wecom-channel] websocket authenticated for bot ${botId}`);
+          notifyExternal({ source: 'wecom:connect', level: 'info', message: `企微 Bot ${botId.slice(0, 8)} 已连接`, throttleMs: 60_000 });
+          resolve();
+          return;
+        }
+        // 后续认证（SDK 自动重连成功）
+        if (entry.wsClient && entry.wsClient !== wsClient) {
+          // 另一个实例已接管，关闭这个陈旧的
+          logger.warn(`[wecom-channel] bot ${botId} stale authenticated (another instance took over), discarding`);
+          try { wsClient.disconnect(); } catch { /* 忽略 */ }
+          return;
+        }
+        // 同一实例的 SDK 自动重连成功——恢复状态
         entry.wsClient = wsClient;
         entry.isConnected = true;
-        setWeComWebSocket(botId, wsClient);
-        resolve();
-      });
+        this.cancelReconnect(botId);
+        logger.info(`[wecom-channel] bot ${botId} re-authenticated (SDK auto-reconnect success)`);
+        notifyExternal({ source: 'wecom:connect', level: 'info', message: `企微 Bot ${botId.slice(0, 8)} 已恢复连接`, throttleMs: 60_000 });
+      };
+
+      wsClient.on('authenticated', onAuthenticated);
 
       wsClient.on('message', (frame: any) => {
         try {
@@ -771,24 +803,78 @@ export class WeComChannel implements OutputChannel, HookChannel {
       this.registerCardEventListener(wsClient, botId);
 
       wsClient.on('error', (err: any) => {
-        clearTimeout(timer);
-        entry.isConnected = false;
-        reject(err);
+        if (!initialResolved) {
+          // 初始连接阶段出错：reject 让 ensureBotWebSocket 感知失败
+          clearTimeout(timer);
+          reject(err);
+          return;
+        }
+        // 后续阶段错误
+        if (err?.code === 'WS_RECONNECT_EXHAUSTED') {
+          // SDK 内部重连全部耗尽——WSClient 已死，不会自动恢复
+          logger.error(`[wecom-channel] bot ${botId} reconnect exhausted, scheduling proactive reconnect`);
+          if (entry.wsClient === wsClient) {
+            entry.wsClient = null;
+          }
+          entry.isConnected = false;
+          notifyExternal({ source: 'wecom:connect', level: 'error', message: `企微 Bot ${botId.slice(0, 8)} 重连耗尽，已离线，将自动重试`, throttleMs: 0 });
+          this.scheduleReconnect(botId, 30_000);
+        } else {
+          logger.error('[wecom-channel] ws error:', err);
+        }
       });
 
-      // SDK 的 WSClient 发的是 'disconnected' 而非 'close'；
-      // 断开后清理状态，让 ensureBotWebSocket 下次能重建连接。
+      // SDK 发 'disconnected'（正常 WS 断连 / 服务端踢号 / 我们手动 disconnect）
+      // 不清空 entry.wsClient：SDK 内部仍会尝试重连，成功后 authenticated 恢复状态
+      // 未恢复期间 isConnected=false 让 ensureBotWebSocket 能触发主动 connectBot
       wsClient.on('disconnected', (reason: any) => {
-        logger.warn(`[wecom-channel] bot ${botId} disconnected: ${reason}`);
+        const reasonStr = String(reason ?? '').slice(0, 80);
+        logger.warn(`[wecom-channel] bot ${botId} disconnected: ${reasonStr}`);
         entry.isConnected = false;
-        // 仅当当前 entry.wsClient 仍指向本实例时才清空，避免清掉更新的连接
-        if (entry.wsClient === wsClient) {
-          entry.wsClient = null;
-        }
+        notifyExternal({ source: 'wecom:disconnect', level: 'warn', message: `企微 WS 断开（${reasonStr}），正在重连...`, throttleMs: 30_000 });
+        // 调度主动重连兜底：SDK 内部自动重连如果失败/耗尽，这个 timer 会接管
+        this.scheduleReconnect(botId, 30_000);
+      });
+
+      wsClient.on('reconnecting', (attempt: number) => {
+        logger.info(`[wecom-channel] bot ${botId} SDK reconnecting attempt ${attempt}`);
       });
 
       wsClient.connect();
     });
+  }
+
+  /** 调度主动重连：30s 起步，指数退避，封顶 5 分钟 */
+  private scheduleReconnect(botId: string, delayMs: number): void {
+    const entry = this.botPool.get(botId);
+    if (!entry) return;
+    if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
+    entry.reconnectTimer = setTimeout(() => {
+      entry.reconnectTimer = null;
+      // 已连上就不需要重连
+      if (entry.wsClient?.isConnected) return;
+      // 已有连接流程在进行
+      if (entry.connecting) return;
+      logger.info(`[wecom-channel] scheduled reconnect for bot ${botId} after ${delayMs}ms`);
+      entry.connecting = this.connectBot(botId)
+        .catch((err) => {
+          logger.error(`[wecom-channel] bot ${botId} scheduled reconnect failed:`, err);
+          notifyExternal({ source: 'wecom:reconnect', level: 'warn', message: `企微 Bot ${botId.slice(0, 8)} 重连失败，${Math.min(delayMs * 2, 300_000) / 1000}s 后重试`, throttleMs: 30_000 });
+          // 指数退避：30s → 60s → 120s → 240s → 300s（封顶）
+          this.scheduleReconnect(botId, Math.min(delayMs * 2, 300_000));
+        })
+        .finally(() => {
+          entry.connecting = null;
+        });
+    }, delayMs);
+  }
+
+  /** 取消待执行的主动重连 */
+  private cancelReconnect(botId: string): void {
+    const entry = this.botPool.get(botId);
+    if (!entry || !entry.reconnectTimer) return;
+    clearTimeout(entry.reconnectTimer);
+    entry.reconnectTimer = null;
   }
 
   /** 外部调用：断开所有 bot 连接 */
@@ -800,6 +886,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
   private disconnectAll(): void {
     for (const [id, state] of this.botPool) {
       logger.info(`[wecom-channel] disconnecting bot ${id}`);
+      this.cancelReconnect(id);
       state.wsClient?.disconnect();
       state.wsClient = null;
       state.isConnected = false;
