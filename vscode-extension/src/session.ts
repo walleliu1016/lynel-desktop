@@ -1,56 +1,43 @@
-import { PtyProcess, PtySize } from './pty-bridge.js';
-
 export type SessionState = 'idle' | 'running' | 'awaiting_permission' | 'done';
 
 export interface Session {
   id: string;
   workDir: string;
   state: SessionState;
-  process: PtyProcess | null;
   lastHookAt: number;
-  buffer: string;
-  cols: number;
-  rows: number;
+  // WeComChannel 兼容：检查 session 是否仍在运行
+  // VS Code 中无 PTY 进程，用此标记表示终端仍活跃
+  process: { pid: number } | null;
 }
-
-const MAX_BUFFER = 65536;
 
 const sessions = new Map<string, Session>();
 
-export function appendBuffer(id: string, data: string): void {
-  const s = sessions.get(id);
-  if (!s) return;
-  s.buffer += data;
-  if (s.buffer.length > MAX_BUFFER) {
-    s.buffer = s.buffer.slice(s.buffer.length - MAX_BUFFER);
-  }
+// 终端消息发送回调（由 TerminalManager 注入）
+let sessionSender: ((id: string, text: string) => void) | null = null;
+let sessionInputWriter: ((id: string, data: string) => void) | null = null;
+
+export function setSessionSender(fn: (id: string, text: string) => void): void {
+  sessionSender = fn;
 }
 
-export function getBuffer(id: string): string {
-  return sessions.get(id)?.buffer ?? '';
+export function setSessionInputWriter(fn: (id: string, data: string) => void): void {
+  sessionInputWriter = fn;
 }
 
 export function newSession(id: string, workDir: string): Session {
-  return {
-    id, workDir, state: 'idle', process: null,
-    lastHookAt: 0, buffer: '', cols: 80, rows: 24,
-  };
+  return { id, workDir, state: 'idle', lastHookAt: 0, process: { pid: 0 } };
 }
 
 export function register(session: Session): void { sessions.set(session.id, session); }
 export function lookup(id: string): Session | undefined { return sessions.get(id); }
 
 export function remove(id: string): void {
-  close(id);
+  const s = sessions.get(id);
+  if (s) s.process = null;
   sessions.delete(id);
 }
 
 export function list(): Session[] { return Array.from(sessions.values()); }
-
-export function setProcess(id: string, proc: PtyProcess, size?: PtySize): void {
-  const s = sessions.get(id);
-  if (s) { s.process = proc; s.state = 'running'; if (size) { s.cols = size.cols; s.rows = size.rows; } }
-}
 
 export function touch(id: string): void {
   const s = sessions.get(id);
@@ -62,32 +49,24 @@ export function setState(id: string, state: SessionState): void {
   if (s) s.state = state;
 }
 
-export function send(id: string, prompt: string): void {
-  const s = sessions.get(id);
-  if (!s || !s.process) throw new Error(`session ${id} not found or no process`);
-  const normalized = /[\r\n]$/.test(prompt) ? prompt : prompt + '\r';
-  s.process.write(normalized);
+/** 向终端发送文本，自动补回车（企业微信消息路由用） */
+export function send(id: string, text: string): void {
+  if (!sessionSender) throw new Error('session sender not set');
+  sessionSender(id, text);
 }
 
+/** 向终端写入原始输入（控制字符等） */
 export function writeInput(id: string, data: string): void {
-  const s = sessions.get(id);
-  if (!s || !s.process) throw new Error(`session ${id} not found or no process`);
-  s.process.write(data);
+  if (!sessionInputWriter) throw new Error('session input writer not set');
+  sessionInputWriter(id, data);
 }
 
-export function resize(id: string, cols: number, rows: number): void {
-  const s = sessions.get(id);
-  if (!s) return;
-  s.cols = cols; s.rows = rows;
-  if (s.process) s.process.resize(cols, rows);
+/** 获取终端 buffer（VS Code 终端不支持读取，返回空串） */
+export function getBuffer(_id: string): string {
+  return '';
 }
 
-export function close(id: string, signal?: string): void {
-  const s = sessions.get(id);
-  if (s?.process) { s.process.kill(signal); s.process = null; s.state = 'done'; }
-}
-
-export function getSize(id: string): { cols: number; rows: number } | undefined {
-  const s = sessions.get(id);
-  return s ? { cols: s.cols, rows: s.rows } : undefined;
+/** 获取终端尺寸 */
+export function getSize(_id: string): { cols: number; rows: number } | undefined {
+  return { cols: 80, rows: 24 };
 }

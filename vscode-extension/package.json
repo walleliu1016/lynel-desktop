@@ -5,7 +5,7 @@
   "version": "0.0.14",
   "publisher": "lynel",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.93.0"
   },
   "categories": [
     "Other"
@@ -31,6 +31,18 @@
       {
         "command": "lynel.showSettings",
         "title": "Lynel: Open Settings"
+      },
+      {
+        "command": "lynel.bindWecomBot",
+        "title": "Lynel: Bind WeCom Bot"
+      },
+      {
+        "command": "lynel.manageWecomBots",
+        "title": "Lynel: Manage WeCom Bots"
+      },
+      {
+        "command": "lynel.switchBotBinding",
+        "title": "Lynel: Switch Bot Binding"
       }
     ],
     "configuration": {
@@ -59,12 +71,13 @@
   },
   "dependencies": {
     "express": "^4.21.0",
-    "node-pty": "^1.0.0"
+    "@wecom/aibot-node-sdk": "^1.0.7",
+    "@wecom/wecom-openclaw-plugin": "^20206.7.201"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^22.10.0",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.93.0",
     "@vscode/test-electron": "^2.4.0",
     "@vscode/vsce": "^3.9.2",
     "typescript": "^5.3.3"
