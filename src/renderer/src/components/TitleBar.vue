@@ -2,9 +2,6 @@
   <div class="titlebar" :class="{ 'is-mac': isMac, center: props.center }">
     <div class="titlebar-left">
       <span v-if="!props.center" class="brand-name"><span class="brand-lynel">Lynel</span> <span class="brand-desktop">Desktop</span></span>
-      <div v-if="runningCount > 0" class="states">
-        <span class="pill run"><i />{{ runningCount }} 个 Session 运行中</span>
-      </div>
     </div>
     <div class="titlebar-right">
       <button v-if="props.showGuide" class="iconbtn" aria-label="使用指南" title="使用指南" @click="$emit('guide')">
@@ -48,7 +45,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useWindowState } from '../composables/useWindowState'
-import { useSessionsStore } from '../stores/sessions'
 import { CloudConnectionState, GetSettings } from '../composables/useElectron'
 import Icon from './Icon.vue'
 
@@ -56,21 +52,12 @@ const props = defineProps<{ username?: string; showGuide?: boolean; center?: boo
 defineEmits<{ (e: 'settings'): void; (e: 'guide'): void; (e: 'logout'): void }>()
 
 const { isMaximized, minimize, toggleMaximize, hide } = useWindowState()
-const sessions = useSessionsStore()
 
 const isMac = computed(() => navigator.platform.toLowerCase().includes('mac'))
 
 const avatar = computed(() => {
   const name = props.username || ''
   return name.slice(0, 2).toUpperCase() || 'U'
-})
-
-const runningCount = computed(() => {
-  let count = 0
-  for (const [id, st] of Object.entries(sessions.state)) {
-    if (st !== 'idle' && st !== 'done' && st !== 'ended') count++
-  }
-  return count
 })
 
 // 云服务连接状态：仅 cloud_service_enabled 时显示
@@ -154,15 +141,6 @@ onBeforeUnmount(() => {
 .titlebar-left { gap: 16px; }
 .brand-name { font-weight: 800; font-size: 18px; color: var(--accent); letter-spacing: -0.3px; transform: translateY(10px); }
 .brand-desktop { font-weight: 500; color: var(--status-error); }
-.states { display: flex; align-items: center; gap: 8px; transform: translateY(10px); }
-.pill {
-  height: 28px; padding: 0 10px;
-  display: flex; align-items: center; gap: 6px;
-  border-radius: 20px; font-size: 11px; font-weight: 650;
-}
-.pill i { width: 6px; height: 6px; border-radius: 50%; }
-.pill.run { border: 1px solid #a7f3d0; background: var(--status-success-soft); color: #047857; }
-.pill.run i { background: var(--status-success); }
 .iconbtn {
   width: 32px; height: 32px;
   border: 1px solid var(--border); border-radius: 9px;

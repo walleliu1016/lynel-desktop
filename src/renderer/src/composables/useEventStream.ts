@@ -95,7 +95,7 @@ export function useEventStream() {
       } catch { /* 忽略格式错误 */ }
     }))
 
-    // 主进程会话状态变化实时同步到 store，保证标题栏运行中数量准确。
+    // 主进程会话状态变化实时同步到 store，用于会话列表状态展示。
     cleanups.push(EventsOn('sessions:state:changed', (id: string, st: string) => {
       const current = sessions.state[id]
       let normalized: SessionState
