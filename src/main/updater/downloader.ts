@@ -5,18 +5,25 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const require = createRequire(import.meta.url);
-const { autoUpdater } = require('electron-updater') as {
-  autoUpdater: {
-    setFeedURL(opts: { provider: string; url: string }): void;
-    on(event: 'download-progress', cb: (progress: { percent: number; bytesPerSecond: number }) => void): void;
-    on(event: 'update-downloaded', cb: () => void): void;
-    on(event: 'error', cb: (err: Error) => void): void;
-    checkForUpdates(): Promise<unknown>;
-    downloadUpdate(): Promise<unknown>;
-    quitAndInstall(): void;
-  };
-};
+const esmRequire = createRequire(import.meta.url);
+
+// electron-updater 的 autoUpdater getter 首次访问时会 new NsisUpdater/MacUpdater，
+// 构造时调用 app.getVersion()。在无 Electron runtime 的测试环境会抛错。
+// 用懒加载只在真正下载/安装时才访问，避免模块加载阶段触发副作用。
+interface AutoUpdater {
+  setFeedURL(opts: { provider: string; url: string }): void;
+  on(event: 'download-progress', cb: (progress: { percent: number; bytesPerSecond: number }) => void): void;
+  on(event: 'update-downloaded', cb: () => void): void;
+  on(event: 'error', cb: (err: Error) => void): void;
+  checkForUpdates(): Promise<unknown>;
+  downloadUpdate(): Promise<unknown>;
+  quitAndInstall(): void;
+}
+
+function getAutoUpdater(): AutoUpdater {
+  const mod = esmRequire('electron-updater') as { autoUpdater: AutoUpdater };
+  return mod.autoUpdater;
+}
 
 const logger = getLogger();
 
@@ -38,6 +45,7 @@ export function downloadUpdate(
   onProgress: (state: UpdateState) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    const autoUpdater = getAutoUpdater();
     const tempDir = writeTempLatestYml(info);
 
     autoUpdater.setFeedURL({
@@ -92,5 +100,5 @@ export function downloadUpdate(
 }
 
 export function quitAndInstall(): void {
-  autoUpdater.quitAndInstall();
+  getAutoUpdater().quitAndInstall();
 }
