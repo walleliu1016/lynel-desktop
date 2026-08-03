@@ -1,54 +1,28 @@
-import * as vscode from 'vscode';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import * as vscode from 'vscode';
+import { readDesktopBots, writeDesktopBots, type BotConfig } from './desktop-data.js';
 
-export interface BotConfig {
-  id: string;
-  name: string;
-  source: 'wecom';
-  botId: string;
-  secret: string;
-  chatId: string;
-  createdAt: number;
-  updatedAt: number;
-}
+export { type BotConfig } from './desktop-data.js';
 
 export class WecomManager implements vscode.Disposable {
   private bots = new Map<string, BotConfig>();
-  private settingsPath: string;
   private disposables: vscode.Disposable[] = [];
   onBotsChanged: ((bots: BotConfig[]) => void) | null = null;
 
-  constructor(dataDir: string) {
-    this.settingsPath = path.join(dataDir, 'wecom-bots.json');
+  constructor() {
     this.loadBots();
   }
 
   private loadBots(): void {
-    try {
-      if (fs.existsSync(this.settingsPath)) {
-        const raw = JSON.parse(fs.readFileSync(this.settingsPath, 'utf8'));
-        const entries = raw.wecomBots || {};
-        for (const [id, bot] of Object.entries(entries)) {
-          this.bots.set(id, bot as BotConfig);
-        }
-      }
-    } catch (err) {
-      console.error('[Lynel] load wecom bots failed:', err);
+    const bots = readDesktopBots();
+    this.bots.clear();
+    for (const [id, bot] of Object.entries(bots)) {
+      this.bots.set(id, bot);
     }
   }
 
   private saveBots(): void {
-    try {
-      const dir = path.dirname(this.settingsPath);
-      fs.mkdirSync(dir, { recursive: true });
-      const data = { wecomBots: Object.fromEntries(this.bots) };
-      fs.writeFileSync(this.settingsPath, JSON.stringify(data, null, 2), 'utf8');
-    } catch (err) {
-      console.error('[Lynel] save wecom bots failed:', err);
-    }
+    writeDesktopBots(Object.fromEntries(this.bots));
   }
 
   async addBot(): Promise<void> {

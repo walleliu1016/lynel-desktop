@@ -6,6 +6,17 @@ function getWorkDir(): string {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
 }
 
+function resolveSessionId(arg: unknown): string | undefined {
+  if (typeof arg === 'string') return arg;
+  if (arg && typeof arg === 'object') {
+    const anyArg = arg as Record<string, any>;
+    // inline context menu 传的是 TreeItem，session id 在 anyArg.session.id
+    // 直接传 LynelSessionItem 时 id 在 anyArg.id
+    return anyArg.session?.id ?? anyArg.id;
+  }
+  return undefined;
+}
+
 export function registerCommands(
   context: vscode.ExtensionContext,
   terminalManager: TerminalManager,
@@ -50,6 +61,117 @@ export function registerCommands(
   context.subscriptions.push(
     vscode.commands.registerCommand('lynel.switchBotBinding', async () => {
       await terminalManager.switchBotBinding();
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lynel.focusTerminal', (arg: unknown) => {
+      const sessionId = resolveSessionId(arg);
+      console.log('[Lynel] focusTerminal', sessionId, 'arg=', arg);
+      if (!sessionId) return;
+      const terminal = terminalManager.getTerminal(sessionId);
+      if (terminal) {
+        terminal.show();
+      } else {
+        void vscode.window.showWarningMessage('未找到对应的 Lynel 终端会话');
+      }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lynel.focusOrResumeTerminal', async (arg: unknown) => {
+      const sessionId = resolveSessionId(arg);
+      console.log('[Lynel] focusOrResumeTerminal', sessionId, 'arg=', arg);
+      if (!sessionId) {
+        void vscode.window.showWarningMessage('未选择会话');
+        return;
+      }
+      const terminal = terminalManager.getTerminal(sessionId);
+      if (terminal) {
+        terminal.show();
+      } else {
+        try {
+          await terminalManager.resumeSession(sessionId);
+        } catch (err: any) {
+          void vscode.window.showErrorMessage(`恢复会话失败: ${err.message ?? err}`);
+        }
+      }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lynel.closeTerminal', (arg: unknown) => {
+      const sessionId = resolveSessionId(arg);
+      console.log('[Lynel] closeTerminal', sessionId, 'arg=', arg);
+      if (!sessionId) return;
+      const terminal = terminalManager.getTerminal(sessionId);
+      if (terminal) {
+        terminal.dispose();
+      }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lynel.bindBotToSession', async (arg: unknown) => {
+      const sessionId = resolveSessionId(arg);
+      console.log('[Lynel] bindBotToSession', sessionId, 'arg=', arg);
+      if (!sessionId) return;
+      const bots = wecomManager.getBots();
+      const currentBotId = terminalManager.getBindingInfo(sessionId)?.botId;
+
+      if (bots.length === 0 && !currentBotId) {
+        const add = await vscode.window.showInformationMessage('没有已绑定的企业微信 Bot，是否现在绑定？', '绑定 Bot');
+        if (add) {
+          await vscode.commands.executeCommand('lynel.bindWecomBot');
+        }
+        return;
+      }
+
+      // 已绑定的 Bot 置顶，并提供「解除绑定」入口
+      const sortedBots = currentBotId
+        ? [...bots.filter((b) => b.id === currentBotId), ...bots.filter((b) => b.id !== currentBotId)]
+        : bots;
+      const items: vscode.QuickPickItem[] = [];
+      if (currentBotId) {
+        items.push({ label: '$(unplug) 解除绑定', description: '移除当前 Bot 绑定' });
+      }
+      items.push(...sortedBots.map((b) => ({
+        label: `$(comment-discussion) ${b.name}`,
+        description: `Bot ID: ${b.botId}${b.id === currentBotId ? '（当前）' : ''}`,
+      })));
+      if (!currentBotId) {
+        items.push({ label: '$(circle-slash) 不绑定 Bot', description: '保持不绑定' });
+      }
+
+      const pick = await vscode.window.showQuickPick(items, {
+        placeHolder: '选择要绑定的企业微信 Bot',
+      });
+      if (!pick) return;
+
+      if (pick.label === '$(unplug) 解除绑定' || pick.label === '$(circle-slash) 不绑定 Bot') {
+        if (terminalManager.unbindSession(sessionId)) {
+          void vscode.window.showInformationMessage(`已解除会话 ${sessionId.slice(0, 8)} 的 Bot 绑定`);
+        }
+        return;
+      }
+
+      const bot = bots.find((b) => pick.label.includes(b.name));
+      if (bot) {
+        if (terminalManager.bindSession(sessionId, bot.id, bot.name)) {
+          void vscode.window.showInformationMessage(`会话 ${sessionId.slice(0, 8)} 已绑定 Bot "${bot.name}"`);
+        }
+      }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lynel.unbindBotFromSession', (arg: unknown) => {
+      const sessionId = resolveSessionId(arg);
+      console.log('[Lynel] unbindBotFromSession', sessionId, 'arg=', arg);
+      if (!sessionId) return;
+      if (terminalManager.unbindSession(sessionId)) {
+        void vscode.window.showInformationMessage(`已解除会话 ${sessionId.slice(0, 8)} 的 Bot 绑定`);
+      }
     }),
   );
 }

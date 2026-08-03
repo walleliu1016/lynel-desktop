@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getConfig } from './config.js';
 import { newSession, register, remove, setSessionSender, setSessionInputWriter, type Session } from './session.js';
@@ -7,6 +8,7 @@ import { createSettingsOverrideFile } from './settings-helper.js';
 import type { WecomManager } from './wecom-manager.js';
 import type { WeComChannel } from './channels/wecom-channel.js';
 import { getLogger } from './log.js';
+import { addRecentSession, readRecentSessions, updateSessionBotBinding, type RecentSessionRecord } from './desktop-data.js';
 
 const logger = getLogger().scope('terminal');
 
@@ -50,6 +52,12 @@ export class TerminalManager implements vscode.Disposable {
     const sessionId = randomUUID();
     const cwd = workDir ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
     const config = getConfig();
+
+    // 如果用户没指定 botId，尝试从 Desktop 的 recent-sessions 读取历史绑定
+    if (!botId) {
+      botId = readRecentSessions().find((r) => r.sessionId === sessionId)?.botId;
+    }
+
     const botName = botId ? this.wecomManager.getBot(botId)?.name : undefined;
     const label = `Claude ${sessionId.slice(0, 8)}`;
     const name = botName ? `${label} [${botName}]` : label;
@@ -76,7 +84,21 @@ export class TerminalManager implements vscode.Disposable {
     // 绑定 bot 到 session
     if (botId && this.wecomChannel) {
       this.wecomChannel.setSessionBot(sessionId, botId);
+      updateSessionBotBinding(sessionId, botId);
     }
+
+    // 同步到 Desktop 的 recent-sessions.json
+    void addRecentSession({
+      sessionId,
+      workdir: cwd,
+      project: path.basename(cwd) || cwd,
+      aiTitle: '',
+      firstPrompt: '',
+      userTitle: name,
+      lastOpenedAt: Date.now(),
+      state: 'running',
+      botId,
+    });
 
     const proxyUrl = proxyPort > 0 ? `http://127.0.0.1:${proxyPort}` : '';
     if (proxyUrl) {
@@ -111,30 +133,47 @@ export class TerminalManager implements vscode.Disposable {
     return terminal;
   }
 
-  /** 查询会话的 bot 绑定信息 */
+  /** 查询会话的 bot 绑定信息（优先从 recent-sessions.json 读取） */
   getBindingInfo(sessionId: string): { botId: string; botName: string } | undefined {
-    const entry = this.terminals.get(sessionId);
-    if (!entry?.botId) return undefined;
-    const bot = this.wecomManager.getBot(entry.botId);
+    const botId = this.terminals.get(sessionId)?.botId ?? readRecentSessions().find((r) => r.sessionId === sessionId)?.botId;
+    if (!botId) return undefined;
+    const bot = this.wecomManager.getBot(botId);
     if (!bot) return undefined;
-    return { botId: entry.botId, botName: bot.name };
+    return { botId, botName: bot.name };
   }
 
   /** 列出所有会话→Bot 绑定 */
   listBindings(): { sessionId: string; sessionLabel: string; botId: string; botName: string; workDir: string }[] {
     const result: { sessionId: string; sessionLabel: string; botId: string; botName: string; workDir: string }[] = [];
+    const seen = new Set<string>();
+    // 当前运行的终端
     for (const [id, entry] of this.terminals) {
       if (entry.botId) {
         const bot = this.wecomManager.getBot(entry.botId);
         if (bot) {
+          seen.add(id);
           result.push({
             sessionId: id,
-            sessionLabel: `Claude ${id.slice(0, 8)}`,
+            sessionLabel: entry.terminal.name,
             botId: entry.botId,
             botName: bot.name,
             workDir: entry.session.workDir,
           });
         }
+      }
+    }
+    // recent-sessions 里的绑定
+    for (const r of readRecentSessions()) {
+      if (!r.botId || seen.has(r.sessionId)) continue;
+      const bot = this.wecomManager.getBot(r.botId);
+      if (bot) {
+        result.push({
+          sessionId: r.sessionId,
+          sessionLabel: r.userTitle || `Claude ${r.sessionId.slice(0, 8)}`,
+          botId: r.botId,
+          botName: bot.name,
+          workDir: r.workdir,
+        });
       }
     }
     return result;
@@ -145,14 +184,15 @@ export class TerminalManager implements vscode.Disposable {
     // 如果没有指定会话，让用户选择
     let targetId = sessionId;
     if (!targetId) {
-      const entries = Array.from(this.terminals.entries()).map(([id, e]) => ({
-        label: `Claude ${id.slice(0, 8)}`,
-        description: e.session.workDir,
-        detail: e.botId ? `当前绑定: ${this.wecomManager.getBot(e.botId)?.name ?? '未知'}` : '未绑定',
-        sessionId: id,
+      const sessions = this.listAllSessions();
+      const entries = sessions.map((s) => ({
+        label: s.userTitle || s.label,
+        description: s.workDir,
+        detail: s.botId ? `当前绑定: ${this.wecomManager.getBot(s.botId)?.name ?? '未知'}` : '未绑定',
+        sessionId: s.id,
       }));
       if (entries.length === 0) {
-        vscode.window.showInformationMessage('没有活跃的终端会话');
+        vscode.window.showInformationMessage('没有会话');
         return;
       }
       const pick = await vscode.window.showQuickPick(entries, {
@@ -173,62 +213,48 @@ export class TerminalManager implements vscode.Disposable {
     ];
 
     const pick = await vscode.window.showQuickPick(items, {
-      placeHolder: `为 Claude ${targetId.slice(0, 8)} 选择 Bot`,
+      placeHolder: `为会话选择 Bot`,
     });
     if (!pick) return;
 
-    const entry = this.terminals.get(targetId);
-    if (!entry) return;
-
     if (pick.label === '$(circle-slash) 取消绑定') {
-      if (entry.botId && this.wecomChannel) {
-        this.wecomChannel.clearSessionBot(targetId);
-      }
-      entry.botId = undefined;
-      vscode.window.showInformationMessage(`已取消会话 ${targetId.slice(0, 8)} 的 Bot 绑定`);
+      this.applyBotBinding(targetId, undefined);
+      vscode.window.showInformationMessage(`已取消会话的 Bot 绑定`);
       return;
     }
 
     const newBot = bots.find((b) => pick.label.includes(b.name));
     if (!newBot) return;
 
-    // 清除旧绑定
-    if (entry.botId && this.wecomChannel) {
-      this.wecomChannel.clearSessionBot(targetId);
-    }
-    // 设置新绑定
-    if (this.wecomChannel) {
-      this.wecomChannel.setSessionBot(targetId, newBot.id);
-    }
-    entry.botId = newBot.id;
+    this.applyBotBinding(targetId, newBot.id);
     vscode.window.showInformationMessage(
-      `会话 ${targetId.slice(0, 8)} 已绑定 Bot "${newBot.name}"`,
+      `会话已绑定 Bot "${newBot.name}"`,
     );
   }
 
   /** 直接绑定会话到 Bot（不弹出 QuickPick） */
   bindSession(sessionId: string, botId: string, botName: string): boolean {
-    const entry = this.terminals.get(sessionId);
-    if (!entry) return false;
-    if (entry.botId && this.wecomChannel) {
-      this.wecomChannel.clearSessionBot(sessionId);
-    }
-    if (this.wecomChannel) {
-      this.wecomChannel.setSessionBot(sessionId, botId);
-    }
-    entry.botId = botId;
-    return true;
+    return this.applyBotBinding(sessionId, botId);
   }
 
   /** 解绑指定会话的 Bot */
   unbindSession(sessionId: string): boolean {
+    return this.applyBotBinding(sessionId, undefined);
+  }
+
+  private applyBotBinding(sessionId: string, botId: string | undefined): boolean {
     const entry = this.terminals.get(sessionId);
-    if (!entry) return false;
-    if (entry.botId && this.wecomChannel) {
-      this.wecomChannel.clearSessionBot(sessionId);
+    if (entry) {
+      if (entry.botId && this.wecomChannel) {
+        this.wecomChannel.clearSessionBot(sessionId);
+      }
+      if (botId && this.wecomChannel) {
+        this.wecomChannel.setSessionBot(sessionId, botId);
+      }
+      entry.botId = botId;
     }
-    entry.botId = undefined;
-    return true;
+    // 无论是否是当前运行的终端，都同步到 recent-sessions.json
+    return updateSessionBotBinding(sessionId, botId);
   }
 
   getSessionIds(): string[] {
@@ -299,6 +325,150 @@ export class TerminalManager implements vscode.Disposable {
   }
 
   getTerminalCount(): number { return this.terminals.size; }
+
+  /** 列出当前 VS Code 运行的会话 */
+  listSessions(): { id: string; label: string; project: string; workDir: string; botId?: string; isRunning: boolean }[] {
+    const result: { id: string; label: string; project: string; workDir: string; botId?: string; isRunning: boolean }[] = [];
+    for (const [id, entry] of this.terminals) {
+      const project = path.basename(entry.session.workDir) || entry.session.workDir;
+      result.push({
+        id,
+        label: entry.terminal.name,
+        project,
+        workDir: entry.session.workDir,
+        botId: entry.botId,
+        isRunning: true,
+      });
+    }
+    return result;
+  }
+
+  /** 合并 recent-sessions.json 与当前运行会话，用于 TreeView */
+  listAllSessions(): { id: string; label: string; title: string; project: string; workDir: string; botId?: string; botName?: string; isRunning: boolean; userTitle?: string; lastOpenedAt: number; meta: RecentSessionRecord }[] {
+    const result = new Map<string, { id: string; label: string; title: string; project: string; workDir: string; botId?: string; botName?: string; isRunning: boolean; userTitle?: string; lastOpenedAt: number; meta: RecentSessionRecord }>();
+    for (const s of this.listSessions()) {
+      const project = s.project || path.basename(s.workDir) || s.workDir;
+      const meta: RecentSessionRecord = {
+        sessionId: s.id,
+        workdir: s.workDir,
+        project,
+        aiTitle: '',
+        firstPrompt: '',
+        userTitle: s.label,
+        lastOpenedAt: Date.now(),
+        state: 'running',
+        botId: s.botId,
+      };
+      result.set(s.id, {
+        id: s.id,
+        label: s.label,
+        title: s.label || project,
+        project,
+        workDir: s.workDir,
+        botId: s.botId,
+        botName: s.botId ? this.wecomManager.getBot(s.botId)?.name : undefined,
+        isRunning: true,
+        userTitle: s.label,
+        lastOpenedAt: Date.now(),
+        meta,
+      });
+    }
+    for (const r of readRecentSessions()) {
+      const project = r.project || path.basename(r.workdir) || r.workdir;
+      const title = r.userTitle || r.aiTitle || r.firstPrompt || project || r.sessionId.slice(0, 8);
+      if (result.has(r.sessionId)) {
+        const existing = result.get(r.sessionId)!;
+        existing.botId = existing.botId || r.botId;
+        existing.botName = existing.botId ? this.wecomManager.getBot(existing.botId)?.name : undefined;
+        existing.userTitle = r.userTitle || existing.userTitle;
+        existing.title = title;
+        existing.lastOpenedAt = r.lastOpenedAt;
+        existing.meta = { ...existing.meta, ...r };
+        continue;
+      }
+      result.set(r.sessionId, {
+        id: r.sessionId,
+        label: title,
+        title,
+        project,
+        workDir: r.workdir,
+        botId: r.botId,
+        botName: r.botId ? this.wecomManager.getBot(r.botId)?.name : undefined,
+        isRunning: false,
+        userTitle: r.userTitle,
+        lastOpenedAt: r.lastOpenedAt,
+        meta: r,
+      });
+    }
+    return Array.from(result.values()).sort((a, b) => {
+      if (a.isRunning !== b.isRunning) return a.isRunning ? -1 : 1;
+      return (a.userTitle || a.label).localeCompare(b.userTitle || b.label);
+    });
+  }
+
+  /** 恢复一个 Desktop 或 recent-sessions 里的会话 */
+  async resumeSession(sessionId: string, workDir?: string): Promise<vscode.Terminal | undefined> {
+    if (this.terminals.has(sessionId)) {
+      this.terminals.get(sessionId)!.terminal.show();
+      return this.terminals.get(sessionId)!.terminal;
+    }
+
+    const recent = readRecentSessions().find((r) => r.sessionId === sessionId);
+    const cwd = workDir ?? recent?.workdir ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+    const config = getConfig();
+    const botId = recent?.botId;
+    const botName = botId ? this.wecomManager.getBot(botId)?.name : undefined;
+    const label = `Claude ${sessionId.slice(0, 8)}`;
+    const name = botName ? `${label} [${botName}]` : label;
+    logger.info(`resumeTerminal ${name} cwd=${cwd}${botId ? ` bot=${botId.slice(0, 8)}` : ''} hookPort=${this.hookPort}`);
+
+    const upstream = resolveAnthropicBaseUrl();
+    const proxy = new APIProxy(sessionId, cwd, upstream);
+    let proxyPort = 0;
+    try { proxyPort = await proxy.start(); } catch (err) {
+      logger.error('APIProxy start failed:', err);
+    }
+
+    const session = newSession(sessionId, cwd);
+    register(session);
+
+    if (botId && this.wecomChannel) {
+      this.wecomChannel.setSessionBot(sessionId, botId);
+    }
+
+    void addRecentSession({
+      sessionId,
+      workdir: cwd,
+      project: path.basename(cwd) || cwd,
+      aiTitle: recent?.aiTitle ?? '',
+      firstPrompt: recent?.firstPrompt ?? '',
+      userTitle: name,
+      lastOpenedAt: Date.now(),
+      state: 'running',
+      botId,
+    });
+
+    const proxyUrl = proxyPort > 0 ? `http://127.0.0.1:${proxyPort}` : '';
+    const override = proxyUrl
+      ? createSettingsOverrideFile(this.hookPort, proxyUrl)
+      : createSettingsOverrideFile(this.hookPort, '');
+    const shellArgs = ['--resume', sessionId, ...override.args];
+
+    const terminal = vscode.window.createTerminal({
+      name,
+      shellPath: config.claudeBin,
+      shellArgs,
+      cwd,
+      iconPath: new vscode.ThemeIcon('comment-discussion'),
+    });
+
+    this.terminals.set(sessionId, {
+      terminal, proxy, session, cleanupSettings: override.cleanup, botId,
+    });
+    this._onDidChangeCount.fire(this.terminals.size);
+    terminal.show();
+    return terminal;
+  }
 
   closeAll(): void {
     for (const [id, entry] of this.terminals) {

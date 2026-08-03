@@ -10,7 +10,7 @@ export interface LynelConfig {
 export function getConfig(): LynelConfig {
   const cfg = vscode.workspace.getConfiguration('lynel');
   const dataDir = cfg.get<string>('dataDir', '') ||
-    path.join(os.homedir(), '.lynel-vscode');
+    path.join(os.homedir(), '.lynel-desktop');
   return {
     claudeBin: cfg.get<string>('claudeBin', 'claude'),
     dataDir,

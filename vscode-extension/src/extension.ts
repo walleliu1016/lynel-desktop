@@ -1,3 +1,6 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { TerminalManager } from './terminal-manager.js';
 import { StatusBarManager } from './status-bar.js';
@@ -12,11 +15,14 @@ import { getLogger, disposeLogger } from './log.js';
 
 const logger = getLogger();
 
+import { LynelTreeDataProvider } from './tree-provider.js';
+
 let terminalManager: TerminalManager;
 let statusBar: StatusBarManager;
 let hookServer: HookServer;
 let wecomManager: WecomManager;
 let wecomChannel: WeComChannel;
+let treeProvider: LynelTreeDataProvider;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   logger.info('activate start');
@@ -48,7 +54,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   console.log('[Lynel] HookServer started on port', hookPort);
 
   const config = getConfig();
-  wecomManager = new WecomManager(config.dataDir);
+  wecomManager = new WecomManager();
 
   // 初始化 WeComChannel 并连接已配置的 bots
   wecomChannel = new WeComChannel({ enabled: true });
@@ -99,10 +105,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   terminalManager = new TerminalManager(hookPort, wecomManager, wecomChannel);
   statusBar = new StatusBarManager(terminalManager);
+  treeProvider = new LynelTreeDataProvider(terminalManager);
 
+  // 尽早注册命令，避免后续初始化失败导致按钮/菜单失效
   registerCommands(context, terminalManager, wecomManager);
 
-  context.subscriptions.push(terminalManager, statusBar, wecomManager, wecomChannel);
+  const treeView = vscode.window.createTreeView('lynel.sessions', {
+    treeDataProvider: treeProvider,
+    showCollapseAll: true,
+  });
+
+  // 监听 Desktop 数据文件变化，自动刷新侧边栏（个别文件被删除时不能中断激活）
+  const watchDir = path.join(os.homedir(), '.lynel-desktop');
+  const filesToWatch = ['recent-sessions.json', 'settings.json'];
+  const watchers: fs.FSWatcher[] = [];
+  for (const file of filesToWatch) {
+    try {
+      const filePath = path.join(watchDir, file);
+      if (fs.existsSync(filePath)) {
+        const watcher = fs.watch(filePath, () => {
+          treeProvider.refresh();
+        });
+        watchers.push(watcher);
+      }
+    } catch (err) {
+      logger.warn(`watch ${file} failed: ${err}`);
+    }
+  }
+
+  context.subscriptions.push(terminalManager, statusBar, wecomManager, wecomChannel, treeProvider, treeView);
+  context.subscriptions.push({ dispose: () => watchers.forEach((w) => w.close()) });
 }
 
 export function deactivate(): void {

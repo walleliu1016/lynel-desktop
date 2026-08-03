@@ -18,7 +18,8 @@
     "commands": [
       {
         "command": "lynel.newTerminal",
-        "title": "Lynel: New Claude Terminal"
+        "title": "Lynel: New Claude Terminal",
+        "icon": "$(add)"
       },
       {
         "command": "lynel.newTerminalWithWorkDir",
@@ -26,7 +27,8 @@
       },
       {
         "command": "lynel.closeAllTerminals",
-        "title": "Lynel: Close All Terminals"
+        "title": "Lynel: Close All Terminals",
+        "icon": "$(close-all)"
       },
       {
         "command": "lynel.showSettings",
@@ -38,11 +40,36 @@
       },
       {
         "command": "lynel.manageWecomBots",
-        "title": "Lynel: Manage WeCom Bots"
+        "title": "Lynel: Manage WeCom Bots",
+        "icon": "$(gear)"
       },
       {
         "command": "lynel.switchBotBinding",
         "title": "Lynel: Switch Bot Binding"
+      },
+      {
+        "command": "lynel.focusTerminal",
+        "title": "Lynel: Focus Terminal"
+      },
+      {
+        "command": "lynel.focusOrResumeTerminal",
+        "title": "Lynel: Focus or Resume Terminal",
+        "icon": "$(play)"
+      },
+      {
+        "command": "lynel.closeTerminal",
+        "title": "Lynel: Close Terminal",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "lynel.bindBotToSession",
+        "title": "Lynel: Bind Bot to Session",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "lynel.unbindBotFromSession",
+        "title": "Lynel: Unbind Bot from Session",
+        "icon": "$(unplug)"
       }
     ],
     "configuration": {
@@ -59,7 +86,87 @@
           "description": "Lynel data directory (default: ~/.lynel-desktop)"
         }
       }
-    }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "lynel",
+          "title": "Lynel",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "lynel": [
+        {
+          "id": "lynel.sessions",
+          "name": "Sessions",
+          "when": ""
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "lynel.newTerminal",
+          "group": "navigation",
+          "when": "view == lynel.sessions"
+        },
+        {
+          "command": "lynel.manageWecomBots",
+          "group": "navigation",
+          "when": "view == lynel.sessions"
+        },
+        {
+          "command": "lynel.closeAllTerminals",
+          "group": "navigation",
+          "when": "view == lynel.sessions"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "lynel.focusOrResumeTerminal",
+          "group": "inline",
+          "when": "view == lynel.sessions && viewItem == lynelSession"
+        },
+        {
+          "command": "lynel.bindBotToSession",
+          "group": "inline",
+          "when": "view == lynel.sessions && viewItem == lynelSession"
+        },
+        {
+          "command": "lynel.closeTerminal",
+          "group": "inline",
+          "when": "view == lynel.sessions && viewItem == lynelSession"
+        },
+        {
+          "command": "lynel.focusOrResumeTerminal",
+          "group": "1_open@1",
+          "when": "view == lynel.sessions && viewItem == lynelSession"
+        },
+        {
+          "command": "lynel.bindBotToSession",
+          "group": "2_bot@1",
+          "when": "view == lynel.sessions && viewItem == lynelSession"
+        },
+        {
+          "command": "lynel.unbindBotFromSession",
+          "group": "2_bot@2",
+          "when": "view == lynel.sessions && viewItem == lynelSession"
+        },
+        {
+          "command": "lynel.closeTerminal",
+          "group": "3_close@1",
+          "when": "view == lynel.sessions && viewItem == lynelSession"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "lynel.sessions",
+        "contents": "还没有活跃的 Claude 终端会话。\n[新建终端](command:lynel.newTerminal)"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
