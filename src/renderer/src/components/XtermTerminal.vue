@@ -47,11 +47,12 @@ import { defaultTerminalConfig, type TerminalConfig, type TerminalTheme } from '
 
 const settings = useSettingsStore()
 
-/** 一次 getComputedStyle 内读全部 xterm 主题变量，合并 22 次 layout 为 1 次 */
+/** 一次 getComputedStyle 内读全部 xterm 主题变量，合并多次 layout 为 1 次 */
 const THEME_VARS = [
   ['background', '--term-bg'],
   ['foreground', '--term-fg'],
   ['cursor', '--term-cursor'],
+  ['cursorAccent', '--term-cursor-accent'],
   ['selectionBackground', '--term-selection'],
   ['selectionForeground', '--term-fg'],
   ['selectionInactiveBackground', '--term-selection'],
@@ -74,7 +75,7 @@ const THEME_VARS = [
 ] as const
 
 /**
- * 同步应用 theme：setAttribute data-term-theme + 一次 getComputedStyle 读全部 22 个变量。
+ * 同步应用 theme：setAttribute data-term-theme + 一次 getComputedStyle 读全部主题变量。
  * 给 init（同步用）和 scheduleThemeSync（rAF 内用）共用，避免两处重复实现。
  */
 function applyThemeSync(theme: TerminalTheme): Record<string, string> {
@@ -350,11 +351,11 @@ async function initializeTerminal() {
   term = new Terminal({
     cursorBlink: termCfg.cursorBlink,
     cursorStyle: termCfg.cursorStyle,
+    cursorWidth: 2,
     fontSize: termCfg.fontSize,
     fontFamily: termCfg.fontFamily,
     lineHeight: termCfg.lineHeight,
     allowProposedApi: true,
-    minimumContrastRatio: 4.5,
     scrollback: termCfg.scrollback,
     theme: themeObj as any,
   })
@@ -410,6 +411,13 @@ async function initializeTerminal() {
       return
     }
     term?.write(line)
+    // 删除/回退键容易导致 xterm.js canvas renderer 残留旧字符；
+    // 刷新光标所在行，强制重绘确保显示与 PTY 状态一致。
+    if (term && /[\b\x7f]/.test(line)) {
+      requestAnimationFrame(() => {
+        term?.refresh(term.buffer.active.cursorY, term.buffer.active.cursorY)
+      })
+    }
   }))
 
   // fallback 真正兜底：30s 内无可见内容则强制 reveal

@@ -58,7 +58,7 @@ export function defaultTerminalConfig(): TerminalConfig {
     fontFamily: DEFAULT_TERMINAL_FONT,
     fontSize: 14,
     lineHeight: 1.2,
-    cursorStyle: 'block',
+    cursorStyle: 'bar',
     cursorBlink: true,
     scrollback: 1000,
   }

@@ -128,6 +128,7 @@
   --term-bg: #1e1e1e;
   --term-fg: #d4d4d4;
   --term-cursor: #d4d4d4;
+  --term-cursor-accent: #1e1e1e;
   --term-selection: #264f78;
 
   --term-black: #000000;
@@ -154,6 +155,7 @@
   --term-bg: #002b36;
   --term-fg: #93a1a1;
   --term-cursor: #839496;
+  --term-cursor-accent: #002b36;
   --term-selection: #073642;
 
   --term-black: #073642;
@@ -180,6 +182,7 @@
   --term-bg: #282c34;
   --term-fg: #dcdae2;
   --term-cursor: #dcdae2;
+  --term-cursor-accent: #282c34;
   --term-selection: #3e4451;
 
   --term-black: #282c34;
@@ -206,6 +209,7 @@
   --term-bg: #282828;
   --term-fg: #ebdbb2;
   --term-cursor: #ebdbb2;
+  --term-cursor-accent: #282828;
   --term-selection: #504945;
 
   --term-black: #282828;
@@ -232,6 +236,7 @@
   --term-bg: #272822;
   --term-fg: #f8f8f2;
   --term-cursor: #f8f8f0;
+  --term-cursor-accent: #272822;
   --term-selection: #49483e;
 
   --term-black: #272822;
@@ -258,6 +263,7 @@
   --term-bg: #282a36;
   --term-fg: #f8f8f2;
   --term-cursor: #f8f8f2;
+  --term-cursor-accent: #282a36;
   --term-selection: #44475a;
 
   --term-black: #21222c;
@@ -283,7 +289,8 @@
 [data-term-theme="solarized-light"] {
   --term-bg: #fdf6e3;
   --term-fg: #586e75;
-  --term-cursor: #586e75;
+  --term-cursor: #002b36;
+  --term-cursor-accent: #fdf6e3;
   --term-selection: #eee8d5;
 
   --term-black: #073642;
@@ -310,6 +317,7 @@
   --term-bg: #F2EBD9;
   --term-fg: #1F1A12;
   --term-cursor: #1F1A12;
+  --term-cursor-accent: #F2EBD9;
   --term-selection: #E0D7BE;
 
   --term-black: #1F1A12;
