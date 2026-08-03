@@ -12,7 +12,7 @@
       <template v-if="!collapsed">
         <span class="stat-count">{{ filteredRequests.length }} calls</span>
         <span class="stat-cost">${{ totalCost }}</span>
-        <button class="stat-reload" title="重新加载" @click="trace.load()">
+        <button class="stat-reload" title="重新加载" @click="reload()">
           <Icon name="refresh-cw" :size="12" />
         </button>
       </template>
@@ -30,11 +30,16 @@
       <!-- Error state -->
       <div v-else-if="trace.loadError" class="state error">
         <span>{{ trace.loadError }}</span>
-        <button class="retry-btn" @click="trace.load()">重试</button>
+        <button class="retry-btn" @click="reload()">重试</button>
       </div>
 
       <!-- Request list -->
-      <div class="thumb-list" v-else-if="filteredRequests.length" ref="thumbListEl">
+      <div
+        class="thumb-list"
+        v-else-if="filteredRequests.length"
+        ref="thumbListEl"
+        @scroll="onScroll"
+      >
         <div
           v-for="r in filteredRequests"
           :key="r.seq"
@@ -49,9 +54,29 @@
             <span class="meta time">{{ formatTime(r.ts) }}</span>
           </div>
           <div class="row-bottom">
-            <span class="meta">{{ formatMs(r.latencyMs) }}</span>
-            <span class="meta cost">${{ r.cost.usd.toFixed(4) }}</span>
+            <span class="metric" v-if="r.cost.input">
+              <Icon name="arrow-down" :size="10" />
+              {{ fmtTokens(r.cost.input) }}
+            </span>
+            <span class="metric" v-if="r.cost.output">
+              <Icon name="arrow-up" :size="10" />
+              {{ fmtTokens(r.cost.output) }}
+            </span>
+            <span class="metric" v-if="r.toolCount">
+              <Icon name="wrench" :size="10" />
+              &times;{{ r.toolCount }}
+            </span>
+            <span class="metric">
+              <Icon name="clock" :size="10" />
+              {{ formatMs(r.latencyMs) }}
+            </span>
+            <span class="meta cost">${{ r.cost.usd.toFixed(3) }}</span>
           </div>
+        </div>
+        <!-- 加载更多指示 -->
+        <div v-if="trace.hasMore" class="load-more-hint">
+          <span v-if="trace.loading">加载中...</span>
+          <span v-else>向上滚动加载更多</span>
         </div>
       </div>
 
@@ -75,7 +100,12 @@ defineEmits<{ (e: 'select', seq: number): void; (e: 'toggle-collapse'): void }>(
 const trace = useTraceStore()
 const thumbListEl = ref<HTMLElement | null>(null)
 
-// 新请求到达时自动滚动到底部（仅当用户已在底部附近时）
+// 过滤条件变化时重新加载首页
+watch(() => [trace.modelFilter, trace.errorsOnly], () => {
+  trace.load()
+})
+
+// 新请求到达时自动滚动到底部（仅当用户在底部附近时）
 watch(() => trace.filteredRequests.length, () => {
   void nextTick(() => {
     const el = thumbListEl.value
@@ -87,12 +117,33 @@ watch(() => trace.filteredRequests.length, () => {
   })
 })
 
+function reload() {
+  trace.requests = []
+  trace.load()
+}
+
+// 滚动检测：接近顶部时加载更多
+function onScroll() {
+  const el = thumbListEl.value
+  if (!el) return
+  if (el.scrollTop < 50 && trace.hasMore && !trace.loading) {
+    const prevHeight = el.scrollHeight
+    trace.loadMore().then(() => {
+      void nextTick(() => {
+        if (thumbListEl.value) {
+          thumbListEl.value.scrollTop = thumbListEl.value.scrollHeight - prevHeight
+        }
+      })
+    })
+  }
+}
+
 const filteredRequests = computed(() => trace.filteredRequests)
 
 const totalCost = computed(() => {
   let sum = 0
   for (const r of filteredRequests.value) sum += r.cost.usd
-  return sum.toFixed(4)
+  return sum.toFixed(3)
 })
 
 function statusClass(r: TraceSummary): string {
@@ -104,7 +155,6 @@ function statusClass(r: TraceSummary): string {
 
 function modelShort(model: string | null): string {
   if (!model) return '\u2014'
-  // claude-sonnet-4-20250514 → sonnet
   if (model.includes('sonnet')) return 'sonnet'
   if (model.includes('opus')) return 'opus'
   if (model.includes('haiku')) return 'haiku'
@@ -124,6 +174,11 @@ function formatMs(ms: number | null): string {
   if (ms < 1000) return ms + 'ms'
   if (ms < 60_000) return (ms / 1000).toFixed(1) + 's'
   return (ms / 60_000).toFixed(1) + 'm'
+}
+
+function fmtTokens(n: number): string {
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
+  return String(n)
 }
 </script>
 
@@ -196,9 +251,17 @@ function formatMs(ms: number | null): string {
   border-left-color: var(--accent);
 }
 .row-top { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-.row-bottom { display: flex; align-items: center; gap: 8px; margin-top: 1px; padding-left: 14px; }
+.row-bottom { display: flex; align-items: center; gap: 6px; margin-top: 1px; padding-left: 14px; }
 .meta { font-size: 10px; color: var(--text-tertiary); }
-.meta.cost { font-family: var(--font-mono); }
+.meta.cost { font-family: var(--font-mono); margin-left: auto; }
+.metric {
+  font-size: 10px;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-family: var(--font-mono);
+}
 
 .status-dot {
   width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
@@ -219,4 +282,11 @@ function formatMs(ms: number | null): string {
 .state.error { color: var(--status-error); font-size: 11px; }
 .retry-btn { color: var(--accent); background: transparent; border: none; cursor: pointer; font-size: 12px; margin-top: 4px; }
 .thumb-list { flex: 1; overflow-y: auto; min-height: 0; }
+
+.load-more-hint {
+  padding: 10px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
 </style>
