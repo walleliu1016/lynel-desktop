@@ -100,9 +100,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # VS Code 扩展打包：平台无关，单 job 打包 vsix 并上传 artifact
+  # VS Code 扩展打包：平台无关，单 job 打包 vsix 并上传 artifact / Release
   vscode-extension:
     runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -119,3 +122,11 @@ jobs:
         with:
           name: lynel-vscode-vsix
           path: vscode-extension/*.vsix
+      - name: Upload VSIX to Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: vscode-extension/*.vsix
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
