@@ -99,3 +99,23 @@ jobs:
           body_path: /tmp/release-body.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # VS Code 扩展打包：平台无关，单 job 打包 vsix 并上传 artifact
+  vscode-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install VS Code extension dependencies
+        run: cd vscode-extension && npm ci
+      - name: Type check
+        run: cd vscode-extension && npm run compile
+      - name: Package VSIX
+        run: cd vscode-extension && npx vsce package --allow-missing-repository
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lynel-vscode-vsix
+          path: vscode-extension/*.vsix
