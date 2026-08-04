@@ -3,9 +3,12 @@ import { computed } from 'vue'
 import {
   AlertCircle,
   AlertTriangle,
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
   Bot,
   BotMessageSquare,
+  Clock,
   Link2Off,
   LogOut,
   ChevronDown,
@@ -95,6 +98,9 @@ const icons: Record<string, unknown> = {
   'panel-right-close': PanelRightClose,
   'panel-right-open': PanelRightOpen,
   'log-out': LogOut,
+  'arrow-down': ArrowDown,
+  'arrow-up': ArrowUp,
+  'clock': Clock,
   expand: Expand,
   shrink: Shrink,
 }

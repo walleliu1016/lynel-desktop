@@ -1,17 +1,15 @@
 // trace IPC handlers: 完整 ccglass 式 trace 面板所需的主进程 API
+// v2: 基于 _summaries.jsonl 摘要索引，分页加载，不再扫描 raw 文件
 import { ipcMain } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import chokidar from 'chokidar';
 import type { FSWatcher } from 'chokidar';
-import { HappyJsonlWriter } from '../archive/happyJsonl.js';
-import { listRawExchanges, readRawExchange } from '../archive/rawArchive.js';
+import { readRawExchange } from '../archive/rawArchive.js';
+import { readSummaries, type SummaryRecord } from '../archive/rawArchive.js';
 import { requestTiming, recordModel } from '../trace/timing.js';
 import { anthropicAdapter } from '../formats/anthropic.js';
-import { summarizeUsage, type RawExchange } from '../cost/usage.js';
-import { costFromUsage } from '../cost/priceTable.js';
-import type { UsageSummary } from '../cost/usage.js';
 import { getBus } from '../events.js';
 
 function projectKeyFor(workDir: string): string {
@@ -27,7 +25,7 @@ function sessionDirFor(workDir: string, sessionId: string): string {
   return path.join(os.homedir(), '.lynel-desktop', 'projects', projectKeyFor(workDir), sessionId);
 }
 
-// 兼容旧版本路径（无 sessionId 子目录），优先新路径
+// 兼容旧版本路径
 function resolveDataDir(workDir: string, sessionId: string): string {
   const newPath = sessionDirFor(workDir, sessionId);
   if (fs.existsSync(newPath)) return newPath;
@@ -36,57 +34,44 @@ function resolveDataDir(workDir: string, sessionId: string): string {
   return newPath;
 }
 
+// 前端 TraceSummary —— 基于 SummaryRecord，补少量展示用字段
 export interface TraceSummary {
-  id: string;
   seq: number;
   ts: number;
-  startedAt: number;
-  firstByteAt: number | null;
-  finishedAt: number;
   model: string | null;
   status: number;
   latencyMs: number | null;
-  format: string;
   error: boolean;
   cost: { usd: number; input: number; output: number };
-  trace: { totalMs: number; ttftMs: number; genMs: number; inTps: number | null; outTps: number | null };
+  trace: { totalMs: number; ttftMs: number; genMs: number };
   toolCount: number;
-  retries: number;
 }
 
-function summarize(exchange: any): TraceSummary {
-  const body = exchange?.request?.body || {};
-  const usage = exchange?.reassembled?.usage || {};
-  const timing = exchange?.trace || { totalMs: 0, ttftMs: 0, genMs: 0, inTps: null, outTps: null };
-  const msgs = body.messages || [];
-  let toolCount = 0;
-  for (const m of msgs) {
-    const c = Array.isArray(m.content) ? m.content : [m.content];
-    for (const b of c) {
-      if (b && typeof b === 'object' && (b.type === 'tool_use' || b.type === 'tool_result')) toolCount++;
-    }
-  }
+function toTraceSummary(r: SummaryRecord): TraceSummary {
   return {
-    id: exchange.id,
-    seq: exchange.seq,
-    ts: exchange.ts,
-    startedAt: exchange.startedAt,
-    firstByteAt: exchange.firstByteAt,
-    finishedAt: exchange.finishedAt,
-    model: exchange.model || recordModel(body, null),
-    status: exchange.response?.status ?? 0,
-    latencyMs: timing.totalMs ?? null,
-    format: exchange.format,
-    error: exchange.error === true,
-    cost: {
-      usd: exchange.cost?.usd ?? 0,
-      input: exchange.cost?.input ?? 0,
-      output: exchange.cost?.output ?? 0,
-    },
-    trace: timing,
-    toolCount,
-    retries: 0,
+    seq: r.seq,
+    ts: r.ts,
+    model: r.model,
+    status: r.status,
+    latencyMs: r.latencyMs,
+    error: r.error,
+    cost: { usd: r.cost.usd, input: r.cost.input, output: r.cost.output },
+    trace: { totalMs: r.trace.totalMs, ttftMs: r.trace.ttftMs, genMs: r.trace.genMs },
+    toolCount: r.toolCount,
   };
+}
+
+export interface ListRequestsOpts {
+  limit?: number;
+  offset?: number;
+  sinceSeq?: number;
+  modelFilter?: string;
+  errorsOnly?: boolean;
+}
+
+export interface ListRequestsResult {
+  summaries: TraceSummary[];
+  hasMore: boolean;
 }
 
 export function registerTraceIpc(): void {
@@ -98,56 +83,41 @@ export function registerTraceIpc(): void {
       .map((d) => d.name);
   });
 
-  ipcMain.handle('trace:listRequests', async (_event, workDir: string, sessionId: string, _modelFilter?: string) => {
+  ipcMain.handle('trace:listRequests', async (_event, workDir: string, sessionId: string, opts?: ListRequestsOpts) => {
     const dir = resolveDataDir(workDir, sessionId);
-    const seqs = listRawExchanges(dir);
-    const cached = listRequestsCache.get(dir);
-    // 无新文件直接返回缓存
-    if (cached && cached.seqs.length === seqs.length &&
-        cached.seqs.every((s, i) => s === seqs[i])) {
-      return cached.summaries;
-    }
-    // 仅读取新文件
-    const knownSet = new Set(cached?.seqs ?? []);
-    const newSeqs = seqs.filter((s) => !knownSet.has(s));
-    const summaries: TraceSummary[] = cached ? [...cached.summaries] : [];
-    for (const seq of newSeqs) {
-      const ex = readRawExchange(dir, seq);
-      if (ex) summaries.push(summarize(ex));
-    }
-    summaries.sort((a, b) => a.seq - b.seq);
-    listRequestsCache.set(dir, { seqs, summaries });
-    return summaries;
-  });
+    const all = readSummaries(dir);
+    if (!all.length) return { summaries: [], hasMore: false };
 
-  ipcMain.handle('trace:sessionStats', async (_event, workDir: string, sessionId: string, _modelFilter?: string) => {
-    const dir = resolveDataDir(workDir, sessionId);
-    const seqs = listRawExchanges(dir);
-    const cached = statsCache.get(dir);
-    if (cached && cached.seqs.length === seqs.length &&
-        cached.seqs.every((s, i) => s === seqs[i])) {
-      return cached.summary;
+    const { limit = 50, offset = 0, sinceSeq, modelFilter, errorsOnly } = opts ?? {};
+
+    // sinceSeq 模式：只返回新条目，不分页
+    if (sinceSeq != null) {
+      const filtered = all
+        .filter((r) => r.seq > sinceSeq)
+        .map(toTraceSummary);
+      return { summaries: filtered, hasMore: false };
     }
-    const knownSet = new Set(cached?.seqs ?? []);
-    const newSeqs = seqs.filter((s) => !knownSet.has(s));
-    const records: RawExchange[] = cached ? [...cached.records] : [];
-    for (const seq of newSeqs) {
-      const ex = readRawExchange(dir, seq);
-      if (ex) {
-        records.push({
-          session: sessionId,
-          seq: ex.seq,
-          ts: ex.ts,
-          model: ex.model ?? undefined,
-          usage: ex.reassembled?.usage,
-          cost: ex.cost,
-        });
-      }
+
+    // 过滤
+    let filtered = all;
+    if (modelFilter && modelFilter !== 'all') {
+      filtered = filtered.filter((r) => r.model === modelFilter);
     }
-    records.sort((a, b) => a.seq! - b.seq!);
-    const summary = summarizeUsage(records);
-    statsCache.set(dir, { seqs, records, summary });
-    return summary;
+    if (errorsOnly) {
+      filtered = filtered.filter((r) => r.error || r.status >= 400);
+    }
+
+    // 分页：从尾部取（最新优先）
+    const total = filtered.length;
+    const start = Math.max(0, total - offset - limit);
+    const end = total - offset;
+    const page = filtered.slice(start, end);
+    const hasMore = start > 0;
+
+    return {
+      summaries: page.map(toTraceSummary),
+      hasMore,
+    };
   });
 
   ipcMain.handle('trace:request', async (_event, workDir: string, sessionId: string, seq: number) => {
@@ -183,32 +153,11 @@ export function registerTraceIpc(): void {
     return { a: { seq: seqA }, b: { seq: seqB }, counts, added, removed };
   });
 
-  ipcMain.handle('trace:usage', async () => {
-    const usageFile = path.join(os.homedir(), '.lynel-desktop', 'usage.json');
-    if (!fs.existsSync(usageFile)) {
-      const empty: UsageSummary = {
-        sessionCount: 0, requestCount: 0, unmeasured: 0,
-        range: { from: null, to: null },
-        totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalInput: 0, cacheHitRate: 0, usd: 0 },
-        byModel: [],
-        bySession: [],
-      };
-      return empty;
-    }
-    const data = JSON.parse(fs.readFileSync(usageFile, 'utf8'));
-    // 剔除内部 __records 字段
-    const { __records, ...summary } = data;
-    return summary as UsageSummary;
-  });
-
   ipcMain.handle('trace:export', async (_event, workDir: string, sessionId: string, seq: number, format: string) => {
     const dir = resolveDataDir(workDir, sessionId);
     const ex = readRawExchange(dir, seq);
     if (!ex) return null;
-    if (format === 'raw') {
-      return JSON.stringify(ex, null, 2);
-    }
-    if (format === 'json') {
+    if (format === 'raw' || format === 'json') {
       return JSON.stringify(ex, null, 2);
     }
     if (format === 'md') {
@@ -220,13 +169,7 @@ export function registerTraceIpc(): void {
     return null;
   });
 
-  ipcMain.handle('trace:envelopes', async (_event, workDir: string, sessionId: string) => {
-    const dir = resolveDataDir(workDir, sessionId);
-    return HappyJsonlWriter.readAll(dir);
-  });
-
-  // 文件变更通知：trace watcher
-  // 300ms debounce 合并批量文件写入为单次通知，避免每请求触发全量扫描
+  // 文件变更通知：trace watcher（300ms debounce）
   const watcherTimers = new Map<string, NodeJS.Timeout>();
   ipcMain.handle('trace:watch', async (_event, workDir: string, sessionId: string) => {
     const dir = resolveDataDir(workDir, sessionId);
@@ -260,14 +203,8 @@ export function registerTraceIpc(): void {
   });
 }
 
-// session 维度 watcher 缓存，key = raw 目录绝对路径
+// session 维度 watcher 缓存
 const watchers = new Map<string, FSWatcher>();
-
-// listRequests / sessionStats 增量缓存，避免每次全量 readFileSync + JSON.parse
-type ListRequestsCacheEntry = { seqs: number[]; summaries: TraceSummary[] };
-const listRequestsCache = new Map<string, ListRequestsCacheEntry>();
-type StatsCacheEntry = { seqs: number[]; records: RawExchange[]; summary: any };
-const statsCache = new Map<string, StatsCacheEntry>();
 
 function exportMarkdown(ex: any): string {
   const body = ex.request?.body || {};
@@ -298,7 +235,6 @@ function exportMarkdown(ex: any): string {
 }
 
 function exportHar(ex: any): string {
-  // 简化版 HAR
   const har = {
     log: {
       version: '1.2',

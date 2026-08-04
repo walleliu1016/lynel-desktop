@@ -13,7 +13,7 @@ import { type LynelEnvelope } from './protocol/envelope.js';
 import { requestTiming, recordModel } from './trace/timing.js';
 import { costFromUsage, type CostBreakdown } from './cost/priceTable.js';
 import { HappyJsonlWriter } from './archive/happyJsonl.js';
-import { writeRawExchange, listRawExchanges, type RawExchangeInput } from './archive/rawArchive.js';
+import { writeRawExchange, listRawExchanges, appendSummary, type RawExchangeInput, type SummaryRecord } from './archive/rawArchive.js';
 import { notifyExternal, errMessage } from './channels/notify-error.js';
 import { getLogger } from './log.js';
 
@@ -352,7 +352,21 @@ function finalizeExchange(token: string, isStream: boolean, networkError = false
     parsedBody = s.reqBody ? JSON.parse(s.reqBody.toString('utf8')) : null;
   } catch { /* ignore */ }
 
-  // fire-and-forget：落盘慢不阻塞代理主流程；失败只打日志
+  // 统计工具调用次数
+  let toolCount = 0;
+  if (parsedBody && typeof parsedBody === 'object') {
+    const msgs = (parsedBody as any).messages;
+    if (Array.isArray(msgs)) {
+      for (const m of msgs) {
+        const c = Array.isArray(m.content) ? m.content : [m.content];
+        for (const b of c) {
+          if (b && typeof b === 'object' && (b.type === 'tool_use' || b.type === 'tool_result')) toolCount++;
+        }
+      }
+    }
+  }
+
+  // fire-and-forget：落盘不阻塞代理主流程；失败只打日志
   void writeRawExchange({
     sessionId: token,
     sessionDir: s.sessionDir,
@@ -380,5 +394,20 @@ function finalizeExchange(token: string, isStream: boolean, networkError = false
     error: errorFlag,
   }).catch((err) => {
     getLogger().error(`[apiproxy] writeRawExchange failed sid=${token} seq=${s.roundtripSeq}: ${err?.message || err}`);
+  });
+
+  // 追加摘要索引（fire-and-forget，失败只打日志）
+  void appendSummary(s.sessionDir, {
+    seq: s.roundtripSeq,
+    model,
+    status: s.resStatus,
+    latencyMs: trace.totalMs || null,
+    error: errorFlag,
+    cost: { usd: cost.usd, input: cost.input, output: cost.output },
+    trace,
+    ts: s.startedAt,
+    toolCount,
+  }).catch((err) => {
+    getLogger().error(`[apiproxy] appendSummary failed sid=${token} seq=${s.roundtripSeq}: ${err?.message || err}`);
   });
 }

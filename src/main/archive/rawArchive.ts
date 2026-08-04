@@ -175,3 +175,35 @@ export function listRawExchanges(sessionDir: string): number[] {
   }
   return out.sort((a, b) => a - b);
 }
+
+// 摘要记录 —— 追加到 _summaries.jsonl，每行约 200 字节
+export interface SummaryRecord {
+  seq: number;
+  model: string | null;
+  status: number;
+  latencyMs: number | null;
+  error: boolean;
+  cost: { usd: number; input: number; output: number };
+  trace: { totalMs: number; ttftMs: number; genMs: number };
+  ts: number;
+  toolCount: number;
+}
+
+export async function appendSummary(sessionDir: string, s: SummaryRecord): Promise<void> {
+  const filePath = path.join(sessionDir, '_summaries.jsonl');
+  const line = JSON.stringify(s) + '\n';
+  await fs.promises.appendFile(filePath, line, 'utf8');
+}
+
+// 读取 _summaries.jsonl 全部摘要（按 seq 升序）
+export function readSummaries(sessionDir: string): SummaryRecord[] {
+  const filePath = path.join(sessionDir, '_summaries.jsonl');
+  if (!fs.existsSync(filePath)) return [];
+  const text = fs.readFileSync(filePath, 'utf8');
+  const out: SummaryRecord[] = [];
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    try { out.push(JSON.parse(line)); } catch { /* 忽略损坏行 */ }
+  }
+  return out;
+}

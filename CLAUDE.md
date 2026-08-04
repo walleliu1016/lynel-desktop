@@ -236,20 +236,26 @@ npm run dist:linux
 - 布局结构：左侧 SessionList（280px，可折叠为 44px） | 中间 GlobalTabs + .content（flex:1） | 右侧 TraceSidebar（200px）
 - TraceSidebar：`src/renderer/src/components/trace/TraceSidebar.vue`，右侧固定 200px 面板
   - StatsBar：请求数、总费用、刷新按钮
-  - 请求缩略列表：状态点 · #seq · model / 延迟 · 费用
+  - 请求缩略列表（v2 分页 + 摘要索引）：
+    - Row 1：状态点 · #seq · model · 时间
+    - Row 2：↓输入tokens ↑输出tokens 🔧工具调用次数 ⏱延迟 $费用
+  - 分页：初始加载 50 条，滚动到顶部触发 `loadMore()`
   - 状态覆盖：loading 骨架屏 / error 重试 / 空状态（"暂无 API 请求"）
 - TraceOverlay：`src/renderer/src/components/trace/TraceOverlay.vue`
   - Teleport 到 `.center`，绝对定位覆盖层
   - `width: clamp(360px, 35%, 45%)` 随窗口自动缩放
   - 关闭方式：backdrop 点击 / Escape 键 / × 按钮
-  - 复用 RequestDetailPane 展示单条请求详情
-- Trace store（Pinia）：`src/renderer/src/stores/trace.ts`
-  - 状态：workDir/sessionId/requests/stats/detail/diffResult/loading/loadError
-  - 数据来自 `~/.lynel-desktop/projects/<encoded-project>/<sid>/raw/<seq>.json`
-  - `trace.listRawExchanges` 扫描 raw 目录获取请求列表
+  - 复用 RequestDetailPane 展示单条请求详情（从完整 `<seq>.json` 按需加载）
+- Trace store（Pinia）：`src/renderer/src/stores/trace.ts`（v2 分页）
+  - 状态：workDir/sessionId/requests/detail/diffResult/loading/loadError/hasMore
+  - 摘要索引：`_summaries.jsonl`（每行 ~200 字节，apiproxy 追加写入）
+  - 数据来源：`_summaries.jsonl`（列表）+ `<seq>.json`（详情按需加载）
+  - `load()` 首页 50 条，`loadMore()` 滚动分页，`fetchNew()` 增量加载（`sinceSeq`）
+  - 图过滤（model/errorsOnly）变化时自动重新加载首页
   - HomeView 通过 `watch(activeSessionId)` 统一监听 session 切换并自动调用 `trace.load()`
   - 覆盖所有激活路径：SessionList 点击、GlobalTabs 切换、最近会话打开、新建会话
-- 删除组件：`TraceTab.vue`（原独立 Trace 标签页）、`TabType['trace']`、`tabsStore.openTrace()`
+- 删除组件：`TraceTab.vue`、`TraceHeader.vue`、`RequestList.vue`（死代码）
+- 关键不变量：摘要索引 `<sessionDir>/_summaries.jsonl` 与 raw exchange `<seq>.json` 同目录，前者轻量全量读取（5000 条仅 ~1MB），后者仅详情时按需读取
 
 ## 相关文档
 

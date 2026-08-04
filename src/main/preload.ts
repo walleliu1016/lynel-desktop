@@ -90,22 +90,17 @@ const api = {
   windowCenter: () => ipcRenderer.send('window:center'),
   windowQuit: () => ipcRenderer.send('window:quit'),
 
-  // trace: 完整 ccglass 式分析面板
+  // trace: 完整 ccglass 式分析面板（v2 分页）
   listTraceSessions: (workDir: string) =>
     ipcRenderer.invoke('trace:listSessions', workDir),
-  listTraceRequests: (workDir: string, sessionId: string, modelFilter?: string) =>
-    ipcRenderer.invoke('trace:listRequests', workDir, sessionId, modelFilter),
-  getSessionTraceStats: (workDir: string, sessionId: string, modelFilter?: string) =>
-    ipcRenderer.invoke('trace:sessionStats', workDir, sessionId, modelFilter),
+  listTraceRequests: (workDir: string, sessionId: string, opts?: any) =>
+    ipcRenderer.invoke('trace:listRequests', workDir, sessionId, opts),
   getTraceRequest: (workDir: string, sessionId: string, seq: number) =>
     ipcRenderer.invoke('trace:request', workDir, sessionId, seq),
   diffTraceRequests: (workDir: string, sessionId: string, seqA: number, seqB: number) =>
     ipcRenderer.invoke('trace:diff', workDir, sessionId, seqA, seqB),
-  getUsageSummary: () => ipcRenderer.invoke('trace:usage'),
   exportTraceRequest: (workDir: string, sessionId: string, seq: number, format: 'raw' | 'md' | 'json' | 'har') =>
     ipcRenderer.invoke('trace:export', workDir, sessionId, seq, format),
-  listHappyEnvelopes: (workDir: string, sessionId: string) =>
-    ipcRenderer.invoke('trace:envelopes', workDir, sessionId),
   watchTraceSession: (workDir: string, sessionId: string) =>
     ipcRenderer.invoke('trace:watch', workDir, sessionId),
   unwatchTraceSession: (workDir: string, sessionId: string) =>
