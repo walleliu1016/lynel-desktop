@@ -62,7 +62,7 @@
               <Icon name="arrow-up" :size="10" />
               {{ fmtTokens(r.cost.output) }}
             </span>
-            <span class="metric" v-if="r.toolCount">
+            <span class="metric">
               <Icon name="wrench" :size="10" />
               &times;{{ r.toolCount }}
             </span>
@@ -70,7 +70,6 @@
               <Icon name="clock" :size="10" />
               {{ formatMs(r.latencyMs) }}
             </span>
-            <span class="meta cost">${{ r.cost.usd.toFixed(3) }}</span>
           </div>
         </div>
         <!-- 加载更多指示 -->
@@ -184,7 +183,8 @@ function fmtTokens(n: number): string {
 
 <style scoped>
 .trace-sidebar {
-  width: 200px;
+  width: fit-content;
+  max-width: 240px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -253,7 +253,6 @@ function fmtTokens(n: number): string {
 .row-top { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .row-bottom { display: flex; align-items: center; gap: 6px; margin-top: 1px; padding-left: 14px; }
 .meta { font-size: 10px; color: var(--text-tertiary); }
-.meta.cost { font-family: var(--font-mono); margin-left: auto; }
 .metric {
   font-size: 10px;
   color: var(--text-secondary);
@@ -261,6 +260,9 @@ function fmtTokens(n: number): string {
   align-items: center;
   gap: 2px;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  justify-content: flex-end;
 }
 
 .status-dot {
@@ -281,7 +283,7 @@ function fmtTokens(n: number): string {
 
 .state.error { color: var(--status-error); font-size: 11px; }
 .retry-btn { color: var(--accent); background: transparent; border: none; cursor: pointer; font-size: 12px; margin-top: 4px; }
-.thumb-list { flex: 1; overflow-y: auto; min-height: 0; }
+.thumb-list { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; }
 
 .load-more-hint {
   padding: 10px;

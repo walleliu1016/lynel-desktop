@@ -352,17 +352,13 @@ function finalizeExchange(token: string, isStream: boolean, networkError = false
     parsedBody = s.reqBody ? JSON.parse(s.reqBody.toString('utf8')) : null;
   } catch { /* ignore */ }
 
-  // 统计工具调用次数
+  // 统计本次轮询实际调用的工具数量。
+  // 从本次响应中统计 assistant 生成的 tool_use，而非请求体 messages
+  // （messages 跨轮次累积，会随轮次递增导致数值变成累计值）。
   let toolCount = 0;
-  if (parsedBody && typeof parsedBody === 'object') {
-    const msgs = (parsedBody as any).messages;
-    if (Array.isArray(msgs)) {
-      for (const m of msgs) {
-        const c = Array.isArray(m.content) ? m.content : [m.content];
-        for (const b of c) {
-          if (b && typeof b === 'object' && (b.type === 'tool_use' || b.type === 'tool_result')) toolCount++;
-        }
-      }
+  if (reassembled && Array.isArray(reassembled.content)) {
+    for (const b of reassembled.content) {
+      if (b && typeof b === 'object' && b.type === 'tool_use') toolCount++;
     }
   }
 
