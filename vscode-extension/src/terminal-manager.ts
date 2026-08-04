@@ -12,6 +12,15 @@ import { addRecentSession, readRecentSessions, updateSessionBotBinding, type Rec
 
 const logger = getLogger().scope('terminal');
 
+/** 终端命名策略，与 Desktop 端一致：userTitle > aiTitle > project > sessionId。
+ *  有 recent 记录时优先用其中的标题字段；新建会话直接回落 project/sessionId。 */
+function resolveTerminalLabel(sessionId: string, workDir: string, recent?: RecentSessionRecord): string {
+  const project = path.basename(workDir) || workDir;
+  return recent
+    ? (recent.userTitle || recent.aiTitle || recent.project || project || sessionId.slice(0, 8))
+    : (project || sessionId.slice(0, 8));
+}
+
 interface TerminalEntry {
   terminal: vscode.Terminal;
   proxy: APIProxy;
@@ -59,7 +68,7 @@ export class TerminalManager implements vscode.Disposable {
     }
 
     const botName = botId ? this.wecomManager.getBot(botId)?.name : undefined;
-    const label = `Claude ${sessionId.slice(0, 8)}`;
+    const label = resolveTerminalLabel(sessionId, cwd);
     const name = botName ? `${label} [${botName}]` : label;
     logger.info(`createTerminal ${name} cwd=${cwd}${botId ? ` bot=${botId.slice(0, 8)}` : ''} hookPort=${this.hookPort}`);
 
@@ -87,14 +96,15 @@ export class TerminalManager implements vscode.Disposable {
       updateSessionBotBinding(sessionId, botId);
     }
 
-    // 同步到 Desktop 的 recent-sessions.json
+    // 同步到 Desktop 的 recent-sessions.json。
+    // 新建会话不写 userTitle（机器生成的终端名不应占用用户自定义位），
+    // 让命名回落 aiTitle / project，由 Desktop 端负责。
     void addRecentSession({
       sessionId,
       workdir: cwd,
       project: path.basename(cwd) || cwd,
       aiTitle: '',
       firstPrompt: '',
-      userTitle: name,
       lastOpenedAt: Date.now(),
       state: 'running',
       botId,
@@ -418,7 +428,7 @@ export class TerminalManager implements vscode.Disposable {
     const config = getConfig();
     const botId = recent?.botId;
     const botName = botId ? this.wecomManager.getBot(botId)?.name : undefined;
-    const label = `Claude ${sessionId.slice(0, 8)}`;
+    const label = resolveTerminalLabel(sessionId, cwd, recent);
     const name = botName ? `${label} [${botName}]` : label;
     logger.info(`resumeTerminal ${name} cwd=${cwd}${botId ? ` bot=${botId.slice(0, 8)}` : ''} hookPort=${this.hookPort}`);
 
@@ -442,7 +452,6 @@ export class TerminalManager implements vscode.Disposable {
       project: path.basename(cwd) || cwd,
       aiTitle: recent?.aiTitle ?? '',
       firstPrompt: recent?.firstPrompt ?? '',
-      userTitle: name,
       lastOpenedAt: Date.now(),
       state: 'running',
       botId,
