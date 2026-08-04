@@ -1,0 +1,104 @@
+import type { PermissionRequest } from '../../permission-broker.js';
+
+export const EVENT_KEY_PREFIX = 'wecom';
+
+function toTaskId(base: string): string {
+  return base.replace(/[^0-9a-zA-Z_\-@]/g, '_').slice(0, 128);
+}
+
+interface AskOption { label: string; description?: string; }
+interface AskQuestion { header?: string; question: string; multiSelect?: boolean; options: AskOption[]; }
+interface AskInput { questions?: AskQuestion[]; }
+
+function formatToolInput(toolInput: unknown): string {
+  if (toolInput === undefined || toolInput === null) return '';
+  if (typeof toolInput === 'object') {
+    const input = toolInput as Record<string, unknown>;
+    if (input.command) return String(input.command);
+    if (input.file_path || input.path) return String(input.file_path || input.path);
+  }
+  return JSON.stringify(toolInput).slice(0, 200);
+}
+
+export function buildPermissionCard(
+  req: PermissionRequest, seq: number, sessionTitle?: string,
+): unknown {
+  const preview = formatToolInput(req.toolInput);
+  const sourceDesc = sessionTitle ? `项目：${sessionTitle}` : 'Lynel';
+  return {
+    card_type: 'button_interaction',
+    source: { desc: sourceDesc, desc_color: 0 },
+    main_title: { title: '权限请求', desc: `${req.toolName}（会话#${seq}）` },
+    sub_title_text: preview ? `命令/路径：${preview}` : undefined,
+    task_id: toTaskId(req.id),
+    button_list: [
+      { text: '允许', style: 1, key: `${EVENT_KEY_PREFIX}:allow:${req.id}` },
+      { text: '拒绝', style: 4, key: `${EVENT_KEY_PREFIX}:deny:${req.id}` },
+    ],
+  };
+}
+
+interface ExitPlanInput {
+  plan?: string; planFilePath?: string;
+  allowedPrompts?: Array<{ tool: string; prompt: string }>;
+}
+
+export function buildExitPlanCard(
+  req: PermissionRequest, seq: number, sessionTitle?: string,
+): unknown {
+  const input = (req.toolInput ?? {}) as ExitPlanInput;
+  const plan = typeof input.plan === 'string' ? input.plan : '';
+  const allowedPrompts = Array.isArray(input.allowedPrompts) ? input.allowedPrompts : [];
+  const PLAN_PREVIEW_LEN = 500;
+  let desc = '';
+  if (plan) {
+    desc = plan.length > PLAN_PREVIEW_LEN
+      ? plan.slice(0, PLAN_PREVIEW_LEN) + '\n\n... (计划较长，已截断)' : plan;
+  }
+  if (allowedPrompts.length > 0) {
+    const promptLines = allowedPrompts.map((p) => `- \`${p.tool}\`: ${p.prompt}`).join('\n');
+    desc = desc ? `${desc}\n\n**批准后允许执行：**\n${promptLines}` : `**批准后允许执行：**\n${promptLines}`;
+  }
+  const sourceDesc = sessionTitle ? `项目：${sessionTitle}` : 'Lynel';
+  return {
+    card_type: 'button_interaction',
+    source: { desc: sourceDesc, desc_color: 0 },
+    main_title: { title: '退出计划模式', desc: `ExitPlanMode（会话#${seq}）` },
+    sub_title_text: desc || undefined,
+    task_id: toTaskId(req.id),
+    button_list: [
+      { text: '允许', style: 1, key: `${EVENT_KEY_PREFIX}:allow:${req.id}` },
+      { text: '拒绝', style: 4, key: `${EVENT_KEY_PREFIX}:deny:${req.id}` },
+    ],
+  };
+}
+
+export function buildAskQuestionCard(
+  seq: number, input: AskInput, requestId?: string,
+  sessionTitle?: string, total?: number,
+): unknown[] {
+  const rid = requestId ?? `seq-${seq}`;
+  const questions = input.questions ?? [];
+  const sourceDesc = sessionTitle ? `项目：${sessionTitle}` : 'Lynel';
+  const count = total ?? questions.length;
+  if (questions.length === 0) return [];
+  return questions.map((q, qIdx) => {
+    const modeLabel = q.multiSelect ? '多选' : '单选';
+    const titlePrefix = count > 1 ? `问题 ${qIdx + 1}/${count}：` : '';
+    return {
+      card_type: 'vote_interaction',
+      source: { desc: sourceDesc, desc_color: 0 },
+      main_title: { title: `${titlePrefix}${q.question}`, desc: modeLabel },
+      task_id: toTaskId(`${rid}-${qIdx}`),
+      checkbox: {
+        question_key: `${EVENT_KEY_PREFIX}:answer:${rid}:${qIdx}`,
+        mode: q.multiSelect ? 1 : 0,
+        option_list: q.options.map((option, idx) => ({
+          id: `${EVENT_KEY_PREFIX}:opt:${rid}:${qIdx}:${idx}`,
+          text: option.description ? `${option.label} - ${option.description}` : option.label,
+        })),
+      },
+      submit_button: { text: '提交', key: `${EVENT_KEY_PREFIX}:submit:${rid}` },
+    };
+  });
+}
