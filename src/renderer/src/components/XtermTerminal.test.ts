@@ -85,6 +85,7 @@ vi.mock('../composables/useElectron', () => ({
   }),
   OpenSessionTerminalSized: vi.fn(() => Promise.resolve()),
   ResizeTerminal: vi.fn(() => Promise.resolve()),
+  OpenExternal: vi.fn(() => Promise.resolve()),
 }))
 
 describe('XtermTerminal', () => {

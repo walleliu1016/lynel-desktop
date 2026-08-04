@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 const api = {
   getAppInfo: () => ipcRenderer.invoke('app:getAppInfo'),
   clipboardWrite: (text: string) => ipcRenderer.invoke('app:clipboardWrite', text),
+  openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
   loginWithToken: (userId: string, token: string) =>
     ipcRenderer.invoke('app:loginWithToken', userId, token),
   logout: () => ipcRenderer.invoke('app:logout'),

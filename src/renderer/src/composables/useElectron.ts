@@ -13,6 +13,7 @@ function api(): ElectronAPI {
 
 export const GetAppInfo = () => api().getAppInfo();
 export const ClipboardWrite = (text: string) => api().clipboardWrite(text);
+export const OpenExternal = (url: string) => api().openExternal(url);
 export const LoginWithToken = (userId: string, token: string) =>
   api().loginWithToken(userId, token);
 export const Logout = () => api().logout();

@@ -1,4 +1,4 @@
-import { app, ipcMain, BrowserWindow, dialog, powerSaveBlocker, clipboard } from 'electron';
+import { app, ipcMain, BrowserWindow, dialog, powerSaveBlocker, clipboard, shell } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -1151,6 +1151,19 @@ export class App {
     ipcMain.handle('app:clipboardWrite', (_event, text: string) => {
       clipboard.writeText(typeof text === 'string' ? text : String(text ?? ''))
       return true
+    })
+
+    // 用系统默认浏览器打开外部链接（终端里的可点击 URL）
+    // 只放行 http/https，避免 file:// 或自定义协议被误打开
+    ipcMain.handle('app:openExternal', async (_event, url: string) => {
+      try {
+        const parsed = new URL(String(url ?? ''))
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+        await shell.openExternal(parsed.href)
+        return true
+      } catch {
+        return false
+      }
     })
 
     // 登录：调 cloud /api/auth/login 校验密码，成功即进主页

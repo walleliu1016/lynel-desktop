@@ -40,7 +40,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import '@xterm/xterm/css/xterm.css'
-import { EventsOn, ResizeTerminal, OpenSessionTerminalSized, ClipboardWrite } from '../composables/useElectron'
+import { EventsOn, ResizeTerminal, OpenSessionTerminalSized, ClipboardWrite, OpenExternal } from '../composables/useElectron'
 import { pushToast } from '../composables/useToast'
 import { useSettingsStore } from '../stores/settings'
 import { defaultTerminalConfig, type TerminalConfig, type TerminalTheme } from '../types/settings'
@@ -362,7 +362,10 @@ async function initializeTerminal() {
 
   fitAddon = new FitAddon()
   term.loadAddon(fitAddon)
-  term.loadAddon(new WebLinksAddon())
+  // 自定义链接点击：不再 window.open 新建 Electron 窗口，改走系统默认浏览器
+  term.loadAddon(new WebLinksAddon((_event, uri) => {
+    OpenExternal(uri)
+  }))
   // SerializeAddon：用于字体/字号切换时把老 buffer（含 ANSI 颜色）序列化出来，
   // reset + 重写时由新 cols 自动重新 wrap。
   serializeAddon = new SerializeAddon()
