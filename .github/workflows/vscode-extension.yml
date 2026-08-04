@@ -4,6 +4,7 @@ on:
     paths:
       - 'vscode-extension/**'
     branches:
+      - main
       - vscode-terminal
   pull_request:
     paths:
@@ -16,5 +17,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: cd vscode-extension && npm ci && npm run compile
-      - run: cd vscode-extension && npm test || true
+      - name: Install dependencies
+        run: cd vscode-extension && npm ci
+      - name: Type check
+        run: cd vscode-extension && npm run compile
+      - name: Package VSIX
+        run: cd vscode-extension && npx vsce package --allow-missing-repository
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lynel-vscode-vsix
+          path: vscode-extension/*.vsix
