@@ -23,6 +23,34 @@ function normalizeLastOpenedAt(v: number | undefined): number {
   return v < 10_000_000_000 ? v * 1000 : v
 }
 
+const MAX_SIDEBAR_SESSIONS = 30
+
+/** RecentSession → SessionMeta 映射（供 initFromRecent 与 open 复用）。 */
+function recentToMeta(record: RecentSession): SessionMeta {
+  const source: 'user' | 'ai' | 'first_prompt' = record.userTitle
+    ? 'user'
+    : record.aiTitle
+      ? 'ai'
+      : 'first_prompt'
+  return {
+    id: record.sessionId,
+    workdir: record.workdir,
+    project: record.project,
+    mtime: Math.floor(normalizeLastOpenedAt(record.lastOpenedAt) / 1000),
+    msg_count: 0,
+    first_prompt: record.firstPrompt,
+    ai_title: record.aiTitle,
+    size: 0,
+    user_title: record.userTitle,
+    title_source: source,
+  }
+}
+
+/** 列表始终保留最近 MAX_SIDEBAR_SESSIONS 条（插入都是头部最新，末尾即最旧）。 */
+function trimList(items: SessionMeta[]): SessionMeta[] {
+  return items.length > MAX_SIDEBAR_SESSIONS ? items.slice(0, MAX_SIDEBAR_SESSIONS) : items
+}
+
 export const useSessionsStore = defineStore('sessions', () => {
   const list = ref<SessionMeta[]>([])
   const activeId = ref<string | null>(null)
@@ -360,3 +388,6 @@ export function sessionDisplayTitle(meta?: { id?: string; user_title?: string; a
   if (!meta) return '新会话'
   return meta.user_title || meta.ai_title || meta.first_prompt || meta.project || meta.id?.slice(0, 8) || '新会话'
 }
+
+// 供单测使用（同 sessionDisplayTitle 导出模式）
+export { MAX_SIDEBAR_SESSIONS, recentToMeta, trimList }
