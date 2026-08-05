@@ -219,6 +219,19 @@ npm run dist:linux
 
 ---
 
+## 发布流程
+
+- 版本号：小版本 +1，如 `0.0.15` → `0.0.16`，只升 patch 位。
+- 步骤：
+  1. bump `package.json` 版本号，同步 `package-lock.json`；`vscode-extension/package.json` 保持同版本。
+  2. 新增 `docs/changelog/<version>.md`，按「新功能 / 修复」分组记录本次改动，参考上一版本格式。
+  3. commit 前确保 `npm run test:main` 与 `cd src/renderer && npx vue-tsc --noEmit` 全绿。
+  4. 代码改动按 task 拆分 commit；版本 + changelog 单独一个 `chore: release v<version>` commit。
+  5. 打 tag `v<version>` 并 push 代码与 tag，触发 GitHub Actions（`build.yml` 监听 `v*` tag）构建发布。
+- 不要提交构建产物（`.vsix`、`dist/`、`dist-electron/` 等）。
+
+---
+
 ## 重要不变量（改之前必须确认）
 
 - 新建 session 用 `randomUUID()` 预生成 UUID + `--session-id`；不再依赖 SessionStart hook。
