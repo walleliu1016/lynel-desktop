@@ -248,33 +248,43 @@ function probeBin(resolvedBin: string, env: Record<string, string>): void {
   const logger = getLogger();
   const PLATFORM = process.platform;
   const isWin = PLATFORM === 'win32';
-  try {
+  const runOnce = (timeout: number): void => {
     if (isWin) {
       // Windows: claude 在 PATH 里通常是 claude.cmd shim；execFileSync 不支持
       // .cmd/.bat/.ps1，需要经 cmd.exe 调用
       execFileSync('cmd.exe', ['/d', '/c', resolvedBin, '--version'], {
         stdio: 'ignore',
-        timeout: 3000,
+        timeout,
         windowsHide: true,
         env,
       });
     } else {
       execFileSync(resolvedBin, ['--version'], {
         stdio: 'ignore',
-        timeout: 3000,
+        timeout,
         env,
       });
     }
-  } catch (err: any) {
-    const code = err?.code || 'UNKNOWN';
-    const msg = err?.message || String(err);
-    // ENOENT: 命令在 PATH 里找不到（resolveBin 已尽量解析，但可能 darwin shell env 解析失败）
-    // EACCES: 文件存在但无执行权限（macOS Gatekeeper 隔离、chmod -x）
-    // EPERM: macOS sandbox / 系统完整性保护拒绝
-    // ETIMEDOUT: 探测 timeout，binary 可能挂在 --version（罕见但需要让用户知道）
-    logger.error(`[pty] probe 失败 bin=${resolvedBin} code=${code}: ${msg}`);
-    const hint = formatProbeFailureHint(code, resolvedBin, PLATFORM);
-    throw new Error(`Claude binary 探测失败 (${code}): ${msg}${hint ? `\n${hint}` : ''}`);
+  };
+  try {
+    runOnce(3000);
+  } catch (firstErr: any) {
+    // 首次失败（常见 ETIMEDOUT：冷启动慢 / claude 初始化检查更新）自动重试一次，
+    // 避免"首次打开终端报错、重开又成功"的间歇性问题。
+    logger.warn(`[pty] probe 首次失败，自动重试一次 bin=${resolvedBin} code=${firstErr?.code} msg=${firstErr?.message}`);
+    try {
+      runOnce(8000);
+    } catch (err: any) {
+      const code = err?.code || 'UNKNOWN';
+      const msg = err?.message || String(err);
+      // ENOENT: 命令在 PATH 里找不到（resolveBin 已尽量解析，但可能 darwin shell env 解析失败）
+      // EACCES: 文件存在但无执行权限（macOS Gatekeeper 隔离、chmod -x）
+      // EPERM: macOS sandbox / 系统完整性保护拒绝
+      // ETIMEDOUT: 探测 timeout，binary 可能挂在 --version（罕见但需要让用户知道）
+      logger.error(`[pty] probe 失败 bin=${resolvedBin} code=${code}: ${msg}`);
+      const hint = formatProbeFailureHint(code, resolvedBin, PLATFORM);
+      throw new Error(`Claude binary 探测失败 (${code}): ${msg}${hint ? `\n${hint}` : ''}`);
+    }
   }
 }
 
