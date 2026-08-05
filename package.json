@@ -6,7 +6,7 @@
   "main": "dist-electron/src/main/index.js",
   "type": "module",
   "scripts": {
-    "dev": "node scripts/dev-cleanup.mjs && concurrently --kill-others-on-fail \"npm run dev:frontend\" \"npm run dev:electron\" \"npm run dev:app\"",
+    "dev": "node scripts/dev-cleanup.mjs && tsc && concurrently --kill-others-on-fail \"npm run dev:frontend\" \"npm run dev:electron\" \"npm run dev:app\"",
     "dev:stop": "node scripts/dev-cleanup.mjs",
     "dev:frontend": "cd src/renderer && vite",
     "dev:electron": "tsc --watch",
