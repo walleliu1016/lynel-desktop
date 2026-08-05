@@ -39,6 +39,8 @@ export interface DesktopSocketConfig {
   userId?: string;
 }
 
+export type SyncSessionEvent = 'created' | 'opened' | 'closed' | 'title_updated';
+
 export interface SyncSession {
   session_id: string;
   jsonl_path?: string;
@@ -47,6 +49,8 @@ export interface SyncSession {
   title?: string;
   last_activity_at?: number;
   status: 'open' | 'closed';
+  /** 触发本次上报的事件类型，供 cloud 端区分 created/opened/closed/title_updated */
+  event?: SyncSessionEvent;
 }
 
 // sendPermissionRequest 同步等待 cloud 决策后的结果

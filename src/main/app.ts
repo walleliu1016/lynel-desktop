@@ -15,7 +15,7 @@ import { SSEChannel } from './channels/sse-channel.js';
 import { WeComChannel, WeComChannelConfig } from './channels/wecom-channel.js';
 import { LocalFileChannel } from './channels/localfile-channel.js';
 import { StateChannel } from './channels/state-channel.js';
-import { DesktopSocket, type SyncSession as DesktopSyncSession } from './channels/desktop-socket.js';
+import { DesktopSocket, type SyncSession as DesktopSyncSession, type SyncSessionEvent } from './channels/desktop-socket.js';
 import { OutputChannel, type HookEventLike } from './channels/channel.js';
 import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
 import { windowAttention } from './attention.js';
@@ -677,7 +677,12 @@ export class App {
     return (this.settingsStore.get('cloud_service_enabled', false) as boolean) || false;
   }
 
-  private syncCloudSession(sessionId: string, workDir: string, status: 'open' | 'closed' = 'open'): void {
+  private syncCloudSession(
+    sessionId: string,
+    workDir: string,
+    status: 'open' | 'closed' = 'open',
+    event?: SyncSessionEvent,
+  ): void {
     if (!this.desktopSocket.isEnabled()) return;
     const list = this.withRecentLock(() => readRecentSessions());
     const r = list.find((x) => x.sessionId === sessionId);
@@ -691,6 +696,7 @@ export class App {
       title,
       last_activity_at: Math.floor(Date.now() / 1000),
       status,
+      ...(event ? { event } : {}),
     };
     this.desktopSocket.syncSessions([sessionData]).catch((err) => {
       getLogger().warn(`[app] syncCloudSession failed for ${sessionId.slice(0, 8)}: ${(err as Error).message}`);
@@ -1006,7 +1012,7 @@ export class App {
     session.register(s);
     this.setSessionState(realId, 'running');
     this.wirePty(realId, proc);
-    this.syncCloudSession(realId, workDir);
+    this.syncCloudSession(realId, workDir, 'open', 'created');
     proc.onExit(() => cleanup());
 
     getLogger().info(`[app:createSession] session created id=${realId} workDir=${workDir}`);
@@ -1108,6 +1114,7 @@ export class App {
           record.aiTitle = aiTitle;
           changed = true;
           getBus().emit('session:title:changed', record.sessionId, aiTitle, 'ai');
+          this.syncCloudSession(record.sessionId, record.workdir, 'open', 'title_updated');
           getLogger().info(`[aiTitle] found for sid=${record.sessionId.slice(0, 8)}: ${aiTitle.slice(0, 40)}`);
         }
       } catch {
@@ -1249,7 +1256,7 @@ export class App {
       const s = session.lookup(id);
       const workDir = s?.workDir || '';
       session.close(id);
-      if (workDir) this.syncCloudSession(id, workDir, 'closed');
+      if (workDir) this.syncCloudSession(id, workDir, 'closed', 'closed');
     });
 
     ipcMain.handle('app:getAppInfo', () => ({
@@ -1377,7 +1384,7 @@ export class App {
     ipcMain.handle('app:adoptSession', async (_event, id: string, workDir: string) => {
       if (!session.lookup(id)) {
         session.register(session.newSession(id, workDir));
-        this.syncCloudSession(id, workDir);
+        this.syncCloudSession(id, workDir, 'open', 'opened');
         getLogger().info(`[app:adoptSession] adopted sid=${id} workDir=${workDir}`);
       }
       let title: string | null = null;
@@ -1429,6 +1436,7 @@ export class App {
         writeRecentSessions(list);
       });
       getBus().emit('session:title:changed', id, trimmed, 'user');
+      this.syncCloudSession(id, workDir, 'open', 'title_updated');
       getLogger().info(`[app:renameSession] sid=${id.slice(0, 8)} title=${trimmed}`);
     });
 
@@ -1790,7 +1798,7 @@ export class App {
         });
       }
       // 通知 cloud session 已关闭
-      if (s?.workDir) this.syncCloudSession(id, s.workDir, 'closed');
+      if (s?.workDir) this.syncCloudSession(id, s.workDir, 'closed', 'closed');
     };
     proc.onData(onData);
     proc.onExit(onExit);
@@ -1814,7 +1822,7 @@ export class App {
         this.ptyOutBatcher.flush(id);
         getBus().emit(`session:${id}`, buf);
       }
-      this.syncCloudSession(id, workDir);
+      this.syncCloudSession(id, workDir, 'open', 'opened');
       return Promise.resolve(true);
     }
     const upstream = resolveAnthropicBaseUrl();
@@ -1851,7 +1859,7 @@ export class App {
           proc.onExit(() => cleanup());
           this.setSessionState(id, 'running');
           this.wirePty(id, proc);
-          this.syncCloudSession(id, workDir);
+          this.syncCloudSession(id, workDir, 'open', 'opened');
           // 有 bot 绑定的会话启动后推送通知
           this.wecomChannel.sendSessionStarted(id, workDir);
           // PTY 已 spawn，立即通知前端隐藏 loading
