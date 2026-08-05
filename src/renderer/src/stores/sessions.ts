@@ -79,6 +79,50 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
+  /** Claude /clear 后主进程把当前 PTY 迁移到新 sessionId：把旧 id 的所有状态 key 换成新 id。 */
+  function applyRebind(oldId: string, newId: string, workdir: string) {
+    const idx = list.value.findIndex((s) => s.id === oldId)
+    if (idx >= 0) {
+      const item = list.value[idx]
+      // /clear 后是全新会话，清空继承的旧标题（user/ai/first_prompt）与旧消息数，
+      // 等新会话自己的标题生成后由 refreshList / session:title:changed 更新。
+      list.value = [
+        ...list.value.slice(0, idx),
+        {
+          ...item,
+          id: newId,
+          workdir,
+          project: workdir.split(/[\\/]/).filter(Boolean).pop() || workdir,
+          user_title: undefined,
+          ai_title: '',
+          first_prompt: '',
+          title_source: undefined,
+          msg_count: 0,
+        },
+        ...list.value.slice(idx + 1),
+      ]
+    }
+    const move = <T extends Record<string, unknown>>(map: T): T => {
+      const v = map[oldId]
+      if (v === undefined) return map
+      return omit({ ...map, [newId]: v }, oldId) as T
+    }
+    streaming.value = move(streaming.value)
+    state.value = move(state.value)
+    adopted.value = move(adopted.value)
+    drafts.value = move(drafts.value)
+    hookPermissions.value = move(hookPermissions.value)
+    opened.value = move(opened.value)
+    userTitles.value = move(userTitles.value)
+    titleSources.value = move(titleSources.value)
+    sessionBots.value = move(sessionBots.value)
+    // botBindings 是 botId → sessionId 的映射，value 指向旧 id 的也要迁移
+    for (const [botId, sid] of Object.entries(botBindings.value)) {
+      if (sid === oldId) botBindings.value = { ...botBindings.value, [botId]: newId }
+    }
+    if (activeId.value === oldId) activeId.value = newId
+  }
+
   async function create(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string) {
     creating.value = true
     try {
@@ -307,6 +351,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     userTitles, titleSources, sessionBots, botNames, botBindings,
     setDraft, create, open, select, send, setHookPermission,
     refreshList, handleHookEvent, remove, renameSession, applyTitleChange,
+    applyRebind,
     loadBotNames, bindBot, getSessionBotName, loadBotBindings, getBotBoundSessionName,
     reset }
 })

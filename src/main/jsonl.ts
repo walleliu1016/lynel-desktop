@@ -38,13 +38,12 @@ export function getRoot(): string {
   return rootDir;
 }
 
+// 与 Claude Code 的项目目录编码完全一致：非 [A-Za-z0-9-] 字符一律替换为 '-'。
+// 例：'G:\美团技术书籍' → 'G--------'；'G:\work\lynel-desktop' → 'G--work-lynel-desktop'。
+// 之前只替换 :/\\._ 会保留中文（'G--美团技术书籍'），导致 listSessionIds / getSessionJsonlPath
+// 读错目录，/clear 后的新 jsonl 找不到，rebind 超时。
 export function encodeProjectDirName(dir: string): string {
-  return dir
-    .replace(/\\/g, '-')
-    .replace(/\//g, '-')
-    .replace(/:/g, '-')
-    .replace(/\./g, '-')
-    .replace(/_/g, '-');
+  return dir.replace(/[^A-Za-z0-9-]/g, '-');
 }
 
 export function decodeProjectDirName(name: string): string {
@@ -66,6 +65,23 @@ export function decodeProjectDirName(name: string): string {
 
 export function getSessionJsonlPath(sessionId: string, workDir: string): string {
   return path.join(rootDir, encodeProjectDirName(workDir), `${sessionId}.jsonl`);
+}
+
+/** 某 workdir 对应的项目 jsonl 目录路径。 */
+export function getProjectDirPath(workDir: string): string {
+  return path.join(rootDir, encodeProjectDirName(workDir));
+}
+
+/** 列出某 workdir 下已有的 session id（jsonl 文件名去掉后缀）。用于 /clear 后识别新会话。 */
+export function listSessionIds(workDir: string): string[] {
+  try {
+    return fsSync
+      .readdirSync(getProjectDirPath(workDir))
+      .filter((f) => f.endsWith('.jsonl'))
+      .map((f) => f.slice(0, -'.jsonl'.length));
+  } catch {
+    return [];
+  }
 }
 
 export async function scanAll(): Promise<SessionMeta[]> {
@@ -157,7 +173,9 @@ export async function scanFileMeta(filePath: string, stat?: fsSync.Stats): Promi
         const msg = parsed.message as Record<string, unknown>;
         if (msg.role === 'user') {
           const text = contentText(msg.content);
-          if (text) result.firstPrompt = text;
+          // 跳过系统注入的 XML 上下文（local-command-caveat / command-name / SessionStart 注入等），
+          // 只把真正的用户输入当作 first_prompt。
+          if (text && !isInjectedPrompt(text)) result.firstPrompt = text;
         }
       }
     }
@@ -202,6 +220,13 @@ function safeParseLine(line: string): RawLine | null {
   } catch {
     return null;
   }
+}
+
+/** Claude Code 会把本地命令 / slash 命令 / hook 注入的上下文作为首条 user 消息写入 jsonl
+ *  （如 <local-command-caveat>、<command-name>、<EXTREMELY_IMPORTANT> 等 XML 块）。
+ *  这些不是用户真实输入，不应作为 first_prompt 展示。识别特征：trim 后首行为 XML 标签。 */
+export function isInjectedPrompt(text: string): boolean {
+  return /^<[a-zA-Z][^>\n]*>/.test(text.trim());
 }
 
 function contentText(content: unknown): string {

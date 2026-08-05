@@ -105,11 +105,14 @@ function parseSseChunk(text: string): { events: SseEvent[]; leftover: string } {
 
 export function startProxy(
   workDir: string,
-  token: string,
+  tokenArg: string,
   emit: (env: LynelEnvelope) => void,
   format?: FormatAdapter,
   upstream = 'https://api.anthropic.com',
 ): Promise<Proxy> {
+  // token 需可变：Claude /clear 后会话换新 id，但 PTY 不重启、ANTHROPIC_BASE_URL 仍指向
+  // 本代理端口，必须把内部 token 与落盘目录一起迁移到新 id，后续 API 流量才归属新会话。
+  let token = tokenArg;
   const up = new URL(upstream);
   const upstreamClient = up.protocol === 'http:' ? http : https;
   const sessionDir = path.join(sessionDirFromWorkDir(workDir), token);
@@ -282,8 +285,21 @@ export function startProxy(
       console.log(`[apiproxy] listening on 127.0.0.1:${port} upstream=${up.href} token=${token.slice(0, 8)}...`);
       resolve({
         port,
-        sessionId: token,
-        setSessionID: () => { /* token 即 session id，无需迁移 */ },
+        get sessionId() { return token; },
+        setSessionID: (newId: string) => {
+          if (newId === token) return;
+          const s = sessionStates.get(token);
+          if (!s) return;
+          sessionStates.delete(token);
+          s.sessionDir = path.join(sessionDirFromWorkDir(s.workDir), newId);
+          s.jsonl.close();
+          const nextJsonl = new HappyJsonlWriter(s.sessionDir);
+          nextJsonl.open();
+          s.jsonl = nextJsonl;
+          sessionStates.set(newId, s);
+          getLogger().info(`[apiproxy] session rebound token=${token.slice(0, 8)} -> ${newId.slice(0, 8)}`);
+          token = newId;
+        },
         close: async () => {
           // closeAllConnections 主动关闭 keep-alive 连接，
           // 否则 server.close() 会一直等待 keep-alive 自然结束（永不结束），进程退出时 OS 发 RST -> ECONNRESET

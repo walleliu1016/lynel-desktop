@@ -67,6 +67,17 @@ export function list(): Session[] {
   return Array.from(sessions.values());
 }
 
+/** 把 session 从 oldId 迁移到 newId（不 kill 进程，保留 process/buffer 引用）。
+ * 用于 Claude /clear 后新 sessionId 接管当前 PTY 的场景。 */
+export function rebind(oldId: string, newId: string, workDir: string): Session | undefined {
+  const s = sessions.get(oldId);
+  if (!s) return undefined;
+  const migrated: Session = { ...s, id: newId, workDir };
+  sessions.delete(oldId);
+  sessions.set(newId, migrated);
+  return migrated;
+}
+
 export function setProcess(id: string, proc: PtyProcess, size?: PtySize): void {
   const s = sessions.get(id);
   if (s) {

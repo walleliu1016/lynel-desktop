@@ -241,6 +241,15 @@ async function getRecentSessions(): Promise<RecentSessionRecord[]> {
     list = await generateRecentFromProjects();
     if (list.length > 0) writeRecentSessions(list);
   }
+  // 自愈：清掉历史记录里误存的注入 XML firstPrompt（scanFileMeta 已过滤新写入）
+  let dirty = false;
+  for (const r of list) {
+    if (r.firstPrompt && jsonl.isInjectedPrompt(r.firstPrompt)) {
+      r.firstPrompt = '';
+      dirty = true;
+    }
+  }
+  if (dirty) writeRecentSessions(list);
   return list;
 }
 
@@ -300,40 +309,80 @@ function clearTerminatedFlag(sessionId: string): void {
  *  严格匹配（不忽略大小写）：避免正常文本里出现 "exit" 字样被误判。
  *  `/q` 不在列：claude 不支持，且与"问问题"语义容易冲突。 */
 const EXIT_COMMANDS = new Set(['/exit', 'exit', '/quit', 'quit']);
+// /clear：claude 会清空会话并生成新的 sessionId（新 jsonl），需要把当前 PTY 迁移到新会话
+const CLEAR_COMMANDS = new Set(['/clear']);
+
+/** ANSI 转义解析阶段：
+ *  0=正常 | 1=刚收到 ESC（等类型字符）| 2=CSI 内（\x1b[）| 3=DCS 内（\x1bP）
+ *  | 4=OSC 内（\x1b]）| 5=SS3 内（\x1bO）| 6=DCS/OSC 内收到 ESC 等 ST（\x1b\\） */
+export type EscapePhase = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 /** 把 PTY 收到的一批字节按"当前行"维度消化，识别退出命令。
- *  - \r / \n：行结束，检查 trim 后的内容是否匹配 EXIT_COMMANDS
+ *  - \r / \n：行结束，检查 trim 后的内容是否匹配 EXIT_COMMANDS / CLEAR_COMMANDS
  *  - \x7f / \b：退格，删一个字
  *  - \x03 (Ctrl+C)：清空当前行（claude 自己也清）
  *  - \x15 (Ctrl+U)：清空当前行（kill）
  *  - \x17 (Ctrl+W)：删一个词（按空白切）
+ *  - ANSI 转义序列（CSI/DCS/OSC/SS3，xterm 功能键 / 握手协议）：整体跳过，不污染行内容
  *  - 其他控制字符：忽略（不影响行内容）
  *  - 可打印字符 / Tab：累加到行尾
- *  返回 { line, detected }：line 是消化完所有字节后的"当前行"，detected 表示本批字节是否触发了退出命令。 */
+ *  返回 { line, detected, clearDetected, inEscape }：line 是消化完所有字节后的"当前行"，
+ *  detected 表示是否触发退出命令，clearDetected 表示是否触发 /clear，
+ *  inEscape 是转义序列跨批次时的中间状态（供下次调用传入）。 */
 export function consumeInputForExitDetect(
   prevLine: string,
   data: string,
-): { line: string; detected: boolean } {
+  inEscape: EscapePhase = 0,
+): { line: string; detected: boolean; clearDetected: boolean; inEscape: EscapePhase } {
   let line = prevLine;
   let detected = false;
+  let clearDetected = false;
+  let esc = inEscape;
   for (let i = 0; i < data.length; i++) {
     const ch = data[i];
-    if (ch === '\r' || ch === '\n') {
-      if (EXIT_COMMANDS.has(line.trim())) detected = true;
-      line = '';
-    } else if (ch === '\x7f' || ch === '\b') {
-      line = line.slice(0, -1);
-    } else if (ch === '\x03' || ch === '\x15') {
-      line = '';  // Ctrl+C / Ctrl+U 全清
-    } else if (ch === '\x17') {
-      // Ctrl+W：删到上一个空白之后
-      line = line.replace(/\S+\s*$/, '');
-    } else {
+    if (esc === 0) {
+      if (ch === '\x1b') {
+        esc = 1;
+      } else if (ch === '\r' || ch === '\n') {
+        if (EXIT_COMMANDS.has(line.trim())) detected = true;
+        if (CLEAR_COMMANDS.has(line.trim())) clearDetected = true;
+        line = '';
+      } else if (ch === '\x7f' || ch === '\b') {
+        line = line.slice(0, -1);
+      } else if (ch === '\x03' || ch === '\x15') {
+        line = '';  // Ctrl+C / Ctrl+U 全清
+      } else if (ch === '\x17') {
+        // Ctrl+W：删到上一个空白之后
+        line = line.replace(/\S+\s*$/, '');
+      } else {
+        const code = ch.charCodeAt(0);
+        if (code >= 32 || ch === '\t') line += ch;
+      }
+    } else if (esc === 1) {
+      // ESC 后的第一个字符决定序列类型
+      if (ch === '[') esc = 2;        // CSI
+      else if (ch === ']') esc = 4;   // OSC
+      else if (ch === 'P') esc = 3;   // DCS
+      else if (ch === 'O') esc = 5;   // SS3
+      else if (ch === '\\') esc = 0;  // ESC \（空转义）
+      else esc = 0;                   // 单字符转义序列，直接结束
+    } else if (esc === 2) {
+      // CSI：最终字节 0x40-0x7E 结束序列；参数/中间字节继续跳过
       const code = ch.charCodeAt(0);
-      if (code >= 32 || ch === '\t') line += ch;
+      if (code >= 0x40 && code <= 0x7e) esc = 0;
+    } else if (esc === 3 || esc === 4) {
+      // DCS / OSC：跳过直到 ST（\x1b\\）或 BEL（OSC 专用）
+      if (ch === '\x1b') esc = 6;
+      else if (esc === 4 && ch === '\x07') esc = 0; // OSC 用 BEL 终止
+    } else if (esc === 5) {
+      // SS3：单个最终字节，跳过后结束
+      esc = 0;
+    } else if (esc === 6) {
+      // ESC 之后：是 \ 则是 ST 结束；否则当作新的单字符转义序列处理
+      esc = ch === '\\' ? 0 : 0;
     }
   }
-  return { line, detected };
+  return { line, detected, clearDetected, inEscape: esc };
 }
 
 export class App {
@@ -367,6 +416,10 @@ export class App {
   // 用户在 xterm.js 输入的"当前行"缓存：仅追踪到下一次 \r/\n，为 /exit 检测提供依据。
   // 渲染端 writeTerminalInput 走 IPC 把字节送到这里。onExit 时清理。
   private inputLineBuffers = new Map<string, string>();
+  // 每个 session 的 ANSI 转义序列解析阶段（跨批次），避免功能键 / 握手序列污染行缓冲。
+  private inputEscapeStates = new Map<string, EscapePhase>();
+  // 检测到 /clear 后待迁移的 session：快照 clear 时刻已知 jsonl，轮询找新出现的 id。
+  private pendingClear: { oldId: string; workDir: string; knownIds: Set<string>; attempts: number } | null = null;
   private aiTitleRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private apiProxies: import('./apiproxy.js').Proxy[] = [];
   private watchCleanup: (() => void) | null = null;
@@ -1243,6 +1296,8 @@ export class App {
 
     ipcMain.handle('app:sendMessage', (_event, id: string, prompt: string) => {
       try {
+        // 整行 /clear 也触发会话迁移（覆盖企业微信 /api/send 等非终端入口）
+        if ((prompt || '').trim() === '/clear') this.armClearRebind(id);
         session.send(id, prompt);
       } catch (err: any) {
         getLogger().error(`[app:sendMessage] failed for sid=${id}: ${err.message}`);
@@ -1462,9 +1517,13 @@ export class App {
       // 写入 PTY 之后再做 detect 是有意为之：PTY 已经把字符送给 claude 了，
       // 我们只是 side-channel 记录 intent，不影响输入流。
       const prev = this.inputLineBuffers.get(id) ?? '';
-      const { line, detected } = consumeInputForExitDetect(prev, data);
+      const escState = this.inputEscapeStates.get(id) ?? 0;
+      const { line, detected, clearDetected, inEscape } = consumeInputForExitDetect(prev, data, escState);
       this.inputLineBuffers.set(id, line);
+      this.inputEscapeStates.set(id, inEscape);
       if (detected) setTerminatedFlag(id);
+      // /clear：claude 会清空会话生成新 sessionId，触发 PTY 会话迁移
+      if (clearDetected) this.armClearRebind(id);
     });
 
     ipcMain.handle('app:resizeTerminal', (_event, id: string, cols: number, rows: number) => {
@@ -1808,6 +1867,104 @@ export class App {
       // 重挂/销毁时清掉 pending timer，避免 timer 持有已销毁 session 引用
       this.ptyOutBatcher.clear(id);
     });
+  }
+
+  /** 检测到 /clear：快照当前项目目录已知 session id，启动轮询等待新 jsonl 出现。
+   *  只对已挂 process 的会话生效（没跑 PTY 就不会产生新会话）。 */
+  private armClearRebind(oldId: string): void {
+    if (this.pendingClear) return;
+    const s = session.lookup(oldId);
+    if (!s?.process || !s.workDir) return;
+    const workDir = s.workDir;
+    this.pendingClear = { oldId, workDir, knownIds: new Set(jsonl.listSessionIds(workDir)), attempts: 0 };
+    getLogger().info(`[app:clear] /clear detected sid=${oldId.slice(0, 8)} workDir=${workDir}`);
+    this.pollClearRebind();
+  }
+
+  /** 轮询：/clear 后 claude 会新建 jsonl，目录里出现不在快照中的 id 即新会话。
+   *  最多 12 次 × 500ms ≈ 6s，超时放弃（用户 /clear 后可能没发消息，jsonl 延迟创建）。 */
+  private pollClearRebind(): void {
+    const pc = this.pendingClear;
+    if (!pc) return;
+    const fresh = jsonl.listSessionIds(pc.workDir);
+    const candidates = fresh.filter((id) => id !== pc.oldId && !pc.knownIds.has(id));
+    if (candidates.length > 0) {
+      // 选 mtime 最新的文件作为 /clear 新会话
+      let newest = candidates[0];
+      let newestMtime = 0;
+      for (const id of candidates) {
+        try {
+          const mtime = fs.statSync(jsonl.getSessionJsonlPath(id, pc.workDir)).mtimeMs;
+          if (mtime > newestMtime) {
+            newest = id;
+            newestMtime = mtime;
+          }
+        } catch { /* stat 失败跳过 */ }
+      }
+      this.pendingClear = null;
+      this.doRebindSession(pc.oldId, newest, pc.workDir);
+      return;
+    }
+    pc.attempts += 1;
+    if (pc.attempts > 12) {
+      this.pendingClear = null;
+      getLogger().warn(`[app:clear] no new session jsonl within timeout sid=${pc.oldId.slice(0, 8)}`);
+      return;
+    }
+    setTimeout(() => this.pollClearRebind(), 500);
+  }
+
+  /** 把旧 session 的 PTY 进程迁移到新 sessionId（Claude /clear 场景）：
+   *  迁移 session map / 重绑 wirePty / 迁移输入缓冲与代理 / 更新 recent / cloud 同步 / 通知前端切页。 */
+  private doRebindSession(oldId: string, newId: string, workDir: string): void {
+    const s = session.rebind(oldId, newId, workDir);
+    if (!s || !s.process) {
+      getLogger().warn(`[app:rebind] session not found or no process oldId=${oldId.slice(0, 8)}`);
+      return;
+    }
+    const proc = s.process;
+    // 清掉旧 wirePty 监听，用新 id 重绑（闭包里的 buffer/emit 归一到新 id）
+    this.ptyCleanups.get(oldId)?.();
+    this.ptyCleanups.delete(oldId);
+    this.wirePty(newId, proc);
+    // 输入行缓冲迁移（/exit /clear 检测继续生效）
+    const lineBuf = this.inputLineBuffers.get(oldId);
+    if (lineBuf !== undefined) this.inputLineBuffers.set(newId, lineBuf);
+    this.inputLineBuffers.delete(oldId);
+    // API 代理 sessionId 迁移
+    for (const p of this.apiProxies) {
+      if (p.sessionId === oldId) p.setSessionID(newId);
+    }
+    // recent：/clear 前的旧会话保留为历史（state=done），新会话置顶。
+    // 之前用新记录替换旧记录，多次 /clear 后历史列表只剩最新一条，旧会话被抹掉。
+    this.withRecentLock(() => {
+      const list = readRecentSessions();
+      const oldRec = list.find((r) => r.sessionId === oldId);
+      // 旧会话的 PTY 进程已迁移到新会话，标记为结束；标题/字段保留，用户仍可回看或 resume
+      if (oldRec) oldRec.state = 'done';
+      const filtered = list.filter((r) => r.sessionId !== newId);
+      const project = workDir.split(/[\\/]/).filter(Boolean).pop() || workDir;
+      // 新会话不继承旧标题：/clear 后是全新对话，应显示自己的标题。
+      // 之前继承 aiTitle/userTitle 会经 mergeRecentTitles/refreshAiTitles 永久锁定旧标题，
+      // 且继承链会把最初会话的标题一路传播给之后所有 /clear 会话。
+      const newRec: RecentSessionRecord = {
+        sessionId: newId,
+        workdir: workDir,
+        project: oldRec?.project || project,
+        aiTitle: '',
+        firstPrompt: '',
+        lastOpenedAt: Date.now(),
+        state: 'running',
+        botId: oldRec?.botId,
+      };
+      writeRecentSessions([newRec, ...filtered].slice(0, MAX_RECENT_SESSIONS));
+    });
+    // cloud 同步：旧会话关闭、新会话创建
+    this.syncCloudSession(oldId, workDir, 'closed', 'closed');
+    this.syncCloudSession(newId, workDir, 'open', 'created');
+    // 通知前端：把当前 tab 的 sessionId 换成本新会话，触发 XtermTerminal 重挂载重连
+    getBus().emit('session:rebound', JSON.stringify({ oldId, newId, workDir }));
+    getLogger().info(`[app:rebind] sid=${oldId.slice(0, 8)} -> ${newId.slice(0, 8)} workDir=${workDir}`);
   }
 
   private openTerminal(id: string, workDir: string, size: PtySize = { cols: 80, rows: 24 }): Promise<boolean> {

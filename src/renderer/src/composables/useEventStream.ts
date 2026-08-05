@@ -2,12 +2,14 @@ import { onMounted, onBeforeUnmount, watch } from 'vue'
 import { EventsOn } from './useElectron'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useTabsStore } from '../stores/tabs'
+import { useRecentStore } from '../stores/recent'
 import { pushToast, type ToastLevel } from './useToast'
 import type { SessionState } from '../types/session'
 
 export function useEventStream() {
   const sessions = useSessionsStore()
   const tabs = useTabsStore()
+  const recent = useRecentStore()
   const cleanups: Array<() => void> = []
   let hookCleanup: (() => void) | null = null
 
@@ -110,6 +112,24 @@ export function useEventStream() {
     // 标题变化（ai-title / custom-title / 用户 rename）实时同步到 store。
     cleanups.push(EventsOn('session:title:changed', (id: string, title: string, source: 'user' | 'ai' | 'first_prompt') => {
       sessions.applyTitleChange(id, title, source)
+    }))
+
+    // Claude /clear 后主进程把 PTY 迁移到新 sessionId：更新 store key 与当前 tab 的 sessionId，
+    // tab 的 :key 变化会重挂载 XtermTerminal 自动重连到新会话。
+    cleanups.push(EventsOn('session:rebound', (payload: string) => {
+      try {
+        const data = JSON.parse(payload)
+        if (!data?.oldId || !data?.newId) return
+        sessions.applyRebind(data.oldId, data.newId, data.workDir)
+        // /clear 后是全新会话，用新 meta 的标题（清空继承后回退到项目/id），
+        // 不再沿用旧会话标题；新标题生成后由 refreshList / session:title:changed 更新。
+        const newMeta = sessions.list.find((s) => s.id === data.newId)
+        const title = newMeta ? sessionDisplayTitle(newMeta) : undefined
+        tabs.rebindSession(data.oldId, data.newId, data.workDir, title)
+        // /clear 后主进程已更新 recent-sessions.json（新会话 id 置顶），重新拉取让
+        // "最近会话 / 历史会话"列表同步；否则历史面板还停留在旧状态。
+        void recent.loadRecentSessions()
+      } catch { /* 忽略格式错误 */ }
     }))
 
     cleanups.push(EventsOn('permission:request', (payload: string) => {

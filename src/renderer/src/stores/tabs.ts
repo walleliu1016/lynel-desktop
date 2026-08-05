@@ -79,6 +79,22 @@ export const useTabsStore = defineStore('tabs', () => {
     }
   }
 
+  /** Claude /clear 后 session 迁移：把当前 tab 的 sessionId 换成新 id（保持 tab 位置），
+   *  id 变化触发 HomeView 的 :key 重挂载 XtermTerminal，从而重连到新会话。 */
+  function rebindSession(oldId: string, newId: string, workdir: string, title?: string) {
+    const tab = tabs.value.find((t) => t.type === 'session' && (t.payload as any)?.sessionId === oldId)
+    if (!tab) return
+    const wasActive = activeId.value === tab.id
+    const updated: Tab = {
+      ...tab,
+      id: `session-${newId}`,
+      title: title ?? tab.title,
+      payload: { ...(tab.payload || {}), sessionId: newId, workdir },
+    }
+    tabs.value = tabs.value.map((t) => (t.id === tab.id ? updated : t))
+    if (wasActive) activeId.value = updated.id
+  }
+
   return {
     tabs,
     activeId,
@@ -92,5 +108,6 @@ export const useTabsStore = defineStore('tabs', () => {
     openGuide,
     close,
     updateTitle,
+    rebindSession,
   }
 })

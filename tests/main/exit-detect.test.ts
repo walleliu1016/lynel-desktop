@@ -87,15 +87,43 @@ describe('consumeInputForExitDetect', () => {
     expect(r2.line).toBe('hello ');
   });
 
-  it('ignores ANSI escape sequences (does not pollute line)', () => {
-    // 颜色转义不应当出现在 line 里
+  it('skips ANSI escape sequences and still detects exit', () => {
+    // 颜色转义（CSI）应整体跳过，/exit 干净进入行缓冲，回车后正常检测
     const r = consumeInputForExitDetect('', '\x1b[31m/exit\x1b[0m\r');
-    // \x1b 是 0x1b，charCodeAt 27，< 32 但不是 \t，忽略
-    // [31m 是 '[' '3' '1' 'm'，全部可见
-    // 所以实际累积的是 "[31m/exit[0m"
-    // 我们只关心 trim 后匹配；这里是不匹配的（带 ANSI 字面量）
-    // 重点是检测逻辑不会因为 raw 转义就提前返回 true
-    expect(r.detected).toBe(false);
+    expect(r.line).toBe('');
+    expect(r.detected).toBe(true);
+  });
+
+  it('skips CSI function-key sequence (F1 = \\x1b[O) without polluting line', () => {
+    // xterm 功能键/握手序列不应污染行缓冲，否则 /clear /exit 检测失效
+    let s = consumeInputForExitDetect('', '\x1b[O');
+    expect(s.line).toBe('');
+    s = consumeInputForExitDetect(s.line, '\x1b[I');
+    expect(s.line).toBe('');
+    s = consumeInputForExitDetect(s.line, '/clear');
+    expect(s.line).toBe('/clear');
+    s = consumeInputForExitDetect(s.line, '\r');
+    expect(s.clearDetected).toBe(true);
+  });
+
+  it('skips DCS sequence (xterm.js handshake) without polluting line', () => {
+    const seq = '\x1bP>|xterm.js(6.1.0-beta.291)\x1b\\';
+    let s = consumeInputForExitDetect('', seq);
+    expect(s.line).toBe('');
+    s = consumeInputForExitDetect(s.line, '/clear\r');
+    expect(s.clearDetected).toBe(true);
+  });
+
+  it('handles escape sequence split across batches (inEscape carried over)', () => {
+    // \x1b[O 分两批到达：\x1b[ 和 O，靠 inEscape 跨批次保持跳过状态
+    let s = consumeInputForExitDetect('', '\x1b[');
+    expect(s.line).toBe('');
+    expect(s.inEscape).toBe(2); // CSI 进行中
+    s = consumeInputForExitDetect(s.line, 'O', s.inEscape);
+    expect(s.inEscape).toBe(0);
+    expect(s.line).toBe('');
+    s = consumeInputForExitDetect(s.line, '/clear\r');
+    expect(s.clearDetected).toBe(true);
   });
 
   it('detects only once per Enter, subsequent /exit without retyping is not possible', () => {
@@ -115,6 +143,37 @@ describe('consumeInputForExitDetect', () => {
     expect(r1.line).toBe('');
     const r2 = consumeInputForExitDetect(r1.line, '/exit\r');
     expect(r2.detected).toBe(true);
+  });
+
+  it('detects /clear followed by \\r (clearDetected, not exit)', () => {
+    const r = consumeInputForExitDetect('', '/clear\r');
+    expect(r.clearDetected).toBe(true);
+    expect(r.detected).toBe(false);
+    expect(r.line).toBe('');
+  });
+
+  it('detects byte-by-byte /clear', () => {
+    // 模拟用户逐键输入 / c l e a r \r
+    let s = consumeInputForExitDetect('', '/');
+    s = consumeInputForExitDetect(s.line, 'c');
+    s = consumeInputForExitDetect(s.line, 'l');
+    s = consumeInputForExitDetect(s.line, 'e');
+    s = consumeInputForExitDetect(s.line, 'a');
+    s = consumeInputForExitDetect(s.line, 'r');
+    s = consumeInputForExitDetect(s.line, '\r');
+    expect(s.clearDetected).toBe(true);
+  });
+
+  it('does not trigger clearDetected on text containing clear', () => {
+    const r = consumeInputForExitDetect('', 'clear the cache\r');
+    expect(r.clearDetected).toBe(false);
+  });
+
+  it('Ctrl+C clears pending /clear line without triggering', () => {
+    const r1 = consumeInputForExitDetect('', '/clear');
+    const r2 = consumeInputForExitDetect(r1.line, '\x03');
+    expect(r2.line).toBe('');
+    expect(r2.clearDetected).toBe(false);
   });
 });
 
