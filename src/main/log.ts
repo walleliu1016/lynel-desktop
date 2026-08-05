@@ -12,6 +12,7 @@
 //   测试不会走到）。
 
 import type LogType from 'electron-log/main';
+import { createRequire } from 'node:module';
 
 type ElectronLog = typeof LogType;
 
@@ -76,8 +77,12 @@ function loadLogger(): ElectronLog {
   if (_loaded) return _log!;
   _loaded = true;
   try {
+    // 主进程编译为 ESM（package.json type=module），裸 require 不存在，
+    // 必须用 createRequire 才能在 ESM 里加载 electron-log；否则会抛
+    // ReferenceError: require is not defined，导致永远降级到 console。
+    const nodeRequire = createRequire(import.meta.url);
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mod = require('electron-log/main');
+    const mod = nodeRequire('electron-log/main');
     _log = (mod.default ?? mod) as ElectronLog;
     try { (_log as any).initialize?.(); } catch { /* 旧版 API 无 initialize，忽略 */ }
     // 防止 stdout/stderr 管道断开导致 EPIPE 崩溃
