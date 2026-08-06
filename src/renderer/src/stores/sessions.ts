@@ -43,6 +43,7 @@ function recentToMeta(record: RecentSession): SessionMeta {
     size: 0,
     user_title: record.userTitle,
     title_source: source,
+    bot_id: record.botId,
   }
 }
 
@@ -162,10 +163,10 @@ export const useSessionsStore = defineStore('sessions', () => {
         list.value = trimList([{
           id, workdir, project, mtime: Math.floor(Date.now() / 1000), msg_count: 0,
           first_prompt: prompt, ai_title: '', size: 0,
-          user_title: undefined, title_source: prompt ? 'first_prompt' : 'first_prompt',
+          user_title: undefined, title_source: 'first_prompt',
         }, ...list.value])
       }
-      titleSources.value = { ...titleSources.value, [id]: prompt ? 'first_prompt' : 'first_prompt' }
+      titleSources.value = { ...titleSources.value, [id]: 'first_prompt' }
       // 绑定 bot（如果有）
       if (botId) {
         await BindSessionBot(id, botId)
@@ -180,8 +181,13 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   function open(record: RecentSession) {
-    if (!list.value.find((s) => s.id === record.sessionId)) {
-      list.value = trimList([recentToMeta(record), ...list.value])
+    const idx = list.value.findIndex((s) => s.id === record.sessionId)
+    const meta = recentToMeta(record)
+    if (idx >= 0) {
+      // 会话已存在：从原位置移除，用最新 lastOpenedAt 的 meta 替换后移到列表头部
+      list.value = trimList([meta, ...list.value.slice(0, idx), ...list.value.slice(idx + 1)])
+    } else {
+      list.value = trimList([meta, ...list.value])
     }
     activeId.value = record.sessionId
     opened.value = { ...opened.value, [record.sessionId]: true }
@@ -226,8 +232,9 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
-  /** 启动时用最近会话填充列表（持久化数据源：recent-sessions.json）。 */
+  /** 启动时用最近会话填充列表（持久化数据源：recent-sessions.json；仅空列表时填充，防御非空覆盖）。 */
   async function initFromRecent() {
+    if (list.value.length) return
     try {
       const recents = (await GetRecentSessions()) as RecentSession[]
       if (!Array.isArray(recents) || recents.length === 0) return

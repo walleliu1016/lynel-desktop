@@ -31,6 +31,7 @@ describe('recentToMeta', () => {
       firstPrompt: '第一条 prompt',
       lastOpenedAt: 1750000000000,
       state: 'idle',
+      botId: 'bot-1',
     }
     const meta = recentToMeta(record)
     expect(meta).toEqual({
@@ -44,6 +45,7 @@ describe('recentToMeta', () => {
       size: 0,
       user_title: undefined,
       title_source: 'ai',
+      bot_id: 'bot-1',
     } satisfies SessionMeta)
   })
 
@@ -137,5 +139,28 @@ describe('store', () => {
     store.open(mkRecent(1, 1000))
     store.open(mkRecent(1, 2000))
     expect(store.list.filter((s) => s.id === 's-1').length).toBe(1)
+  })
+
+  it('重开已存在会话移到列表头部且长度不变', () => {
+    const store = useSessionsStore()
+    store.open(mkRecent(1, 1000))
+    store.open(mkRecent(2, 2000))
+    expect(store.list.map((s) => s.id)).toEqual(['s-2', 's-1'])
+    // 重开 s-1（lastOpenedAt 更大），应移到列表头部
+    store.open(mkRecent(1, 999999))
+    expect(store.list.map((s) => s.id)).toEqual(['s-1', 's-2'])
+    expect(store.list.length).toBe(2)
+    // mtime 随最新 lastOpenedAt 更新（秒级归一化后再转秒）
+    expect(store.list[0].mtime).toBe(999999)
+  })
+
+  it('applyRebind 后列表仍不超过 MAX_SIDEBAR_SESSIONS', () => {
+    const store = useSessionsStore()
+    for (let i = 0; i < MAX_SIDEBAR_SESSIONS; i++) store.open(mkRecent(i, 1000 + i))
+    expect(store.list.length).toBe(MAX_SIDEBAR_SESSIONS)
+    store.applyRebind('s-29', 'rebound-1', '/newproj')
+    expect(store.list.length).toBeLessThanOrEqual(MAX_SIDEBAR_SESSIONS)
+    expect(store.list.some((s) => s.id === 'rebound-1')).toBe(true)
+    expect(store.list.some((s) => s.id === 's-29')).toBe(false)
   })
 })
