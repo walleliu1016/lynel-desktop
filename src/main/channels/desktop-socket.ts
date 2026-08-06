@@ -37,9 +37,11 @@ export interface DesktopSocketConfig {
   url?: string;
   enabled?: boolean;
   userId?: string;
+  /** desktop 机器名（os.hostname()），cloud 端按 (user_id, machine_name) 区分设备 */
+  machineName?: string;
 }
 
-export type SyncSessionEvent = 'created' | 'opened' | 'closed' | 'title_updated';
+export type SyncSessionEvent = 'created' | 'opened' | 'closed' | 'title_updated' | 'snapshot';
 
 export interface SyncSession {
   session_id: string;
@@ -49,8 +51,10 @@ export interface SyncSession {
   title?: string;
   last_activity_at?: number;
   status: 'open' | 'closed';
-  /** 触发本次上报的事件类型，供 cloud 端区分 created/opened/closed/title_updated */
+  /** 触发本次上报的事件类型；snapshot 表示全量快照（重连认证成功后上报，供 cloud 端收敛） */
   event?: SyncSessionEvent;
+  /** 来源机器名；未显式传时 syncSessions 统一用 config.machineName 填充 */
+  machine_name?: string;
 }
 
 // sendPermissionRequest 同步等待 cloud 决策后的结果
@@ -84,6 +88,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
   private url = '';
   private enabled = false;
   private userId = '';
+  private machineName = '';
   private password: string | undefined;       // 用户输入的密码，纯内存，进程重启即失效
   private token: string | undefined;          // cloud 返回的 token（用于 socket 认证），纯内存
   private state: ConnectionState = 'disconnected';
@@ -107,6 +112,9 @@ export class DesktopSocket implements OutputChannel, HookChannel {
 
   // Mobile -> Desktop 聊天消息回调（app.ts 注入：路由到 session.send）
   onChatMessage: ((sessionId: string, question: string) => void) | null = null;
+
+  // 重连认证成功回调（app.ts 注入：全量上报当前 open 会话，供 cloud 端收敛）
+  onSessionSnapshot: (() => void) | null = null;
 
   // 状态变更回调（供 UI 显示连接状态）
   onStateChange: ((state: ConnectionState) => void) | null = null;
@@ -151,6 +159,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     const prevEnabled = this.enabled && this.url.length > 0;
     if (cfg.url !== undefined) this.url = cfg.url.replace(/\/+$/, '');
     if (cfg.userId !== undefined) this.userId = cfg.userId;
+    if (cfg.machineName !== undefined) this.machineName = cfg.machineName;
     if (cfg.enabled !== undefined) this.enabled = cfg.enabled;
 
     const nextEnabled = this.isEnabled();
@@ -221,6 +230,8 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       getLogger().info(`[desktop-socket] authenticated type=${typeof args[0]} data=${JSON.stringify(raw ?? '').slice(0, 200)}`);
       this.setState('authenticated');
       this.emitAllPendingBatches();
+      // 重连认证成功后全量上报当前 open 会话（权威快照），供 cloud 端收敛
+      this.onSessionSnapshot?.();
     });
 
     this.socket.on('auth:failed', (...args: any[]) => {
@@ -326,7 +337,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       }
       // 已有 token -> 直接 emit（重连复用，避免重复 login）
       if (this.token) {
-        this.emit('desktop:auth', { user_id: this.userId, token: this.token });
+        this.emit('desktop:auth', { user_id: this.userId, token: this.token, machine_name: this.machineName });
         return;
       }
       // 无 token -> 调 /api/auth/login 用密码换 token
@@ -342,7 +353,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
         getLogger().warn('[desktop-socket] socket disconnected during login, defer auth to next connect');
         return;
       }
-      this.emit('desktop:auth', { user_id: this.userId, token: result.token });
+      this.emit('desktop:auth', { user_id: this.userId, token: result.token, machine_name: this.machineName });
     } finally {
       this.authenticating = false;
     }
@@ -512,9 +523,11 @@ export class DesktopSocket implements OutputChannel, HookChannel {
 
   syncSessions(sessions: SyncSession[]): Promise<void> {
     if (!this.isEnabled()) return Promise.resolve();
+    // 统一填充 machine_name（调用方未显式指定时用 config 里的机器名）
+    const enriched = sessions.map((s) => ({ ...s, machine_name: s.machine_name ?? this.machineName }));
     // 未认证时直接 emit 会被 socket 缓冲（如果 transports 支持），但更稳妥是认证后再发
     // 这里直接 emit，未连接时 emit 内部会丢弃并打 warn；认证成功的回调里也会 flush
-    this.emit('desktop:session:sync', { sessions });
+    this.emit('desktop:session:sync', { sessions: enriched });
     return Promise.resolve();
   }
 
