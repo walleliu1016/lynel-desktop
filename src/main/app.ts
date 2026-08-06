@@ -562,6 +562,8 @@ export class App {
         });
       }
     };
+    // 云端会话状态收敛：重连认证成功后全量上报当前 open 会话
+    this.desktopSocket.onSessionSnapshot = () => this.syncAllOpenSessions();
     await this.ensureHookServer();
     this.watchJsonl();
     this.startAiTitleRefresh();
@@ -718,6 +720,7 @@ export class App {
       enabled,
       url,
       userId,
+      machineName: os.hostname(),
     });
 
     // updateConfig 只在已有 socket 时重连；首次启用需要显式 connect
@@ -730,18 +733,19 @@ export class App {
     return (this.settingsStore.get('cloud_service_enabled', false) as boolean) || false;
   }
 
-  private syncCloudSession(
+  /** 构造单条会话同步数据（增量事件与全量快照复用；recentList 可复用一次读取结果）。 */
+  private buildSyncSession(
     sessionId: string,
     workDir: string,
     status: 'open' | 'closed' = 'open',
     event?: SyncSessionEvent,
-  ): void {
-    if (!this.desktopSocket.isEnabled()) return;
-    const list = this.withRecentLock(() => readRecentSessions());
+    recentList?: RecentSessionRecord[],
+  ): DesktopSyncSession {
+    const list = recentList ?? this.withRecentLock(() => readRecentSessions());
     const r = list.find((x) => x.sessionId === sessionId);
     const project = workDir.split(/[\\/]/).filter(Boolean).pop() || workDir;
     const title = r ? (r.userTitle || r.aiTitle || r.firstPrompt || undefined) : undefined;
-    const sessionData: DesktopSyncSession = {
+    return {
       session_id: sessionId,
       jsonl_path: jsonl.getSessionJsonlPath(sessionId, workDir),
       cwd: workDir,
@@ -751,8 +755,31 @@ export class App {
       status,
       ...(event ? { event } : {}),
     };
+  }
+
+  private syncCloudSession(
+    sessionId: string,
+    workDir: string,
+    status: 'open' | 'closed' = 'open',
+    event?: SyncSessionEvent,
+  ): void {
+    if (!this.desktopSocket.isEnabled()) return;
+    const sessionData = this.buildSyncSession(sessionId, workDir, status, event);
     this.desktopSocket.syncSessions([sessionData]).catch((err) => {
       getLogger().warn(`[app] syncCloudSession failed for ${sessionId.slice(0, 8)}: ${(err as Error).message}`);
+    });
+  }
+
+  /** 重连认证成功后全量上报当前所有实际 open 的会话（权威快照，供 cloud 端收敛）。 */
+  private syncAllOpenSessions(): void {
+    if (!this.desktopSocket.isEnabled()) return;
+    const recentList = this.withRecentLock(() => readRecentSessions());
+    const open = session
+      .list()
+      .filter((s) => s.process !== null)
+      .map((s) => this.buildSyncSession(s.id, s.workDir, 'open', 'snapshot', recentList));
+    this.desktopSocket.syncSessions(open).catch((err) => {
+      getLogger().warn(`[app] syncAllOpenSessions failed: ${(err as Error).message}`);
     });
   }
 
