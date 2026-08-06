@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import type { RecentSession } from '../types/recent'
 import type { SessionMeta } from '../types/session'
+import { ListSessions, AdoptSession } from '../composables/useElectron'
 
 // mock IPC 转发层，避免依赖 window.electronAPI
 vi.mock('../composables/useElectron', () => ({
@@ -14,11 +15,9 @@ vi.mock('../composables/useElectron', () => ({
   BindSessionBot: vi.fn(),
   ListBots: vi.fn().mockResolvedValue([]),
   ListBotBindings: vi.fn().mockResolvedValue({}),
-  GetRecentSessions: vi.fn().mockResolvedValue([]),
 }))
 
 import { MAX_SIDEBAR_SESSIONS, recentToMeta, trimList } from './sessions'
-import { GetRecentSessions } from '../composables/useElectron'
 import { useSessionsStore } from './sessions'
 
 describe('recentToMeta', () => {
@@ -97,33 +96,6 @@ describe('store', () => {
     }
   }
 
-  it('initFromRecent 用最近会话填充列表（最新在前）', async () => {
-    vi.mocked(GetRecentSessions).mockResolvedValueOnce([
-      mkRecent(0, 2000),
-      mkRecent(1, 1000),
-    ])
-    const store = useSessionsStore()
-    await store.initFromRecent()
-    expect(store.list.map((s) => s.id)).toEqual(['s-0', 's-1'])
-    expect(store.list[0].ai_title).toBe('T0')
-  })
-
-  it('initFromRecent 超过 30 条时裁剪', async () => {
-    const recents = Array.from({ length: 35 }, (_, i) => mkRecent(i))
-    vi.mocked(GetRecentSessions).mockResolvedValueOnce(recents)
-    const store = useSessionsStore()
-    await store.initFromRecent()
-    expect(store.list.length).toBe(MAX_SIDEBAR_SESSIONS)
-    expect(store.list[0].id).toBe('s-34') // lastOpenedAt 最大者最新，排最前
-  })
-
-  it('initFromRecent 返回空数组时列表保持为空', async () => {
-    vi.mocked(GetRecentSessions).mockResolvedValueOnce([])
-    const store = useSessionsStore()
-    await store.initFromRecent()
-    expect(store.list.length).toBe(0)
-  })
-
   it('open 已满 30 条时插入头部并挤出最旧一条', () => {
     const store = useSessionsStore()
     for (let i = 0; i < 30; i++) store.open(mkRecent(i, 1000 + i))
@@ -152,6 +124,44 @@ describe('store', () => {
     expect(store.list.length).toBe(2)
     // mtime 随最新 lastOpenedAt 更新（秒级归一化后再转秒）
     expect(store.list[0].mtime).toBe(999999)
+  })
+
+  it('refreshList 同步 user_title/msg_count 等权威字段，修复 resume 后标题陈旧', async () => {
+    const store = useSessionsStore()
+    await store.open(mkRecent(1, 1000))
+    // 初始 item：mkRecent 仅提供 aiTitle，无 user_title
+    expect(store.list[0].user_title).toBeUndefined()
+    vi.mocked(ListSessions).mockResolvedValueOnce([
+      {
+        id: 's-1',
+        workdir: '/p1',
+        project: 'p1',
+        mtime: 2000,
+        msg_count: 7,
+        first_prompt: '',
+        ai_title: '',
+        size: 100,
+        user_title: '用户改名',
+        title_source: 'user',
+      },
+    ] as any)
+    await store.refreshList()
+    expect(store.list[0].user_title).toBe('用户改名')
+    expect(store.list[0].msg_count).toBe(7)
+    expect(store.list[0].mtime).toBe(2000)
+    expect(store.list[0].title_source).toBe('user')
+    expect(store.list[0].ai_title).toBe('T1') // 权威 ai_title 为空时保留本地已有值
+  })
+
+  it('select 时 AdoptSession 抛错仍执行 refreshList，列表不保持陈旧', async () => {
+    const store = useSessionsStore()
+    await store.open(mkRecent(1, 1000))
+    vi.mocked(AdoptSession).mockRejectedValueOnce(new Error('boom'))
+    vi.mocked(ListSessions).mockResolvedValueOnce([
+      { id: 's-1', workdir: '/p1', project: 'p1', mtime: 2000, msg_count: 5, first_prompt: '', ai_title: '', size: 100 },
+    ] as any)
+    await store.select('s-1')
+    expect(store.list[0].msg_count).toBe(5)
   })
 
   it('applyRebind 后列表仍不超过 MAX_SIDEBAR_SESSIONS', () => {

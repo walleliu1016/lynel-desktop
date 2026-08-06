@@ -123,9 +123,13 @@ export function useEventStream() {
         sessions.applyRebind(data.oldId, data.newId, data.workDir)
         // /clear 后是全新会话，用新 meta 的标题（清空继承后回退到项目/id），
         // 不再沿用旧会话标题；新标题生成后由 refreshList / session:title:changed 更新。
+        // /resume 后目标是已存在的历史会话（可能不在前端 list），主进程 recent 保留了其标题。
         const newMeta = sessions.list.find((s) => s.id === data.newId)
         const title = newMeta ? sessionDisplayTitle(newMeta) : undefined
         tabs.rebindSession(data.oldId, data.newId, data.workDir, title)
+        // rebind 后主动拉一次权威数据：让 /resume 目标的标题/消息数立即收敛
+        // （fsnotify 依赖 jsonl 写入，/resume 后若用户不发消息则不保证触发）。
+        void sessions.refreshList()
         // /clear 后主进程已更新 recent-sessions.json（新会话 id 置顶），重新拉取让
         // "最近会话 / 历史会话"列表同步；否则历史面板还停留在旧状态。
         void recent.loadRecentSessions()

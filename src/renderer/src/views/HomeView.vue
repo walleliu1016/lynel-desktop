@@ -127,12 +127,14 @@ const activeSessionWorkdir = computed(() => {
 const sessionTabs = computed(() => tabsStore.tabs.filter((t) => t.type === 'session'))
 // 移除 traceTabs、activeTraceId
 
-// 切 session 时关闭 overlay 并加载 trace 数据
+// 切 session 时关闭 overlay 并加载 trace 数据。
+// 去掉 newId === trace.sessionId 的早退：即使切回已加载过的会话也重新拉取，
+// 保证 resume / 重开后右侧 trace 始终是最新数据。
 watch(activeSessionId, (newId) => {
   showTraceOverlay.value = false
   if (!newId) return
   const wd = activeSessionWorkdir.value
-  if (!wd || newId === trace.sessionId) return
+  if (!wd) return
   trace.setSession(wd, newId)
   trace.load()
 })
@@ -189,9 +191,15 @@ async function onCloseTab(id: string) {
 async function onSelectSession(id: string) {
   const meta = sessions.list.find((s) => s.id === id)
   if (!meta) return
+  // 重复点击当前已激活的会话：activeSessionId 不变化，下方 watch 不会触发，需强制刷新 trace
+  const wasActive = activeSessionId.value === id
   tabsStore.openSession(id, meta.workdir, sessionDisplayTitle(meta))
-  void sessions.select(id)
-  // trace 加载由 activeSessionId watch 统一处理
+  await sessions.select(id)
+  if (wasActive && meta.workdir) {
+    trace.setSession(meta.workdir, id)
+    trace.load()
+  }
+  // 非 wasActive 时 trace 加载由 activeSessionId watch 统一处理
 }
 
 function closeTraceOverlay() {
@@ -232,6 +240,8 @@ async function onCreateFromSession(workdir: string, prompt: string, extraArgs: s
 
 async function onOpenRecent(item: RecentSession) {
   try {
+    // 重复打开当前已激活的会话：activeSessionId 不变化，需强制刷新 trace
+    const wasActive = activeSessionId.value === item.sessionId
     sessions.open(item)
     tabsStore.openSession(item.sessionId, item.workdir, sessionDisplayTitle({
       id: item.sessionId,
@@ -245,6 +255,10 @@ async function onOpenRecent(item: RecentSession) {
     await sessions.loadBotNames()
     if (item.botId) {
       sessions.sessionBots = { ...sessions.sessionBots, [item.sessionId]: item.botId }
+    }
+    if (wasActive && item.workdir) {
+      trace.setSession(item.workdir, item.sessionId)
+      trace.load()
     }
     showNewSession.value = false
   } catch (e: any) {

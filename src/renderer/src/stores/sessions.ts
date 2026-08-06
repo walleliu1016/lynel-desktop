@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { SessionMeta, SessionState } from '../types/session'
 import type { RecentSession } from '../types/recent'
-import { CreateSession, ListSessions, SendMessage, AdoptSession, RenameSession, BindSessionBot, ListBots, ListBotBindings, GetRecentSessions } from '../composables/useElectron'
+import { CreateSession, ListSessions, SendMessage, AdoptSession, RenameSession, BindSessionBot, ListBots, ListBotBindings } from '../composables/useElectron'
 
 export interface HookPermissionRequest {
   id: string
@@ -25,7 +25,7 @@ function normalizeLastOpenedAt(v: number | undefined): number {
 
 const MAX_SIDEBAR_SESSIONS = 30
 
-/** RecentSession → SessionMeta 映射（供 initFromRecent 与 open 复用）。 */
+/** RecentSession → SessionMeta 映射（供 open 复用）。 */
 function recentToMeta(record: RecentSession): SessionMeta {
   const source: 'user' | 'ai' | 'first_prompt' = record.userTitle
     ? 'user'
@@ -180,7 +180,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
-  function open(record: RecentSession) {
+  async function open(record: RecentSession) {
     const idx = list.value.findIndex((s) => s.id === record.sessionId)
     const meta = recentToMeta(record)
     if (idx >= 0) {
@@ -201,6 +201,9 @@ export const useSessionsStore = defineStore('sessions', () => {
     } else {
       titleSources.value = { ...titleSources.value, [record.sessionId]: 'first_prompt' }
     }
+    // recentToMeta 硬编码 msg_count: 0，resume 后主动刷新一次拿到真实消息数与标题，
+    // 与 /clear 后 refreshList 的效果保持一致（fsnotify 事件不一定在 resume 后触发）。
+    await refreshList()
   }
 
   async function select(id: string) {
@@ -208,44 +211,49 @@ export const useSessionsStore = defineStore('sessions', () => {
     opened.value = { ...opened.value, [id]: true }
     const meta = list.value.find((s) => s.id === id)
     if (!meta) return
-    const titleInfo = await AdoptSession(id, meta.workdir) as { title: string; source: 'user' | 'ai' | 'first_prompt' } | undefined
-    if (titleInfo) {
-      applyTitleChange(id, titleInfo.title, titleInfo.source)
+    try {
+      const titleInfo = await AdoptSession(id, meta.workdir) as { title: string; source: 'user' | 'ai' | 'first_prompt' } | undefined
+      if (titleInfo) {
+        applyTitleChange(id, titleInfo.title, titleInfo.source)
+      }
+    } catch (e: any) {
+      // adopt 失败不应阻断列表刷新，否则 resume 后 msg_count / 标题仍是旧的
+      console.error('[sessions] select adopt failed:', e?.message || e)
     }
+    // resume / 重开会话后同步 msg_count / mtime / ai_title，左侧列表展示实时数据
+    await refreshList()
   }
 
   async function refreshList() {
     try {
       const all = await ListSessions()
       if (!all) return
-      // 只更新已有条目的 msg_count/mtime，不追加新条目（列表仅由 open/create 控制）
+      // 只更新已有条目的数据，不追加新条目（列表仅由 open/create 控制）
       const map = new Map<string, any>(all.map((s: any) => [s.id, s]))
       for (let i = 0; i < list.value.length; i++) {
         const cur = list.value[i]
         const fresh = map.get(cur.id) as Record<string, any> | undefined
-        if (fresh) {
-          list.value[i] = { ...cur, msg_count: fresh.msg_count, mtime: fresh.mtime, first_prompt: fresh.first_prompt || cur.first_prompt, ai_title: fresh.ai_title || cur.ai_title }
+        if (!fresh) continue
+        // 主进程 listSessions（含 mergeRecentTitles 的 user_title/ai_title）是标题权威来源，
+        // 全量同步标题字段：create / applyRebind / 外部入口等路径可能留下缺失或过期的标题，
+        // 只同步 msg_count 无法修复（此前 user_title 一直不被刷新，resume 后列表项仍显示旧标题）。
+        const user_title = fresh.user_title !== undefined ? fresh.user_title : cur.user_title
+        const ai_title = fresh.ai_title || cur.ai_title
+        const first_prompt = fresh.first_prompt || cur.first_prompt
+        const title_source: SessionMeta['title_source'] =
+          user_title ? 'user' : ai_title ? 'ai' : first_prompt ? 'first_prompt' : cur.title_source
+        list.value[i] = {
+          ...cur,
+          msg_count: fresh.msg_count,
+          mtime: fresh.mtime,
+          user_title,
+          ai_title,
+          first_prompt,
+          title_source,
         }
       }
     } catch (e: any) {
       console.error('[sessions] refreshList failed:', e?.message || e)
-    }
-  }
-
-  /** 启动时用最近会话填充列表（持久化数据源：recent-sessions.json；仅空列表时填充，防御非空覆盖）。 */
-  async function initFromRecent() {
-    if (list.value.length) return
-    try {
-      const recents = (await GetRecentSessions()) as RecentSession[]
-      if (!Array.isArray(recents) || recents.length === 0) return
-      // 数据源理论上已按 lastOpenedAt 降序，这里再排一次保证「最新在前」；
-      // 按归一化毫秒排序，避免换算成秒级 mtime 后丢失先后顺序
-      const sorted = [...recents].sort(
-        (a, b) => normalizeLastOpenedAt(b.lastOpenedAt) - normalizeLastOpenedAt(a.lastOpenedAt),
-      )
-      list.value = trimList(sorted.map(recentToMeta))
-    } catch (e: any) {
-      console.error('[sessions] initFromRecent failed:', e?.message || e)
     }
   }
 
@@ -382,17 +390,14 @@ export const useSessionsStore = defineStore('sessions', () => {
     sessionBots.value = {}
   }
 
-  // 初始加载：先用最近会话填充列表，再刷新 msg_count/mtime
-  setTimeout(async () => {
-    await initFromRecent()
-    await refreshList()
-  }, 0)
+  // 左侧列表只显示手动打开/创建的会话，启动时不做历史自动填充；
+  // 打开会话（open/select）时通过 refreshList 同步消息数/标题等实时数据。
 
   return { list, activeId, active, streaming, state,
     creating, loading, adopted, drafts, hookPermissions, opened,
     userTitles, titleSources, sessionBots, botNames, botBindings,
     setDraft, create, open, select, send, setHookPermission,
-    refreshList, initFromRecent, handleHookEvent, remove, renameSession, applyTitleChange,
+    refreshList, handleHookEvent, remove, renameSession, applyTitleChange,
     applyRebind,
     loadBotNames, bindBot, getSessionBotName, loadBotBindings, getBotBoundSessionName,
     reset }

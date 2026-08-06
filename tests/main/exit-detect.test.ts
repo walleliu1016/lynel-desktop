@@ -175,6 +175,48 @@ describe('consumeInputForExitDetect', () => {
     expect(r2.line).toBe('');
     expect(r2.clearDetected).toBe(false);
   });
+
+  it('detects /resume followed by \\r (resumeDetected, not exit/clear)', () => {
+    const r = consumeInputForExitDetect('', '/resume\r');
+    expect(r.resumeDetected).toBe(true);
+    expect(r.detected).toBe(false);
+    expect(r.clearDetected).toBe(false);
+    expect(r.line).toBe('');
+  });
+
+  it('detects byte-by-byte /resume', () => {
+    // 模拟用户逐键输入 / r e s u m e \r
+    let s = consumeInputForExitDetect('', '/');
+    s = consumeInputForExitDetect(s.line, 'r');
+    s = consumeInputForExitDetect(s.line, 'e');
+    s = consumeInputForExitDetect(s.line, 's');
+    s = consumeInputForExitDetect(s.line, 'u');
+    s = consumeInputForExitDetect(s.line, 'm');
+    s = consumeInputForExitDetect(s.line, 'e');
+    s = consumeInputForExitDetect(s.line, '\r');
+    expect(s.resumeDetected).toBe(true);
+  });
+
+  it('does not trigger resumeDetected on text containing resume', () => {
+    const r = consumeInputForExitDetect('', 'please resume the build\r');
+    expect(r.resumeDetected).toBe(false);
+  });
+
+  it('/clear and /resume are mutually exclusive detections', () => {
+    const clearR = consumeInputForExitDetect('', '/clear\r');
+    expect(clearR.clearDetected).toBe(true);
+    expect(clearR.resumeDetected).toBe(false);
+    const resumeR = consumeInputForExitDetect('', '/resume\r');
+    expect(resumeR.resumeDetected).toBe(true);
+    expect(resumeR.clearDetected).toBe(false);
+  });
+
+  it('Ctrl+C clears pending /resume line without triggering', () => {
+    const r1 = consumeInputForExitDetect('', '/resume');
+    const r2 = consumeInputForExitDetect(r1.line, '\x03');
+    expect(r2.line).toBe('');
+    expect(r2.resumeDetected).toBe(false);
+  });
 });
 
 describe('terminated flag persistence (file-level)', () => {

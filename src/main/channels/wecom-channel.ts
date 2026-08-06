@@ -195,6 +195,8 @@ export class WeComChannel implements OutputChannel, HookChannel {
     sessionId: string;
     seq: number;
   }>();
+  /** 最近一次由企微转发给 Claude 的用户输入（sessionId → 原文），用于抑制 claude 回显导致的重复消息 */
+  private wecomOriginatedTexts = new Map<string, { text: string; at: number }>();
 
   constructor(cfg: WeComChannelConfig) {
     this.cfg = cfg;
@@ -324,6 +326,8 @@ export class WeComChannel implements OutputChannel, HookChannel {
     this.lastActiveSession.forEach((sid, chatId) => {
       if (sid === sessionId) this.lastActiveSession.delete(chatId);
     });
+    // 会话结束/迁移时清理企微来源记录，避免残留引用
+    this.wecomOriginatedTexts.delete(sessionId);
   }
 
   send(event: LynelEnvelope): void {
@@ -359,6 +363,20 @@ export class WeComChannel implements OutputChannel, HookChannel {
           const cleanText = ev.text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>\s*/g, '').trim();
           if (!cleanText) break;
           if (/^\[[A-Z][A-Z _-]*MODE\s*:/.test(cleanText)) break;
+          // 企微输入的回显抑制：消息本来就来自企微，用户已看到自己发的原文，
+          // 不再把 claude 回显的"👤 用户"文本重复推送，避免同一条出现两遍。
+          const pending = this.wecomOriginatedTexts.get(event.sessionId);
+          if (pending) {
+            if (pending.text === cleanText) {
+              this.wecomOriginatedTexts.delete(event.sessionId);
+              logger.info(`[wecom-channel] suppress user-text echo sid=${event.sessionId.slice(0, 8)} (originated from wecom)`);
+              break;
+            }
+            // 超过 2 分钟未命中则丢弃记录，避免长期占内存
+            if (Date.now() - pending.at > 120_000) {
+              this.wecomOriginatedTexts.delete(event.sessionId);
+            }
+          }
           const content = this.buildMessage(header, '👤 **用户**', cleanText);
           this.sendContent(content, event.sessionId).catch((e) => {
             logger.error('[wecom] user text send failed:', e);
@@ -489,6 +507,27 @@ export class WeComChannel implements OutputChannel, HookChannel {
     }
   }
 
+  private sleep(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  /** 发送 markdown 文本，带重试：WS 抖动时给一次恢复机会，
+   *  避免"卡片发送失败 + 文本兜底也失败"导致消息彻底丢失。 */
+  private async sendMarkdownWithRetry(content: string, sessionId: string, retries = 1): Promise<void> {
+    let lastErr: unknown;
+    for (let i = 0; i <= retries; i++) {
+      try {
+        await this.sendContent(content, sessionId);
+        return;
+      } catch (err) {
+        lastErr = err;
+        logger.warn(`[wecom-channel] sendMarkdownWithRetry attempt ${i + 1} failed sid=${sessionId.slice(0, 8)}:`, err);
+        if (i < retries) await this.sleep(400 * (i + 1));
+      }
+    }
+    throw lastErr;
+  }
+
   private async sendContent(content: string, sessionId: string): Promise<void> {
     const entry = this.getBotForSession(sessionId);
     if (!entry) return;
@@ -562,7 +601,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
         p.toolName || 'unknown',
         p.toolInput,
       );
-      await this.sendContent(content, event.sessionId);
+      await this.sendMarkdownWithRetry(content, event.sessionId);
     }
   }
 
@@ -584,7 +623,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
         this.formatHeader(event, msgSeq),
         p.toolInput,
       );
-      await this.sendContent(content, event.sessionId);
+      await this.sendMarkdownWithRetry(content, event.sessionId);
     }
   }
 
@@ -602,7 +641,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
         this.formatHeader(event, msgSeq),
         input,
       );
-      await this.sendContent(content, event.sessionId);
+      await this.sendMarkdownWithRetry(content, event.sessionId);
       return;
     }
 
@@ -614,7 +653,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
           this.formatHeader(event, msgSeq),
           input,
         );
-        await this.sendContent(content, event.sessionId);
+        await this.sendMarkdownWithRetry(content, event.sessionId);
       }
       return;
     }
@@ -630,7 +669,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
       })
       .join('\n');
     const intro = `${header}\n---\n\n**Agent 向你提了 ${questions.length} 个问题：**\n${questionsList}\n\n将逐一发送卡片，请依次作答。`;
-    await this.sendContent(intro, event.sessionId);
+    await this.sendMarkdownWithRetry(intro, event.sessionId);
 
     // 暂存剩余卡片，发送第一张
     this.pendingQuestionCards.set(reqId, { cards, sessionId: event.sessionId, seq });
@@ -642,7 +681,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
         this.formatHeader(event, msgSeq),
         input,
       );
-      await this.sendContent(content, event.sessionId);
+      await this.sendMarkdownWithRetry(content, event.sessionId);
     }
   }
 
@@ -656,45 +695,59 @@ export class WeComChannel implements OutputChannel, HookChannel {
     const entry = this.getBotForSession(sessionId);
     if (!entry) return false;
 
-    try {
-      const chatId = this.getEffectiveChatId(entry);
-      logger.info('[wecom-channel] sendTemplateCard start: wsConnected=%s, chatId=%s, cardType=%s',
-        String(entry.wsClient?.isConnected ?? false), chatId || '<none>',
-        (card as any)?.card_type);
-      await this.ensureBotWebSocket(entry.config.id);
-      logger.info('[wecom-channel] sendTemplateCard after ensure: wsConnected=%s',
-        String(entry.wsClient?.isConnected ?? false));
-      if (!entry.wsClient?.isConnected || !chatId) {
-        logger.warn('[wecom-channel] sendTemplateCard abort: ws=%s chatId=%s',
-          String(entry.wsClient?.isConnected ?? false), String(chatId));
-        return false;
-      }
-
-      const body = {
-        msgtype: 'template_card' as const,
-        template_card: card,
-      };
-      logger.info('[wecom-channel] sendTemplateCard sending to chatId=%s', chatId);
-      const result = await entry.wsClient.sendMessage(chatId, body);
-      logger.info('[wecom-channel] sendTemplateCard result: %s', JSON.stringify(result).slice(0, 200));
-
-      const msgid = result?.body?.msgid ?? result?.headers?.req_id;
-      if (msgid) {
-        if (qIdx !== undefined) {
-          // 多卡片场景：第一张卡片初始化 state，后续追加 msgid
-          if (qIdx === 0) {
-            this.cardStore.save(requestId, seq, chatId, msgid, sessionId);
-          }
-          this.cardStore.addQuestionMsgid(requestId, qIdx, msgid);
-        } else {
-          this.cardStore.save(requestId, seq, chatId, msgid, sessionId);
-        }
-      }
-      return true;
-    } catch (err) {
-      logger.error('[wecom-channel] sendTemplateCard failed:', err);
+    const chatId = this.getEffectiveChatId(entry);
+    if (!chatId) {
+      logger.warn('[wecom-channel] sendTemplateCard abort: chatId missing');
       return false;
     }
+
+    // 卡片发送失败或 WS 未连接时重试一次：每次先强制 ensureBotWebSocket 重连，
+    // 避免"偶发失败（5s ack 超时 / WS 抖动）导致没有卡片消息"。
+    const MAX_ATTEMPTS = 2;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        logger.info('[wecom-channel] sendTemplateCard attempt %d/%d: wsConnected=%s, chatId=%s, cardType=%s',
+          attempt, MAX_ATTEMPTS,
+          String(entry.wsClient?.isConnected ?? false), chatId,
+          (card as any)?.card_type);
+        await this.ensureBotWebSocket(entry.config.id);
+        logger.info('[wecom-channel] sendTemplateCard after ensure: wsConnected=%s',
+          String(entry.wsClient?.isConnected ?? false));
+        if (!entry.wsClient?.isConnected) {
+          logger.warn('[wecom-channel] sendTemplateCard abort: ws=%s',
+            String(entry.wsClient?.isConnected ?? false));
+          if (attempt < MAX_ATTEMPTS) await this.sleep(500 * attempt);
+          continue;
+        }
+
+        const body = {
+          msgtype: 'template_card' as const,
+          template_card: card,
+        };
+        logger.info('[wecom-channel] sendTemplateCard sending to chatId=%s', chatId);
+        const result = await entry.wsClient.sendMessage(chatId, body);
+        logger.info('[wecom-channel] sendTemplateCard result: %s', JSON.stringify(result).slice(0, 200));
+
+        const msgid = result?.body?.msgid ?? result?.headers?.req_id;
+        if (msgid) {
+          if (qIdx !== undefined) {
+            // 多卡片场景：第一张卡片初始化 state，后续追加 msgid
+            if (qIdx === 0) {
+              this.cardStore.save(requestId, seq, chatId, msgid, sessionId);
+            }
+            this.cardStore.addQuestionMsgid(requestId, qIdx, msgid);
+          } else {
+            this.cardStore.save(requestId, seq, chatId, msgid, sessionId);
+          }
+        }
+        return true;
+      } catch (err) {
+        logger.warn('[wecom-channel] sendTemplateCard attempt %d/%d failed: %s',
+          attempt, MAX_ATTEMPTS, err instanceof Error ? err.message : String(err));
+        if (attempt < MAX_ATTEMPTS) await this.sleep(500 * attempt);
+      }
+    }
+    return false;
   }
 
   /** 确保指定 bot 的 WebSocket 已连接 */
@@ -1046,7 +1099,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
       }
       logger.info(`[wecom-channel] inbound message from ${chatId}, routed by quote to session ${quoteRouting.id.slice(0, 8)}...`);
       try {
-        session.send(quoteRouting.id, text);
+        this.forwardWecomPrompt(quoteRouting.id, text);
       } catch (err) {
         logger.error('[wecom-channel] failed to forward quote-routed message to session:', err);
       }
@@ -1088,10 +1141,16 @@ export class WeComChannel implements OutputChannel, HookChannel {
 
     logger.info(`[wecom-channel] inbound message from ${chatId}, forward to session ${sessionId.slice(0, 8)}...`);
     try {
-      session.send(sessionId, text);
+      this.forwardWecomPrompt(sessionId, text);
     } catch (err) {
       logger.error('[wecom-channel] failed to forward inbound message to session:', err);
     }
+  }
+
+  /** 把企微入站文本转发给 Claude，并记录来源，供 claude 回显去重使用。 */
+  private forwardWecomPrompt(sessionId: string, text: string): void {
+    this.wecomOriginatedTexts.set(sessionId, { text, at: Date.now() });
+    session.send(sessionId, text);
   }
 
   /** 处理企业微信控制指令，发送原始控制字符到 PTY */

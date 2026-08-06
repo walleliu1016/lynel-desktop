@@ -148,6 +148,19 @@ function createTray(): void {
   // 初次构建空菜单 + tooltip
   rebuildTrayMenu([]);
 
+  // 点击 / 双击托盘图标：有待审批则跳到对应会话，否则聚焦主窗口。
+  // Windows 上 setContextMenu 只接管右键菜单，左键 click 事件仍需显式注册，
+  // 否则点击托盘无任何反应（既不跳转也不前置）。
+  const onTrayActivate = (): void => {
+    if (windowAttention.getPendingCount() > 0) {
+      windowAttention.focusOldestPending();
+    } else {
+      windowAttention.focusMainWindow();
+    }
+  };
+  tray.on('click', onTrayActivate);
+  tray.on('double-click', onTrayActivate);
+
   // 接入 attention 回调：pending 变化时重建
   windowAttention.setOnPendingChange((_count, entries) => {
     rebuildTrayMenu(entries);
