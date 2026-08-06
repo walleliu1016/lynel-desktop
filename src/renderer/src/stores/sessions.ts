@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { SessionMeta, SessionState } from '../types/session'
 import type { RecentSession } from '../types/recent'
-import { CreateSession, ListSessions, SendMessage, AdoptSession, RenameSession, BindSessionBot, ListBots, ListBotBindings } from '../composables/useElectron'
+import { CreateSession, ListSessions, SendMessage, AdoptSession, RenameSession, BindSessionBot, ListBots, ListBotBindings, GetRecentSessions } from '../composables/useElectron'
 
 export interface HookPermissionRequest {
   id: string
@@ -114,7 +114,7 @@ export const useSessionsStore = defineStore('sessions', () => {
       const item = list.value[idx]
       // /clear 后是全新会话，清空继承的旧标题（user/ai/first_prompt）与旧消息数，
       // 等新会话自己的标题生成后由 refreshList / session:title:changed 更新。
-      list.value = [
+      list.value = trimList([
         ...list.value.slice(0, idx),
         {
           ...item,
@@ -128,7 +128,7 @@ export const useSessionsStore = defineStore('sessions', () => {
           msg_count: 0,
         },
         ...list.value.slice(idx + 1),
-      ]
+      ])
     }
     const move = <T extends Record<string, unknown>>(map: T): T => {
       const v = map[oldId]
@@ -159,11 +159,11 @@ export const useSessionsStore = defineStore('sessions', () => {
       state.value = { ...state.value, [id]: 'waiting' }
       if (!list.value.find(s => s.id === id)) {
         const project = workdir.split(/[\\/]/).filter(Boolean).pop() || workdir
-        list.value = [{
+        list.value = trimList([{
           id, workdir, project, mtime: Math.floor(Date.now() / 1000), msg_count: 0,
           first_prompt: prompt, ai_title: '', size: 0,
           user_title: undefined, title_source: prompt ? 'first_prompt' : 'first_prompt',
-        }, ...list.value]
+        }, ...list.value])
       }
       titleSources.value = { ...titleSources.value, [id]: prompt ? 'first_prompt' : 'first_prompt' }
       // 绑定 bot（如果有）
@@ -181,19 +181,7 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   function open(record: RecentSession) {
     if (!list.value.find((s) => s.id === record.sessionId)) {
-      const source: 'user' | 'ai' | 'first_prompt' = record.userTitle ? 'user' : (record.aiTitle ? 'ai' : 'first_prompt')
-      list.value = [{
-        id: record.sessionId,
-        workdir: record.workdir,
-        project: record.project,
-        mtime: Math.floor((normalizeLastOpenedAt(record.lastOpenedAt)) / 1000),
-        msg_count: 0,
-        first_prompt: record.firstPrompt,
-        ai_title: record.aiTitle,
-        size: 0,
-        user_title: record.userTitle,
-        title_source: source,
-      }, ...list.value]
+      list.value = trimList([recentToMeta(record), ...list.value])
     }
     activeId.value = record.sessionId
     opened.value = { ...opened.value, [record.sessionId]: true }
@@ -235,6 +223,22 @@ export const useSessionsStore = defineStore('sessions', () => {
       }
     } catch (e: any) {
       console.error('[sessions] refreshList failed:', e?.message || e)
+    }
+  }
+
+  /** 启动时用最近会话填充列表（持久化数据源：recent-sessions.json）。 */
+  async function initFromRecent() {
+    try {
+      const recents = (await GetRecentSessions()) as RecentSession[]
+      if (!Array.isArray(recents) || recents.length === 0) return
+      // 数据源理论上已按 lastOpenedAt 降序，这里再排一次保证「最新在前」；
+      // 按归一化毫秒排序，避免换算成秒级 mtime 后丢失先后顺序
+      const sorted = [...recents].sort(
+        (a, b) => normalizeLastOpenedAt(b.lastOpenedAt) - normalizeLastOpenedAt(a.lastOpenedAt),
+      )
+      list.value = trimList(sorted.map(recentToMeta))
+    } catch (e: any) {
+      console.error('[sessions] initFromRecent failed:', e?.message || e)
     }
   }
 
@@ -371,14 +375,17 @@ export const useSessionsStore = defineStore('sessions', () => {
     sessionBots.value = {}
   }
 
-  // 初始加载会话列表
-  setTimeout(() => refreshList(), 0)
+  // 初始加载：先用最近会话填充列表，再刷新 msg_count/mtime
+  setTimeout(async () => {
+    await initFromRecent()
+    await refreshList()
+  }, 0)
 
   return { list, activeId, active, streaming, state,
     creating, loading, adopted, drafts, hookPermissions, opened,
     userTitles, titleSources, sessionBots, botNames, botBindings,
     setDraft, create, open, select, send, setHookPermission,
-    refreshList, handleHookEvent, remove, renameSession, applyTitleChange,
+    refreshList, initFromRecent, handleHookEvent, remove, renameSession, applyTitleChange,
     applyRebind,
     loadBotNames, bindBot, getSessionBotName, loadBotBindings, getBotBoundSessionName,
     reset }

@@ -18,6 +18,8 @@ vi.mock('../composables/useElectron', () => ({
 }))
 
 import { MAX_SIDEBAR_SESSIONS, recentToMeta, trimList } from './sessions'
+import { GetRecentSessions } from '../composables/useElectron'
+import { useSessionsStore } from './sessions'
 
 describe('recentToMeta', () => {
   it('把 RecentSession 映射为 SessionMeta（毫秒时间戳转秒）', () => {
@@ -81,7 +83,59 @@ describe('store', () => {
     setActivePinia(createPinia())
   })
 
-  it('占位：Task 2 补充 initFromRecent / open 裁剪测试', () => {
-    // vitest v4 不允许空 suite（No test found），先用空用例占位
+  function mkRecent(i: number, lastOpenedAt = 1750000000000 + i): RecentSession {
+    return {
+      sessionId: `s-${i}`,
+      workdir: `/p${i}`,
+      project: `p${i}`,
+      aiTitle: `T${i}`,
+      firstPrompt: '',
+      lastOpenedAt,
+      state: 'idle',
+    }
+  }
+
+  it('initFromRecent 用最近会话填充列表（最新在前）', async () => {
+    vi.mocked(GetRecentSessions).mockResolvedValueOnce([
+      mkRecent(0, 2000),
+      mkRecent(1, 1000),
+    ])
+    const store = useSessionsStore()
+    await store.initFromRecent()
+    expect(store.list.map((s) => s.id)).toEqual(['s-0', 's-1'])
+    expect(store.list[0].ai_title).toBe('T0')
+  })
+
+  it('initFromRecent 超过 30 条时裁剪', async () => {
+    const recents = Array.from({ length: 35 }, (_, i) => mkRecent(i))
+    vi.mocked(GetRecentSessions).mockResolvedValueOnce(recents)
+    const store = useSessionsStore()
+    await store.initFromRecent()
+    expect(store.list.length).toBe(MAX_SIDEBAR_SESSIONS)
+    expect(store.list[0].id).toBe('s-34') // lastOpenedAt 最大者最新，排最前
+  })
+
+  it('initFromRecent 返回空数组时列表保持为空', async () => {
+    vi.mocked(GetRecentSessions).mockResolvedValueOnce([])
+    const store = useSessionsStore()
+    await store.initFromRecent()
+    expect(store.list.length).toBe(0)
+  })
+
+  it('open 已满 30 条时插入头部并挤出最旧一条', () => {
+    const store = useSessionsStore()
+    for (let i = 0; i < 30; i++) store.open(mkRecent(i, 1000 + i))
+    expect(store.list.length).toBe(30)
+    store.open(mkRecent(99, 999999))
+    expect(store.list.length).toBe(30)
+    expect(store.list[0].id).toBe('s-99')
+    expect(store.list.some((s) => s.id === 's-0')).toBe(false)
+  })
+
+  it('open 重复会话不重复插入', () => {
+    const store = useSessionsStore()
+    store.open(mkRecent(1, 1000))
+    store.open(mkRecent(1, 2000))
+    expect(store.list.filter((s) => s.id === 's-1').length).toBe(1)
   })
 })
