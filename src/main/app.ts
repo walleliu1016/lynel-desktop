@@ -419,6 +419,7 @@ export class App {
     getBus().emit(`session:${sid}`, data);
   });
   private recentSessionsLock = false;
+  private cloudSessionSnapshotTimer: ReturnType<typeof setTimeout> | null = null;
   // 用户在 xterm.js 输入的"当前行"缓存：仅追踪到下一次 \r/\n，为 /exit 检测提供依据。
   // 渲染端 writeTerminalInput 走 IPC 把字节送到这里。onExit 时清理。
   private inputLineBuffers = new Map<string, string>();
@@ -568,6 +569,12 @@ export class App {
           level: 'warn',
           message: userHint,
         });
+      }
+    };
+    // cloud: 认证成功后立即上报全量快照，供 cloud 端收敛状态
+    this.desktopSocket.onStateChange = (state) => {
+      if (state === 'authenticated') {
+        this.sendCloudSessionSnapshot();
       }
     };
     await this.ensureHookServer();
@@ -726,6 +733,7 @@ export class App {
       enabled,
       url,
       userId,
+      machineName: os.hostname(),
     });
 
     // updateConfig 只在已有 socket 时重连；首次启用需要显式 connect
@@ -738,19 +746,21 @@ export class App {
     return (this.settingsStore.get('cloud_service_enabled', false) as boolean) || false;
   }
 
-  private syncCloudSession(
+  /** 构造单条会话同步数据（增量事件与全量快照复用；recentList 可复用一次读取结果）。 */
+  private buildSyncSession(
     sessionId: string,
     workDir: string,
-    status: 'open' | 'closed' = 'open',
+    status: 'open' | 'ended',
     event?: SyncSessionEvent,
-  ): void {
-    if (!this.desktopSocket.isEnabled()) return;
-    const list = this.withRecentLock(() => readRecentSessions());
+    recentList?: RecentSessionRecord[],
+  ): DesktopSyncSession {
+    const list = recentList ?? this.withRecentLock(() => readRecentSessions());
     const r = list.find((x) => x.sessionId === sessionId);
     const project = workDir.split(/[\\/]/).filter(Boolean).pop() || workDir;
     const title = r ? (r.userTitle || r.aiTitle || r.firstPrompt || undefined) : undefined;
-    const sessionData: DesktopSyncSession = {
+    return {
       session_id: sessionId,
+      machine_name: os.hostname(),
       jsonl_path: jsonl.getSessionJsonlPath(sessionId, workDir),
       cwd: workDir,
       project_name: project,
@@ -759,9 +769,54 @@ export class App {
       status,
       ...(event ? { event } : {}),
     };
-    this.desktopSocket.syncSessions([sessionData]).catch((err) => {
+  }
+
+  /** 发送单次操作事件（mode=event），用户操作后立即触发。 */
+  private syncCloudSession(
+    sessionId: string,
+    workDir: string,
+    status: 'open' | 'ended' = 'open',
+    event?: SyncSessionEvent,
+  ): void {
+    if (!this.desktopSocket.isEnabled()) return;
+    const sessionData = this.buildSyncSession(sessionId, workDir, status, event);
+    this.desktopSocket.syncSessions({
+      mode: 'event',
+      machine_name: os.hostname(),
+      sessions: [sessionData],
+    }).catch((err) => {
       getLogger().warn(`[app] syncCloudSession failed for ${sessionId.slice(0, 8)}: ${(err as Error).message}`);
     });
+    // 同时触发快照兜底收敛
+    this.debouncedSendCloudSessionSnapshot();
+  }
+
+  /** 发送全量快照（mode=snapshot）：本地最近 30 条会话，open/ended 由实际 process 存在性决定。 */
+  private sendCloudSessionSnapshot(): void {
+    if (!this.desktopSocket.isEnabled()) return;
+    const recentList = this.withRecentLock(() => readRecentSessions());
+    const openIds = new Set(session.list().filter((s) => s.process !== null).map((s) => s.id));
+    const sessions = recentList.map((r) =>
+      this.buildSyncSession(r.sessionId, r.workdir, openIds.has(r.sessionId) ? 'open' : 'ended', undefined, recentList),
+    );
+    this.desktopSocket.syncSessions({
+      mode: 'snapshot',
+      machine_name: os.hostname(),
+      sessions,
+    }).catch((err) => {
+      getLogger().warn(`[app] sendCloudSessionSnapshot failed: ${(err as Error).message}`);
+    });
+  }
+
+  /** 会话集合变化后去抖发送全量快照（500ms）。 */
+  private debouncedSendCloudSessionSnapshot(): void {
+    if (this.cloudSessionSnapshotTimer) {
+      clearTimeout(this.cloudSessionSnapshotTimer);
+    }
+    this.cloudSessionSnapshotTimer = setTimeout(() => {
+      this.cloudSessionSnapshotTimer = null;
+      this.sendCloudSessionSnapshot();
+    }, 500);
   }
 
   /** 把 ChannelInstance 规范化成 {id, type, name, enabled, config}；旧的内联 config 格式会被包装 */
@@ -1321,7 +1376,7 @@ export class App {
       const s = session.lookup(id);
       const workDir = s?.workDir || '';
       session.close(id);
-      if (workDir) this.syncCloudSession(id, workDir, 'closed', 'closed');
+      if (workDir) this.syncCloudSession(id, workDir, 'ended', 'closed');
     });
 
     ipcMain.handle('app:getAppInfo', () => ({
@@ -1548,8 +1603,13 @@ export class App {
     });
 
     ipcMain.handle('app:getRecentSessions', () => getRecentSessions());
-    ipcMain.handle('app:addRecentSession', (_event, record: RecentSessionRecord) => addRecentSession(record));
-    ipcMain.handle('app:removeRecentSession', (_event, sessionId: string) => removeRecentSession(sessionId));
+    ipcMain.handle('app:addRecentSession', (_event, record: RecentSessionRecord) => addRecentSession(record).then(() => {
+      this.debouncedSendCloudSessionSnapshot();
+    }));
+    ipcMain.handle('app:removeRecentSession', (_event, sessionId: string) => {
+      removeRecentSession(sessionId);
+      this.debouncedSendCloudSessionSnapshot();
+    });
 
     // Bot 管理
     ipcMain.handle('app:listBots', () => {

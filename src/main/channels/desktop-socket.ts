@@ -37,20 +37,30 @@ export interface DesktopSocketConfig {
   url?: string;
   enabled?: boolean;
   userId?: string;
+  /** desktop 机器名（os.hostname()），cloud 端按 (user_id, machine_name) 区分设备 */
+  machineName?: string;
 }
 
 export type SyncSessionEvent = 'created' | 'opened' | 'closed' | 'title_updated';
+export type SyncSessionMode = 'snapshot' | 'event';
 
 export interface SyncSession {
   session_id: string;
+  machine_name: string;
   jsonl_path?: string;
   cwd?: string;
   project_name?: string;
   title?: string;
   last_activity_at?: number;
-  status: 'open' | 'closed';
-  /** 触发本次上报的事件类型，供 cloud 端区分 created/opened/closed/title_updated */
+  status: 'open' | 'ended';
+  /** 触发本次上报的事件类型；mode=event 时必填 */
   event?: SyncSessionEvent;
+}
+
+export interface SyncSessionsPayload {
+  mode: SyncSessionMode;
+  machine_name: string;
+  sessions: SyncSession[];
 }
 
 // sendPermissionRequest 同步等待 cloud 决策后的结果
@@ -84,6 +94,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
   private url = '';
   private enabled = false;
   private userId = '';
+  private machineName = '';                   // desktop 机器名（os.hostname()），会话同步必填
   private password: string | undefined;       // 用户输入的密码，纯内存，进程重启即失效
   private token: string | undefined;          // cloud 返回的 token（用于 socket 认证），纯内存
   private state: ConnectionState = 'disconnected';
@@ -151,6 +162,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     const prevEnabled = this.enabled && this.url.length > 0;
     if (cfg.url !== undefined) this.url = cfg.url.replace(/\/+$/, '');
     if (cfg.userId !== undefined) this.userId = cfg.userId;
+    if (cfg.machineName !== undefined) this.machineName = cfg.machineName;
     if (cfg.enabled !== undefined) this.enabled = cfg.enabled;
 
     const nextEnabled = this.isEnabled();
@@ -510,11 +522,11 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     this.emit('desktop:hook:batch', { hooks: batch });
   }
 
-  syncSessions(sessions: SyncSession[]): Promise<void> {
+  syncSessions(payload: SyncSessionsPayload): Promise<void> {
     if (!this.isEnabled()) return Promise.resolve();
     // 未认证时直接 emit 会被 socket 缓冲（如果 transports 支持），但更稳妥是认证后再发
     // 这里直接 emit，未连接时 emit 内部会丢弃并打 warn；认证成功的回调里也会 flush
-    this.emit('desktop:session:sync', { sessions });
+    this.emit('desktop:session:sync', payload);
     return Promise.resolve();
   }
 
