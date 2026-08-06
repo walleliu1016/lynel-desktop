@@ -1929,7 +1929,7 @@ export class App {
         });
       }
       // 通知 cloud session 已关闭
-      if (s?.workDir) this.syncCloudSession(id, s.workDir, 'closed', 'closed');
+      if (s?.workDir) this.syncCloudSession(id, s.workDir, 'ended', 'closed');
     };
     proc.onData(onData);
     proc.onExit(onExit);
@@ -2102,7 +2102,7 @@ export class App {
       writeRecentSessions([newRec, ...filtered].slice(0, MAX_RECENT_SESSIONS));
     });
     // cloud 同步：旧会话关闭；新会话 /clear 为创建，/resume 为重新打开
-    this.syncCloudSession(oldId, workDir, 'closed', 'closed');
+    this.syncCloudSession(oldId, workDir, 'ended', 'closed');
     this.syncCloudSession(newId, workDir, 'open', mode === 'resume' ? 'opened' : 'created');
     // 通知前端：把当前 tab 的 sessionId 换成本新会话，触发 XtermTerminal 重挂载重连
     getBus().emit('session:rebound', JSON.stringify({ oldId, newId, workDir }));
