@@ -63,7 +63,11 @@
               <span class="source-tag">{{ SOURCE_LABELS[bot.source] || '企业微信' }}</span>
             </span>
             <span class="col-botid bot-id-text">{{ bot.botId }}</span>
-            <span class="col-bound bot-bound" :title="boundSessionTooltip(bot.id)">
+            <span
+              class="col-bound bot-bound"
+              @mouseenter="showBoundTip($event, bot.id)"
+              @mouseleave="hideBoundTip"
+            >
               <template v-if="boundSessionId(bot.id)">
                 <Icon name="corner-down-left" :size="11" />
                 {{ boundSessionLabel(bot.id) }}
@@ -150,6 +154,28 @@
       </div>
     </div>
   </div>
+
+  <!-- 绑定会话 hover tooltip（多行，随单元格定位且不超出窗口） -->
+  <Teleport to="body">
+    <div
+      v-if="boundTip"
+      class="bound-tip"
+      :style="{ left: boundTip.x + 'px', top: boundTip.y + 'px' }"
+      @mouseenter="cancelHideBoundTip"
+      @mouseleave="hideBoundTip"
+    >
+      <div class="bound-tip-head">
+        <Icon name="corner-down-left" :size="12" />
+        <span class="bound-tip-title">
+          {{ boundTip.project }}{{ boundTip.title !== boundTip.project ? ` · ${boundTip.title}` : '' }}
+        </span>
+      </div>
+      <div class="bound-tip-row">
+        <span class="bound-tip-label">会话</span>
+        <span class="bound-tip-mono">{{ boundTip.sessionId }}</span>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -188,19 +214,61 @@ function boundSessionId(botId: string): string | undefined {
   return sessions.botBindings[botId] || sessions.sessionBots[botId]
 }
 
-/** 绑定的 session 标题 */
+/** 绑定的 session 展示：`project · title`（不在左侧列表也能查全量索引） */
 function boundSessionLabel(botId: string): string {
   const sessionId = boundSessionId(botId)
   if (!sessionId) return ''
-  const meta = sessions.list.find((s) => s.id === sessionId)
-  return meta ? sessionDisplayTitle(meta) : sessionId.slice(0, 8)
+  return sessions.getSessionProjectTitle(sessionId)
 }
 
-/** 绑定详情 tooltip（完整 sessionId） */
-function boundSessionTooltip(botId: string): string | undefined {
+/** 绑定会话详情（供 hover tooltip 展示） */
+interface BoundTipInfo {
+  x: number
+  y: number
+  sessionId: string
+  project: string
+  title: string
+}
+
+const boundTip = ref<BoundTipInfo | null>(null)
+let boundTipTimer: ReturnType<typeof setTimeout> | null = null
+
+function boundSessionInfo(botId: string): Omit<BoundTipInfo, 'x' | 'y'> | null {
   const sessionId = boundSessionId(botId)
-  if (!sessionId) return undefined
-  return `会话 ${sessionId}`
+  if (!sessionId) return null
+  const meta = sessions.getSessionMeta(sessionId)
+  return {
+    sessionId,
+    project: meta?.project || '',
+    title: sessionDisplayTitle(meta),
+  }
+}
+
+/** 展示绑定会话 tooltip：锚定在单元格旁，右/下越界时翻转，保证不超出窗体 */
+function showBoundTip(e: MouseEvent, botId: string) {
+  cancelHideBoundTip()
+  const info = boundSessionInfo(botId)
+  if (!info) return
+  const cell = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const tipW = 280
+  const tipH = 96
+  const W = window.innerWidth
+  const H = window.innerHeight
+  let x = cell.right + 10
+  let y = cell.top
+  if (x + tipW > W) x = Math.max(8, cell.left - tipW - 10)
+  if (y + tipH > H) y = H - tipH - 8
+  if (y < 0) y = 8
+  boundTip.value = { x, y, ...info }
+}
+
+function cancelHideBoundTip() {
+  if (boundTipTimer) { clearTimeout(boundTipTimer); boundTipTimer = null }
+}
+
+function hideBoundTip() {
+  cancelHideBoundTip()
+  boundTipTimer = setTimeout(() => { boundTip.value = null }, 120)
 }
 
 async function onUnbind(botId: string) {
@@ -218,6 +286,7 @@ async function onUnbind(botId: string) {
 onMounted(() => {
   void store.load()
   void sessions.loadBotBindings()
+  void sessions.loadAllSessions()
 })
 
 function toggleEdit(id: string) {
@@ -413,4 +482,35 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin: 0; }
   font-size: 13px; cursor: pointer; justify-content: center;
 }
 .add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft-bg); }
+
+.bound-tip {
+  position: fixed;
+  z-index: 2000;
+  width: 280px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-window);
+  padding: 10px 12px;
+  box-sizing: border-box;
+}
+.bound-tip-head {
+  display: flex; align-items: flex-start; gap: 6px;
+  color: var(--text-primary);
+  font-size: 12px; font-weight: 500;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+.bound-tip-head :deep(svg) { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+.bound-tip-title { word-break: break-all; }
+.bound-tip-row {
+  display: flex; align-items: baseline; gap: 8px;
+  color: var(--text-secondary); font-size: 11px;
+}
+.bound-tip-label { flex-shrink: 0; color: var(--text-tertiary); font-size: 10px; }
+.bound-tip-mono {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  word-break: break-all;
+}
 </style>

@@ -44,10 +44,13 @@
         <button class="menu-item" @click="startRename">重命名</button>
         <button class="menu-item" @click="copySessionId">复制 Session ID</button>
         <div class="menu-divider" />
-        <button v-if="!currentBotName" class="menu-item" @click="openBotPicker">绑定 Bot</button>
+        <button v-if="!currentBotId" class="menu-item" @click="openBotPicker">绑定 Bot</button>
         <template v-else>
-          <button class="menu-item" @click="openBotPicker">切换 Bot（{{ currentBotName }}）</button>
-          <button class="menu-item" @click="unbindBot">解除绑定</button>
+          <button class="menu-item" @click="openBotPicker">切换 Bot{{ currentBotName ? `（${currentBotName}）` : '' }}</button>
+          <button class="menu-item unbind-menu-item" @click="unbindBot">
+            <Icon name="link-2-off" :size="12" />
+            解除绑定
+          </button>
         </template>
       </div>
     </div>
@@ -59,18 +62,30 @@
           class="menu-item"
           @click="onSelectBot(null)"
         >不绑定</button>
-        <button
+        <div
           v-for="b in botList"
           :key="b.id"
-          class="menu-item"
-          :class="{ selected: b.id === sessions.sessionBots[props.meta.id], disabled: !isBotAvailable(b.id) }"
-          :disabled="!isBotAvailable(b.id)"
-          :title="getBotBoundSessionName(b.id) ? `已绑定到 ${getBotBoundSessionName(b.id)}` : ''"
-          @click="onSelectBot(b.id)"
+          class="menu-item bot-row"
+          :class="{ selected: b.id === currentBotId, disabled: !isBotAvailable(b.id) }"
         >
-          {{ b.name || b.botId }}
-          <span v-if="getBotBoundSessionName(b.id)" class="bound-hint">（已绑定 {{ getBotBoundSessionName(b.id) }}）</span>
-        </button>
+          <button
+            class="bot-select"
+            :disabled="!isBotAvailable(b.id)"
+            :title="getBotBoundSessionName(b.id) ? `已绑定到 ${getBotBoundSessionName(b.id)}` : ''"
+            @click="onSelectBot(b.id)"
+          >
+            <span class="bot-name">{{ b.name || b.botId }}</span>
+          </button>
+          <span v-if="getBotBoundSessionName(b.id)" class="bound-hint">{{ getBotBoundSessionName(b.id) }}</span>
+          <button
+            v-if="b.id === currentBotId"
+            class="unbind-btn"
+            title="解除绑定"
+            @click="onSelectBot(null)"
+          >
+            <Icon name="link-2-off" :size="13" />
+          </button>
+        </div>
       </div>
     </div>
     <SessionTooltip
@@ -140,11 +155,14 @@ function cancelHide() {
   if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
 }
 
-function onContextMenu(e: MouseEvent) {
+async function onContextMenu(e: MouseEvent) {
   e.preventDefault()
-  menuOpen.value = true
   menuStyle.value = { top: `${e.clientY}px`, left: `${e.clientX}px` }
-  void sessions.loadBotBindings()
+  // 先权威读取当前会话绑定（主进程按 sessionId 查，不受同 bot 多会话去重影响），
+  // 再打开菜单，确保「切换/解除绑定」正确显示。
+  await sessions.refreshSessionBotBinding(props.meta.id)
+  await sessions.loadBotNames()
+  menuOpen.value = true
   console.log('[session-item] context menu opened for', props.meta.id.slice(0, 8), 'bots loaded:', botsStore.bots.length)
 }
 
@@ -272,6 +290,7 @@ const stateDotClass = computed(() => {
 
 // Bot 绑定
 const currentBotName = computed(() => sessions.getSessionBotName(props.meta.id))
+const currentBotId = computed(() => sessions.getSessionBotId(props.meta.id))
 
 const botList = computed(() => botsStore.bots)
 
@@ -428,7 +447,9 @@ async function unbindBot() {
   min-width: 140px;
 }
 .menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   width: 100%;
   text-align: left;
   padding: 6px 10px;
@@ -450,9 +471,17 @@ async function unbindBot() {
   background: transparent;
 }
 .bound-hint {
+  flex-shrink: 0;
   font-size: 10px;
-  color: var(--text-tertiary);
-  margin-left: 4px;
+  color: #047857;
+  background: var(--status-success-soft);
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-right: 8px;
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .menu-divider {
   height: 1px; background: var(--border); margin: 4px 0;
@@ -469,12 +498,60 @@ async function unbindBot() {
 .bot-picker .menu-item:hover {
   background: rgba(128,128,128,0.2);
 }
-.bot-picker { min-width: 160px; }
+.bot-picker { min-width: 200px; }
 .picker-title {
   padding: 6px 10px; font-size: 11px; color: var(--text-tertiary);
   font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
 }
 .menu-item.selected { color: var(--accent); font-weight: 600; }
+
+.bot-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.bot-picker .bot-row { padding: 0; }
+.bot-row.selected .bot-select { color: var(--accent); font-weight: 600; }
+.bot-row.disabled { opacity: 0.45; cursor: not-allowed; }
+.bot-picker .bot-row.disabled:hover { background: transparent; }
+.bot-select {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.bot-select:disabled { cursor: not-allowed; }
+.bot-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.unbind-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  color: var(--status-error);
+  cursor: pointer;
+}
+.unbind-btn:hover { background: var(--status-error-soft); }
+.unbind-menu-item { color: var(--status-error); }
+.unbind-menu-item:hover { color: var(--status-error); }
 @keyframes pulse-opacity {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }

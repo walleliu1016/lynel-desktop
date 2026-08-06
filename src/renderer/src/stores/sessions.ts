@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { SessionMeta, SessionState } from '../types/session'
 import type { RecentSession } from '../types/recent'
-import { CreateSession, ListSessions, SendMessage, AdoptSession, RenameSession, BindSessionBot, ListBots, ListBotBindings } from '../composables/useElectron'
+import { CreateSession, ListSessions, SendMessage, AdoptSession, RenameSession, BindSessionBot, ListBots, ListBotBindings, GetSessionBotBinding } from '../composables/useElectron'
 
 export interface HookPermissionRequest {
   id: string
@@ -68,14 +68,44 @@ export const useSessionsStore = defineStore('sessions', () => {
   const sessionBots = ref<Record<string, string>>({})
   const botNames = ref<Record<string, string>>({})
   const botBindings = ref<Record<string, string>>({})
+  // 全量会话索引：ListSessions 结果按 id 建索引，供绑定会话等不在左侧列表中的会话查 project/title
+  const allSessions = ref<Record<string, SessionMeta>>({})
 
   const active = computed(() => list.value.find((s) => s.id === activeId.value) ?? null)
 
+  /** 全量加载会话索引（ListSessions 返回所有会话，含 project），供绑定会话展示 project·title。 */
+  async function loadAllSessions() {
+    try {
+      const all = (await ListSessions()) as SessionMeta[]
+      const idx: Record<string, SessionMeta> = {}
+      for (const s of all) idx[s.id] = s
+      allSessions.value = idx
+    } catch (e: any) {
+      console.error('[sessions] loadAllSessions failed:', e?.message || e)
+    }
+  }
+
+  /** 查会话 meta：优先左侧最近列表，miss 时回退全量索引。 */
+  function getSessionMeta(sessionId: string): SessionMeta | undefined {
+    return list.value.find((s) => s.id === sessionId) || allSessions.value[sessionId]
+  }
+
+  /** 会话展示标签：`project · title`；无 project 或标题即 project 时退回单段，避免冗余。 */
+  function getSessionProjectTitle(sessionId: string): string {
+    const meta = getSessionMeta(sessionId)
+    if (!meta) return sessionId.slice(0, 8)
+    const title = sessionDisplayTitle(meta)
+    const project = meta.project
+    if (!project || title === project) return title
+    return `${project} · ${title}`
+  }
+
+  /** bot 绑定会话展示：优先 project，缺失时退回标题，避免显示 sessionId。 */
   function getBotBoundSessionName(botId: string): string | undefined {
     const sessionId = botBindings.value[botId] || sessionBots.value[botId]
     if (!sessionId) return undefined
-    const meta = list.value.find((s) => s.id === sessionId)
-    if (meta) return sessionDisplayTitle(meta)
+    const meta = getSessionMeta(sessionId)
+    if (meta) return meta.project || sessionDisplayTitle(meta)
     return sessionId.slice(0, 8)
   }
 
@@ -85,6 +115,19 @@ export const useSessionsStore = defineStore('sessions', () => {
       botBindings.value = map
     } catch (e: any) {
       console.error('[sessions] loadBotBindings failed:', e)
+    }
+  }
+
+  /** 权威读取某会话的 bot 绑定（主进程按 sessionId 查 recents，避免 listBotBindings 同 bot 多会话去重丢数据）。 */
+  async function refreshSessionBotBinding(id: string) {
+    try {
+      const botId = (await GetSessionBotBinding(id)) as string | null
+      if (botId) {
+        sessionBots.value = { ...sessionBots.value, [id]: botId }
+        botBindings.value = { ...botBindings.value, [botId]: id }
+      }
+    } catch (e: any) {
+      console.error('[sessions] refreshSessionBotBinding failed:', e?.message || e)
     }
   }
 
@@ -370,8 +413,13 @@ export const useSessionsStore = defineStore('sessions', () => {
     console.log('[sessions] bindBot done, sessionBots:', sessionBots.value)
   }
 
+  /** 会话绑定的 botId：正向映射优先，缺失时从 botBindings 反向查找（重启后 sessionBots 为空也能解析）。 */
+  function getSessionBotId(id: string): string | undefined {
+    return sessionBots.value[id] || Object.keys(botBindings.value).find((b) => botBindings.value[b] === id)
+  }
+
   function getSessionBotName(id: string): string | undefined {
-    const botId = sessionBots.value[id]
+    const botId = getSessionBotId(id)
     return botId ? botNames.value[botId] : undefined
   }
 
@@ -388,6 +436,9 @@ export const useSessionsStore = defineStore('sessions', () => {
     userTitles.value = {}
     titleSources.value = {}
     sessionBots.value = {}
+    botNames.value = {}
+    botBindings.value = {}
+    allSessions.value = {}
   }
 
   // 左侧列表只显示手动打开/创建的会话，启动时不做历史自动填充；
@@ -395,11 +446,13 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   return { list, activeId, active, streaming, state,
     creating, loading, adopted, drafts, hookPermissions, opened,
-    userTitles, titleSources, sessionBots, botNames, botBindings,
+    userTitles, titleSources, sessionBots, botNames, botBindings, allSessions,
     setDraft, create, open, select, send, setHookPermission,
     refreshList, handleHookEvent, remove, renameSession, applyTitleChange,
     applyRebind,
     loadBotNames, bindBot, getSessionBotName, loadBotBindings, getBotBoundSessionName,
+    loadAllSessions, getSessionMeta, getSessionProjectTitle, getSessionBotId,
+    refreshSessionBotBinding,
     reset }
 })
 
