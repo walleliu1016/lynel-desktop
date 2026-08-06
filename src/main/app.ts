@@ -778,6 +778,7 @@ export class App {
       .list()
       .filter((s) => s.process !== null)
       .map((s) => this.buildSyncSession(s.id, s.workDir, 'open', 'snapshot', recentList));
+    getLogger().info(`[app] syncAllOpenSessions: ${open.length} open sessions snapshot`);
     this.desktopSocket.syncSessions(open).catch((err) => {
       getLogger().warn(`[app] syncAllOpenSessions failed: ${(err as Error).message}`);
     });
