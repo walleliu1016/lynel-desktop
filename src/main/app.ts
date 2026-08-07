@@ -928,8 +928,8 @@ export class App {
       const workDir = s?.workDir ?? '';
       const reqId = String(request.id || randomUUID());
 
-      // 自动允许：除 AskUserQuestion 外的工具直接放行
-      if (toolName !== 'AskUserQuestion') {
+      // 自动允许：除 AskUserQuestion 和 ExitPlanMode 外的工具直接放行
+      if (toolName !== 'AskUserQuestion' && toolName !== 'ExitPlanMode') {
         const autoAllowBash = this.settingsStore.get('auto_allow_bash', false) as boolean;
         if (autoAllowBash) {
           getLogger().info(`[permission] auto-allowed tool=${toolName} sid=${sid.slice(0, 8)}`);

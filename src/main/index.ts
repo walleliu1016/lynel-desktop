@@ -103,29 +103,13 @@ function createWindow(): void {
   });
 }
 
-function rebuildTrayMenu(pendingEntries: AttentionPendingEntry[]): void {
+function rebuildTrayMenu(_pendingEntries: AttentionPendingEntry[]): void {
   if (!tray) return;
-  const count = pendingEntries.length;
-  tray.setToolTip(count > 0 ? `Lynel Desktop · ${count} 个权限待审批` : 'Lynel Desktop');
-
-  // 取最多 5 条作为子菜单项；超出的展示"+N"
-  const top = pendingEntries
-    .sort((a, b) => a.requestAt - b.requestAt)
-    .slice(0, 5);
-  const rest = Math.max(0, count - top.length);
-
-  const pendingItems: Electron.MenuItemConstructorOptions[] = top.map((e) => ({
-    label: `${e.title} · ${e.projectName}`,
-    click: () => windowAttention.focusSession(e.sessionId),
-  }));
-  if (rest > 0) pendingItems.push({ label: `其余 ${rest} 条…`, enabled: false });
+  tray.setToolTip('Lynel Desktop');
 
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: '显示主窗口', click: () => windowAttention.focusMainWindow() },
-      { type: 'separator' },
-      { label: count > 0 ? `待审批 (${count})` : '待审批 (0)', enabled: false },
-      ...pendingItems,
       { type: 'separator' },
       {
         label: '退出',
