@@ -167,6 +167,7 @@ export class HookServer {
           }
           const allowed = result.allowed;
           const isAsk = toolName === 'AskUserQuestion';
+          const isExitPlan = toolName === 'ExitPlanMode';
           const decision: any = { behavior: allowed ? 'allow' : 'deny' };
           if (isAsk && allowed && result.answers) {
             const toolInput = evt.tool_input || {};
@@ -176,6 +177,10 @@ export class HookServer {
             input.answers = result.answers;
             decision.updatedInput = input;
             log.info(`[PermissionRequest] AskUserQuestion answers=${JSON.stringify(result.answers)}`);
+          }
+          if (isExitPlan && allowed) {
+            // ExitPlanMode 需要把原始 tool_input 回传，让 Claude 继续执行计划
+            decision.updatedInput = evt.tool_input || {};
           }
           const body = {
             hookSpecificOutput: {
