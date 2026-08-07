@@ -5,6 +5,20 @@ import os from 'node:os';
 const logger = getLogger();
 const TIMEOUT_MS = 10_000;
 
+// 比较 x.y.z 版本号，a > b 返回 true（数字段逐段比较）
+function isNewerVersion(a: string, b: string): boolean {
+  const pa = a.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = b.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const x = pa[i] ?? 0;
+    const y = pb[i] ?? 0;
+    if (x > y) return true;
+    if (x < y) return false;
+  }
+  return false;
+}
+
 function platformParam(): string {
   switch (process.platform) {
     case 'win32': return 'win';
@@ -50,7 +64,8 @@ async function checkGitHub(
 
     // 去掉 v 前缀得到版本号
     const version = release.tag_name.replace(/^v/, '');
-    if (version === currentVersion) {
+    // 只有新版本严格大于当前版本才算有更新，避免误报降级/同版本
+    if (!isNewerVersion(version, currentVersion)) {
       logger.info(`[checker] github: 已是最新 (${version})`);
       return { hasUpdate: false };
     }
@@ -109,7 +124,7 @@ async function checkHttp(config: UpdateConfig, currentVersion: string): Promise<
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
     const body: CloudCheckResponse = await resp.json();
-    if (!body.hasUpdate) {
+    if (!body.hasUpdate || !body.version || !isNewerVersion(body.version, currentVersion)) {
       logger.info('[checker] http: 已是最新');
       return { hasUpdate: false };
     }

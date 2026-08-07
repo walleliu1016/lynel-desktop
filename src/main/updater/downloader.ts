@@ -87,7 +87,12 @@ export function downloadUpdate(
     });
 
     // checkForUpdates 读取临时 latest.yml 发现更新，再 downloadUpdate 执行下载
-    autoUpdater.checkForUpdates().then(() => {
+    autoUpdater.checkForUpdates().then((result) => {
+      // 未打包（dev 模式）或版本未严格提升时 updateInfoAndProvider 不会设置，
+      // 直接 downloadUpdate 会抛 "Please check update first"，这里给出明确错误
+      if (!result?.isUpdateAvailable) {
+        throw new Error('当前已是最新版本，无需下载');
+      }
       return autoUpdater.downloadUpdate();
     }).catch((err) => {
       try { fs.rmSync(tempDir, { recursive: true }); } catch {}
