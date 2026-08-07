@@ -47,7 +47,7 @@
             />
           </div>
           <div v-show="tabsStore.activeType === 'settings'" class="content-pane">
-            <SettingsTab />
+            <SettingsTab :active="settingsActiveTab" @update:active="settingsActiveTab = $event" />
           </div>
           <div v-show="tabsStore.activeType === 'guide'" class="content-pane">
             <GuideTab />
@@ -75,11 +75,17 @@
       @create="onCreateFromSession"
       @open-recent="onOpenRecent"
     />
+    <CloseSessionDialog
+      :open="showCloseDialog"
+      :session-title="pendingCloseTitle"
+      @confirm="onConfirmCloseSession"
+      @cancel="onCancelCloseSession"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed, watch } from 'vue'
+import { onMounted, onBeforeUnmount, ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import GlobalTabs from '../components/GlobalTabs.vue'
@@ -92,14 +98,18 @@ import SettingsTab from '../components/SettingsTab.vue'
 import GuideTab from '../components/GuideTab.vue'
 import OpenFolderDialog from '../components/OpenFolderDialog.vue'
 import NewSessionDialog from '../components/NewSessionDialog.vue'
+import CloseSessionDialog from '../components/CloseSessionDialog.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useTabsStore } from '../stores/tabs'
 import { useTraceStore } from '../stores/trace'
 import type { RecentSession } from '../types/recent'
 import type { SessionState } from '../types/session'
 import { GetAppInfo, AdoptSession, OpenSessionTerminal, CloseSession, Logout } from '../composables/useElectron'
+import { EventsOn, GetUpdateStatus } from '../composables/useElectron'
+import { pushToast } from '../composables/useToast'
 import { useEventStream } from '../composables/useEventStream'
 import { useAuthStore } from '../stores/auth'
+import type { Tab as SettingsTabKey } from '../components/SettingsTabs.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -114,6 +124,12 @@ const username = ref('')
 const sidebarCollapsed = ref(false)
 const traceCollapsed = ref(false)
 const showTraceOverlay = ref(false)
+const settingsActiveTab = ref<SettingsTabKey>('general')
+const showCloseDialog = ref(false)
+const pendingCloseTabId = ref<string | null>(null)
+const pendingCloseTitle = ref('')
+let updateCleanup: (() => void) | null = null
+let startupUpdateShown = false
 
 const activeTab = computed(() => tabsStore.activeTab)
 const activeSessionId = computed(() => {
@@ -144,6 +160,19 @@ onMounted(async () => {
     const info = await GetAppInfo()
     username.value = info.username
   } catch {}
+
+  try {
+    const status = await GetUpdateStatus()
+    maybeShowStartupUpdate(status)
+  } catch {}
+
+  updateCleanup = EventsOn('update:state', (s: any) => {
+    maybeShowStartupUpdate(s)
+  })
+})
+
+onBeforeUnmount(() => {
+  updateCleanup?.()
 })
 
 function onSelectTab(id: string) {
@@ -172,20 +201,44 @@ async function onCloseTab(id: string) {
     const sid = tab.payload?.sessionId as string
     const state = sessions.state[sid] || 'idle'
     if (isRunningState(state)) {
-      const ok = window.confirm('该会话仍在运行中，关闭将终止 Claude，是否继续？')
-      if (!ok) return
+      pendingCloseTabId.value = id
+      pendingCloseTitle.value = tab.title || sid.slice(0, 8)
+      showCloseDialog.value = true
+      return
     }
-    try {
-      await CloseSession(sid)
-    } catch (e: any) {
-      console.error('[home] close session failed:', e?.message || e)
-    }
-    sessions.remove(sid)
+    await closeSessionTab(id, sid)
+    return
   }
 
   tabsStore.close(id)
-  // 如果关闭的是活跃 session，关闭 overlay
   showTraceOverlay.value = false
+}
+
+async function closeSessionTab(id: string, sid: string) {
+  try {
+    await CloseSession(sid)
+  } catch (e: any) {
+    console.error('[home] close session failed:', e?.message || e)
+  }
+  sessions.remove(sid)
+  tabsStore.close(id)
+  showTraceOverlay.value = false
+}
+
+function onConfirmCloseSession() {
+  const id = pendingCloseTabId.value
+  if (!id) return
+  const tab = tabsStore.tabs.find((t) => t.id === id)
+  if (tab?.type === 'session') {
+    void closeSessionTab(id, tab.payload?.sessionId as string)
+  }
+  showCloseDialog.value = false
+  pendingCloseTabId.value = null
+}
+
+function onCancelCloseSession() {
+  showCloseDialog.value = false
+  pendingCloseTabId.value = null
 }
 
 async function onSelectSession(id: string) {
@@ -239,6 +292,8 @@ async function onCreateFromSession(workdir: string, prompt: string, extraArgs: s
 }
 
 async function onOpenRecent(item: RecentSession) {
+  // 先关弹窗立即进入主界面，再后台启动 PTY/代理（避免等待异步完成才消失）
+  showNewSession.value = false
   try {
     // 重复打开当前已激活的会话：activeSessionId 不变化，需强制刷新 trace
     const wasActive = activeSessionId.value === item.sessionId
@@ -260,19 +315,44 @@ async function onOpenRecent(item: RecentSession) {
       trace.setSession(item.workdir, item.sessionId)
       trace.load()
     }
-    showNewSession.value = false
   } catch (e: any) {
     console.error('[home] open recent failed:', e?.message || e)
     alert('打开最近会话失败：' + (e?.message || e))
   }
 }
 
-function openSettingsTab() {
+function openSettingsTab(tab: SettingsTabKey = 'general') {
+  settingsActiveTab.value = tab
   tabsStore.openSettings()
 }
 
 function openGuideTab() {
   tabsStore.openGuide()
+}
+
+function maybeShowStartupUpdate(status: any) {
+  if (status?.status !== 'available') return
+  if (status?.data?.source !== 'startup') return
+  if (startupUpdateShown) return
+  try {
+    if (sessionStorage.getItem('lynel-desktop:startup-update-toast-shown')) {
+      startupUpdateShown = true
+      return
+    }
+  } catch {}
+  const version = status?.data?.version
+  if (!version) return
+  startupUpdateShown = true
+  try {
+    sessionStorage.setItem('lynel-desktop:startup-update-toast-shown', '1')
+  } catch {}
+  pushToast({
+    level: 'info',
+    source: '在线升级',
+    message: `发现新版本 v${version}，点击前往 设置 → 在线升级 下载更新`,
+    duration: 8000,
+    onClick: () => openSettingsTab('updater'),
+  })
 }
 
 async function onLogout() {
