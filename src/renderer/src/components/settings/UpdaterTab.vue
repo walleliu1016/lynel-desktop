@@ -122,7 +122,9 @@ async function onDownload() {
     }
   }
   try {
-    await DownloadUpdate(checkResult.value)
+    // checkResult.value 是 Vue reactive Proxy，不能直接传给 IPC（结构化克隆会报
+    // "An object could not be cloned"）。解包为纯对象后再传。
+    await DownloadUpdate({ ...checkResult.value })
   } catch (e: any) {
     pushToast({ level: 'error', source: 'updater', message: '下载失败：' + (e?.message ?? e) })
   }
