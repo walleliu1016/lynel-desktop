@@ -52,7 +52,7 @@ export interface SyncSession {
   project_name?: string;
   title?: string;
   last_activity_at?: number;
-  status: 'open' | 'ended';
+  state: 'open' | 'ended';
   /** 触发本次上报的事件类型；mode=event 时必填 */
   event?: SyncSessionEvent;
 }

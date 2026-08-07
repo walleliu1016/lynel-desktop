@@ -672,7 +672,7 @@ export class App {
   private buildSyncSession(
     sessionId: string,
     workDir: string,
-    status: 'open' | 'ended',
+    state: 'open' | 'ended',
     event?: SyncSessionEvent,
     recentList?: RecentSessionRecord[],
   ): DesktopSyncSession {
@@ -688,7 +688,7 @@ export class App {
       project_name: project,
       title,
       last_activity_at: Math.floor(Date.now() / 1000),
-      status,
+      state,
       ...(event ? { event } : {}),
     };
   }
@@ -697,11 +697,11 @@ export class App {
   private syncCloudSession(
     sessionId: string,
     workDir: string,
-    status: 'open' | 'ended' = 'open',
+    state: 'open' | 'ended' = 'open',
     event?: SyncSessionEvent,
   ): void {
     if (!this.desktopSocket.isEnabled()) return;
-    const sessionData = this.buildSyncSession(sessionId, workDir, status, event);
+    const sessionData = this.buildSyncSession(sessionId, workDir, state, event);
     this.desktopSocket.syncSessions({
       mode: 'event',
       machine_name: os.hostname(),
