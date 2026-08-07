@@ -161,6 +161,7 @@ export class HookServer {
         try {
           // cloud 透传：原样返回 cloud 响应（Claude 期望的格式由 cloud 保证）
           if ((result as any).rawResponse !== undefined) {
+            log.info(`[PermissionRequest] → response body (cloud passthrough) sid=${sid.slice(0, 8)} body=${JSON.stringify((result as any).rawResponse).slice(0, 2000)}`);
             safeJson((result as any).rawResponse);
             log.info(`[PermissionRequest] → rawResponse (cloud passthrough) sid=${sid.slice(0, 8)}`);
             return;
@@ -188,6 +189,7 @@ export class HookServer {
               decision,
             },
           };
+          log.info(`[PermissionRequest] → response body sid=${sid.slice(0, 8)} tool=${toolName} body=${JSON.stringify(body).slice(0, 2000)}`);
           safeJson(body);
           log.info(`[PermissionRequest] → response ${allowed ? 'allow' : 'deny'}${isAsk ? ' (AskUserQuestion)' : ''} sid=${sid.slice(0, 8)}`);
         } catch {
