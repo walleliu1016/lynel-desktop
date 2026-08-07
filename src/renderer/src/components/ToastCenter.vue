@@ -10,6 +10,13 @@ function iconFor(level: ToastItem['level']): string {
   return 'alert-circle'
 }
 
+function onClick(item: ToastItem) {
+  if (item.onClick) {
+    item.onClick()
+    dismiss(item.id)
+  }
+}
+
 function onEnter(item: ToastItem) {
   pauseToast(item.id)
 }
@@ -25,10 +32,11 @@ function onLeave(item: ToastItem) {
         v-for="item in items"
         :key="item.id"
         class="toast-item"
-        :class="`level-${item.level}`"
+        :class="[`level-${item.level}`, { clickable: !!item.onClick }]"
         role="status"
         @mouseenter="onEnter(item)"
         @mouseleave="onLeave(item)"
+        @click="onClick(item)"
       >
         <div class="toast-icon">
           <Icon :name="iconFor(item.level)" :size="16" />
@@ -41,7 +49,7 @@ function onLeave(item: ToastItem) {
           class="toast-close"
           aria-label="关闭通知"
           title="关闭"
-          @click="dismiss(item.id)"
+          @click.stop="dismiss(item.id)"
         >
           <Icon name="close" :size="14" />
         </button>
@@ -96,6 +104,7 @@ function onLeave(item: ToastItem) {
 .toast-item.level-error .toast-icon { color: var(--status-error); }
 .toast-item.level-warn  .toast-icon { color: var(--status-warn); }
 .toast-item.level-info  .toast-icon { color: var(--accent); }
+.toast-item.clickable { cursor: pointer; }
 .toast-body {
   flex: 1 1 auto;
   min-width: 0;

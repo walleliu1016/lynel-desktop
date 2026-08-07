@@ -24,12 +24,13 @@ export interface CheckResult {
 
 // 更新状态（推送给前端）
 export interface UpdateState {
-  status: 'checking' | 'available' | 'downloading' | 'downloaded' | 'error' | 'no-update';
+  status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error' | 'no-update';
   data?: {
     version?: string;
     percent?: number;
     speed?: number;
     error?: string;
+    source?: 'startup' | 'scheduled' | 'manual';
   };
 }
 

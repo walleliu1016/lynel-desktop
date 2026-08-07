@@ -15,7 +15,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed } from 'vue'
 import SettingsTabs, { type Tab } from './SettingsTabs.vue'
 import GeneralTab from './settings/GeneralTab.vue'
 import AppearanceTab from './settings/AppearanceTab.vue'
@@ -24,7 +24,13 @@ import ProviderTab from './settings/ProviderTab.vue'
 import BotManagement from './settings/BotManagement.vue'
 import UpdaterTab from './settings/UpdaterTab.vue'
 
-const active = ref<Tab>('general')
+const props = defineProps<{ active?: Tab }>()
+const emit = defineEmits<{ (e: 'update:active', v: Tab): void }>()
+
+const active = computed<Tab>({
+  get: () => props.active ?? 'general',
+  set: (v) => emit('update:active', v),
+})
 </script>
 
 <style scoped>

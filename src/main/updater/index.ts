@@ -7,6 +7,9 @@ import type { UpdateConfig, UpdateState } from './types.js';
 
 const logger = getLogger();
 
+let lastUpdateState: UpdateState = { status: 'idle' };
+let startupCheckDone = false;
+
 // 读取云服务配置作为 HTTP fallback 地址
 function cloudFallbackConfig(): { httpEnabled: boolean; httpBaseUrl: string } {
   try {
@@ -34,6 +37,7 @@ function config(): UpdateConfig {
 export function initUpdater(getMainWindow: () => BrowserWindow): void {
   const send = (state: UpdateState) => {
     try {
+      lastUpdateState = state;
       const win = getMainWindow();
       if (win && !win.isDestroyed()) {
         win.webContents.send('update:state', state);
@@ -95,8 +99,7 @@ export function initUpdater(getMainWindow: () => BrowserWindow): void {
   });
 
   ipcMain.handle('app:getUpdateStatus', async () => ({
-    status: 'idle' as const,
-    lastCheckTime: 0,
+    ...lastUpdateState,
     currentVersion: app.getVersion(),
   }));
 
@@ -104,7 +107,16 @@ export function initUpdater(getMainWindow: () => BrowserWindow): void {
     try {
       logger.info('[updater] 定时检查更新');
       const result = await checkForUpdates(config(), app.getVersion());
-      if (result.hasUpdate && result.forceUpdate) {
+      if (!result.hasUpdate) {
+        startupCheckDone = true;
+        return;
+      }
+      if (!startupCheckDone) {
+        send({ status: 'available', data: { version: result.version, source: 'startup' } });
+        startupCheckDone = true;
+        return;
+      }
+      if (result.forceUpdate) {
         send({ status: 'available', data: { version: result.version } });
       }
     } catch {}

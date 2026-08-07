@@ -15,6 +15,8 @@ export interface ToastItem {
   paused: boolean
   /** 同 source+message 1s 内去重 */
   dedupeKey?: string
+  /** 点击 toast 时触发（关闭按钮除外） */
+  onClick?: () => void
 }
 
 export interface PushToastInput {
@@ -23,6 +25,8 @@ export interface PushToastInput {
   message: string
   /** 自动关闭毫秒数；0 表示不自动关闭 */
   duration?: number
+  /** 点击 toast 时触发（关闭按钮除外） */
+  onClick?: () => void
 }
 
 const items = ref<ToastItem[]>([])
@@ -110,6 +114,7 @@ export function pushToast(input: PushToastInput): string {
     remaining: duration,
     paused: false,
     dedupeKey: key,
+    onClick: input.onClick,
   }
   items.value = [item, ...items.value]
   if (items.value.length > MAX_ITEMS) {
