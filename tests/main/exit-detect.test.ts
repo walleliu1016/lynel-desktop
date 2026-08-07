@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { consumeInputForExitDetect } from '../../src/main/app.js';
+import { consumeInputForExitDetect } from '../../src/main/exit-detect.js';
 
 // 工具函数：临时切换 RECENT_SESSIONS_PATH 让 read/write 命中 tmpDir。
 // app.ts 的 setTerminatedFlag/clearTerminatedFlag/getTerminatedFlag 是 module-internal，

@@ -10,12 +10,19 @@ const esmRequire = createRequire(import.meta.url);
 // electron-updater 的 autoUpdater getter 首次访问时会 new NsisUpdater/MacUpdater，
 // 构造时调用 app.getVersion()。在无 Electron runtime 的测试环境会抛错。
 // 用懒加载只在真正下载/安装时才访问，避免模块加载阶段触发副作用。
+// 这里按 electron-updater 真实返回类型声明一个最小子集，避免 result 被推断成 unknown。
+interface UpdateCheckResult {
+  isUpdateAvailable: boolean;
+  updateInfo?: { version: string };
+  version?: string;
+}
+
 interface AutoUpdater {
   setFeedURL(opts: { provider: string; url: string }): void;
   on(event: 'download-progress', cb: (progress: { percent: number; bytesPerSecond: number }) => void): void;
   on(event: 'update-downloaded', cb: () => void): void;
   on(event: 'error', cb: (err: Error) => void): void;
-  checkForUpdates(): Promise<unknown>;
+  checkForUpdates(): Promise<UpdateCheckResult | null>;
   downloadUpdate(): Promise<unknown>;
   quitAndInstall(): void;
 }
