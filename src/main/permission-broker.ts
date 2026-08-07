@@ -95,14 +95,15 @@ class PermissionBroker {
     }
   }
 
-  // 通过 sessionId + toolName 取消（用户在终端自行解决权限）
-  cancelBySessionTool(sessionId: string, toolName: string): boolean {
+  // 通过 sessionId + toolName 取消（用户在终端自行解决权限）。
+  // 返回被取消的请求 id（调用方可用它通知云服务清除挂起请求），未命中返回 null
+  cancelBySessionTool(sessionId: string, toolName: string): string | null {
     const stKey = `${sessionId}::${toolName}`;
     const id = this.sessionToolIndex.get(stKey);
-    if (!id || !this.pending.has(id)) return false;
+    if (!id || !this.pending.has(id)) return null;
     logger.info(`[cancelBySessionTool] sid=${sessionId.slice(0, 8)} tool=${toolName}`);
     this.cancel(id);
-    return true;
+    return id;
   }
 
   isPending(id: string): boolean {

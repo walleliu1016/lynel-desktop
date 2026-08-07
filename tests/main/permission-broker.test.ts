@@ -16,8 +16,13 @@ describe('PermissionBroker 终端授权取消', () => {
 
     const cancelled = permissionBroker.cancelBySessionTool('sid-1', 'Bash');
 
-    expect(cancelled).toBe(true);
+    // 返回被取消的请求 id（调用方可据此通知云服务清除挂起请求）
+    expect(cancelled).toBe('req-terminal-1');
     expect(onCancel).toHaveBeenCalledWith('req-terminal-1', 'sid-1', 'Bash');
+  });
+
+  it('cancelBySessionTool 未命中时返回 null', () => {
+    expect(permissionBroker.cancelBySessionTool('sid-none', 'Bash')).toBeNull();
   });
 
   it('resolveBySession 按 sessionId 定位待处理请求', async () => {

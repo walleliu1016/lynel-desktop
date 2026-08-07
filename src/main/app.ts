@@ -902,8 +902,15 @@ export class App {
       // PostToolUse / PostToolUseFailure：如果 broker 仍有该 session+tool 的待处理条目，
       // 说明用户在终端自行解决了权限 → 取消 broker 条目并通知 UI 关闭
       if ((name === 'PostToolUse' || name === 'PostToolUseFailure') && sid && toolName) {
-        if (permissionBroker.cancelBySessionTool(sid, toolName)) {
+        const cancelledId = permissionBroker.cancelBySessionTool(sid, toolName);
+        if (cancelledId) {
           getBus().emit('permission:cancelled', JSON.stringify({ sessionId: sid, toolName }));
+          // 通知云服务清除挂起的权限请求，避免云端一直等待直到超时
+          try {
+            this.desktopSocket.abortPermissionRequest(cancelledId, evt as Record<string, unknown>);
+          } catch (err: any) {
+            getLogger().warn(`[permission] cloud abort failed: ${err?.message ?? err}`);
+          }
         }
       }
 
