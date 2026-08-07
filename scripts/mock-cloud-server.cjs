@@ -131,7 +131,7 @@ io.on('connection', (socket) => {
     socket.data.userId = payload.user_id;
     if (!userSockets.has(payload.user_id)) userSockets.set(payload.user_id, new Set());
     userSockets.get(payload.user_id).add(socket);
-    console.log(`[auth:success] user=${payload.user_id} socket=${socket.id}`);
+    console.log(`[auth:success] user=${payload.user_id} machine_name=${data.machine_name || '-'} socket=${socket.id}`);
     socket.emit('auth:success', { user_id: payload.user_id });
     if (ack) ack({ ok: true });
   });
