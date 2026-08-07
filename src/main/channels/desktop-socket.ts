@@ -338,7 +338,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       }
       // 已有 token -> 直接 emit（重连复用，避免重复 login）
       if (this.token) {
-        this.emit('desktop:auth', { user_id: this.userId, token: this.token });
+        this.emit('desktop:auth', { user_id: this.userId, token: this.token, machine_name: this.machineName });
         return;
       }
       // 无 token -> 调 /api/auth/login 用密码换 token
@@ -354,7 +354,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
         getLogger().warn('[desktop-socket] socket disconnected during login, defer auth to next connect');
         return;
       }
-      this.emit('desktop:auth', { user_id: this.userId, token: result.token });
+      this.emit('desktop:auth', { user_id: this.userId, token: result.token, machine_name: this.machineName });
     } finally {
       this.authenticating = false;
     }
