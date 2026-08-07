@@ -16,7 +16,8 @@ export interface OutputChannel {
 // 来自 hookserver 的事件，不走 apiproxy
 export interface HookEventLike {
   kind: 'SessionStart' | 'SessionEnd' | 'UserPromptSubmit' | 'Stop'
-      | 'PermissionRequest' | 'PermissionResolved' | 'PreToolUse' | 'PostToolUse';
+      | 'PermissionRequest' | 'PermissionResolved' | 'PreToolUse' | 'PostToolUse'
+      | 'PostToolUseFailure';
   sessionId: string;
   workDir: string;
   payload: Record<string, unknown>;

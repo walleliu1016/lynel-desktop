@@ -99,9 +99,17 @@ function createSettingsOverrideFile(proxyUrl: string, hookUrl?: string): { args:
   }
 }
 
+// 把 Claude 标准 hook 映射为 HookEventLike.kind，供 ChannelDispatcher 分发。
+// PermissionRequest 不在此列：它被 hookserver 单独拦截、走审批专用通道（desktop:hook:permission），
+// 若在此映射会与专用通道重复上报。
+// batch 上报只覆盖工具类 hook（PreToolUse/PostToolUse/PostToolUseFailure）；
+// SessionStart 保留用于 state-channel 会话状态显示，不进 batch。
 function mapHookToKind(name: string): HookEventLike['kind'] | null {
   switch (name) {
     case 'SessionStart': return 'SessionStart';
+    case 'PreToolUse': return 'PreToolUse';
+    case 'PostToolUse': return 'PostToolUse';
+    case 'PostToolUseFailure': return 'PostToolUseFailure';
     default: return null;
   }
 }
@@ -919,7 +927,13 @@ export class App {
         const s = session.lookup(sid);
         const workDir = s?.workDir ?? '';
         try {
-          this.dispatcher.dispatchHook({ kind, sessionId: sid, workDir, payload: evt as Record<string, unknown> });
+          this.dispatcher.dispatchHook({
+            kind,
+            sessionId: sid,
+            workDir,
+            payload: evt as Record<string, unknown>,
+            rawBody: evt as Record<string, unknown>,
+          });
         } catch {}
       }
     });
