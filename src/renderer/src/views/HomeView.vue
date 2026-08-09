@@ -641,7 +641,7 @@ watch(
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 10px;
+  padding: 0 10px 0 2px;
   background: var(--bg-panel);
   min-width: 0;
   -webkit-app-region: drag;

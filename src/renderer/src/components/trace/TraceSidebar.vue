@@ -225,6 +225,7 @@ function fmtTokens(n: number): string {
   border-bottom: 1px solid var(--border);
   font-size: 11px;
   flex-shrink: 0;
+  -webkit-app-region: drag;
 }
 .trace-toolbar {
   height: 32px;
@@ -235,6 +236,7 @@ function fmtTokens(n: number): string {
   padding: 0 8px;
   border-bottom: 1px solid var(--border);
   font-size: 11px;
+  -webkit-app-region: drag;
 }
 .toggle-btn {
   width: 28px; height: 28px;
@@ -245,6 +247,7 @@ function fmtTokens(n: number): string {
   border: 1px solid var(--border);
   cursor: pointer;
   flex-shrink: 0;
+  -webkit-app-region: no-drag;
   transition: all 0.15s;
 }
 .toggle-btn:hover {
@@ -262,6 +265,7 @@ function fmtTokens(n: number): string {
   padding: 3px 5px;
   border-radius: 6px;
   flex-shrink: 0;
+  -webkit-app-region: no-drag;
   transition: color 0.12s, background 0.12s;
 }
 .sidehead-toggle:hover {
@@ -273,6 +277,7 @@ function fmtTokens(n: number): string {
 .stat-reload {
   width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
   border-radius: var(--radius-sm); color: var(--text-tertiary); background: transparent; border: none; cursor: pointer;
+  -webkit-app-region: no-drag;
 }
 .stat-reload:hover { background: var(--bg-input); color: var(--text-primary); }
 

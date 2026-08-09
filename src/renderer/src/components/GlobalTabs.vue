@@ -116,7 +116,7 @@ function onMouseDown(e: MouseEvent, id: string) {
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border-strong);
   user-select: none;
-  padding: 0 8px;
+  padding: 0 8px 0 0;
   gap: 2px;
 }
 
@@ -127,7 +127,6 @@ function onMouseDown(e: MouseEvent, id: string) {
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  -webkit-app-region: no-drag;
 }
 
 .tabs-scroll::-webkit-scrollbar { display: none; }
@@ -141,6 +140,7 @@ function onMouseDown(e: MouseEvent, id: string) {
   max-width: 180px;
   min-width: 80px;
   cursor: pointer;
+  -webkit-app-region: no-drag;
   background: transparent;
   border: 1px solid transparent;
   border-bottom: none;
