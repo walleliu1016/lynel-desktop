@@ -1068,17 +1068,25 @@ export class App {
     this.apiProxies.push(proxy);
     const proxyUrl = `http://127.0.0.1:${proxy.port}`;
     const hookUrl = this.hookServer ? `http://127.0.0.1:${this.hookServer.getPort()}/hook` : undefined;
-    // TODO(agents): 非 claude agent 的注入方式不同——codex 写临时 config.toml、opencode 写临时
-    // opencode.json，不走 createSettingsOverrideFile 的 --settings。omp 直接读 ANTHROPIC_BASE_URL
-    // env，可复用现状。差异化注入在各自 agent 的接入 step 实现（见 multi-agent-support-design.md）。
-    const { args, cleanup, tmpFile } = createSettingsOverrideFile(proxyUrl, hookUrl);
+    // 按 agent 分派注入方式：
+    // - claude：临时 --settings 文件注入 ANTHROPIC_BASE_URL + hooks（现状）
+    // - 非 claude：通过 env 注入代理 base url（omp=ANTHROPIC_BASE_URL / opencode=OPENAI_BASE_URL），
+    //   不传 claude 专属的 --session-id / --settings，PtyMode 走 Auto（不带 session 参数）。
+    // TODO(codex): codex 的 OPENAI_BASE_URL 已弃用，需写临时 config.toml（model_providers）注入，后续实现。
+    const isClaude = spec.kind === 'claude';
+    const settingsOverride = isClaude
+      ? createSettingsOverrideFile(proxyUrl, hookUrl)
+      : { args: [] as string[], tmpFile: '', cleanup: () => {} };
+    const { args, cleanup, tmpFile } = settingsOverride;
+    const envOverride: Record<string, string> = {};
+    if (!isClaude && spec.envVar) envOverride[spec.envVar] = proxyUrl;
     const allArgs = [...args, ...extraArgs];
     getLogger().info(`[app:createSession] agent=${spec.kind} proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId} extraArgs=${extraArgs.join(',')}`);
     // 按 agent 类型读对应可执行路径设置（claude_path/codex_path/opencode_path/omp_path），留空用 spec.command
     const pathKey = `${spec.kind}_path` as 'claude_path' | 'codex_path' | 'opencode_path' | 'omp_path';
     const agentBin = (this.settingsStore.get(pathKey, '') as string) || spec.command;
     // probe 是 claude 专属的 spawn 前 --version 探测（消除 macOS forkpty 静默失败），通用 binary 会误判
-    const proc = startPty(workDir, realId, agentBin, PtyMode.New, {}, { cols: 80, rows: 24 }, allArgs, { probe: spec.probe ?? false, agentLabel: spec.label });
+    const proc = startPty(workDir, realId, agentBin, isClaude ? PtyMode.New : PtyMode.Auto, envOverride, { cols: 80, rows: 24 }, allArgs, { probe: spec.probe ?? false, agentLabel: spec.label });
     const s = session.newSession(realId, workDir);
     s.process = proc;
     s.state = 'running';
