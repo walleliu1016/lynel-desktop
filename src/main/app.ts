@@ -2042,8 +2042,8 @@ export class App {
         // /resume：复用目标会话现有记录，仅更新 workdir/lastOpenedAt/state 并置顶
         const existing = list.find((r) => r.sessionId === newId);
         newRec = existing
-          ? { ...existing, workdir: workDir, project: existing.project || project, lastOpenedAt: Date.now(), state: 'running' }
-          : { sessionId: newId, workdir: workDir, project, aiTitle: '', firstPrompt: '', lastOpenedAt: Date.now(), state: 'running', botId: oldRec?.botId };
+          ? { ...existing, workdir: workDir, project: existing.project || project, lastOpenedAt: Date.now(), state: 'running', agent: oldRec?.agent }
+          : { sessionId: newId, workdir: workDir, project, aiTitle: '', firstPrompt: '', lastOpenedAt: Date.now(), state: 'running', botId: oldRec?.botId, agent: oldRec?.agent };
       } else {
         // /clear：新会话不继承旧标题，/clear 后是全新对话，应显示自己的标题。
         // 之前继承 aiTitle/userTitle 会经 mergeRecentTitles/refreshAiTitles 永久锁定旧标题，
@@ -2057,6 +2057,7 @@ export class App {
           lastOpenedAt: Date.now(),
           state: 'running',
           botId: oldRec?.botId,
+          agent: oldRec?.agent,
         };
       }
       writeRecentSessions([newRec, ...filtered].slice(0, MAX_RECENT_SESSIONS));
