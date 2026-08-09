@@ -20,7 +20,7 @@ import { OutputChannel, type HookEventLike } from './channels/channel.js';
 import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
 import { windowAttention } from './attention.js';
 import { startProxy } from './apiproxy.js';
-import { agentSpec, type AgentKind } from './agents/index.js';
+import { agentSpec, type AgentKind, type AgentSpec } from './agents/index.js';
 import { start as startPty, PtyMode, PtySize, preloadShellEnv } from './pty.js';
 import { registerTraceIpc } from './trace/ipc.js';
 import type { BotConfig } from './types/bot.js';
@@ -1090,6 +1090,32 @@ export class App {
     }
   }
 
+  /** 按 agent 生成 PTY 启动的注入参数：claude 走 --settings 文件；codex 走 -c config 覆盖；
+   *  opencode/omp 走 env。返回 { args, envOverride, cleanup, tmpFile }。 */
+  private buildAgentInjection(spec: AgentSpec, proxyUrl: string, hookUrl?: string): {
+    args: string[];
+    envOverride: Record<string, string>;
+    cleanup: () => void;
+    tmpFile: string;
+  } {
+    if (spec.kind === 'claude') {
+      const { args, cleanup, tmpFile } = createSettingsOverrideFile(proxyUrl, hookUrl);
+      return { args, envOverride: {}, cleanup, tmpFile };
+    }
+    const envOverride: Record<string, string> = {};
+    const args: string[] = [];
+    if (spec.envVar) envOverride[spec.envVar] = proxyUrl;
+    if (spec.kind === 'codex') {
+      const codexProvider = readCodexModelProvider();
+      if (codexProvider) {
+        const configKey = `model_providers.${codexProvider.provider}.base_url`;
+        args.unshift('-c', `${configKey}="${proxyUrl}"`);
+        getLogger().info(`[app:agentInjection] codex override ${configKey} (was ${codexProvider.baseUrl}) -> ${proxyUrl}`);
+      }
+    }
+    return { args, envOverride, cleanup: () => {}, tmpFile: '' };
+  }
+
   private async createSessionInternal(workDir: string, prompt: string, extraArgs: string[] = [], autoTrust = false, botId?: string, agent?: AgentKind): Promise<string> {
     const realId = randomUUID();
     const spec = agentSpec(agent);
@@ -1100,31 +1126,16 @@ export class App {
     this.apiProxies.push(proxy);
     const proxyUrl = `http://127.0.0.1:${proxy.port}`;
     const hookUrl = this.hookServer ? `http://127.0.0.1:${this.hookServer.getPort()}/hook` : undefined;
-    // 按 agent 分派注入方式：
-    // - claude：临时 --settings 文件注入 ANTHROPIC_BASE_URL + hooks（现状）
-    // - codex：-c model_providers.<name>.base_url="<proxyUrl>" 覆盖 config.toml + env OPENAI_BASE_URL 兜底
+    // 按 agent 生成注入参数（逻辑集中在 buildAgentInjection）：
+    // - claude：临时 --settings 文件注入 ANTHROPIC_BASE_URL + hooks
+    // - codex：-c model_providers.<name>.base_url="<proxyUrl>" 覆盖 config.toml
     // - opencode/omp：通过 env 注入代理 base url（opencode=OPENAI_BASE_URL / omp=ANTHROPIC_BASE_URL）
     // 非 claude 不传 claude 专属的 --session-id / --settings，PtyMode 走 Auto（不带 session 参数）。
     const isClaude = spec.kind === 'claude';
-    const settingsOverride = isClaude
-      ? createSettingsOverrideFile(proxyUrl, hookUrl)
-      : { args: [] as string[], tmpFile: '', cleanup: () => {} };
-    const { args, cleanup, tmpFile } = settingsOverride;
-    const envOverride: Record<string, string> = {};
-    if (!isClaude && spec.envVar) envOverride[spec.envVar] = proxyUrl;
+    const { args, cleanup, tmpFile, envOverride } = this.buildAgentInjection(spec, proxyUrl, hookUrl);
     const allArgs = [...args, ...extraArgs];
-    // codex：新版弃用 OPENAI_BASE_URL，config.toml 的 model_providers.<name>.base_url 优先。
-    // 需用命令行 -c 覆盖回本地代理（参照 ccglass codexConfigBaseUrl），env 同时注入兜底。
+    // agent 启动前检查（非 claude 专属警告，注入已由 buildAgentInjection 完成）
     if (!isClaude && spec.kind === 'codex') {
-      const codexProvider = readCodexModelProvider();
-      if (codexProvider) {
-        const configKey = `model_providers.${codexProvider.provider}.base_url`;
-        // proxyUrl 需带引号：config.toml 的 base_url 是字符串，-c 用键值对整体覆盖
-        allArgs.unshift('-c', `${configKey}="${proxyUrl}"`);
-        getLogger().info(`[app:createSession] codex override ${configKey} (was ${codexProvider.baseUrl}) -> ${proxyUrl}`);
-      }
-      // OPENAI_BASE_URL 虽被弃用但仍兼容，env 注入兜底（ccglass 同时做 env + -c）
-      envOverride.OPENAI_BASE_URL = proxyUrl;
       // ChatGPT 登录模式走 WebSocket 完全绕过代理，Trace 为空，提示切换 API-key 模式
       if (detectCodexChatGPTAuth()) {
         notifyExternal({
@@ -1134,12 +1145,12 @@ export class App {
         });
       }
     } else if (!isClaude && spec.kind === 'opencode') {
-      // opencode：OPENAI_BASE_URL 已由上面 env 注入；缺 OPENAI_API_KEY 无法发请求
+      // opencode：OPENAI_BASE_URL 已由 buildAgentInjection env 注入；缺 OPENAI_API_KEY 无法发请求
       if (!process.env.OPENAI_API_KEY) {
         notifyExternal({ source: 'session:start', level: 'warn', message: 'OpenCode 未配置 OPENAI_API_KEY，无法发请求，请先配置' });
       }
     } else if (!isClaude && spec.kind === 'omp') {
-      // omp：ANTHROPIC_BASE_URL 已由上面 env 注入；需在设置/配置文件配模型 provider 的 API key
+      // omp：ANTHROPIC_BASE_URL 已由 buildAgentInjection env 注入；需在设置/配置文件配模型 provider 的 API key
       notifyExternal({ source: 'session:start', level: 'warn', message: 'OMP 需在设置/配置文件配置模型 provider 的 API key' });
     }
     getLogger().info(`[app:createSession] agent=${spec.kind} proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId} extraArgs=${extraArgs.join(',')}`);
@@ -2154,34 +2165,45 @@ export class App {
       this.syncCloudSession(id, workDir, 'open', 'opened');
       return Promise.resolve(true);
     }
-    const upstream = resolveAnthropicBaseUrl();
+    // 从 recents 查该 session 的 agent（缺省 claude），按 AgentSpec 分派恢复方式
+    const recAgent = this.withRecentLock(() => readRecentSessions().find((r) => r.sessionId === id)?.agent);
+    const spec = agentSpec(recAgent as AgentKind);
+    const isClaude = spec.kind === 'claude';
+    const upstream = isClaude ? resolveAnthropicBaseUrl() : (spec.upstream || 'https://api.openai.com');
     // PTY spawn 完成后立即 resolve，让前端隐藏 loading；proxy 启动失败不阻塞 PTY
     return new Promise<boolean>((resolvePty) => {
-      startProxy(workDir, id, (env) => this.dispatcher.dispatch(env), undefined, upstream).then((proxy) => {
+      startProxy(workDir, id, (env) => this.dispatcher.dispatch(env), spec.format, upstream).then((proxy) => {
         this.apiProxies.push(proxy);
         const proxyUrl = `http://127.0.0.1:${proxy.port}`;
         const hookUrl = this.hookServer ? `http://127.0.0.1:${this.hookServer.getPort()}/hook` : undefined;
-        const { args, cleanup, tmpFile } = createSettingsOverrideFile(proxyUrl, hookUrl);
+        const { args, cleanup, tmpFile, envOverride } = this.buildAgentInjection(spec, proxyUrl, hookUrl);
         // 历史 session 重启时 jsonl 可能还没创建（用户新建后没发 prompt 就关闭），
-        // 三种 fallback 触发 PtyMode.New：
+        // claude 三种 fallback 触发 PtyMode.New：
         // 1) 用户主动 /exit（terminated 标志）：claude 内部已拒绝 --resume
         // 2) jsonl 不存在（phantom session 重启场景）
-        // 3) 否则默认 Resume
-        const jsonlPath = jsonl.getSessionJsonlPath(id, workDir);
-        const hasJsonl = fs.existsSync(jsonlPath);
-        const isTerminated = getTerminatedFlag(id);
-        const mode = (isTerminated || !hasJsonl) ? PtyMode.New : PtyMode.Resume;
-        if (isTerminated) {
-          getLogger().info(`[app:openSessionTerminal] sid=${id.slice(0, 8)} marked terminated, force PtyMode.New`);
-          // 已用 New 模式拉起，标志就完成了使命：清掉，让后续 reconnect 走正常 Resume
-          clearTerminatedFlag(id);
-        } else if (!hasJsonl) {
-          getLogger().warn(`[app:openSessionTerminal] jsonl missing for sid=${id} at ${jsonlPath}, fallback to PtyMode.New`);
+        // 3) 否则默认 Resume；非 claude 不带 claude 专属 session 参数，走 Auto
+        let mode: PtyMode;
+        if (isClaude) {
+          const jsonlPath = jsonl.getSessionJsonlPath(id, workDir);
+          const hasJsonl = fs.existsSync(jsonlPath);
+          const isTerminated = getTerminatedFlag(id);
+          mode = (isTerminated || !hasJsonl) ? PtyMode.New : PtyMode.Resume;
+          if (isTerminated) {
+            getLogger().info(`[app:openSessionTerminal] sid=${id.slice(0, 8)} marked terminated, force PtyMode.New`);
+            // 已用 New 模式拉起，标志就完成了使命：清掉，让后续 reconnect 走正常 Resume
+            clearTerminatedFlag(id);
+          } else if (!hasJsonl) {
+            getLogger().warn(`[app:openSessionTerminal] jsonl missing for sid=${id} at ${jsonlPath}, fallback to PtyMode.New`);
+          }
+        } else {
+          mode = PtyMode.Auto;
         }
-        getLogger().info(`[app:openSessionTerminal] proxyUrl=${proxyUrl} upstream=${upstream} sid=${id} mode=${mode}`);
+        getLogger().info(`[app:openSessionTerminal] agent=${spec.kind} proxyUrl=${proxyUrl} upstream=${upstream} sid=${id} mode=${mode}`);
         try {
-          const claudeBin = (this.settingsStore.get('claude_path', '') as string) || 'claude';
-          const proc = startPty(workDir, id, claudeBin, mode, {}, size, args, { probe: true });
+          // 按 agent 类型读对应可执行路径设置（claude_path/codex_path/opencode_path/omp_path），留空用 spec.command
+          const pathKey = `${spec.kind}_path` as 'claude_path' | 'codex_path' | 'opencode_path' | 'omp_path';
+          const agentBin = (this.settingsStore.get(pathKey, '') as string) || spec.command;
+          const proc = startPty(workDir, id, agentBin, mode, envOverride, size, args, { probe: spec.probe ?? false, agentLabel: spec.label });
           session.setProcess(id, proc, size);
           const ls = session.lookup(id);
           if (ls) ls.settingsFile = tmpFile || undefined;
@@ -2196,7 +2218,7 @@ export class App {
         } catch (err: any) {
           getLogger().error(`[app:openSessionTerminal] startPty failed for sid=${id}: ${err.message}`);
           getBus().emit(`session:${id}`, `\r\n启动终端失败：${err.message}\r\n`);
-          notifyExternal({ source: 'session:start', level: 'error', message: `启动 Claude 终端失败 (${id.slice(0, 8)}): ${errMessage(err)}` });
+          notifyExternal({ source: 'session:start', level: 'error', message: `启动 ${spec.label} 终端失败 (${id.slice(0, 8)}): ${errMessage(err)}` });
           this.setSessionState(id, 'done');
           resolvePty(false);
         }
