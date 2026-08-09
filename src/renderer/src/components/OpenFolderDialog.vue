@@ -17,12 +17,16 @@
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">提示词（可选）</label>
-            <textarea class="form-input area" v-model="prompt" rows="4" placeholder="你想让 Claude 做什么？" :disabled="loading"></textarea>
+            <label class="form-label">Agent 类型</label>
+            <AgentSelect v-model="agent" />
           </div>
           <div class="form-group">
-            <label class="form-label">Claude 选项</label>
-            <div class="multi-select" :class="{ open: flagsOpen }">
+            <label class="form-label">提示词（可选）</label>
+            <textarea class="form-input area" v-model="prompt" rows="4" :placeholder="isClaude ? '你想让 Claude 做什么？' : `你想让 ${agentMeta(agent).short} 做什么？`" :disabled="loading"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ isClaude ? 'Claude 选项' : '启动选项' }}</label>
+            <div v-if="isClaude" class="multi-select" :class="{ open: flagsOpen }">
               <div class="select-trigger" @click="flagsOpen = !flagsOpen">
                 <span v-if="selectedFlags.length === 0" class="placeholder">无额外参数</span>
                 <span v-else>{{ selectedFlags.join(', ') }}</span>
@@ -36,6 +40,7 @@
                 </label>
               </div>
             </div>
+            <div v-else class="option-disabled">该 agent 暂不支持额外参数</div>
           </div>
           <div class="form-actions">
             <button type="button" class="cancel" :disabled="loading" @click="$emit('close')">取消</button>
@@ -51,20 +56,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import Icon from './Icon.vue'
+import AgentSelect from './AgentSelect.vue'
+import { agentMeta, type AgentKind } from '../types/agents'
 import { PickDirectory } from '../composables/useElectron'
 
 const props = defineProps<{ open: boolean; loading?: boolean }>()
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'create', workdir: string, prompt: string, extraArgs: string[]): void
+  (e: 'create', workdir: string, prompt: string, extraArgs: string[], agent?: AgentKind): void
 }>()
 
 const workdir = ref('')
 const prompt = ref('')
 const flagsOpen = ref(false)
 const selectedFlags = ref<string[]>([])
+const agent = ref<AgentKind>('claude')
+const isClaude = computed(() => agent.value === 'claude')
 
 const flagOptions = [
   { value: '--verbose', label: '--verbose', desc: '输出详细的调试信息' },
@@ -75,6 +84,15 @@ watch(() => props.open, (isOpen) => {
   if (isOpen) {
     workdir.value = ''
     prompt.value = ''
+    selectedFlags.value = []
+    flagsOpen.value = false
+    agent.value = 'claude'
+  }
+})
+
+// 切到非 claude 时清空 claude 专属启动选项，避免泄漏进 extraArgs
+watch(agent, () => {
+  if (agent.value !== 'claude') {
     selectedFlags.value = []
     flagsOpen.value = false
   }
@@ -89,7 +107,7 @@ async function onPick() {
 
 function onSubmit() {
   if (!workdir.value.trim() || props.loading) return
-  emit('create', workdir.value.trim(), prompt.value.trim(), [...selectedFlags.value])
+  emit('create', workdir.value.trim(), prompt.value.trim(), [...selectedFlags.value], agent.value)
 }
 </script>
 
@@ -179,4 +197,8 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
 .flag-option input[type="checkbox"] { accent-color: var(--accent); flex-shrink: 0; }
 .flag-label { color: var(--text-primary); font-family: var(--font-mono); white-space: nowrap; }
 .flag-desc { color: var(--text-tertiary); margin-left: auto; font-size: 11px; }
+.option-disabled {
+  padding: 8px 10px; background: var(--bg-input); border: 1px dashed var(--border);
+  border-radius: var(--radius-md); font-size: 12px; color: var(--text-tertiary);
+}
 </style>

@@ -281,8 +281,8 @@ async function onCreate(workdir: string, prompt: string, extraArgs: string[] = [
   }
 }
 
-async function onCreateFromFolder(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string) {
-  await onCreate(workdir, prompt, extraArgs, botId)
+async function onCreateFromFolder(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string, agent?: string) {
+  await onCreate(workdir, prompt, extraArgs, botId, agent)
   showOpenFolder.value = false
 }
 
