@@ -60,12 +60,16 @@
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">提示词（可选）</label>
-            <textarea class="form-input area" v-model="prompt" rows="4" placeholder="你想让 Claude 做什么？" :disabled="loading"></textarea>
+            <label class="form-label">Agent 类型</label>
+            <AgentSelect v-model="agent" />
           </div>
           <div class="form-group">
-            <label class="form-label">Claude 选项</label>
-            <div class="multi-select" :class="{ open: flagsOpen }">
+            <label class="form-label">提示词（可选）</label>
+            <textarea class="form-input area" v-model="prompt" rows="4" :placeholder="agent === 'claude' ? '你想让 Claude 做什么？' : `你想让 ${agentMeta(agent).short} 做什么？`" :disabled="loading"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{ agent === 'claude' ? 'Claude 选项' : '启动选项' }}</label>
+            <div v-if="agent === 'claude'" class="multi-select" :class="{ open: flagsOpen }">
               <div class="select-trigger" @click="flagsOpen = !flagsOpen">
                 <span v-if="selectedFlags.length === 0" class="placeholder">无额外参数</span>
                 <span v-else>{{ selectedFlags.join(', ') }}</span>
@@ -79,6 +83,7 @@
                 </label>
               </div>
             </div>
+            <div v-else class="option-disabled">该 agent 暂不支持额外参数</div>
           </div>
           <div class="form-group">
             <label class="form-label">绑定机器人（可选）</label>
@@ -110,18 +115,20 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import Icon from './Icon.vue'
+import AgentSelect from './AgentSelect.vue'
 import RecentSessionList from './RecentSessionList.vue'
 import { useRecentStore } from '../stores/recent'
 import { useBotsStore } from '../stores/bots'
 import { useSessionsStore } from '../stores/sessions'
 import type { RecentSession } from '../types/recent'
+import { agentMeta, type AgentKind } from '../types/agents'
 import { PickDirectory } from '../composables/useElectron'
 import { useRecentSessionSearch } from '../composables/useRecentSessionSearch'
 
 const props = defineProps<{ open: boolean; loading?: boolean }>()
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'create', workdir: string, prompt: string, extraArgs: string[], botId?: string): void
+  (e: 'create', workdir: string, prompt: string, extraArgs: string[], botId?: string, agent?: AgentKind): void
   (e: 'open-recent', item: RecentSession): void
 }>()
 
@@ -131,6 +138,7 @@ const sessions = useSessionsStore()
 const tab = ref<'history' | 'new'>('history')
 const workdir = ref('')
 const prompt = ref('')
+const agent = ref<AgentKind>('claude')
 const flagsOpen = ref(false)
 const selectedFlags = ref<string[]>([])
 const selectedBot = ref('')
@@ -160,6 +168,7 @@ watch(() => props.open, (isOpen) => {
     void sessions.loadBotBindings()
     workdir.value = ''
     prompt.value = ''
+    agent.value = 'claude'
     selectedFlags.value = []
     selectedBot.value = ''
     flagsOpen.value = false
@@ -181,7 +190,7 @@ async function onPick() {
 
 function onSubmit() {
   if (!workdir.value.trim() || props.loading) return
-  emit('create', workdir.value.trim(), prompt.value.trim(), [...selectedFlags.value], selectedBot.value || undefined)
+  emit('create', workdir.value.trim(), prompt.value.trim(), [...selectedFlags.value], selectedBot.value || undefined, agent.value)
 }
 </script>
 
@@ -287,6 +296,10 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.option-disabled {
+  padding: 8px 10px; background: var(--bg-input); border: 1px dashed var(--border);
+  border-radius: var(--radius-md); font-size: 12px; color: var(--text-tertiary);
+}
 .multi-select { position: relative; user-select: none; }
 .select-trigger {
   display: flex; align-items: center; gap: 6px;

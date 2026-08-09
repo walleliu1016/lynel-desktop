@@ -269,9 +269,9 @@ function onTraceSelect(seq: number) {
   }
 }
 
-async function onCreate(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string) {
+async function onCreate(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string, agent?: string) {
   try {
-    const id = await sessions.create(workdir, prompt, extraArgs, botId)
+    const id = await sessions.create(workdir, prompt, extraArgs, botId, agent)
     const meta = sessions.list.find((s) => s.id === id)
     if (meta) {
       tabsStore.openSession(id, meta.workdir, sessionDisplayTitle(meta) || prompt)
@@ -286,8 +286,8 @@ async function onCreateFromFolder(workdir: string, prompt: string, extraArgs: st
   showOpenFolder.value = false
 }
 
-async function onCreateFromSession(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string) {
-  await onCreate(workdir, prompt, extraArgs, botId)
+async function onCreateFromSession(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string, agent?: string) {
+  await onCreate(workdir, prompt, extraArgs, botId, agent)
   showNewSession.value = false
 }
 

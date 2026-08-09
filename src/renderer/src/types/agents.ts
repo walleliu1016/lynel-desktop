@@ -22,6 +22,6 @@ export const AGENT_META: Record<AgentKind, AgentMeta> = {
 
 /** 未知/缺省 agent 一律回退 claude（老会话向后兼容） */
 export function agentMeta(agent?: string | null): AgentMeta {
-  if (agent && AGENT_META[agent as AgentKind]) return AGENT_META[agent as AgentKind]
+  if (agent && Object.hasOwn(AGENT_META, agent) && AGENT_META[agent as AgentKind]) return AGENT_META[agent as AgentKind]
   return AGENT_META.claude
 }

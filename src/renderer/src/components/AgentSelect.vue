@@ -1,13 +1,11 @@
 <template>
   <select class="agent-select" :value="modelValue" @change="onChange">
-    <option v-for="k in AGENT_KINDS" :key="k" :value="k">{{ meta(k).abbr }} {{ meta(k).short }}</option>
+    <option v-for="k in AGENT_KINDS" :key="k" :value="k">{{ agentMeta(k).abbr }} {{ agentMeta(k).short }}</option>
   </select>
 </template>
 
 <script setup lang="ts">
 import { AGENT_KINDS, agentMeta, type AgentKind } from '../types/agents'
-
-const meta = agentMeta
 
 defineProps<{ modelValue: AgentKind }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: AgentKind): void }>()
