@@ -39,7 +39,7 @@
         <h3>编辑供应商</h3>
         <div class="form-actions-top">
           <button class="danger" :disabled="providers.length <= 1" @click="onDelete">删除</button>
-          <button class="primary" :disabled="provider.id === activeId" @click="onSetActive">设为当前</button>
+          <button class="primary" :disabled="provider.id === activeId || selectedAgent !== 'claude'" @click="onSetActive">设为当前</button>
         </div>
       </div>
 
