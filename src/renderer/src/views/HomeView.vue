@@ -1,25 +1,115 @@
 <template>
   <div class="home">
-    <TitleBar :username="username" show-guide @settings="openSettingsTab" @guide="openGuideTab" @logout="onLogout" />
     <div class="layout">
       <aside class="left" :class="{ collapsed: sidebarCollapsed }">
+        <div class="left-top" :class="{ mac: isMac, collapsed: sidebarCollapsed, searching: searchOpen }">
+          <template v-if="!sidebarCollapsed && !searchOpen">
+            <button class="top-btn tooltip-wrap" aria-label="打开 Session" @click="showNewSession = true">
+              <Icon name="folder-open" :size="16" />
+              <span class="tooltip-down">打开 Session</span>
+            </button>
+            <button class="top-btn tooltip-wrap" :aria-label="sidebarCollapsed ? '展开会话列表' : '收起会话列表'" @click="sidebarCollapsed = !sidebarCollapsed">
+              <Icon :name="sidebarCollapsed ? 'panel-left-open' : 'panel-left-close'" :size="16" />
+              <span class="tooltip-down">{{ sidebarCollapsed ? '展开会话列表' : '收起会话列表' }}</span>
+            </button>
+            <button class="top-btn tooltip-wrap" aria-label="搜索会话" @click="openSearch">
+              <Icon name="search" :size="16" />
+              <span class="tooltip-down">搜索会话</span>
+            </button>
+            <div v-if="cloudEnabled" class="cloud-status" :class="cloudStatusClass" :title="cloudStatusTitle">
+              <span class="dot" />
+              <span class="label">{{ cloudStatusText }}</span>
+            </div>
+          </template>
+          <template v-else-if="!sidebarCollapsed && searchOpen">
+            <button class="top-btn tooltip-wrap" :aria-label="sidebarCollapsed ? '展开会话列表' : '收起会话列表'" @click="sidebarCollapsed = !sidebarCollapsed">
+              <Icon :name="sidebarCollapsed ? 'panel-left-open' : 'panel-left-close'" :size="16" />
+              <span class="tooltip-down">{{ sidebarCollapsed ? '展开会话列表' : '收起会话列表' }}</span>
+            </button>
+            <div class="search-box">
+              <Icon name="search" :size="12" class="search-box-icon" />
+              <input
+                ref="searchInputEl"
+                v-model="searchQuery"
+                class="search-box-input"
+                placeholder="搜索会话…"
+                @keydown.escape="closeSearch"
+                @blur="closeSearch"
+              />
+              <button v-if="searchQuery" class="search-box-clear" aria-label="清除搜索" title="清除搜索" @mousedown.prevent="searchQuery = ''">
+                <Icon name="close" :size="12" />
+              </button>
+            </div>
+          </template>
+          <template v-else>
+            <!-- 折叠态：展开按钮统一放在内容区顶部的 center-top，避免被红绿灯遮挡 -->
+          </template>
+        </div>
+        <div v-if="!sidebarCollapsed" class="left-brand-area">
+          <span class="brand-title">Lynel Desktop</span>
+          <span class="brand-version">(v{{ version }})</span>
+        </div>
         <SessionList
           :list="sessions.list"
           :active-id="activeSessionId"
           :collapsed="sidebarCollapsed"
-          @create="showNewSession = true"
+          :search="searchQuery"
           @select="onSelectSession"
-          @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
         />
+        <div v-if="!sidebarCollapsed" class="left-bottom">
+          <div class="bottom-actions">
+            <div v-if="username" class="account">
+              <span class="avatar" aria-hidden="true">{{ avatar }}</span>
+              <div class="info">
+                <b>{{ username }}</b>
+                <span>本地</span>
+              </div>
+              <button class="logout-btn" aria-label="退出登录" title="退出登录" @click="onLogout">
+                <Icon name="log-out" :size="11" />
+              </button>
+            </div>
+            <div class="bottom-right">
+              <button class="top-btn tooltip-wrap" aria-label="使用指南" @click="openGuideTab">
+                <Icon name="help" :size="13" />
+                <span class="tooltip">使用指南</span>
+              </button>
+              <button class="top-btn tooltip-wrap" aria-label="设置" @click="openSettingsTab()">
+                <Icon name="settings" :size="13" />
+                <span class="tooltip">设置</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </aside>
       <div class="center">
-        <GlobalTabs
-          :tabs="tabsStore.tabs"
-          :active-id="tabsStore.activeId"
-          @select="onSelectTab"
-          @close="onCloseTab"
-          @create="onCreateTab"
-        />
+        <div class="center-top" :class="{ 'mac-left': isMac && sidebarCollapsed }">
+          <button
+            v-if="sidebarCollapsed"
+            class="top-btn tooltip-wrap"
+            aria-label="展开会话列表"
+            @click="sidebarCollapsed = false"
+          >
+            <Icon name="panel-left-open" :size="16" />
+            <span class="tooltip-down">展开会话列表</span>
+          </button>
+          <GlobalTabs
+            class="center-tabs"
+            :tabs="tabsStore.tabs"
+            :active-id="tabsStore.activeId"
+            @select="onSelectTab"
+            @close="onCloseTab"
+            @create="onCreateTab"
+          />
+          <button
+            v-if="activeSessionId && traceCollapsed"
+            class="top-btn tooltip-wrap"
+            aria-label="展开 Trace"
+            @click="traceCollapsed = false"
+          >
+            <Icon name="panel-right-open" :size="16" />
+            <span class="tooltip-down">展开 Trace</span>
+          </button>
+        </div>
         <div class="content">
           <div v-show="tabsStore.activeType === 'welcome'" class="content-pane">
             <WelcomeTab
@@ -81,13 +171,24 @@
       @confirm="onConfirmCloseSession"
       @cancel="onCancelCloseSession"
     />
+    <div v-if="!isMac" class="win-controls">
+      <button class="win-btn" aria-label="最小化" title="最小化" @click="minimize">
+        <Icon name="minimize" :size="12" />
+      </button>
+      <button class="win-btn" :aria-label="isMaximized ? '还原' : '最大化'" :title="isMaximized ? '还原' : '最大化'" @click="toggleMaximize">
+        <Icon :name="isMaximized ? 'restore' : 'maximize'" :size="12" />
+      </button>
+      <button class="win-btn close" aria-label="隐藏到托盘" title="隐藏到托盘" @click="hide">
+        <Icon name="close" :size="12" />
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, computed, watch } from 'vue'
+import { onMounted, onBeforeUnmount, ref, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import TitleBar from '../components/TitleBar.vue'
+import Icon from '../components/Icon.vue'
 import GlobalTabs from '../components/GlobalTabs.vue'
 import SessionList from '../components/SessionList.vue'
 import TraceSidebar from '../components/trace/TraceSidebar.vue'
@@ -104,8 +205,9 @@ import { useTabsStore } from '../stores/tabs'
 import { useTraceStore } from '../stores/trace'
 import type { RecentSession } from '../types/recent'
 import type { SessionState } from '../types/session'
-import { GetAppInfo, AdoptSession, OpenSessionTerminal, CloseSession, Logout } from '../composables/useElectron'
+import { GetAppInfo, AdoptSession, OpenSessionTerminal, CloseSession, Logout, CloudConnectionState, GetSettings } from '../composables/useElectron'
 import { EventsOn, GetUpdateStatus } from '../composables/useElectron'
+import { useWindowState } from '../composables/useWindowState'
 import { pushToast } from '../composables/useToast'
 import { useEventStream } from '../composables/useEventStream'
 import { useAuthStore } from '../stores/auth'
@@ -121,6 +223,7 @@ useEventStream()
 const showOpenFolder = ref(false)
 const showNewSession = ref(false)
 const username = ref('')
+const version = ref('')
 const sidebarCollapsed = ref(false)
 const traceCollapsed = ref(false)
 const showTraceOverlay = ref(false)
@@ -130,6 +233,64 @@ const pendingCloseTabId = ref<string | null>(null)
 const pendingCloseTitle = ref('')
 let updateCleanup: (() => void) | null = null
 let startupUpdateShown = false
+
+// 会话搜索：顶栏搜索图标点击展开输入框
+const searchOpen = ref(false)
+const searchQuery = ref('')
+const searchInputEl = ref<HTMLInputElement | null>(null)
+// 会话列表底部操作区（设置/指南/账户/退出，横向并列）
+
+function openSearch() {
+  searchOpen.value = true
+  nextTick(() => searchInputEl.value?.focus())
+}
+
+function closeSearch() {
+  searchOpen.value = false
+  searchQuery.value = ''
+}
+
+const { isMaximized, minimize, toggleMaximize, hide } = useWindowState()
+const isMac = computed(() => navigator.platform.toLowerCase().includes('mac'))
+const avatar = computed(() => (username.value || '').slice(0, 2).toUpperCase() || 'U')
+
+// 云服务连接状态：仅 cloud_service_enabled 时显示（位于左侧顶栏）
+const cloudEnabled = ref(false)
+interface CloudStateInfo { state: string; reconnectAttempt: number }
+const cloudState = ref<CloudStateInfo>({ state: 'disconnected', reconnectAttempt: 0 })
+let cloudPollTimer: ReturnType<typeof setInterval> | null = null
+
+const cloudStatusClass = computed(() => {
+  switch (cloudState.value.state) {
+    case 'authenticated':
+    case 'connected':
+      return 'ok'
+    case 'auth_failed': return 'fail'
+    case 'connecting':
+    case 'reconnecting': return 'testing'
+    default: return ''
+  }
+})
+
+const cloudStatusText = computed(() => {
+  switch (cloudState.value.state) {
+    case 'connecting': return '连接中'
+    case 'connected':
+    case 'authenticated': return '已连接'
+    case 'auth_failed': return '认证失败'
+    case 'reconnecting': return `重连中(${cloudState.value.reconnectAttempt})`
+    default: return '未连接'
+  }
+})
+
+const cloudStatusTitle = computed(() => `云服务：${cloudStatusText.value}`)
+
+async function refreshCloudState() {
+  try {
+    const s = await CloudConnectionState()
+    cloudState.value = s as CloudStateInfo
+  } catch {}
+}
 
 const activeTab = computed(() => tabsStore.activeTab)
 const activeSessionId = computed(() => {
@@ -159,6 +320,7 @@ onMounted(async () => {
   try {
     const info = await GetAppInfo()
     username.value = info.username
+    version.value = info.version
   } catch {}
 
   try {
@@ -169,10 +331,23 @@ onMounted(async () => {
   updateCleanup = EventsOn('update:state', (s: any) => {
     maybeShowStartupUpdate(s)
   })
+
+  try {
+    const cfg = await GetSettings()
+    cloudEnabled.value = !!cfg.cloud_service_enabled
+  } catch {}
+  if (cloudEnabled.value) {
+    refreshCloudState()
+    cloudPollTimer = setInterval(refreshCloudState, 2000)
+  }
 })
 
 onBeforeUnmount(() => {
   updateCleanup?.()
+  if (cloudPollTimer) {
+    clearInterval(cloudPollTimer)
+    cloudPollTimer = null
+  }
 })
 
 function onSelectTab(id: string) {
@@ -383,7 +558,277 @@ watch(
 </script>
 
 <style scoped>
-.home { display: flex; flex-direction: column; height: 100vh; }
+.home { display: flex; flex-direction: column; height: 100vh; position: relative; }
+/* 窗口控制按钮：固定在窗口最右上角，不随三列布局位置变化 */
+.win-controls {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  z-index: 50;
+  -webkit-app-region: no-drag;
+}
+
+/* 三段式布局：各列顶部操作行高度统一，分割线从窗口顶部连贯 */
+.left-top {
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 0 10px;
+  background: var(--bg-panel);
+  box-sizing: border-box;
+  position: relative;
+  -webkit-app-region: drag;
+  --wails-draggable: drag;
+  user-select: none;
+}
+.left-brand-area {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 6px 0 0 16px;
+  background: var(--bg-panel);
+  flex-shrink: 0;
+}
+.brand-title {
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: -0.2px;
+  color: var(--accent);
+  background: linear-gradient(135deg, #ef4444, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.brand-version {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+.left-top.collapsed {
+  justify-content: center;
+  padding: 0;
+}
+.left-top.collapsed .btn-open,
+.left-top.collapsed .cloud-status {
+  display: none;
+}
+/* macOS：红绿灯悬浮左上角，折叠后展开按钮绝对定位到红绿灯右侧 */
+.left-top.mac.collapsed {
+  justify-content: center;
+  padding-left: 0;
+}
+.left-top.mac.collapsed .top-btn {
+  position: absolute;
+  left: 78px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+/* 搜索展开时避开左上角红绿灯（macOS） */
+.left-top.mac.searching {
+  padding-left: 78px;
+}
+.center-top {
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  background: var(--bg-panel);
+  min-width: 0;
+  -webkit-app-region: drag;
+  --wails-draggable: drag;
+  user-select: none;
+}
+.center-top :deep(.global-tabs) {
+  height: 100%;
+}
+/* macOS 折叠会话列表时，红绿灯悬浮左侧（0-78px），内容区从 44px 开始，让内容从红绿灯右侧起排 */
+.center-top.mac-left {
+  padding-left: 78px;
+}
+.center-tabs {
+  flex: 1;
+  min-width: 0;
+}
+.top-btn {
+  height: 28px;
+  min-width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 7px;
+  -webkit-app-region: no-drag;
+  transition: color 0.12s, background 0.12s;
+}
+.top-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-input);
+}
+.search-box {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  min-width: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0 6px;
+}
+.search-box:focus-within { border-color: var(--accent); }
+.search-box-icon { color: var(--text-tertiary); flex-shrink: 0; }
+.search-box-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+}
+.search-box-input::placeholder { color: var(--text-tertiary); }
+.search-box-clear {
+  width: 18px; height: 18px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent;
+  color: var(--text-tertiary); border-radius: 4px;
+  cursor: pointer; flex-shrink: 0;
+}
+.search-box-clear:hover { color: var(--text-primary); background: var(--border); }
+.cloud-status {
+  display: flex; align-items: center; gap: 5px;
+  height: 22px; padding: 0 8px;
+  border-radius: 16px; font-size: 10px; font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--bg-panel); color: var(--text-secondary);
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+.cloud-status .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
+.cloud-status.ok { border-color: #a7f3d0; background: var(--status-success-soft); color: #047857; }
+.cloud-status.ok .dot { background: var(--status-success); box-shadow: 0 0 6px rgba(34,197,94,.4); }
+.cloud-status.fail { border-color: #fecaca; background: rgba(239,68,68,.08); color: #b91c1c; }
+.cloud-status.fail .dot { background: #ef4444; }
+.cloud-status.testing { border-color: #fde68a; background: rgba(245,158,11,.08); color: #b45309; }
+.cloud-status.testing .dot { background: #f59e0b; animation: cloud-pulse 0.8s infinite; }
+@keyframes cloud-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.account {
+  display: flex; align-items: center; gap: 8px;
+  padding-left: 12px; border-left: 1px solid var(--border);
+  -webkit-app-region: no-drag;
+}
+.avatar {
+  width: 22px; height: 22px; border-radius: 7px;
+  background: var(--accent); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 800;
+}
+.info { display: flex; flex-direction: column; }
+.info b { font-size: 10px; color: var(--text-primary); }
+.info span { font-size: 9px; color: var(--text-tertiary); }
+.logout-btn {
+  width: 18px; height: 18px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.logout-btn:hover { color: var(--status-error); background: rgba(239,68,68,.08); }
+.win-btns { display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
+.win-btn {
+  width: 26px; height: 22px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.win-btn:hover { background: rgba(0,0,0,0.06); }
+.win-btn.close:hover { background: var(--status-error); color: white; }
+.left-bottom {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+  -webkit-app-region: no-drag;
+}
+.bottom-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 10px;
+  min-height: 40px;
+}
+.bottom-actions .account {
+  padding-left: 0;
+  border-left: none;
+}
+.bottom-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tooltip-wrap {
+  position: relative;
+}
+.tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(30, 41, 59, 0.92);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  z-index: 30;
+}
+.tooltip-wrap:hover .tooltip {
+  opacity: 1;
+}
+.tooltip-down {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(30, 41, 59, 0.92);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  z-index: 40;
+}
+.tooltip-wrap:hover .tooltip-down {
+  opacity: 1;
+}
+
 .layout { flex: 1; display: flex; min-height: 0; gap: 1px; background: var(--border); }
 .left {
   width: 280px; display: flex; flex-direction: column;
@@ -393,7 +838,7 @@ watch(
   z-index: 1;
   transition: width 0.2s ease;
 }
-.left.collapsed { width: 44px; }
+.left.collapsed { width: 0; overflow: visible; }
 .center {
   flex: 1;
   display: flex;

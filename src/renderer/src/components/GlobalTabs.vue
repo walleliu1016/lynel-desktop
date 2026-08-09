@@ -31,7 +31,7 @@
       </div>
     </div>
     <button class="tab-new" @click="$emit('create')">
-      <Icon name="plus" :size="14" />
+      <Icon name="plus" :size="16" />
     </button>
   </div>
 </template>
@@ -111,8 +111,8 @@ function onMouseDown(e: MouseEvent, id: string) {
 .global-tabs {
   display: flex;
   align-items: flex-end;
-  height: 36px;
-  min-height: 36px;
+  height: 32px;
+  min-height: 32px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border-strong);
   user-select: none;
@@ -127,6 +127,7 @@ function onMouseDown(e: MouseEvent, id: string) {
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
+  -webkit-app-region: no-drag;
 }
 
 .tabs-scroll::-webkit-scrollbar { display: none; }
@@ -135,7 +136,7 @@ function onMouseDown(e: MouseEvent, id: string) {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
+  height: 40px;
   padding: 0 12px;
   max-width: 180px;
   min-width: 80px;
@@ -226,13 +227,14 @@ function onMouseDown(e: MouseEvent, id: string) {
   justify-content: center;
   width: 28px;
   height: 28px;
-  margin-bottom: 2px;
+  margin-bottom: 6px;
   border-radius: var(--radius-md);
   border: none;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   flex-shrink: 0;
+  -webkit-app-region: no-drag;
   transition: background 0.12s, color 0.12s;
 }
 

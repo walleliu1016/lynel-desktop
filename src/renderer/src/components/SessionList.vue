@@ -1,40 +1,13 @@
 <template>
   <div class="session-list" :class="{ collapsed: props.collapsed }">
-    <div class="header">
-      <button
-        v-if="!props.collapsed"
-        class="open-session"
-        @click="$emit('create')"
-      >
-        <Icon name="folder-open" :size="14" />
-        <span>打开 Session</span>
-      </button>
-      <button
-        class="toggle-btn"
-        :title="props.collapsed ? '展开会话列表' : '收起会话列表'"
-        @click="$emit('toggle-collapse')"
-      >
-        <Icon :name="props.collapsed ? 'panel-left-open' : 'panel-left-close'" :size="16" />
-      </button>
-    </div>
     <div v-if="!props.collapsed" class="content">
-      <div class="search-bar">
-        <Icon name="search" :size="12" class="search-icon" />
-        <input
-          v-model="search"
-          class="search-input"
-          placeholder="搜索会话…"
-          @keydown.escape="search = ''"
-        />
-        <button v-if="search" class="search-clear" aria-label="清除搜索" title="清除搜索" @click="search = ''">
-          <Icon name="close" :size="12" />
+      <div class="sidehead">
+        <button class="sidehead-toggle" :title="expanded ? '收起会话' : '展开会话'" @click="expanded = !expanded">
+          <Icon :name="expanded ? 'chevron-down' : 'chevron-right'" :size="12" />
+          <span>会话列表({{ filteredList.length }})</span>
         </button>
       </div>
-      <div class="sidehead">
-        <span>会话列表</span>
-        <span class="count">{{ filteredList.length }}</span>
-      </div>
-      <div class="items">
+      <div v-show="expanded" class="items">
         <template v-if="sessions.loading && !list.length">
           <div v-for="i in 6" :key="i" class="skeleton-item">
             <div class="skeleton-icon" />
@@ -54,7 +27,7 @@
             @select="$emit('select', s.id)"
           />
           <div v-if="!filteredList.length" class="empty">
-            {{ search ? '无匹配结果' : '暂无会话' }}
+            {{ props.search ? '无匹配结果' : '暂无会话' }}
           </div>
         </template>
       </div>
@@ -69,18 +42,17 @@ import Icon from './Icon.vue'
 import { useSessionsStore } from '../stores/sessions'
 import type { SessionMeta } from '../types/session'
 
-const props = defineProps<{ list: SessionMeta[]; activeId: string | null; collapsed?: boolean }>()
-const emit = defineEmits<{
-  (e: 'create'): void
+const props = defineProps<{ list: SessionMeta[]; activeId: string | null; collapsed?: boolean; search?: string }>()
+defineEmits<{
   (e: 'select', id: string): void
-  (e: 'toggle-collapse'): void
 }>()
 
 const sessions = useSessionsStore()
-const search = ref('')
+// 会话列表内部展开/收起（区别于侧边栏折叠）
+const expanded = ref(true)
 
 const filteredList = computed(() => {
-  const q = search.value.trim().toLowerCase()
+  const q = (props.search || '').trim().toLowerCase()
   if (!q) return props.list
   return props.list.filter((s) => {
     const pn = s.project.toLowerCase()
@@ -101,80 +73,28 @@ const dupProjects = computed(() => {
 </script>
 
 <style scoped>
-.session-list { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 12px; }
+.session-list { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 8px 12px 12px; }
 .session-list.collapsed { padding: 8px 4px; align-items: center; }
 .session-list.collapsed .content { display: none; }
-
-.header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.session-list.collapsed .header {
-  flex-direction: column;
-  width: 100%;
-}
-
-.open-session {
-  flex: 1; height: 40px; border-radius: 11px;
-  background: var(--accent); color: white;
-  font-size: 13px; font-weight: 700;
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  flex-shrink: 0;
-  transition: background 0.15s;
-}
-.open-session:hover { background: var(--accent-deep); }
-
-.toggle-btn {
-  width: 32px; height: 32px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: var(--radius-md);
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 0.15s;
-}
-.toggle-btn:hover {
-  background: var(--bg-input);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.search-bar {
-  position: relative; margin-top: 12px;
-  flex-shrink: 0;
-}
-.search-icon {
-  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-  color: var(--text-tertiary); pointer-events: none;
-}
-.search-input {
-  width: 100%; height: 34px;
-  background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: 9px; padding: 0 28px 0 30px;
-  color: var(--text-primary); font-size: 12px; font-family: inherit;
-  outline: none; transition: border-color 0.15s;
-}
-.search-input:focus { border-color: var(--accent); }
-.search-input::placeholder { color: var(--text-tertiary); }
-.search-clear {
-  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
-  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
-  color: var(--text-tertiary); font-size: 12px; border-radius: 50%;
-}
-.search-clear:hover { background: var(--border); color: var(--text-primary); }
-.search-clear:active { background: var(--text-tertiary); color: var(--bg-panel); }
 .sidehead {
-  margin: 14px 4px 8px;
-  display: flex; justify-content: space-between; align-items: center;
+  margin: 4px 4px 8px;
+  display: flex; align-items: center;
+  flex-shrink: 0;
+}
+.sidehead-toggle {
+  display: flex; align-items: center; gap: 4px;
+  border: none; background: transparent;
   color: var(--text-secondary);
   font-size: 11px; font-weight: 700;
-  flex-shrink: 0;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 3px 5px;
+  border-radius: 6px;
+  transition: color 0.12s, background 0.12s;
 }
-.sidehead .count {
-  font-size: 10px; color: var(--text-tertiary);
+.sidehead-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-input);
 }
 .items { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; }
 

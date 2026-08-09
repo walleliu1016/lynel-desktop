@@ -107,8 +107,6 @@ async function onTerminalData(data: string) {
   min-height: 0;
   overflow: hidden;
   background: var(--bg-terminal);
-  padding-left: 8px;
-  border-left: 1px solid var(--border-strong, var(--border));
 }
 .terminal-area-loading {
   position: absolute;

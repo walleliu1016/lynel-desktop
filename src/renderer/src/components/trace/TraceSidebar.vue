@@ -1,87 +1,94 @@
 <template>
   <aside class="trace-sidebar" :class="{ collapsed: collapsed }">
-    <!-- StatsBar -->
+    <!-- 头部：仅折叠/展开按钮（保持在原位置，右侧窗口控制按钮出现也没关系） -->
     <div class="stats-bar">
       <button
+        v-if="!collapsed"
         class="toggle-btn"
-        :title="collapsed ? '展开 Trace' : '收起 Trace'"
+        title="收起 Trace"
         @click="$emit('toggle-collapse')"
       >
-        <Icon :name="collapsed ? 'panel-right-open' : 'panel-right-close'" :size="16" />
+        <Icon name="panel-right-close" :size="16" />
       </button>
-      <template v-if="!collapsed">
-        <span class="stat-count">{{ filteredRequests.length }} calls</span>
+    </div>
+
+    <template v-if="!collapsed">
+      <!-- 控制 tab：请求计数 / 金额 / 刷新 -->
+      <div class="trace-toolbar">
+        <button class="sidehead-toggle" :title="expanded ? '收起请求' : '展开请求'" @click="expanded = !expanded">
+          <Icon :name="expanded ? 'chevron-down' : 'chevron-right'" :size="12" />
+          <span>请求({{ filteredRequests.length }})</span>
+        </button>
         <span class="stat-cost">${{ totalCost }}</span>
         <button class="stat-reload" title="重新加载" @click="reload()">
           <Icon name="refresh-cw" :size="12" />
         </button>
-      </template>
-    </div>
-
-    <template v-if="!collapsed">
-      <!-- Loading skeleton -->
-      <template v-if="trace.loading && !filteredRequests.length">
-        <div v-for="i in 4" :key="i" class="skeleton-row">
-          <div class="skeleton-line w-40" />
-          <div class="skeleton-line w-70" />
-        </div>
-      </template>
-
-      <!-- Error state -->
-      <div v-else-if="trace.loadError" class="state error">
-        <span>{{ trace.loadError }}</span>
-        <button class="retry-btn" @click="reload()">重试</button>
       </div>
+      <div v-show="expanded" class="trace-body">
+        <!-- Loading skeleton -->
+        <template v-if="trace.loading && !filteredRequests.length">
+          <div v-for="i in 4" :key="i" class="skeleton-row">
+            <div class="skeleton-line w-40" />
+            <div class="skeleton-line w-70" />
+          </div>
+        </template>
 
-      <!-- Request list -->
-      <div
-        class="thumb-list"
-        v-else-if="filteredRequests.length"
-        ref="thumbListEl"
-        @scroll="onScroll"
-      >
+        <!-- Error state -->
+        <div v-else-if="trace.loadError" class="state error">
+          <span>{{ trace.loadError }}</span>
+          <button class="retry-btn" @click="reload()">重试</button>
+        </div>
+
+        <!-- Request list -->
         <div
-          v-for="r in filteredRequests"
-          :key="r.seq"
-          class="thumb-row"
-          :class="{ selected: r.seq === trace.selectedSeq }"
-          @click="$emit('select', r.seq)"
+          class="thumb-list"
+          v-else-if="filteredRequests.length"
+          ref="thumbListEl"
+          @scroll="onScroll"
         >
-          <div class="row-top">
-            <span class="status-dot" :class="statusClass(r)" />
-            <span class="seq">#{{ r.seq }}</span>
-            <span class="model">{{ modelShort(r.model) }}</span>
-            <span class="meta time">{{ formatTime(r.ts) }}</span>
+          <div
+            v-for="r in filteredRequests"
+            :key="r.seq"
+            class="thumb-row"
+            :class="{ selected: r.seq === trace.selectedSeq }"
+            @click="$emit('select', r.seq)"
+          >
+            <div class="row-top">
+              <span class="status-dot" :class="statusClass(r)" />
+              <span class="seq">#{{ r.seq }}</span>
+              <span class="model">{{ modelShort(r.model) }}</span>
+              <span class="meta time">{{ formatTime(r.ts) }}</span>
+            </div>
+            <div class="row-bottom">
+              <span class="metric" v-if="r.cost.input">
+                <Icon name="arrow-down" :size="10" />
+                {{ fmtTokens(r.cost.input) }}
+              </span>
+              <span class="metric" v-if="r.cost.output">
+                <Icon name="arrow-up" :size="10" />
+                {{ fmtTokens(r.cost.output) }}
+              </span>
+              <span class="metric">
+                <Icon name="wrench" :size="10" />
+                &times;{{ r.toolCount }}
+              </span>
+              <span class="metric">
+                <Icon name="clock" :size="10" />
+                {{ formatMs(r.latencyMs) }}
+              </span>
+            </div>
           </div>
-          <div class="row-bottom">
-            <span class="metric" v-if="r.cost.input">
-              <Icon name="arrow-down" :size="10" />
-              {{ fmtTokens(r.cost.input) }}
-            </span>
-            <span class="metric" v-if="r.cost.output">
-              <Icon name="arrow-up" :size="10" />
-              {{ fmtTokens(r.cost.output) }}
-            </span>
-            <span class="metric">
-              <Icon name="wrench" :size="10" />
-              &times;{{ r.toolCount }}
-            </span>
-            <span class="metric">
-              <Icon name="clock" :size="10" />
-              {{ formatMs(r.latencyMs) }}
-            </span>
+          <!-- 加载更多指示 -->
+          <div v-if="trace.hasMore" class="load-more-hint">
+            <span v-if="trace.loading">加载中...</span>
+            <span v-else>向上滚动加载更多</span>
           </div>
         </div>
-        <!-- 加载更多指示 -->
-        <div v-if="trace.hasMore" class="load-more-hint">
-          <span v-if="trace.loading">加载中...</span>
-          <span v-else>向上滚动加载更多</span>
-        </div>
-      </div>
 
-      <!-- Empty state -->
-      <div v-else class="state empty">
-        <span>暂无 API 请求</span>
+        <!-- Empty state -->
+        <div v-else class="state empty">
+          <span>暂无 API 请求</span>
+        </div>
       </div>
     </template>
   </aside>
@@ -98,6 +105,8 @@ defineEmits<{ (e: 'select', seq: number): void; (e: 'toggle-collapse'): void }>(
 
 const trace = useTraceStore()
 const thumbListEl = ref<HTMLElement | null>(null)
+// 请求列表内部展开/收起（区别于侧边栏折叠）
+const expanded = ref(true)
 
 // 过滤条件变化时重新加载首页
 watch(() => [trace.modelFilter, trace.errorsOnly], () => {
@@ -183,8 +192,7 @@ function fmtTokens(n: number): string {
 
 <style scoped>
 .trace-sidebar {
-  width: fit-content;
-  max-width: 240px;
+  width: 220px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -195,20 +203,38 @@ function fmtTokens(n: number): string {
   transition: width 0.2s ease;
 }
 .trace-sidebar.collapsed {
-  width: 32px;
+  width: 0;
+  border-left: none;
+}
+.trace-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .trace-sidebar.collapsed .stats-bar {
   flex-direction: column;
   padding: 6px 4px;
 }
 .stats-bar {
+  height: 40px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 8px;
   padding: 6px 6px;
   border-bottom: 1px solid var(--border);
   font-size: 11px;
   flex-shrink: 0;
+}
+.trace-toolbar {
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
 }
 .toggle-btn {
   width: 28px; height: 28px;
@@ -225,6 +251,22 @@ function fmtTokens(n: number): string {
   background: var(--bg-input);
   border-color: var(--accent);
   color: var(--accent);
+}
+.sidehead-toggle {
+  display: flex; align-items: center; gap: 4px;
+  border: none; background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px; font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 3px 5px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  transition: color 0.12s, background 0.12s;
+}
+.sidehead-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-input);
 }
 .stat-count { color: var(--text-secondary); font-weight: 600; }
 .stat-cost { color: var(--accent); font-family: var(--font-mono); font-size: 10px; margin-left: auto; }
