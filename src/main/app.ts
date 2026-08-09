@@ -1078,7 +1078,7 @@ export class App {
     const pathKey = `${spec.kind}_path` as 'claude_path' | 'codex_path' | 'opencode_path' | 'omp_path';
     const agentBin = (this.settingsStore.get(pathKey, '') as string) || spec.command;
     // probe 是 claude 专属的 spawn 前 --version 探测（消除 macOS forkpty 静默失败），通用 binary 会误判
-    const proc = startPty(workDir, realId, agentBin, PtyMode.New, {}, { cols: 80, rows: 24 }, allArgs, { probe: spec.probe ?? false });
+    const proc = startPty(workDir, realId, agentBin, PtyMode.New, {}, { cols: 80, rows: 24 }, allArgs, { probe: spec.probe ?? false, agentLabel: spec.label });
     const s = session.newSession(realId, workDir);
     s.process = proc;
     s.state = 'running';
