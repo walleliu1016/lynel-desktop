@@ -189,7 +189,7 @@ interface RecentSessionRecord {
   lastOpenedAt: number;
   state: string;
   botId?: string;
-  agent?: string;   // agent 类型，缺省 claude
+  agent?: AgentKind;   // agent 类型，缺省 claude
   /** 用户在 claude 终端里主动执行了 /exit（或其他退出命令）。
    *  claude CLI 内部会把这种 session 标记为终止，即使 jsonl 完整存在，
    *  后续 `claude --resume <sid>` 也会被它自己拒绝。

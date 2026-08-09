@@ -68,4 +68,10 @@ describe('mergeRecentAgentField', () => {
     const out = mergeRecentAgentField(raw, recents);
     expect(out[0].agent).toBeUndefined();
   });
+  it('raw 已有 agent 且 recents 无 agent 时保留 raw 值', () => {
+    const raw = [{ id: 'sid-1', workdir: '/p', project: 'p', mtime: 1, agent: 'omp' }] as unknown as JsonlSessionMeta[];
+    const recents = [{ sessionId: 'sid-1', workdir: '/p', project: 'p', aiTitle: '', firstPrompt: '', lastOpenedAt: 1, state: 'idle' }];
+    const out = mergeRecentAgentField(raw, recents);
+    expect(out[0].agent).toBe('omp');
+  });
 });
