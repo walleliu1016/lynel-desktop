@@ -6,16 +6,10 @@
       class="recent-item"
       @click="$emit('select', item)"
     >
-      <div class="status-dot" :class="item.state" />
+      <span class="status-dot" :class="item.state" />
       <AgentBadge :agent="item.agent" size="sm" class="recent-agent" />
-      <div class="body">
-        <div class="row1">
-          <span class="title" :title="displayTitle(item)">{{ displayTitle(item) }}</span>
-        </div>
-        <div class="row2">
-          <span class="meta" :title="metaTitle(item)">{{ item.project }} · {{ item.sessionId.slice(0, 8) }} · {{ duration(item.lastOpenedAt) }}</span>
-        </div>
-      </div>
+      <span class="title" :title="displayTitle(item)">{{ displayTitle(item) }}</span>
+      <span class="meta">{{ item.project }} · {{ duration(item.lastOpenedAt) }}</span>
     </div>
     <button
       v-if="list.length > limit"
@@ -61,10 +55,6 @@ function displayTitle(item: RecentSession) {
   }) || item.project
 }
 
-function metaTitle(item: RecentSession) {
-  return `${item.project} · ${item.sessionId} · ${duration(item.lastOpenedAt)}`
-}
-
 function duration(lastOpenedAt: number) {
   void tick.value // 依赖 tick 确保每分钟重算
   if (!lastOpenedAt || lastOpenedAt <= 0) return '刚刚'
@@ -88,8 +78,8 @@ function duration(lastOpenedAt: number) {
 <style scoped>
 .recent-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 4px; }
 .recent-item {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 8px 10px; border-radius: var(--radius-md);
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: var(--radius-md);
   cursor: pointer; background: transparent;
   transition: background 0.15s;
 }
@@ -97,23 +87,21 @@ function duration(lastOpenedAt: number) {
 .recent-item:active { background: var(--session-item-hover-bg); transform: scale(0.995); }
 .status-dot {
   width: 6px; height: 6px; border-radius: 50%;
-  background: var(--text-tertiary); flex-shrink: 0; margin-top: 6px;
+  background: var(--text-tertiary); flex-shrink: 0;
 }
-.recent-agent { margin-top: 1px; }
+.recent-agent { flex-shrink: 0; }
 .status-dot.running { background: var(--status-success); }
 .status-dot.done { background: var(--text-tertiary); }
 .status-dot.ended { background: var(--text-tertiary); box-shadow: inset 0 0 0 1.5px var(--text-tertiary); background: transparent; }
 .status-dot.awaiting_permission { background: var(--status-error); }
-.body { flex: 1; min-width: 0; }
 .title {
+  flex: 1; min-width: 0;
   font-size: 13px; color: var(--text-primary); font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .meta {
   font-size: 11px; color: var(--text-secondary);
-  display: block;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 100%;
+  white-space: nowrap; flex-shrink: 0;
 }
 .toggle-more {
   width: 100%; text-align: left;
