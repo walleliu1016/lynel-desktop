@@ -37,6 +37,9 @@ export interface TerminalConfig {
 export interface Settings {
   theme: Theme
   claude_path: string
+  codex_path: string
+  opencode_path: string
+  omp_path: string
   auto_allow_bash: boolean
   log_enabled: boolean
   auto_lock_minutes: number

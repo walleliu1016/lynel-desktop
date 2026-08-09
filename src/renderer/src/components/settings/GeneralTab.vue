@@ -9,6 +9,22 @@
     </div>
 
     <div class="form-group">
+      <label class="form-label">Codex 路径</label>
+      <input class="form-input" v-model="cfg.codex_path" @change="markDirty" placeholder="留空使用 PATH 中的 codex" />
+      <p class="form-hint">自定义 Codex 可执行文件路径。留空则自动查找 PATH。</p>
+    </div>
+    <div class="form-group">
+      <label class="form-label">OpenCode 路径</label>
+      <input class="form-input" v-model="cfg.opencode_path" @change="markDirty" placeholder="留空使用 PATH 中的 opencode" />
+      <p class="form-hint">自定义 OpenCode 可执行文件路径。留空则自动查找 PATH。</p>
+    </div>
+    <div class="form-group">
+      <label class="form-label">OMP 路径</label>
+      <input class="form-input" v-model="cfg.omp_path" @change="markDirty" placeholder="留空使用 PATH 中的 omp" />
+      <p class="form-hint">自定义 OMP（oh-my-pi）可执行文件路径。留空则自动查找 PATH。</p>
+    </div>
+
+    <div class="form-group">
       <label class="form-label">自动锁定</label>
       <select class="form-select" v-model.number="cfg.auto_lock_minutes" @change="markDirty">
         <option :value="1">1 分钟</option>
@@ -72,6 +88,9 @@ const settings = useSettingsStore()
 const cfg = computed(() => settings.cfg ?? (settings.cfg = {
   theme: 'light',
   claude_path: '',
+  codex_path: '',
+  opencode_path: '',
+  omp_path: '',
   auto_allow_bash: false,
   log_enabled: false,
   auto_lock_minutes: 5,

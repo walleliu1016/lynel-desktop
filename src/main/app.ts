@@ -1074,10 +1074,11 @@ export class App {
     const { args, cleanup, tmpFile } = createSettingsOverrideFile(proxyUrl, hookUrl);
     const allArgs = [...args, ...extraArgs];
     getLogger().info(`[app:createSession] agent=${spec.kind} proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId} extraArgs=${extraArgs.join(',')}`);
-    // claude 保留 claude_path 用户自定义优先；其余 agent 用 spec.command
-    const claudeBin = (this.settingsStore.get('claude_path', '') as string) || spec.command;
+    // 按 agent 类型读对应可执行路径设置（claude_path/codex_path/opencode_path/omp_path），留空用 spec.command
+    const pathKey = `${spec.kind}_path` as 'claude_path' | 'codex_path' | 'opencode_path' | 'omp_path';
+    const agentBin = (this.settingsStore.get(pathKey, '') as string) || spec.command;
     // probe 是 claude 专属的 spawn 前 --version 探测（消除 macOS forkpty 静默失败），通用 binary 会误判
-    const proc = startPty(workDir, realId, claudeBin, PtyMode.New, {}, { cols: 80, rows: 24 }, allArgs, { probe: spec.probe ?? false });
+    const proc = startPty(workDir, realId, agentBin, PtyMode.New, {}, { cols: 80, rows: 24 }, allArgs, { probe: spec.probe ?? false });
     const s = session.newSession(realId, workDir);
     s.process = proc;
     s.state = 'running';

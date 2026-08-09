@@ -7,6 +7,9 @@ function defaultSettings(): Settings {
   return {
     theme: 'light',
     claude_path: '',
+    codex_path: '',
+    opencode_path: '',
+    omp_path: '',
     auto_allow_bash: false,
     log_enabled: false,
     auto_lock_minutes: 5,
