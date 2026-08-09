@@ -367,6 +367,7 @@ npm run dist:linux
 - `docs/superpowers/plans/2026-07-21-three-panel-layout.md` —— 三段式布局实施计划。
 - `docs/superpowers/specs/2026-08-09-multi-agent-support-design.md` —— 多 Agent 支持设计文档（omp/codex/opencode，参考 `~/project/ccglass`）。
 - `docs/superpowers/specs/2026-08-09-multi-agent-ui-design.md` —— 多 Agent 前端 UI 设计文档（agent 选择、4 区域标识、ProviderTab 分组）。
+- `docs/superpowers/plans/2026-08-09-multi-agent-ui.md` —— 多 Agent 前端 UI 实施计划。
 
 ---
 
