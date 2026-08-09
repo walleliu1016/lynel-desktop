@@ -10,7 +10,7 @@
     "dev:stop": "node scripts/dev-cleanup.mjs",
     "dev:frontend": "cd src/renderer && vite",
     "dev:electron": "tsc --watch",
-    "dev:app": "wait-on http://localhost:5173 && electron .",
+    "dev:app": "wait-on http://localhost:5180 && electron .",
     "build": "npm run build:frontend && npm run build:electron",
     "build:frontend": "cd src/renderer && npx vue-tsc --noEmit && npx vite build",
     "build:electron": "tsc",
