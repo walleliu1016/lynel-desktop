@@ -214,7 +214,11 @@ async function onDelete() {
   if (!provider.value) return
   if (!confirm(`确定删除供应商「${provider.value.name || '未命名'}」吗？`)) return
   try {
-    selectedId.value = await store.removeProvider(selectedId.value)
+    await store.removeProvider(selectedId.value)
+    // 删除后按当前分组重选：组内 active 优先，否则组内第一个
+    const remaining = allProviders.value.filter((p) => (p.agent || 'claude') === selectedAgent.value)
+    const activeInGroup = remaining.find((p) => p.id === store.cfg?.active_provider_id)
+    selectedId.value = activeInGroup?.id ?? remaining[0]?.id ?? ''
     pushToast({ level: 'info', source: 'provider', message: '已删除' })
   } catch (e: any) {
     pushToast({ level: 'error', source: 'provider', message: '删除失败：' + (e?.message ?? e) })
