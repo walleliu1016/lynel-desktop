@@ -107,6 +107,18 @@ export const AGENT_KINDS: AgentKind[] = ['claude', 'codex', 'opencode', 'omp']
 - 每个 agent 一个可执行路径输入，留空走 PATH（对应 `AgentSpec.command`）
 - 主进程 settings store 与 `createSessionInternal` 按 agent 读取对应路径字段
 
+## 网关支持（与后端配套）
+
+多 agent 是一整套端到端实现：UI 的 agent 选择会落到后端 `AgentSpec` 分派，其中网关（apiproxy）对三个新 agent 均支持，差异在注入方式与格式：
+
+| Agent | 网关注入方式 | API 格式 | 特殊条件 |
+|---|---|---|---|
+| codex | 临时 `~/.codex/config.toml`（`openai_base_url` / `model_providers`） | OpenAI Responses（SSE） | 必须 API-key 模式（ChatGPT 登录走 WebSocket 完全绕过）；新版默认 WS 传输需代理对 Upgrade 返回 426 强制回退 HTTP |
+| opencode | 临时 `opencode.json` 的 `provider.options.baseURL`（`${env:OPENAI_BASE_URL}/v1`） | OpenAI Chat / Anthropic（按 npm 适配器） | 无 |
+| omp | env `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`（与 claude 同方式） | Anthropic `/v1/messages` / OpenAI | 无 |
+
+`startProxy` 管道已通用（`format?: FormatAdapter` 参数），但 `formats/openai.ts` / `formats/pi.ts` 当前为空壳（`reassembleResponse: () => null`）。**trace 完整度取决于这两个 FormatAdapter 的补全**（后端设计文档实施顺序第 2 步），属于整套实现的一部分——UI 创建流程不阻塞，但非 claude 的 trace 在 adapter 补全前不完整。
+
 ## 边界状态
 
 | 场景 | 行为 |
@@ -114,7 +126,7 @@ export const AGENT_KINDS: AgentKind[] = ['claude', 'codex', 'opencode', 'omp']
 | 老会话 / 未知 agent | 缺省 claude，显示 CC |
 | 非 claude 会话在左侧列表 | msg_count 等不刷新（listSessions 无 jsonl 条目，refreshList 跳过），只显示项目名 + agent badge |
 | 非 claude 会话恢复 | 走 recent-sessions.json（open() 已有记录），不依赖 jsonl 扫描 |
-| 非 claude agent 创建 | 后端 adapter 未完成（openai/pi 空壳），trace 数据可能不完整，UI 创建流程不阻塞 |
+| 非 claude agent 创建 | 网关支持；trace 完整度取决于 FormatAdapter 补全（openai/pi 空壳），UI 创建流程不阻塞 |
 | 非 claude 选项区 | 禁用 + 提示 |
 | ProviderTab 非 claude 分组 | 显示空状态"该 agent 的供应商配置待支持" |
 
