@@ -50,6 +50,38 @@ function resolveAnthropicBaseUrl(): string {
   return DEFAULT_ANTHROPIC_BASE_URL;
 }
 
+// 读取 ~/.codex/config.toml 的 model_providers.<name>.base_url（参照 ccglass codexConfigBaseUrl）。
+// codex 新版弃用 OPENAI_BASE_URL，config.toml 优先于 env；必须读出来用命令行 -c 覆盖回本地代理。
+function readCodexModelProvider(): { provider: string; baseUrl: string } | null {
+  const configPath = path.join(os.homedir(), '.codex', 'config.toml');
+  try {
+    if (!fs.existsSync(configPath)) return null;
+    const toml = fs.readFileSync(configPath, 'utf8');
+    const m = toml.match(/^\[model_providers\.(\S+)\][^\[]*?^base_url\s*=\s*"([^"]+)"/m);
+    return m ? { provider: m[1], baseUrl: m[2] } : null;
+  } catch (err: any) {
+    getLogger().warn(`[app] read codex config.toml failed: ${err.message}`);
+    return null;
+  }
+}
+
+// 检测 codex 是否处于 ChatGPT 登录模式：auth.json 的 auth_mode === 'chatgpt'，
+// 或含 tokens 且无 OPENAI_API_KEY。ChatGPT 模式走 WebSocket（wss://）完全绕过
+// 代理（OPENAI_BASE_URL 不生效），Trace 为空，需要提示用户切换到 API-key 模式。
+function detectCodexChatGPTAuth(): boolean {
+  try {
+    const authPath = path.join(os.homedir(), '.codex', 'auth.json');
+    if (!fs.existsSync(authPath)) return false;
+    const auth = JSON.parse(fs.readFileSync(authPath, 'utf8')) as Record<string, any>;
+    if (auth?.auth_mode === 'chatgpt') return true;
+    if (auth?.tokens && !process.env.OPENAI_API_KEY) return true;
+    return false;
+  } catch (err: any) {
+    getLogger().warn(`[app] read codex auth.json failed: ${err.message}`);
+    return false;
+  }
+}
+
 function createSettingsOverrideFile(proxyUrl: string, hookUrl?: string): { args: string[]; tmpFile: string; cleanup: () => void } {
   const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
   const tmpDir = path.join(os.tmpdir(), 'lynel-desktop');
@@ -1070,9 +1102,9 @@ export class App {
     const hookUrl = this.hookServer ? `http://127.0.0.1:${this.hookServer.getPort()}/hook` : undefined;
     // 按 agent 分派注入方式：
     // - claude：临时 --settings 文件注入 ANTHROPIC_BASE_URL + hooks（现状）
-    // - 非 claude：通过 env 注入代理 base url（omp=ANTHROPIC_BASE_URL / opencode=OPENAI_BASE_URL），
-    //   不传 claude 专属的 --session-id / --settings，PtyMode 走 Auto（不带 session 参数）。
-    // TODO(codex): codex 的 OPENAI_BASE_URL 已弃用，需写临时 config.toml（model_providers）注入，后续实现。
+    // - codex：-c model_providers.<name>.base_url="<proxyUrl>" 覆盖 config.toml + env OPENAI_BASE_URL 兜底
+    // - opencode/omp：通过 env 注入代理 base url（opencode=OPENAI_BASE_URL / omp=ANTHROPIC_BASE_URL）
+    // 非 claude 不传 claude 专属的 --session-id / --settings，PtyMode 走 Auto（不带 session 参数）。
     const isClaude = spec.kind === 'claude';
     const settingsOverride = isClaude
       ? createSettingsOverrideFile(proxyUrl, hookUrl)
@@ -1081,6 +1113,35 @@ export class App {
     const envOverride: Record<string, string> = {};
     if (!isClaude && spec.envVar) envOverride[spec.envVar] = proxyUrl;
     const allArgs = [...args, ...extraArgs];
+    // codex：新版弃用 OPENAI_BASE_URL，config.toml 的 model_providers.<name>.base_url 优先。
+    // 需用命令行 -c 覆盖回本地代理（参照 ccglass codexConfigBaseUrl），env 同时注入兜底。
+    if (!isClaude && spec.kind === 'codex') {
+      const codexProvider = readCodexModelProvider();
+      if (codexProvider) {
+        const configKey = `model_providers.${codexProvider.provider}.base_url`;
+        // proxyUrl 需带引号：config.toml 的 base_url 是字符串，-c 用键值对整体覆盖
+        allArgs.unshift('-c', `${configKey}="${proxyUrl}"`);
+        getLogger().info(`[app:createSession] codex override ${configKey} (was ${codexProvider.baseUrl}) -> ${proxyUrl}`);
+      }
+      // OPENAI_BASE_URL 虽被弃用但仍兼容，env 注入兜底（ccglass 同时做 env + -c）
+      envOverride.OPENAI_BASE_URL = proxyUrl;
+      // ChatGPT 登录模式走 WebSocket 完全绕过代理，Trace 为空，提示切换 API-key 模式
+      if (detectCodexChatGPTAuth()) {
+        notifyExternal({
+          source: 'session:start',
+          level: 'warn',
+          message: 'Codex 处于 ChatGPT 登录模式，WebSocket 流量无法被代理拦截，Trace 将为空；请运行 codex login --api-key 切换到 API-key 模式',
+        });
+      }
+    } else if (!isClaude && spec.kind === 'opencode') {
+      // opencode：OPENAI_BASE_URL 已由上面 env 注入；缺 OPENAI_API_KEY 无法发请求
+      if (!process.env.OPENAI_API_KEY) {
+        notifyExternal({ source: 'session:start', level: 'warn', message: 'OpenCode 未配置 OPENAI_API_KEY，无法发请求，请先配置' });
+      }
+    } else if (!isClaude && spec.kind === 'omp') {
+      // omp：ANTHROPIC_BASE_URL 已由上面 env 注入；需在设置/配置文件配模型 provider 的 API key
+      notifyExternal({ source: 'session:start', level: 'warn', message: 'OMP 需在设置/配置文件配置模型 provider 的 API key' });
+    }
     getLogger().info(`[app:createSession] agent=${spec.kind} proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId} extraArgs=${extraArgs.join(',')}`);
     // 按 agent 类型读对应可执行路径设置（claude_path/codex_path/opencode_path/omp_path），留空用 spec.command
     const pathKey = `${spec.kind}_path` as 'claude_path' | 'codex_path' | 'opencode_path' | 'omp_path';
