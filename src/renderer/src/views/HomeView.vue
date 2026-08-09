@@ -653,7 +653,7 @@ watch(
 }
 /* macOS 折叠会话列表时，红绿灯悬浮左侧（0-78px），内容区从 44px 开始，让内容从红绿灯右侧起排 */
 .center-top.mac-left {
-  padding-left: 78px;
+  padding-left: 92px;
 }
 .center-tabs {
   flex: 1;

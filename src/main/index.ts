@@ -50,7 +50,7 @@ function createWindow(): void {
     minHeight: 680,
     // macOS 用 hiddenInset 保留红绿灯，不能设 frame:false（会禁用窗口控制按钮）
     ...(process.platform === 'darwin'
-      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 20, y: 15 } as const }
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 20, y: 16 } as const }
       : { frame: false as const, titleBarStyle: 'hidden' as const }),
     show: false,
     backgroundColor: '#0A0A0A',
