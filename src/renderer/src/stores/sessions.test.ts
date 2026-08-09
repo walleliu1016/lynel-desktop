@@ -64,6 +64,17 @@ describe('recentToMeta', () => {
   })
 })
 
+describe('recentToMeta agent', () => {
+  it('透传 agent', () => {
+    const m = recentToMeta({ sessionId: 's', workdir: '/w', project: 'p', aiTitle: '', firstPrompt: '', lastOpenedAt: 1, state: 'idle', agent: 'omp' })
+    expect(m.agent).toBe('omp')
+  })
+  it('缺省 agent 为 undefined（前端回退 claude）', () => {
+    const m = recentToMeta({ sessionId: 's', workdir: '/w', project: 'p', aiTitle: '', firstPrompt: '', lastOpenedAt: 1, state: 'idle' })
+    expect(m.agent).toBeUndefined()
+  })
+})
+
 describe('trimList', () => {
   const mk = (n: number): SessionMeta[] =>
     Array.from({ length: n }, (_, i) => ({ id: `s-${i}` } as unknown as SessionMeta))

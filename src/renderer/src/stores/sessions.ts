@@ -44,6 +44,7 @@ function recentToMeta(record: RecentSession): SessionMeta {
     user_title: record.userTitle,
     title_source: source,
     bot_id: record.botId,
+    agent: record.agent,
   }
 }
 
@@ -195,10 +196,10 @@ export const useSessionsStore = defineStore('sessions', () => {
     if (activeId.value === oldId) activeId.value = newId
   }
 
-  async function create(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string) {
+  async function create(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string, agent?: string) {
     creating.value = true
     try {
-      const id = await CreateSession(workdir, prompt, extraArgs)
+      const id = await CreateSession(workdir, prompt, extraArgs, agent)
       adopted.value = { ...adopted.value, [id]: true }
       state.value = { ...state.value, [id]: 'waiting' }
       if (!list.value.find(s => s.id === id)) {
@@ -207,6 +208,7 @@ export const useSessionsStore = defineStore('sessions', () => {
           id, workdir, project, mtime: Math.floor(Date.now() / 1000), msg_count: 0,
           first_prompt: prompt, ai_title: '', size: 0,
           user_title: undefined, title_source: 'first_prompt',
+          agent,
         }, ...list.value])
       }
       titleSources.value = { ...titleSources.value, [id]: 'first_prompt' }

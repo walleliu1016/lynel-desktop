@@ -8,4 +8,5 @@ export interface RecentSession {
   lastOpenedAt: number
   state: string
   botId?: string
+  agent?: string
 }
