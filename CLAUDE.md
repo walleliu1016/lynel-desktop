@@ -25,12 +25,12 @@ npm run test:main          # 等同于 npm test
 # 前端类型检查
 cd src/renderer && npx vue-tsc --noEmit
 
-# 前端单独开发（Vite dev server，5173 端口）
+# 前端单独开发（Vite dev server，5180 端口）
 cd src/renderer && npm run dev
 # 这种模式下没有 Electron runtime，window.electronAPI 是 undefined，
 # 只适合做纯 UI 调试。IPC 相关的代码要走 npm run dev（全栈）。
 
-# 全栈开发（推荐）
+# 全栈开发（推荐，vite 端口 5180，避免与其他本地项目 5173 冲突）
 npm run dev
 
 # 停止 dev 进程（清理残留）
@@ -87,6 +87,7 @@ npm run dist:linux
 - `src/main/session.ts`：模块级 session 注册表（`Map<string, Session>`），提供 `newSession`/`register`/`lookup`/`remove`/`list`/`send`/`writeInput`/`resize`/`close`/`rebind`/`setProcess`/`setState`/`touch`/`appendBuffer`/`getBuffer` 等函数。**没有 `SessionManager` 类**。
 - `src/main/pty.ts`：基于 `node-pty` 启动交互式 Claude，包含 `PtyMode` 枚举、darwin shell-env 解析/缓存、`probeBin` 预探测、`PtyExitInfo` 诊断等。
 - `src/main/hookserver.ts`：Express HTTP server，接收 Claude hooks。端点：`/hook`（Claude hook POST）、`/api/send`（外部发送消息）、`/api/sessions/:id/calls/stream`（SSE 流）。**不再有 `/api/sessions/{id}/calls` 和 `/api/calls/{seq}` 端点**（trace 数据已改为 IPC 方式）。
+- `src/main/agents/`：多 Agent 支持。`AgentSpec` 注册表（`registry.ts`，含 claude/codex/opencode/omp 的 command/format/envVar/upstream/probe 等）+ `AgentKind` 类型。`app.ts` 按 `spec` 分派注入（claude 走 `--settings` 临时文件 + codex 走 `-c model_providers.<name>.base_url` 覆盖 + opencode/omp 走 env）、启动命令、PtyMode 与认证提示。
 - `src/main/apiproxy.ts`：本地 HTTP→HTTPS 代理，拦截 Claude API 流量并产出 `LynelEnvelope` 事件（不再是旧版 `ProxyStageEvent`）。
 - `src/main/permission-broker.ts`：权限仲裁器单例，统一管理权限请求的 raise/resolve/cancel，预分配序号（`allocateSeq`），支持 `cancelBySessionTool` 联动关闭 UI。
 - `src/main/channels/`：Channel Dispatcher，将 apiproxy 的 `LynelEnvelope` 和 hookserver 的 `HookEventLike` 路由到各输出通道。
@@ -102,15 +103,15 @@ npm run dist:linux
 - `src/main/archive/`：归档写入（blobs、happy.jsonl、raw archive、用量摘要）。
 
 ### 3. Session 生命周期与 PTY
-- **创建**：`App.createSessionInternal(workDir, prompt, extraArgs, autoTrust, botId?)` 是唯一入口。
+- **创建**：`App.createSessionInternal(workDir, prompt, extraArgs, autoTrust, botId?, agent?)` 是唯一入口。
   1. 用 `randomUUID()` 预生成 session ID。
   2. 启动 `APIProxy`（直接使用预生成的 UUID，不需要临时代理后迁移）。
-  3. 创建临时 `--settings` 覆盖文件（注入 `ANTHROPIC_BASE_URL` + hooks + `bypassPermissions`），**不修改全局 `~/.claude/settings.json`**。
-  4. `PtyMode.New` + `--session-id <id>` + `--settings <tmpFile>` 启动交互式 Claude。
+  3. 按 agent 注入（`buildAgentInjection`）：claude 创建临时 `--settings` 覆盖文件（注入 `ANTHROPIC_BASE_URL` + hooks + `bypassPermissions`），**不修改全局 `~/.claude/settings.json`**；codex 用 `-c model_providers.<name>.base_url="<proxyUrl>"` 覆盖 config.toml；opencode/omp 用 env 注入 `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL`。
+  4. claude 用 `PtyMode.New` + `--session-id <id>` + `--settings <tmpFile>` 启动交互式 Claude；非 claude 用 `PtyMode.Auto`（不传 session 参数）+ 各自 env 注入。
   5. `session.newSession()` + `session.register()` 注册到模块级 Map。
   6. `wirePty()` 连接 PTY 数据流（经 `OutputBatcher` 合帧后推送渲染进程）。
 - **采纳（adopt）**：`adoptSession` IPC 对 Lynel Desktop 启动前已存在的历史 session 做注册，不启动进程。
-- **打开终端（openTerminal）**：点击已有 session 时启动或复用 PTY；未启动时必须用 `claude --resume <sid>`（jsonl 已存在的 sid 必须用它，否则 Claude 会 DEAD）。
+- **打开终端（openTerminal）**：点击已有 session 时启动或复用 PTY；**按会话的 agent（从 recents 查）恢复**——claude 用 `--resume <sid>`（jsonl 已存在的 sid 必须用它，否则 Claude 会 DEAD）或 `--session-id`（jsonl 缺失/已 terminate 时）；codex/opencode/omp 用 `PtyMode.Auto`（无 session 参数）+ `buildAgentInjection` 注入。bin 路径按 `${agentKind}_path` 读设置，回退 `spec.command`。
 - **发送消息**：`session.send(id, prompt)` 向 PTY 写裸文本，自动补 `\r`。
 - **会话迁移（rebind）**：`session.rebind(oldId, newId, workDir)` 把 session 从旧 ID 迁移到新 ID（不 kill 进程，保留 process/buffer 引用）。用于 Claude `/clear` 后新 sessionId 接管当前 PTY，或 `/resume` 切换到历史会话的场景。
 - **退出检测**：`exit-detect.ts` 的 `consumeInputForExitDetect()` 解析 PTY 输入流中的 ANSI 转义序列并识别 `/exit`/`/quit`（触发 session 结束）、`/clear`（触发 `rebind`）、`/resume`（触发 `rebind`）。
