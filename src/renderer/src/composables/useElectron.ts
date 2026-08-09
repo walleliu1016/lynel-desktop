@@ -18,7 +18,7 @@ export const LoginWithToken = (userId: string, token: string) =>
   api().loginWithToken(userId, token);
 export const Logout = () => api().logout();
 export const ListSessions = (workDir?: string) => api().listSessions(workDir);
-export const CreateSession = (workDir: string, prompt: string, extraArgs: string[] = []) => api().createSession(workDir, prompt, extraArgs);
+export const CreateSession = (workDir: string, prompt: string, extraArgs: string[] = [], agent?: string) => api().createSession(workDir, prompt, extraArgs, agent);
 export const SendMessage = (id: string, prompt: string) => api().sendMessage(id, prompt);
 export const CloseSession = (id: string) => api().closeSession(id);
 export const GetSettings = () => api().getSettings();

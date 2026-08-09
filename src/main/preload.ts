@@ -8,8 +8,8 @@ const api = {
     ipcRenderer.invoke('app:loginWithToken', userId, token),
   logout: () => ipcRenderer.invoke('app:logout'),
   listSessions: (workDir?: string) => ipcRenderer.invoke('app:listSessions', workDir),
-  createSession: (workDir: string, prompt: string, extraArgs: string[] = []) =>
-    ipcRenderer.invoke('app:createSession', workDir, prompt, extraArgs),
+  createSession: (workDir: string, prompt: string, extraArgs: string[] = [], agent?: string) =>
+    ipcRenderer.invoke('app:createSession', workDir, prompt, extraArgs, agent),
   sendMessage: (id: string, prompt: string) => ipcRenderer.invoke('app:sendMessage', id, prompt),
   closeSession: (id: string) => ipcRenderer.invoke('app:closeSession', id),
   getSettings: () => ipcRenderer.invoke('app:getSettings'),

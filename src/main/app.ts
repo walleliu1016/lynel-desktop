@@ -20,6 +20,7 @@ import { OutputChannel, type HookEventLike } from './channels/channel.js';
 import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
 import { windowAttention } from './attention.js';
 import { startProxy } from './apiproxy.js';
+import { agentSpec, type AgentKind } from './agents/index.js';
 import { start as startPty, PtyMode, PtySize, preloadShellEnv } from './pty.js';
 import { registerTraceIpc } from './trace/ipc.js';
 import type { BotConfig } from './types/bot.js';
@@ -1044,18 +1045,26 @@ export class App {
     }
   }
 
-  private async createSessionInternal(workDir: string, prompt: string, extraArgs: string[] = [], autoTrust = false, botId?: string): Promise<string> {
+  private async createSessionInternal(workDir: string, prompt: string, extraArgs: string[] = [], autoTrust = false, botId?: string, agent?: AgentKind): Promise<string> {
     const realId = randomUUID();
-    const upstream = resolveAnthropicBaseUrl();
-    const proxy = await startProxy(workDir, realId, (env) => this.dispatcher.dispatch(env), undefined, upstream);
+    const spec = agentSpec(agent);
+    // claude/omp 走 Anthropic 协议，上游从 ~/.claude/settings.json 解析（支持供应商切换）；
+    // codex/opencode 用 spec 默认上游（opencode 的 auto 解析在接入 step 细化，先用 openai 默认兜底防空）。
+    const upstream = spec.envVar === 'ANTHROPIC_BASE_URL' ? resolveAnthropicBaseUrl() : (spec.upstream || 'https://api.openai.com');
+    const proxy = await startProxy(workDir, realId, (env) => this.dispatcher.dispatch(env), spec.format, upstream);
     this.apiProxies.push(proxy);
     const proxyUrl = `http://127.0.0.1:${proxy.port}`;
     const hookUrl = this.hookServer ? `http://127.0.0.1:${this.hookServer.getPort()}/hook` : undefined;
+    // TODO(agents): 非 claude agent 的注入方式不同——codex 写临时 config.toml、opencode 写临时
+    // opencode.json，不走 createSettingsOverrideFile 的 --settings。omp 直接读 ANTHROPIC_BASE_URL
+    // env，可复用现状。差异化注入在各自 agent 的接入 step 实现（见 multi-agent-support-design.md）。
     const { args, cleanup, tmpFile } = createSettingsOverrideFile(proxyUrl, hookUrl);
     const allArgs = [...args, ...extraArgs];
-    getLogger().info(`[app:createSession] proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId} extraArgs=${extraArgs.join(',')}`);
-    const claudeBin = (this.settingsStore.get('claude_path', '') as string) || 'claude';
-    const proc = startPty(workDir, realId, claudeBin, PtyMode.New, {}, { cols: 80, rows: 24 }, allArgs, { probe: true });
+    getLogger().info(`[app:createSession] agent=${spec.kind} proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId} extraArgs=${extraArgs.join(',')}`);
+    // claude 保留 claude_path 用户自定义优先；其余 agent 用 spec.command
+    const claudeBin = (this.settingsStore.get('claude_path', '') as string) || spec.command;
+    // probe 是 claude 专属的 spawn 前 --version 探测（消除 macOS forkpty 静默失败），通用 binary 会误判
+    const proc = startPty(workDir, realId, claudeBin, PtyMode.New, {}, { cols: 80, rows: 24 }, allArgs, { probe: spec.probe ?? false });
     const s = session.newSession(realId, workDir);
     s.process = proc;
     s.state = 'running';
@@ -1282,9 +1291,9 @@ export class App {
       return jsonl.parseMessages(filePath, offset, limit);
     });
 
-    ipcMain.handle('app:createSession', async (_event, workDir: string, prompt: string, extraArgs: string[] = []) => {
+    ipcMain.handle('app:createSession', async (_event, workDir: string, prompt: string, extraArgs: string[] = [], agent?: string) => {
       try {
-        return await this.createSessionInternal(workDir, prompt, extraArgs);
+        return await this.createSessionInternal(workDir, prompt, extraArgs, false, undefined, agent as AgentKind);
       } catch (err: any) {
         getLogger().error(`[app:createSession] failed: ${err?.message ?? err}`);
         notifyExternal({ source: 'session:start', level: 'error', message: `新建会话失败: ${errMessage(err)}` });
