@@ -65,11 +65,11 @@
           </div>
           <div class="form-group">
             <label class="form-label">提示词（可选）</label>
-            <textarea class="form-input area" v-model="prompt" rows="4" :placeholder="agent === 'claude' ? '你想让 Claude 做什么？' : `你想让 ${agentMeta(agent).short} 做什么？`" :disabled="loading"></textarea>
+            <textarea class="form-input area" v-model="prompt" rows="4" :placeholder="isClaude ? '你想让 Claude 做什么？' : `你想让 ${agentMeta(agent).short} 做什么？`" :disabled="loading"></textarea>
           </div>
           <div class="form-group">
-            <label class="form-label">{{ agent === 'claude' ? 'Claude 选项' : '启动选项' }}</label>
-            <div v-if="agent === 'claude'" class="multi-select" :class="{ open: flagsOpen }">
+            <label class="form-label">{{ isClaude ? 'Claude 选项' : '启动选项' }}</label>
+            <div v-if="isClaude" class="multi-select" :class="{ open: flagsOpen }">
               <div class="select-trigger" @click="flagsOpen = !flagsOpen">
                 <span v-if="selectedFlags.length === 0" class="placeholder">无额外参数</span>
                 <span v-else>{{ selectedFlags.join(', ') }}</span>
@@ -142,6 +142,7 @@ const agent = ref<AgentKind>('claude')
 const flagsOpen = ref(false)
 const selectedFlags = ref<string[]>([])
 const selectedBot = ref('')
+const isClaude = computed(() => agent.value === 'claude')
 const botOptions = computed(() => botsStore.bots)
 const { search: historySearch, filtered: filteredRecentSessions } = useRecentSessionSearch()
 
@@ -174,6 +175,13 @@ watch(() => props.open, (isOpen) => {
     flagsOpen.value = false
     historySearch.value = ''
     tab.value = recent.recentSessions.length ? 'history' : 'new'
+  }
+})
+
+watch(agent, () => {
+  if (agent.value !== 'claude') {
+    selectedFlags.value = []
+    flagsOpen.value = false
   }
 })
 
