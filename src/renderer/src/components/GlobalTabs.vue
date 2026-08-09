@@ -193,7 +193,8 @@ function onMouseDown(e: MouseEvent, id: string) {
   text-overflow: ellipsis;
 }
 
-.tab-agent { width: 16px; height: 16px; border-radius: 4px; font-size: 8px; }
+/* 覆盖 AgentBadge 自身 .sm 尺寸（特异性更高，需 !important 才能生效） */
+.tab-agent { width: 16px !important; height: 16px !important; border-radius: 4px !important; font-size: 8px !important; }
 
 .tab-close {
   display: flex;
