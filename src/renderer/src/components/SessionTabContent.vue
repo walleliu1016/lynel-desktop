@@ -2,7 +2,10 @@
   <div class="session-tab-content">
     <div v-if="loading" class="terminal-area-loading">
       <div ref="spinnerEl" class="spinner-static" />
-      <div class="loading-text">正在启动 Claude 会话…</div>
+      <div class="loading-text">
+        <AgentBadge :agent="agent" size="sm" />
+        正在启动 {{ agentLabel }} 会话…
+      </div>
     </div>
     <XtermTerminal
       :session-id="sessionId"
@@ -23,9 +26,11 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
+import AgentBadge from './AgentBadge.vue'
 import XtermTerminal from './XtermTerminal.vue'
 import PermissionToast from './PermissionToast.vue'
 import { useSessionsStore } from '../stores/sessions'
+import { agentMeta } from '../types/agents'
 import { WriteTerminalInput } from '../composables/useElectron'
 
 const props = withDefaults(defineProps<{
@@ -40,6 +45,9 @@ const sessions = useSessionsStore()
 const loading = ref(false)
 const spinnerEl = ref<HTMLElement | null>(null)
 let spinnerRaf = 0
+
+const agent = computed(() => sessions.list.find((s) => s.id === props.sessionId)?.agent)
+const agentLabel = computed(() => agentMeta(agent.value).label)
 
 function runSpinner() {
   if (!spinnerEl.value) return
@@ -115,7 +123,7 @@ async function onTerminalData(data: string) {
   background: var(--bg-terminal-loading);
   pointer-events: none;
 }
-.loading-text { font-size: 12px; }
+.loading-text { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
 </style>
 
 <style>

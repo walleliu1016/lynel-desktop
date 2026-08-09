@@ -19,6 +19,7 @@
           <Icon v-else-if="isAwaitingPermission(tab.id)" name="warning" :size="12" class="pulse-icon" />
           <Icon v-else name="terminal" :size="12" />
         </span>
+        <AgentBadge v-if="tab.type === 'session'" :agent="sessionAgent(tab.id)" size="sm" class="tab-agent" />
         <span class="tab-title" :title="tooltipFor(tab)">{{ tab.title }}</span>
         <span
           v-if="showClose(tab.id)"
@@ -37,6 +38,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import AgentBadge from './AgentBadge.vue'
 import Icon from './Icon.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import type { Tab } from '../types/tab'
@@ -58,6 +60,12 @@ const hoverId = ref<string | null>(null)
 function sessionIdFromTab(tabId: string): string | null {
   if (!tabId.startsWith('session-')) return null
   return tabId.slice(8)
+}
+
+function sessionAgent(tabId: string): string | undefined {
+  const sid = sessionIdFromTab(tabId)
+  if (!sid) return undefined
+  return sessions.list.find((s) => s.id === sid)?.agent
 }
 
 function isRunning(tabId: string) {
@@ -184,6 +192,8 @@ function onMouseDown(e: MouseEvent, id: string) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.tab-agent { width: 16px; height: 16px; border-radius: 4px; font-size: 8px; }
 
 .tab-close {
   display: flex;

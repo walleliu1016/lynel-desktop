@@ -8,7 +8,7 @@
     @contextmenu.prevent="onContextMenu"
     ref="itemEl"
   >
-    <div class="avatar">CC</div>
+    <AgentBadge :agent="props.meta.agent" size="md" />
     <div class="body">
       <div class="row-top">
         <input
@@ -101,6 +101,7 @@
 
 <script setup lang="ts">
 import { computed, ref, nextTick, onMounted, onUnmounted } from 'vue'
+import AgentBadge from './AgentBadge.vue'
 import SessionTooltip from './SessionTooltip.vue'
 import Icon from './Icon.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
@@ -357,14 +358,6 @@ async function unbindBot() {
 }
 .session-item.awaiting.active::before {
   background: var(--status-error);
-}
-.avatar {
-  width: 34px; height: 34px; border-radius: 10px;
-  background: var(--accent-soft-bg);
-  color: var(--accent);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700;
-  flex-shrink: 0;
 }
 .body {
   flex: 1; min-width: 0;

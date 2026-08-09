@@ -7,6 +7,7 @@
       @click="$emit('select', item)"
     >
       <div class="status-dot" :class="item.state" />
+      <AgentBadge :agent="item.agent" size="sm" class="recent-agent" />
       <div class="body">
         <div class="row1">
           <span class="title" :title="displayTitle(item)">{{ displayTitle(item) }}</span>
@@ -28,6 +29,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import AgentBadge from './AgentBadge.vue'
 import { sessionDisplayTitle } from '../stores/sessions'
 import type { RecentSession } from '../types/recent'
 
@@ -97,6 +99,7 @@ function duration(lastOpenedAt: number) {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--text-tertiary); flex-shrink: 0; margin-top: 6px;
 }
+.recent-agent { margin-top: 1px; }
 .status-dot.running { background: var(--status-success); }
 .status-dot.done { background: var(--text-tertiary); }
 .status-dot.ended { background: var(--text-tertiary); box-shadow: inset 0 0 0 1.5px var(--text-tertiary); background: transparent; }

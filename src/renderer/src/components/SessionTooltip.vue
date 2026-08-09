@@ -1,5 +1,11 @@
 <template>
   <div class="tip" :style="{ left: anchor.x + 'px', top: anchor.y + 'px' }" @mouseenter="$emit('mouseenter')" @mouseleave="onMouseLeave" @contextmenu.stop="onCtx">
+    <div class="section" v-if="meta.agent">
+      <div class="agent-row">
+        <AgentBadge :agent="meta.agent" size="sm" />
+        <span class="value">{{ agentMeta(meta.agent).label }}</span>
+      </div>
+    </div>
     <div class="section">
       <div class="label">Session ID</div>
       <div class="mono-value">{{ meta.id }}</div>
@@ -49,6 +55,8 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import AgentBadge from './AgentBadge.vue'
+import { agentMeta } from '../types/agents'
 import type { SessionMeta } from '../types/session'
 
 const props = defineProps<{ meta: SessionMeta; anchor: { x: number; y: number }; settingsPath?: string }>()
@@ -92,6 +100,7 @@ const formatSize = computed(() => {
 }
 .section { margin-bottom: 8px; }
 .section:last-child { margin-bottom: 0; }
+.agent-row { display: flex; align-items: center; gap: 8px; }
 .label {
   font-size: 9px; color: var(--text-tertiary);
   text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 2px;
