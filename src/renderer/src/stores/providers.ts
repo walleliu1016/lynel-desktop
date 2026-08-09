@@ -3,9 +3,10 @@ import { ref } from 'vue'
 import type { Provider, ProvidersConfig } from '../types/providers'
 import { GetProvidersConfig, SaveProvidersConfig } from '../composables/useElectron'
 
-function newProvider(): Provider {
+function newProvider(agent?: string): Provider {
   return {
     id: crypto.randomUUID(),
+    agent,
     name: '新供应商',
     base_url: '',
     auth_token: '',
@@ -24,6 +25,7 @@ function defaultConfig(): ProvidersConfig {
     providers: [
       {
         id: 'default',
+        agent: 'claude',
         name: '默认',
         base_url: '',
         auth_token: '',
@@ -59,9 +61,9 @@ export const useProvidersStore = defineStore('providers', () => {
 
   function markDirty() { dirty.value = true }
 
-  async function addProvider(): Promise<string> {
+  async function addProvider(agent?: string): Promise<string> {
     if (!cfg.value) cfg.value = defaultConfig()
-    const p = newProvider()
+    const p = newProvider(agent)
     cfg.value.providers.push(p)
     dirty.value = false
     await SaveProvidersConfig(JSON.parse(JSON.stringify(cfg.value)))
@@ -72,9 +74,10 @@ export const useProvidersStore = defineStore('providers', () => {
     if (!cfg.value) return ''
     const idx = cfg.value.providers.findIndex(p => p.id === id)
     if (idx === -1) return cfg.value.active_provider_id
+    const agent = cfg.value.providers[idx].agent
     cfg.value.providers.splice(idx, 1)
     if (cfg.value.providers.length === 0) {
-      const p = newProvider()
+      const p = newProvider(agent)
       cfg.value.providers.push(p)
       cfg.value.active_provider_id = p.id
     } else if (cfg.value.active_provider_id === id) {

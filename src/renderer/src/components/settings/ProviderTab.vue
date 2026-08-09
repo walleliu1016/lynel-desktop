@@ -7,6 +7,15 @@
           <Icon name="plus" :size="14" />
         </button>
       </div>
+      <div class="agent-switch">
+        <button
+          v-for="k in AGENT_KINDS"
+          :key="k"
+          class="agent-btn"
+          :class="{ active: selectedAgent === k }"
+          @click="onSwitchAgent(k)"
+        >{{ agentMeta(k).abbr }}</button>
+      </div>
       <div class="list">
         <div
           v-for="p in providers"
@@ -83,6 +92,10 @@
         <button class="save" :disabled="!dirty" @click="onSave">保存</button>
       </div>
     </section>
+
+    <section v-else class="provider-form empty-state">
+      <div class="empty-text">{{ emptyStateText }}</div>
+    </section>
   </div>
 </template>
 
@@ -92,11 +105,19 @@ import Icon from '../../components/Icon.vue'
 import { useProvidersStore } from '../../stores/providers'
 import { TestProviderConnection, FetchProviderModels } from '../../composables/useElectron'
 import { pushToast } from '../../composables/useToast'
+import { AGENT_KINDS, agentMeta } from '../../types/agents'
 
 const store = useProvidersStore()
 const selectedId = ref('')
+const selectedAgent = ref('claude')
 
-const providers = computed(() => store.cfg?.providers ?? [])
+const allProviders = computed(() => store.cfg?.providers ?? [])
+const providers = computed(() => allProviders.value.filter(p => (p.agent || 'claude') === selectedAgent.value))
+const emptyStateText = computed(() =>
+  selectedAgent.value === 'claude'
+    ? '暂无供应商，点击左上角 + 新增'
+    : '该 agent 的供应商配置待支持',
+)
 const activeId = computed(() => store.cfg?.active_provider_id ?? '')
 const dirty = computed(() => store.dirty)
 const provider = computed(() => providers.value.find(p => p.id === selectedId.value))
@@ -122,6 +143,14 @@ watch(selectedId, () => {
   availableModels.value = []
   if (fetchTimer) { clearTimeout(fetchTimer); fetchTimer = null }
 })
+
+// 切换 agent 分组：选中该分组第一个 provider（无则清空），并清空模型下拉状态
+function onSwitchAgent(k: string) {
+  selectedAgent.value = k
+  activeModelField.value = ''
+  const group = allProviders.value.filter(p => (p.agent || 'claude') === k)
+  selectedId.value = group.length > 0 ? group[0].id : ''
+}
 
 async function fetchModels() {
   if (!provider.value?.base_url) return
@@ -165,8 +194,9 @@ const modelFields = [
 
 onMounted(async () => {
   await store.load()
+  const active = store.cfg?.active_provider_id
   if (providers.value.length > 0) {
-    selectedId.value = store.cfg?.active_provider_id ?? providers.value[0].id
+    selectedId.value = providers.value.some(p => p.id === active) ? active! : providers.value[0].id
   }
 })
 
@@ -174,7 +204,7 @@ function markDirty() { store.markDirty() }
 
 async function onAdd() {
   try {
-    selectedId.value = await store.addProvider()
+    selectedId.value = await store.addProvider(selectedAgent.value)
   } catch (e: any) {
     pushToast({ level: 'error', source: 'provider', message: '新增失败：' + (e?.message ?? e) })
   }
@@ -213,7 +243,8 @@ async function onSave() {
 async function onCancel() {
   await store.load()
   if (providers.value.length > 0 && !providers.value.find(p => p.id === selectedId.value)) {
-    selectedId.value = store.cfg?.active_provider_id ?? providers.value[0].id
+    const active = store.cfg?.active_provider_id
+    selectedId.value = providers.value.some(p => p.id === active) ? active! : providers.value[0].id
   }
 }
 
@@ -255,6 +286,18 @@ async function onTest() {
   padding: 14px 16px; border-bottom: 1px solid var(--border);
   font-weight: 600; display: flex; justify-content: space-between; align-items: center;
 }
+.agent-switch {
+  display: flex; gap: 6px; padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-btn {
+  flex: 1; padding: 5px 0; font-size: 11px; font-weight: 600;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--bg-input); color: var(--text-tertiary); cursor: pointer;
+  text-align: center;
+}
+.agent-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+.agent-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .add-btn {
   width: 24px; height: 24px; border-radius: var(--radius-sm);
   border: 1px solid var(--border); background: var(--bg-input);
@@ -280,6 +323,8 @@ async function onTest() {
 .provider-item .url { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .provider-item .badge { font-size: 10px; padding: 2px 6px; border-radius: var(--radius-sm); background: var(--accent); color: #fff; font-weight: 600; }
 .provider-form { flex: 1; padding: 20px 24px; display: flex; flex-direction: column; min-width: 0; overflow-y: auto; }
+.provider-form.empty-state { align-items: center; justify-content: center; }
+.empty-text { font-size: 13px; color: var(--text-tertiary); text-align: center; line-height: 1.6; }
 .form-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .form-header h3 { margin: 0; font-size: 16px; }
 .form-actions-top button { padding: 5px 12px; font-size: 12px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); cursor: pointer; margin-left: 8px; }

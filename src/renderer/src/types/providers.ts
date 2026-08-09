@@ -1,5 +1,6 @@
 export interface Provider {
   id: string
+  agent?: string        // 缺省 'claude'
   name: string
   base_url: string
   auth_token: string
