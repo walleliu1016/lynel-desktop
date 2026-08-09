@@ -114,6 +114,16 @@
 
   --commit-card-bg: #fff7ed;
   --commit-card-border: #f97316;
+
+  /* agent 类型标识配色 */
+  --agent-claude-bg: #fde68a;
+  --agent-claude-fg: #92400e;
+  --agent-codex-bg: #dcfce7;
+  --agent-codex-fg: #166534;
+  --agent-opencode-bg: #dbeafe;
+  --agent-opencode-fg: #1e40af;
+  --agent-omp-bg: #ede9fe;
+  --agent-omp-fg: #5b21b6;
 }
 
 /* =====================================================================
