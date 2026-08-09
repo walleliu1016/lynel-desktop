@@ -291,6 +291,7 @@ export const useSessionsStore = defineStore('sessions', () => {
           ...cur,
           msg_count: fresh.msg_count,
           mtime: fresh.mtime,
+          agent: fresh.agent ?? cur.agent,
           user_title,
           ai_title,
           first_prompt,

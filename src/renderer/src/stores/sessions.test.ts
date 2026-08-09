@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import type { RecentSession } from '../types/recent'
 import type { SessionMeta } from '../types/session'
-import { ListSessions, AdoptSession } from '../composables/useElectron'
+import { ListSessions, AdoptSession, CreateSession } from '../composables/useElectron'
 
 // mock IPC 转发层，避免依赖 window.electronAPI
 vi.mock('../composables/useElectron', () => ({
@@ -162,6 +162,12 @@ describe('store', () => {
     expect(store.list[0].mtime).toBe(2000)
     expect(store.list[0].title_source).toBe('user')
     expect(store.list[0].ai_title).toBe('T1') // 权威 ai_title 为空时保留本地已有值
+  })
+
+  it('create 透传 agent 到 CreateSession', async () => {
+    const store = useSessionsStore()
+    await store.create('/w', 'p', [], undefined, 'omp')
+    expect(CreateSession).toHaveBeenCalledWith('/w', 'p', [], 'omp')
   })
 
   it('select 时 AdoptSession 抛错仍执行 refreshList，列表不保持陈旧', async () => {
