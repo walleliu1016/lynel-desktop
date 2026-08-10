@@ -24,10 +24,6 @@
       <label class="form-label">开关</label>
       <div class="switch-list">
         <label class="switch-row">
-          <span class="switch-label">自动允许工具调用</span>
-          <Switch v-model="cfg.auto_allow_bash" @change="markDirty" />
-        </label>
-        <label class="switch-row">
           <span class="switch-label">启用日志</span>
           <Switch v-model="cfg.log_enabled" @change="markDirty" />
         </label>
@@ -72,7 +68,6 @@ const settings = useSettingsStore()
 const cfg = computed(() => settings.cfg ?? (settings.cfg = {
   theme: 'light',
   claude_path: '',
-  auto_allow_bash: false,
   log_enabled: false,
   auto_lock_minutes: 5,
   auto_start: false,

@@ -7,7 +7,6 @@ function defaultSettings(): Settings {
   return {
     theme: 'light',
     claude_path: '',
-    auto_allow_bash: false,
     log_enabled: false,
     auto_lock_minutes: 5,
     auto_start: false,

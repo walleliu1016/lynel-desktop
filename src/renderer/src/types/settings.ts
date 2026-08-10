@@ -37,7 +37,6 @@ export interface TerminalConfig {
 export interface Settings {
   theme: Theme
   claude_path: string
-  auto_allow_bash: boolean
   log_enabled: boolean
   auto_lock_minutes: number
   auto_start: boolean
