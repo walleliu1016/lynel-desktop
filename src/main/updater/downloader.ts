@@ -1,50 +1,29 @@
-import { createRequire } from 'node:module';
 import { getLogger } from '../log.js';
 import type { CheckResult, UpdateState } from './types.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import https from 'node:https';
+import http from 'node:http';
+import { spawn } from 'node:child_process';
 
-const esmRequire = createRequire(import.meta.url);
-
-// electron-updater 的 autoUpdater getter 首次访问时会 new NsisUpdater/MacUpdater，
-// 构造时调用 app.getVersion()。在无 Electron runtime 的测试环境会抛错。
-// 用懒加载只在真正下载/安装时才访问，避免模块加载阶段触发副作用。
-// 这里按 electron-updater 真实返回类型声明一个最小子集，避免 result 被推断成 unknown。
-interface UpdateCheckResult {
-  isUpdateAvailable: boolean;
-  updateInfo?: { version: string };
-  version?: string;
-}
-
-interface AutoUpdater {
-  setFeedURL(opts: { provider: string; url: string }): void;
-  on(event: 'download-progress', cb: (progress: { percent: number; bytesPerSecond: number }) => void): void;
-  on(event: 'update-downloaded', cb: () => void): void;
-  on(event: 'error', cb: (err: Error) => void): void;
-  checkForUpdates(): Promise<UpdateCheckResult | null>;
-  downloadUpdate(): Promise<unknown>;
-  quitAndInstall(): void;
-}
-
-function getAutoUpdater(): AutoUpdater {
-  const mod = esmRequire('electron-updater') as { autoUpdater: AutoUpdater };
-  return mod.autoUpdater;
-}
-
+// 自研下载：直接基于 Node https/http 拉取 downloadUrl（GitHub release asset 的完整 HTTPS URL）。
+// 不依赖 electron-updater：
+//   - 其 generic provider 读 latest.yml 时用 Electron 的 net.ClientRequest，只支持 http/https，
+//     无法读 file:// 协议（否则抛 "ClientRequest only supports http: and https: protocols"）。
+//   - 其 resolveFiles 硬性要求 sha512，而 GitHub release 未上传 latest.yml 时 sha512 恒为空。
 const logger = getLogger();
 
-function writeTempLatestYml(info: CheckResult): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lynel-update-'));
-  const yml = [
-    `version: ${info.version}`,
-    `releaseDate: ${info.releaseDate}`,
-    `path: ${info.downloadUrl}`,
-    info.sha512 ? `sha512: ${info.sha512}` : '',
-  ].filter(Boolean).join('\n');
-  fs.writeFileSync(path.join(dir, 'latest.yml'), yml, 'utf8');
-  logger.info(`[downloader] 临时 latest.yml 写入: ${dir}`);
-  return dir;
+// 已下载的安装包绝对路径，供 quitAndInstall 安装使用
+let downloadedFilePath: string | null = null;
+
+function downloadTargetPath(version?: string): string {
+  const ext =
+    process.platform === 'win32' ? '.exe'
+    : process.platform === 'darwin' ? '.dmg'
+    : '.AppImage';
+  const name = version ? `lynel-desktop-${version}` : 'lynel-desktop-update';
+  return path.join(os.tmpdir(), `${name}${ext}`);
 }
 
 export function downloadUpdate(
@@ -52,65 +31,113 @@ export function downloadUpdate(
   onProgress: (state: UpdateState) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const autoUpdater = getAutoUpdater();
-    const tempDir = writeTempLatestYml(info);
+    const url = info.downloadUrl;
+    if (!url) {
+      reject(new Error('缺少下载地址，请先检查更新'));
+      return;
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      reject(new Error(`下载地址无效: ${url}`));
+      return;
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      reject(new Error(`不支持的下载协议: ${parsed.protocol}`));
+      return;
+    }
 
-    autoUpdater.setFeedURL({
-      provider: 'generic',
-      url: `file://${tempDir}`,
-    });
+    const target = downloadTargetPath(info.version);
+    // 覆盖上次同版本的残留文件
+    try { fs.rmSync(target, { force: true }); } catch {}
+    const fileStream = fs.createWriteStream(target);
+    const transport = parsed.protocol === 'https:' ? https : http;
 
-    let resolved = false;
+    // 先发 0% 事件，让 UI 立即有"正在下载"反馈（连接建立前可能耗时数秒）
+    onProgress({ status: 'downloading', data: { version: info.version, percent: 0, speed: 0 } });
 
-    autoUpdater.on('download-progress', (progress) => {
-      onProgress({
-        status: 'downloading',
-        data: {
-          version: info.version,
-          percent: progress.percent,
-          speed: progress.bytesPerSecond,
-        },
+    const req = transport.get(url, (res) => {
+      const status = res.statusCode ?? 0;
+      if (status < 200 || status >= 300) {
+        req.destroy();
+        try { fs.rmSync(target, { force: true }); } catch {}
+        reject(new Error(`下载失败：HTTP ${status}`));
+        return;
+      }
+      // 优先取 content-length（重定向到实际对象存储后会带真实大小），其次 info.size
+      const total = Number(res.headers['content-length']) || info.size || 0;
+      let received = 0;
+      let lastReport = 0;
+
+      res.on('data', (chunk) => {
+        received += chunk.length;
+        // 限制 onProgress 频率，避免高频 IPC
+        if (received - lastReport < 256 * 1024) return;
+        lastReport = received;
+        onProgress({
+          status: 'downloading',
+          data: {
+            version: info.version,
+            percent: total ? Math.min(100, Math.round((received / total) * 100)) : 0,
+            speed: 0,
+          },
+        });
+      });
+
+      res.on('end', () => {
+        downloadedFilePath = target;
+        logger.info(`[downloader] 下载完成: ${info.version} -> ${target}`);
+        onProgress({ status: 'downloaded', data: { version: info.version } });
+        resolve();
+      });
+
+      res.on('error', (err) => {
+        fileStream.destroy();
+        try { fs.rmSync(target, { force: true }); } catch {}
+        reject(err);
       });
     });
 
-    autoUpdater.on('update-downloaded', () => {
-      logger.info(`[downloader] 下载完成: ${info.version}`);
-      // 清理临时文件
-      try { fs.rmSync(tempDir, { recursive: true }); } catch {}
-      if (!resolved) {
-        resolved = true;
-        onProgress({ status: 'downloaded', data: { version: info.version } });
-        resolve();
-      }
+    req.on('error', (err) => {
+      fileStream.destroy();
+      try { fs.rmSync(target, { force: true }); } catch {}
+      reject(err);
     });
 
-    autoUpdater.on('error', (err) => {
-      logger.error(`[downloader] 下载失败: ${err.message}`);
-      try { fs.rmSync(tempDir, { recursive: true }); } catch {}
-      if (!resolved) {
-        resolved = true;
-        reject(err);
-      }
+    fileStream.on('error', (err) => {
+      req.destroy();
+      reject(err);
     });
 
-    // checkForUpdates 读取临时 latest.yml 发现更新，再 downloadUpdate 执行下载
-    autoUpdater.checkForUpdates().then((result) => {
-      // 未打包（dev 模式）或版本未严格提升时 updateInfoAndProvider 不会设置，
-      // 直接 downloadUpdate 会抛 "Please check update first"，这里给出明确错误
-      if (!result?.isUpdateAvailable) {
-        throw new Error('当前已是最新版本，无需下载');
-      }
-      return autoUpdater.downloadUpdate();
-    }).catch((err) => {
-      try { fs.rmSync(tempDir, { recursive: true }); } catch {}
-      if (!resolved) {
-        resolved = true;
-        reject(err);
-      }
+    // 连接/响应长时间无进展时主动超时，避免 UI 一直停留在"正在下载 0%"无任何反馈
+    req.setTimeout(30_000, () => {
+      req.destroy(new Error('下载连接超时，请检查网络后重试'));
     });
   });
 }
 
 export function quitAndInstall(): void {
-  getAutoUpdater().quitAndInstall();
+  const file = downloadedFilePath;
+  if (!file || !fs.existsSync(file)) {
+    logger.warn('[downloader] 未找到已下载的安装包，无法安装');
+    return;
+  }
+  try {
+    if (process.platform === 'win32') {
+      // NSIS 安装器：/S 静默安装，默认安装目录；安装器会接管并退出旧进程
+      spawn(file, ['/S'], { detached: true, stdio: 'ignore' }).unref();
+    } else if (process.platform === 'darwin') {
+      // dmg：打开后由用户拖入 Applications
+      spawn('open', [file], { detached: true, stdio: 'ignore' }).unref();
+    } else {
+      // Linux AppImage：赋予执行权限并启动
+      fs.chmodSync(file, 0o755);
+      spawn(file, [], { detached: true, stdio: 'ignore' }).unref();
+    }
+  } catch (err: any) {
+    logger.error(`[downloader] 启动安装失败: ${err?.message ?? err}`);
+    return;
+  }
+  downloadedFilePath = null;
 }

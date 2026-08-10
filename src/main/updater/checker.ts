@@ -43,7 +43,7 @@ interface GitHubRelease {
   tag_name: string;
   published_at: string;
   body: string;
-  assets: Array<{ name: string; browser_download_url: string }>;
+  assets: Array<{ name: string; browser_download_url: string; size?: number }>;
 }
 
 async function checkGitHub(
@@ -85,10 +85,12 @@ async function checkGitHub(
     const asset = release.assets.find((a) => assetNamePattern.test(a.name));
     const downloadUrl = asset?.browser_download_url ?? '';
 
-    // 尝试获取 latest.yml 补充 sha512（缺失时不阻塞）
+    // 按平台读取对应的通道文件补充 sha512（缺失时不阻塞）。
+    // electron-builder 生成的命名：win→latest.yml、mac→latest-mac.yml、linux→latest-linux.yml。
     let sha512 = '';
+    const channelFile = plat === 'win' ? 'latest.yml' : `latest-${plat}.yml`;
     try {
-      const ymlUrl = `https://github.com/${owner}/${repo}/releases/latest/download/latest.yml`;
+      const ymlUrl = `https://github.com/${owner}/${repo}/releases/latest/download/${channelFile}`;
       const ymlResp = await fetchWithTimeout(ymlUrl, 5_000);
       if (ymlResp.ok) {
         const text = await ymlResp.text();
@@ -105,7 +107,7 @@ async function checkGitHub(
       forceUpdate: false,
       downloadUrl,
       sha512,
-      size: 0,
+      size: asset?.size ?? 0,
     };
   } catch (err: any) {
     logger.warn(`[checker] github check failed: ${err?.message ?? err}`);

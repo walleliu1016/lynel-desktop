@@ -32,7 +32,6 @@
         <div class="progress-bar">
           <div class="progress-fill" :style="{ width: (state.data?.percent ?? 0) + '%' }" />
         </div>
-        <span class="progress-text">{{ Math.round(state.data?.percent ?? 0) }}%</span>
       </div>
       <div v-if="state.status === 'downloaded'" class="install-hint">
         下载完成，重启应用以安装新版本。
@@ -72,10 +71,10 @@ const statusText = computed(() => {
   switch (state.status) {
     case 'checking': return '正在检查更新...'
     case 'available': return `新版本 ${state.data?.version ?? ''} 可用`
-    case 'downloading': return `正在下载 ${state.data?.version ?? ''}...`
+    case 'downloading': return `正在下载 ${state.data?.version ?? ''} (${Math.round(state.data?.percent ?? 0)}%)`
     case 'downloaded': return `v${state.data?.version ?? ''} 下载完成`
     case 'no-update': return '已是最新版本'
-    case 'error': return '检查更新失败'
+    case 'error': return '更新失败'
     default: return ''
   }
 })
@@ -112,6 +111,17 @@ async function onCheckUpdate() {
 }
 
 async function onDownload() {
+  // 点击立即进入下载中状态，连接建立/补信息期间 UI 也能看到反馈
+  state.status = 'downloading'
+  state.data = { percent: 0, version: state.data?.version ?? checkResult.value?.version }
+  // checkResult 为空（available 来自启动/定时推送，仅含 version，无 downloadUrl/sha512）
+  // 时，先主动检查一次拿完整信息；拿不到再兜底（保留 version，让下载报错信息明确）。
+  if (!checkResult.value) {
+    const r = await CheckUpdate().catch(() => null)
+    if (r && r.hasUpdate) {
+      checkResult.value = r
+    }
+  }
   if (!checkResult.value) {
     checkResult.value = {
       hasUpdate: true,
@@ -121,6 +131,9 @@ async function onDownload() {
       size: 0,
     }
   }
+  // CheckUpdate 会把状态推成 checking/available，下载前复位为下载中，保持连续反馈
+  state.status = 'downloading'
+  state.data = { percent: 0, version: checkResult.value.version }
   try {
     // checkResult.value 是 Vue reactive Proxy，不能直接传给 IPC（结构化克隆会报
     // "An object could not be cloned"）。解包为纯对象后再传。
@@ -177,7 +190,6 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 .progress-wrap { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .progress-bar { flex: 1; height: 4px; background: var(--bg-input); border-radius: 2px; overflow: hidden; }
 .progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; }
-.progress-text { font-size: 12px; color: var(--text-secondary); min-width: 36px; }
 
 .install-hint { margin-top: 8px; font-size: 13px; color: var(--text-secondary); }
 .error-hint { margin-top: 8px; font-size: 13px; color: var(--status-error); }
