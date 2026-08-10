@@ -67,6 +67,7 @@ function createSettingsOverrideFile(proxyUrl: string, hookUrl?: string): { args:
         PreToolUse: 5,
         PostToolUse: 5,
         PostToolUseFailure: 5,
+        Stop: 5,
       };
       const hooksObj: Record<string, any> = {};
       for (const [name, timeout] of Object.entries(hookTypes)) {
@@ -108,6 +109,7 @@ function createSettingsOverrideFile(proxyUrl: string, hookUrl?: string): { args:
 function mapHookToKind(name: string): HookEventLike['kind'] | null {
   switch (name) {
     case 'SessionStart': return 'SessionStart';
+    case 'Stop': return 'Stop';
     case 'PreToolUse': return 'PreToolUse';
     case 'PostToolUse': return 'PostToolUse';
     case 'PostToolUseFailure': return 'PostToolUseFailure';
