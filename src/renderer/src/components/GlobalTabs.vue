@@ -11,6 +11,18 @@
         @mouseenter="hoverId = tab.id"
         @mouseleave="hoverId = null"
       >
+        <span v-if="tab.id === activeId" class="tab-bridge left">
+          <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+            <path d="M12 0 A12 12 0 0 0 0 12 L12 12 Z" class="bridge-fill" />
+            <path d="M12 0 A12 12 0 0 0 0 12" class="bridge-arc" />
+          </svg>
+        </span>
+        <span v-if="tab.id === activeId" class="tab-bridge right">
+          <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+            <path d="M0 0 A12 12 0 0 1 12 12 L0 12 Z" class="bridge-fill" />
+            <path d="M0 0 A12 12 0 0 1 12 12" class="bridge-arc" />
+          </svg>
+        </span>
         <span class="tab-icon">
           <Icon v-if="tab.type === 'welcome'" name="bot" :size="12" />
           <Icon v-else-if="tab.type === 'settings'" name="settings" :size="12" />
@@ -136,7 +148,7 @@ function onMouseDown(e: MouseEvent, id: string) {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 40px;
+  height: 32px;
   padding: 0 12px;
   max-width: 180px;
   min-width: 80px;
@@ -145,7 +157,8 @@ function onMouseDown(e: MouseEvent, id: string) {
   background: transparent;
   border: 1px solid transparent;
   border-bottom: none;
-  border-radius: 8px 8px 0 0;
+  /* Chrome 风格：顶部大弧形，底部直角与内容区融合 */
+  border-radius: 12px 12px 0 0;
   font-size: 12px;
   color: var(--text-secondary);
   position: relative;
@@ -173,7 +186,29 @@ function onMouseDown(e: MouseEvent, id: string) {
   right: 0;
   height: 2px;
   background: var(--accent);
-  border-radius: 8px 8px 0 0;
+  border-radius: 12px 12px 0 0;
+}
+
+/* Chrome 风格底部裙边：激活标签两侧底部鼓出的弧形扇面（内容色填充 + 1px 弧形描边） */
+.tab.active .tab-bridge {
+  position: absolute;
+  bottom: -1px;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+}
+.tab-bridge.left { left: -12px; }
+.tab-bridge.right { right: -12px; }
+.tab-bridge svg {
+  display: block;
+  overflow: visible;
+}
+.tab-bridge path.bridge-fill { fill: var(--bg-terminal); stroke: none; }
+.tab-bridge path.bridge-arc {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  stroke-linecap: round;
 }
 
 .tab-icon {
@@ -228,7 +263,7 @@ function onMouseDown(e: MouseEvent, id: string) {
   justify-content: center;
   width: 28px;
   height: 28px;
-  margin-bottom: 6px;
+  margin-bottom: 0;
   border-radius: var(--radius-md);
   border: none;
   background: transparent;
