@@ -30,7 +30,7 @@
         </span>
       </div>
     </div>
-    <button class="tab-new" @click="$emit('create')">
+    <button v-if="!hideNew" class="tab-new" @click="$emit('create')">
       <Icon name="plus" :size="16" />
     </button>
   </div>
@@ -46,6 +46,7 @@ import type { Tab } from '../types/tab'
 const props = defineProps<{
   tabs: Tab[]
   activeId: string | null
+  hideNew?: boolean
 }>()
 
 const emit = defineEmits<{

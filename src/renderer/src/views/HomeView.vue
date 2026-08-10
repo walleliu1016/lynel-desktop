@@ -2,19 +2,20 @@
   <div class="home">
     <div class="layout">
       <aside class="left" :class="{ collapsed: sidebarCollapsed }">
-        <div class="left-top" :class="{ mac: isMac, collapsed: sidebarCollapsed, searching: searchOpen }">
+        <div class="left-top" :class="{ mac: isMac, win: isWindows, collapsed: sidebarCollapsed, searching: searchOpen }">
           <template v-if="!sidebarCollapsed && !searchOpen">
+            <span v-if="!isMac" class="brand-inline" aria-hidden="true">Lynel Desktop</span>
             <button class="top-btn tooltip-wrap" aria-label="打开 Session" @click="showNewSession = true">
               <Icon name="folder-open" :size="16" />
               <span class="tooltip-down">打开 Session</span>
             </button>
-            <button class="top-btn tooltip-wrap" :aria-label="sidebarCollapsed ? '展开会话列表' : '收起会话列表'" @click="sidebarCollapsed = !sidebarCollapsed">
-              <Icon :name="sidebarCollapsed ? 'panel-left-open' : 'panel-left-close'" :size="16" />
-              <span class="tooltip-down">{{ sidebarCollapsed ? '展开会话列表' : '收起会话列表' }}</span>
-            </button>
             <button class="top-btn tooltip-wrap" aria-label="搜索会话" @click="openSearch">
               <Icon name="search" :size="16" />
               <span class="tooltip-down">搜索会话</span>
+            </button>
+            <button class="top-btn tooltip-wrap" :aria-label="sidebarCollapsed ? '展开会话列表' : '收起会话列表'" @click="sidebarCollapsed = !sidebarCollapsed">
+              <Icon :name="sidebarCollapsed ? 'panel-left-open' : 'panel-left-close'" :size="16" />
+              <span class="tooltip-down">{{ sidebarCollapsed ? '展开会话列表' : '收起会话列表' }}</span>
             </button>
             <div v-if="cloudEnabled" class="cloud-status" :class="cloudStatusClass" :title="cloudStatusTitle">
               <span class="dot" />
@@ -45,7 +46,7 @@
             <!-- 折叠态：展开按钮统一放在内容区顶部的 center-top，避免被红绿灯遮挡 -->
           </template>
         </div>
-        <div v-if="!sidebarCollapsed" class="left-brand-area">
+        <div v-if="isMac && !sidebarCollapsed" class="left-brand-area">
           <span class="brand-title">Lynel Desktop</span>
           <span class="brand-version">(v{{ version }})</span>
         </div>
@@ -82,7 +83,7 @@
         </div>
       </aside>
       <div class="center">
-        <div class="center-top" :class="{ 'mac-left': isMac && sidebarCollapsed }">
+        <div class="center-top" :class="{ 'mac-left': isMac && sidebarCollapsed, win: isWindows }">
           <button
             v-if="sidebarCollapsed"
             class="top-btn tooltip-wrap"
@@ -96,6 +97,7 @@
             class="center-tabs"
             :tabs="tabsStore.tabs"
             :active-id="tabsStore.activeId"
+            :hide-new="isWindows"
             @select="onSelectTab"
             @close="onCloseTab"
             @create="onCreateTab"
@@ -252,6 +254,7 @@ function closeSearch() {
 
 const { isMaximized, minimize, toggleMaximize, hide } = useWindowState()
 const isMac = computed(() => navigator.platform.toLowerCase().includes('mac'))
+const isWindows = computed(() => navigator.platform.toLowerCase().includes('win'))
 const avatar = computed(() => (username.value || '').slice(0, 2).toUpperCase() || 'U')
 
 // 云服务连接状态：仅 cloud_service_enabled 时显示（位于左侧顶栏）
@@ -612,6 +615,23 @@ watch(
   color: var(--text-secondary);
   font-family: var(--font-mono);
 }
+.left-top.win {
+  justify-content: flex-start;
+}
+/* Windows 内联品牌字（无版本号），与左侧按钮同处一行；
+   margin-right: auto 把右侧按钮组整体推到最右，避免 space-between 均匀铺开导致分散 */
+.brand-inline {
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-right: auto;
+  background: linear-gradient(135deg, #ef4444, #3b82f6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
 .left-top.collapsed {
   justify-content: center;
   padding: 0;
@@ -654,6 +674,17 @@ watch(
 /* macOS 折叠会话列表时，红绿灯悬浮左侧（0-78px），内容区从 44px 开始，让内容从红绿灯右侧起排 */
 .center-top.mac-left {
   padding-left: 92px;
+}
+/* Windows 无边框窗口右上角有自绘窗口控制按钮（约 82px）：
+   1. center-top 右侧预留 96px 避让区，GlobalTabs 与"展开 Trace"按钮都在其内自然排列；
+   2. 底边横线移到 center-top 上贯穿全宽（GlobalTabs 去掉自身横线），
+      不随按钮挤压/折叠态断掉，实现自适应。 */
+.center-top.win {
+  padding-right: 96px;
+  border-bottom: 1px solid var(--border-strong);
+}
+.center-top.win :deep(.global-tabs) {
+  border-bottom: none;
 }
 .center-tabs {
   flex: 1;
