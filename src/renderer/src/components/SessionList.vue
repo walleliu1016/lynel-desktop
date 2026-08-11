@@ -88,7 +88,8 @@ const dupProjects = computed(() => {
   display: flex; align-items: center; gap: 4px;
   border: none; background: transparent;
   color: var(--text-secondary);
-  font-size: 11px; font-weight: 700;
+  font-size: var(--fs-caption); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
   font-family: inherit;
   cursor: pointer;
   padding: 3px 5px;
@@ -106,7 +107,7 @@ const dupProjects = computed(() => {
 .items { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; }
 
 .content { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.empty { color: var(--text-tertiary); font-size: 12px; text-align: center; padding: 20px; }
+.empty { color: var(--text-tertiary); font-size: var(--fs-body-sm); text-align: center; padding: 20px; }
 
 .skeleton-item {
   display: flex; align-items: center; gap: 10px;

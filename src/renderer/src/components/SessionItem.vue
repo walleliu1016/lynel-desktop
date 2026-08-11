@@ -334,7 +334,7 @@ async function unbindBot() {
 <style scoped>
 .session-item {
   display: flex; align-items: stretch; gap: 10px;
-  padding: 10px; border-radius: 10px;
+  padding: 10px; border-radius: var(--radius-sm);
   cursor: pointer; position: relative;
   background: transparent;
   transition: background 0.12s;
@@ -344,20 +344,9 @@ async function unbindBot() {
 .session-item.active {
   background: var(--session-item-active-bg);
 }
-.session-item.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%; transform: translateY(-50%);
-  width: 3px; height: 24px;
-  border-radius: 2px;
-  background: var(--accent);
-}
+.session-item.active .title { color: var(--accent); }
 .session-item.awaiting {
   background: var(--status-error-soft);
-}
-.session-item.awaiting.active::before {
-  background: var(--status-error);
 }
 .body {
   flex: 1; min-width: 0;
@@ -369,7 +358,7 @@ async function unbindBot() {
 }
 .title {
   flex: 1; min-width: 0;
-  font-size: 13px; color: var(--text-primary); font-weight: 500;
+  font-size: var(--fs-body); color: var(--text-primary); font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .title-input {
@@ -387,7 +376,7 @@ async function unbindBot() {
   flex-shrink: 0;
 }
 .time {
-  font-size: 11px; color: var(--text-tertiary);
+  font-size: var(--fs-caption); color: var(--text-tertiary);
   white-space: nowrap;
 }
 .dot {
@@ -408,19 +397,19 @@ async function unbindBot() {
 }
 .meta {
   flex: 1;
-  font-size: 11px; color: var(--text-secondary);
+  font-size: var(--fs-body-sm); color: var(--text-secondary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .bot-tag {
   display: inline-flex; align-items: center; gap: 3px;
   font-size: 9px; padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(59,130,246,0.12);
-  color: #60a5fa;
+  background: var(--accent-soft-bg);
+  color: var(--accent-light);
   white-space: nowrap; flex-shrink: 0;
 }
 .event {
-  font-size: 11px; color: var(--text-secondary); margin-top: 2px;
+  font-size: var(--fs-body-sm); color: var(--text-secondary); margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .event :deep(b), .event b { font-weight: 600; color: var(--text-primary); }
@@ -430,7 +419,9 @@ async function unbindBot() {
 .context-menu {
   position: fixed;
   z-index: 1000;
-  background: var(--bg-panel);
+  background: var(--material-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-window);
@@ -452,7 +443,7 @@ async function unbindBot() {
   cursor: pointer;
 }
 .menu-item:hover {
-  background: var(--session-item-hover-bg);
+  background: var(--bg-hover);
 }
 .menu-item:disabled {
   opacity: 0.45;
@@ -464,7 +455,7 @@ async function unbindBot() {
 .bound-hint {
   flex-shrink: 0;
   font-size: 10px;
-  color: #047857;
+  color: var(--status-success);
   background: var(--status-success-soft);
   padding: 1px 6px;
   border-radius: 4px;
@@ -487,11 +478,11 @@ async function unbindBot() {
   border-bottom: none;
 }
 .bot-picker .menu-item:hover {
-  background: rgba(128,128,128,0.2);
+  background: var(--bg-hover);
 }
 .bot-picker { min-width: 200px; }
 .picker-title {
-  padding: 6px 10px; font-size: 11px; color: var(--text-tertiary);
+  padding: 6px 10px; font-size: var(--fs-body-sm); color: var(--text-tertiary);
   font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
 }
 .menu-item.selected { color: var(--accent); font-weight: 600; }
