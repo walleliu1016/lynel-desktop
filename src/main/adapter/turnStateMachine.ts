@@ -22,7 +22,7 @@ export type TurnState = {
 };
 
 export function isTurnBoundary(request: ApiRequest): boolean {
-  const last = request.messages.at(-1);
+  const last = Array.isArray(request.messages) ? request.messages.at(-1) : undefined;
   if (!last || last.role !== 'user') return false;
   if (typeof last.content === 'string') return true;
   if (Array.isArray(last.content)) {

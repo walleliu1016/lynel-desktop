@@ -7,6 +7,7 @@ import { URL } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 import { SessionAdapter, type SseEvent } from './adapter/sessionAdapter.js';
+import { OpenAiSessionAdapter } from './adapter/openaiAdapter.js';
 import { anthropicAdapter } from './formats/anthropic.js';
 import type { FormatAdapter } from './formats/format.js';
 import { type LynelEnvelope } from './protocol/envelope.js';
@@ -30,7 +31,7 @@ export interface Proxy {
 interface SessionState {
   workDir: string;
   sessionDir: string;
-  adapter: SessionAdapter;
+  adapter: SessionAdapter | OpenAiSessionAdapter;
   jsonl: HappyJsonlWriter;
   // 每个 HTTP roundtrip 自增（与 envelope seq 独立）
   roundtripSeq: number;
@@ -109,6 +110,7 @@ export function startProxy(
   emit: (env: LynelEnvelope) => void,
   format?: FormatAdapter,
   upstream = 'https://api.anthropic.com',
+  agent?: string,
 ): Promise<Proxy> {
   // token 需可变：Claude /clear 后会话换新 id，但 PTY 不重启、ANTHROPIC_BASE_URL 仍指向
   // 本代理端口，必须把内部 token 与落盘目录一起迁移到新 id，后续 API 流量才归属新会话。
@@ -125,7 +127,8 @@ export function startProxy(
   const state: SessionState = {
     workDir,
     sessionDir,
-    adapter: new SessionAdapter(),
+    // openai 格式（codex/opencode/omp）用 OpenAiSessionAdapter，Anthropic 走 SessionAdapter
+    adapter: format?.name === 'openai' ? new OpenAiSessionAdapter(agent ?? 'codex') : new SessionAdapter(agent ?? 'claude'),
     jsonl,
     roundtripSeq: initialSeq,
     rawChunks: [],
@@ -143,13 +146,20 @@ export function startProxy(
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const forwardPath = (up.pathname === '/' ? '' : up.pathname) + (req.url || '/');
+      getLogger().info(`[apiproxy:diag] REQ ${req.method} ${req.url} host=${req.headers.host} token=${token.slice(0, 8)}`);
 
       const chunks: Buffer[] = [];
       req.on('data', (chunk: Buffer) => chunks.push(chunk));
       req.on('end', () => {
         const bodyBuf = Buffer.concat(chunks);
         const s = sessionStates.get(token);
-        if (!s) return;
+        if (!s) {
+          getLogger().error(`[apiproxy:diag] NO_SESSION token=${token.slice(0, 8)} path=${req.url}`);
+          // 不写响应会导致客户端挂起（如 codex 报 Stream disconnected），必须返回
+          if (!res.headersSent) res.writeHead(404, { 'content-type': 'text/plain' });
+          res.end('apiproxy no session');
+          return;
+        }
         s.reqBody = bodyBuf;
         s.reqHeaders = req.headers as Record<string, string>;
         s.startedAt = Date.now();
@@ -186,6 +196,7 @@ export function startProxy(
           s.resHeaders = proxyRes.headers as Record<string, string | string[] | undefined>;
           const contentType = (proxyRes.headers['content-type'] || '').toString();
           const isStream = contentType.includes('text/event-stream');
+          getLogger().info(`[apiproxy:diag] UPSTREAM status=${s.resStatus} contentType=${contentType} stream=${isStream} path=${forwardPath}`);
 
           res.writeHead(s.resStatus, proxyRes.headers);
 
@@ -212,6 +223,7 @@ export function startProxy(
           }
 
           proxyRes.on('end', () => {
+            getLogger().info(`[apiproxy:diag] UPSTREAM_END status=${s.resStatus} rawLen=${Buffer.concat(s.rawChunks).length} path=${forwardPath}`);
             res.end();
             // 处理 SSE 流末尾未完成行
             if (isStream && s.sseCarry.trim()) {
@@ -279,6 +291,17 @@ export function startProxy(
       });
     });
 
+    // 诊断：捕获连接层协议异常（如 codex 用 h2c 明文 HTTP/2 连本地 http1 代理，
+    // parser 无法解析 preface，触发 clientError HPE_PAUSED_H2_UPGRADE 并销毁连接）
+    server.on('clientError', (err: Error, socket: import('node:net').Socket) => {
+      const code = (err as NodeJS.ErrnoException).code ?? 'unknown';
+      const peer = socket.remoteAddress ? `${socket.remoteAddress}:${socket.remotePort}` : 'unknown';
+      getLogger().error(`[apiproxy:diag] CLIENT_ERROR code=${code} msg=${err.message} peer=${peer}`);
+    });
+    server.on('connection', (socket: import('node:net').Socket) => {
+      getLogger().info(`[apiproxy:diag] CONN ${socket.remoteAddress}:${socket.remotePort}`);
+    });
+
     server.listen(0, '127.0.0.1', () => {
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : 0;
@@ -320,7 +343,11 @@ export function startProxy(
 
 function finalizeExchange(token: string, isStream: boolean, networkError = false): void {
   const s = sessionStates.get(token);
-  if (!s) return;
+  if (!s) {
+    getLogger().error(`[apiproxy:diag] FINALIZE_NO_SESSION token=${token.slice(0, 8)}`);
+    return;
+  }
+  getLogger().info(`[apiproxy:diag] FINALIZE status=${s.resStatus} rawLen=${Buffer.concat(s.rawChunks).length} networkError=${networkError}`);
   const finishedAt = Date.now();
   const raw = Buffer.concat(s.rawChunks).toString('utf8');
   const errorFlag = networkError || s.resStatus >= 400;

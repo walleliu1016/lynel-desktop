@@ -73,7 +73,8 @@ export class SessionAdapter {
 
   handleRequest(request: ApiRequest): LynelEnvelope[] {
     const out: LynelEnvelope[] = [];
-    const last = request.messages.at(-1);
+    // 守卫：openai 格式请求（Responses API 无 messages 字段）走到本类时不能抛
+    const last = Array.isArray(request.messages) ? request.messages.at(-1) : undefined;
 
     // turn 边界：关闭上一 turn
     if (isTurnBoundary(request)) {
