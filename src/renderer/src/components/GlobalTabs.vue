@@ -23,14 +23,12 @@
             <path d="M0 0 A12 12 0 0 1 12 12" class="bridge-arc" />
           </svg>
         </span>
-        <span class="tab-icon">
+        <span v-if="tab.type !== 'session'" class="tab-icon">
           <Icon v-if="tab.type === 'welcome'" name="bot" :size="12" />
           <Icon v-else-if="tab.type === 'settings'" name="settings" :size="12" />
           <Icon v-else-if="tab.type === 'guide'" name="help" :size="12" />
-          <Icon v-else-if="isRunning(tab.id)" name="loader" :size="12" class="spin" />
-          <Icon v-else-if="isAwaitingPermission(tab.id)" name="warning" :size="12" class="pulse-icon" />
-          <Icon v-else name="terminal" :size="12" />
         </span>
+        <!-- 会话 tab：左侧直接用 agent 标识（CC/CX/OC/PI）替代转圈状态图标；待审批以 tab 背景色提示 -->
         <AgentBadge v-if="tab.type === 'session'" :agent="sessionAgent(tab.id)" size="sm" class="tab-agent" />
         <span class="tab-title" :title="tooltipFor(tab)">{{ tab.title }}</span>
         <span
@@ -79,13 +77,6 @@ function sessionAgent(tabId: string): string | undefined {
   const sid = sessionIdFromTab(tabId)
   if (!sid) return undefined
   return sessions.list.find((s) => s.id === sid)?.agent
-}
-
-function isRunning(tabId: string) {
-  const sid = sessionIdFromTab(tabId)
-  if (!sid) return false
-  const state = sessions.state[sid]
-  return state === 'waiting' || state === 'thinking' || state === 'streaming' || state === 'running_tool'
 }
 
 function isAwaitingPermission(tabId: string) {
@@ -279,32 +270,11 @@ function onMouseDown(e: MouseEvent, id: string) {
   color: var(--text-primary);
 }
 
-.spin {
-  animation: spin 1.2s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.tab.awaiting .tab-icon {
-  color: var(--status-error);
-}
-
 .tab.awaiting:not(.active) {
   background: var(--status-error-soft);
 }
 
 .tab.active.awaiting::before {
   background: var(--status-error);
-}
-
-.pulse-icon {
-  animation: pulse-opacity 1s ease-in-out infinite;
-}
-
-@keyframes pulse-opacity {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
 }
 </style>
