@@ -203,11 +203,11 @@ async function closeSettings() {
   background: var(--bg-primary);
   padding: 18px 10px 14px;
   display: flex; flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   overflow-y: auto;
 }
-.login-head { display: flex; flex-direction: column; align-items: center; margin-bottom: 10px; }
+.login-head { display: flex; flex-direction: column; align-items: center; margin-bottom: 10px; margin-top: auto; }
 .brand-row { display: flex; align-items: center; gap: 6px; font-size: var(--fs-hero); font-weight: 700; letter-spacing: -0.02em; }
 .brand-lynel { color: var(--accent); }
 .brand-desktop { color: var(--status-error); font-weight: 500; }
@@ -216,6 +216,7 @@ async function closeSettings() {
   width: min(300px, 100%);
   box-sizing: border-box;
   padding: 18px 22px;
+  margin-bottom: auto;
   background: var(--material-bg);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
