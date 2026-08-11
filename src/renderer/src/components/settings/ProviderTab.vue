@@ -301,7 +301,7 @@ async function onTest() {
   text-align: center;
 }
 .agent-btn:hover { border-color: var(--accent); color: var(--text-primary); }
-.agent-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.agent-btn.active { background: var(--accent); border-color: var(--accent); color: var(--text-inverse); }
 .add-btn {
   width: 24px; height: 24px; border-radius: var(--radius-sm);
   border: 1px solid var(--border); background: var(--bg-input);
@@ -325,14 +325,14 @@ async function onTest() {
 .provider-item .name { font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .provider-item.active .name { color: var(--accent-light); font-weight: 600; }
 .provider-item .url { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.provider-item .badge { font-size: 10px; padding: 2px 6px; border-radius: var(--radius-sm); background: var(--accent); color: #fff; font-weight: 600; }
+.provider-item .badge { font-size: 10px; padding: 2px 6px; border-radius: var(--radius-sm); background: var(--accent); color: var(--text-inverse); font-weight: 600; }
 .provider-form { flex: 1; padding: 20px 24px; display: flex; flex-direction: column; min-width: 0; overflow-y: auto; }
 .provider-form.empty-state { align-items: center; justify-content: center; }
 .empty-text { font-size: 13px; color: var(--text-tertiary); text-align: center; line-height: 1.6; }
 .form-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .form-header h3 { margin: 0; font-size: 16px; }
 .form-actions-top button { padding: 5px 12px; font-size: 12px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); cursor: pointer; margin-left: 8px; }
-.form-actions-top button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.form-actions-top button.primary { background: var(--accent); border-color: var(--accent); color: var(--text-inverse); }
 .form-actions-top button.danger { color: var(--status-error); border-color: var(--status-error); }
 .form-actions-top button:disabled { opacity: 0.4; cursor: not-allowed; }
 .form-group { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 14px; }
@@ -353,7 +353,7 @@ async function onTest() {
   max-height: 200px; overflow-y: auto;
   background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: 0 0 var(--radius-md) var(--radius-md);
-  z-index: 50; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  z-index: 50; box-shadow: var(--shadow-window);
 }
 .combo-option {
   padding: 6px 10px; font-size: 12px; color: var(--text-primary);
@@ -372,6 +372,6 @@ async function onTest() {
   border: 1px solid var(--border); background: var(--bg-input);
   color: var(--text-primary); cursor: pointer;
 }
-.bottom-actions button.save { background: var(--accent); border-color: var(--accent); color: #fff; }
+.bottom-actions button.save { background: var(--accent); border-color: var(--accent); color: var(--text-inverse); }
 .bottom-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

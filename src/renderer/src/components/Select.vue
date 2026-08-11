@@ -135,7 +135,7 @@ onBeforeUnmount(close)
   z-index: 1000; max-height: 280px; overflow-y: auto;
   background: var(--bg-panel); border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-popover, 0 8px 24px rgba(0, 0, 0, 0.14));
+  box-shadow: var(--shadow-window);
   padding: 4px;
 }
 .ls-panel.is-sm { max-height: 240px; }

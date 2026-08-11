@@ -56,6 +56,13 @@ function select(t: Tab) {
   gap: 2px;
   padding: 12px 8px;
 }
+/* vertical 侧栏导航：圆角高亮块 + hover 提亮（horizontal 布局不动） */
+.settings-tabs.vertical .tab {
+  border-radius: var(--radius-sm);
+}
+.settings-tabs.vertical .tab:hover:not(.active) {
+  background: var(--bg-hover);
+}
 .settings-tabs.horizontal {
   flex-direction: row;
   gap: 4px;

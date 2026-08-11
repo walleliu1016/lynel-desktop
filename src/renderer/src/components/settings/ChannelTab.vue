@@ -214,19 +214,19 @@ function onAddChannel(type: string) {
 .ch-info { flex: 1; min-width: 0; }
 .ch-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ch-desc { font-size: 10px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
-.badge { font-size: 10px; padding: 2px 6px; border-radius: var(--radius-sm); background: var(--accent); color: #fff; font-weight: 600; flex-shrink: 0; }
+.badge { font-size: 10px; padding: 2px 6px; border-radius: var(--radius-sm); background: var(--accent); color: var(--text-inverse); font-weight: 600; flex-shrink: 0; }
 
 .channel-detail { flex: 1; padding: 16px 20px; display: flex; flex-direction: column; min-width: 0; overflow-y: auto; }
 .detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
 .detail-header h3 { font-size: 15px; margin: 0; }
 .detail-actions { display: flex; gap: 8px; }
 .btn-primary {
-  padding: 5px 14px; background: var(--accent); color: #fff;
+  padding: 5px 14px; background: var(--accent); color: var(--text-inverse);
   border: none; border-radius: var(--radius-md); font-size: 12px; cursor: pointer;
 }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-danger { padding: 5px 14px; border: 1px solid var(--status-error); color: var(--status-error); background: none; border-radius: var(--radius-md); font-size: 12px; cursor: pointer; }
-.btn-danger:hover { background: var(--status-error); color: #fff; }
+.btn-danger:hover { background: var(--status-error); color: var(--text-inverse); }
 
 .detail-body { flex: 1; overflow-y: auto; }
 .form-group { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
@@ -241,13 +241,13 @@ function onAddChannel(type: string) {
 
 .actions { display: flex; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
 .spacer { flex: 1; }
-.btn-save { padding: 7px 20px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
+.btn-save { padding: 7px 20px; background: var(--accent); color: var(--text-inverse); border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
 .btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-cancel { padding: 7px 16px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 12px; cursor: pointer; }
 
 .channel-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-tertiary); font-size: 13px; }
 
-.add-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.add-overlay { position: fixed; inset: 0; background: var(--scrim); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .add-dialog { width: 360px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; }
 .add-dialog h3 { font-size: 14px; margin: 0 0 14px; }
 .type-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }

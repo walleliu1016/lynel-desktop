@@ -467,7 +467,7 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin: 0; }
 
 .edit-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; margin-bottom: 8px; }
 
-.btn-save { padding: 7px 20px; background: var(--accent); color: white; border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
+.btn-save { padding: 7px 20px; background: var(--accent); color: var(--text-inverse); border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
 .btn-save:hover:not(:disabled) { background: var(--accent-deep); }
 .btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
 

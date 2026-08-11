@@ -161,7 +161,7 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 .version-text { font-size: 13px; color: var(--text-primary); font-family: var(--font-mono); }
 .btn-check {
   padding: 5px 14px; background: var(--accent); border: none;
-  color: #fff; border-radius: var(--radius-md); font-size: 12px; cursor: pointer;
+  color: var(--text-inverse); border-radius: var(--radius-md); font-size: 12px; cursor: pointer;
   font-weight: 500;
 }
 .btn-check:hover:not(:disabled) { background: var(--accent-deep); }
@@ -178,7 +178,7 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 .status-error { color: var(--status-error); }
 
 .btn-download, .btn-restart, .btn-retry {
-  padding: 4px 12px; background: var(--accent); color: white;
+  padding: 4px 12px; background: var(--accent); color: var(--text-inverse);
   border: none; border-radius: var(--radius-md); font-size: 12px; cursor: pointer; margin-left: 8px;
 }
 .btn-download:hover, .btn-restart:hover, .btn-retry:hover { background: var(--accent-deep); }
@@ -195,7 +195,7 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 .error-hint { margin-top: 8px; font-size: 13px; color: var(--status-error); }
 
 .force-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  position: fixed; inset: 0; background: var(--scrim);
   display: flex; align-items: center; justify-content: center; z-index: 1000;
 }
 .force-dialog {
