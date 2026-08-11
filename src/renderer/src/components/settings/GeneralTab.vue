@@ -136,14 +136,14 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
   display: flex; align-items: center; justify-content: space-between;
   padding: 8px 10px; border-radius: var(--radius-md); cursor: pointer;
 }
-.switch-row:hover { background: var(--bg-input); }
+.switch-row:hover { background: var(--bg-hover); }
 .switch-label { font-size: 13px; color: var(--text-primary); }
 
 .actions { display: flex; align-items: center; gap: 8px; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); }
 .btn-danger { padding: 7px 14px; background: none; border: 1px solid var(--status-error); color: var(--status-error); border-radius: var(--radius-md); font-size: 12px; cursor: pointer; }
-.btn-danger:hover { background: var(--status-error); color: white; }
+.btn-danger:hover { background: var(--status-error); color: var(--text-inverse); }
 .spacer { flex: 1; }
-.btn-save { padding: 7px 20px; background: var(--accent); color: white; border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
+.btn-save { padding: 7px 20px; background: var(--accent); color: var(--text-inverse); border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
 .btn-save:hover:not(:disabled) { background: var(--accent-deep); }
 .btn-cancel { padding: 7px 16px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 12px; cursor: pointer; }
 .btn-cancel:hover:not(:disabled) { background: var(--border); }
