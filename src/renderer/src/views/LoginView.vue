@@ -205,8 +205,9 @@ async function closeSettings() {
   display: flex; flex-direction: column;
   justify-content: center;
   align-items: center;
+  overflow-y: auto;
 }
-.login-head { display: flex; flex-direction: column; align-items: center; margin-bottom: 16px; }
+.login-head { display: flex; flex-direction: column; align-items: center; margin-bottom: 10px; }
 .brand-row { display: flex; align-items: center; gap: 6px; font-size: var(--fs-hero); font-weight: 700; letter-spacing: -0.02em; }
 .brand-lynel { color: var(--accent); }
 .brand-desktop { color: var(--status-error); font-weight: 500; }
@@ -214,7 +215,7 @@ async function closeSettings() {
 .login-card {
   width: min(300px, 100%);
   box-sizing: border-box;
-  padding: 24px 22px;
+  padding: 18px 22px;
   background: var(--material-bg);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
