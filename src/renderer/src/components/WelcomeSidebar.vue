@@ -41,7 +41,7 @@ onMounted(() => {
 }
 .new-btn {
   background: var(--accent);
-  color: white;
+  color: var(--text-inverse);
   border: none;
   padding: 10px;
   border-radius: var(--radius-md);

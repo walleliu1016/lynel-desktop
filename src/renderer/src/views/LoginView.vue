@@ -277,7 +277,7 @@ async function closeSettings() {
   font-size: 11px;
   line-height: 1.5;
   border-radius: var(--radius-md, 6px);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-window);
   white-space: normal;
   z-index: 1000;
   pointer-events: none;
@@ -286,7 +286,7 @@ async function closeSettings() {
 .login-btn {
   width: 100%;
   background: var(--accent);
-  color: white; padding: 8px; border-radius: var(--radius-md);
+  color: var(--text-inverse); padding: 8px; border-radius: var(--radius-md);
   font-size: var(--fs-body); font-weight: 500;
   box-shadow: var(--shadow-accent);
   margin-top: 6px;

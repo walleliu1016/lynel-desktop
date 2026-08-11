@@ -106,7 +106,7 @@ function isMarkdownBlock(x: any): boolean {
 .tabs { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .tab-bar { display: flex; gap: 4px; padding: 6px 12px; border-bottom: 1px solid var(--border); }
 .tab-bar button { background: transparent; border: 1px solid transparent; padding: 4px 12px; cursor: pointer; border-radius: 6px 6px 0 0; font-size: 12px; color: var(--text-tertiary); transition: background 120ms, color 120ms, border-color 120ms; }
-.tab-bar button.on { background: var(--bg-card, rgba(0,0,0,0.03)); border-color: var(--border); color: var(--text-primary); }
+.tab-bar button.on { background: var(--bg-card); border-color: var(--border); color: var(--text-primary); }
 .tab-bar .spacer { flex: 1; }
 .tab-fade-enter-active, .tab-fade-leave-active { transition: opacity 120ms; }
 .tab-fade-enter-from, .tab-fade-leave-to { opacity: 0; }

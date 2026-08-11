@@ -808,7 +808,7 @@ watch(
   transition: background 0.15s, color 0.15s;
 }
 .win-btn:hover { background: var(--bg-hover); }
-.win-btn.close:hover { background: var(--status-error); color: white; }
+.win-btn.close:hover { background: var(--status-error); color: var(--text-inverse); }
 .left-bottom {
   flex-shrink: 0;
   border-top: 1px solid var(--border);
@@ -840,8 +840,8 @@ watch(
   bottom: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(30, 41, 59, 0.92);
-  color: #fff;
+  background: var(--tooltip-bg);
+  color: var(--tooltip-color);
   font-size: 11px;
   line-height: 1;
   padding: 5px 8px;
@@ -860,8 +860,8 @@ watch(
   top: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(30, 41, 59, 0.92);
-  color: #fff;
+  background: var(--tooltip-bg);
+  color: var(--tooltip-color);
   font-size: 11px;
   line-height: 1;
   padding: 5px 8px;

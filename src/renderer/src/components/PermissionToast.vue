@@ -169,7 +169,7 @@ function onDeny() {
 .perm-allow {
   border: none;
   background: var(--accent);
-  color: white;
+  color: var(--text-inverse);
 }
 .perm-allow:hover { background: var(--accent-deep); }
 .perm-deny {

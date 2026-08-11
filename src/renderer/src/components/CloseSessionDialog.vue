@@ -103,7 +103,7 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
   color: var(--text-secondary); padding: 2px 6px; border-radius: var(--radius-sm);
   display: flex; align-items: center;
 }
-.close:hover { background: var(--bg-input); color: var(--text-primary); }
+.close:hover { background: var(--bg-hover); color: var(--text-primary); }
 .body { padding: 8px 20px 20px; }
 .warn-row { display: flex; gap: 12px; align-items: flex-start; }
 .warn-icon { color: var(--status-warn); flex-shrink: 0; margin-top: 1px; }
@@ -118,11 +118,13 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
   background: var(--bg-input); color: var(--text-primary);
   border: 1px solid var(--border-strong); border-radius: var(--radius-md);
   padding: 6px 14px; font-size: var(--fs-body-sm);
+  transition: border-color 0.15s, color 0.15s;
 }
 .cancel:hover { border-color: var(--accent); color: var(--accent); }
 .primary {
   padding: 7px 18px; background: var(--accent); color: var(--text-inverse);
   border: none; border-radius: var(--radius-md); font-size: var(--fs-body-sm); font-weight: 500;
+  transition: filter 0.15s, box-shadow 0.15s;
 }
 .primary:hover:not(:disabled) { filter: brightness(1.06); }
 .primary:active:not(:disabled) { transform: scale(0.97); }

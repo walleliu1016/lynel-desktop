@@ -89,32 +89,31 @@ const formatSize = computed(() => {
 <style scoped>
 .tip {
   position: fixed;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  background: var(--tooltip-bg);
+  border-radius: var(--radius-sm);
   padding: 14px 16px;
   min-width: 320px;
   max-width: 400px;
   z-index: 1000;
-  box-shadow: var(--shadow-window);
+  box-shadow: var(--shadow-panel);
 }
 .section { margin-bottom: 8px; }
 .section:last-child { margin-bottom: 0; }
 .agent-row { display: flex; align-items: center; gap: 8px; }
 .label {
-  font-size: 9px; color: var(--text-tertiary);
+  font-size: 9px; color: color-mix(in srgb, var(--tooltip-color) 60%, transparent);
   text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 2px;
 }
 .value {
-  font-size: 11px; color: var(--text-primary);
+  font-size: var(--fs-caption); color: var(--tooltip-color);
   line-height: 1.4; word-break: break-all;
 }
 .mono-value {
-  font-size: 10px; font-family: var(--font-mono);
+  font-size: var(--fs-caption); font-family: var(--font-mono);
   color: var(--accent-light); word-break: break-all; line-height: 1.4;
 }
 .divider {
-  border-top: 1px solid var(--border); margin: 10px 0;
+  border-top: 1px solid color-mix(in srgb, var(--tooltip-color) 15%, transparent); margin: 10px 0;
 }
 .stats {
   display: flex; gap: 16px;
@@ -122,6 +121,6 @@ const formatSize = computed(() => {
 .stat {
   display: flex; flex-direction: column; gap: 1px;
 }
-.stat-v { font-size: 12px; color: var(--text-primary); font-weight: 500; }
-.stat-k { font-size: 9px; color: var(--text-tertiary); }
+.stat-v { font-size: var(--fs-caption); color: var(--tooltip-color); font-weight: 500; }
+.stat-k { font-size: 9px; color: color-mix(in srgb, var(--tooltip-color) 60%, transparent); }
 </style>

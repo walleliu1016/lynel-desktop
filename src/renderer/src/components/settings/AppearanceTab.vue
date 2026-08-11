@@ -409,7 +409,7 @@ input[type="range"] {
   margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
 }
 .spacer { flex: 1; }
-.btn-save { padding: 7px 20px; background: var(--accent); color: white; border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
+.btn-save { padding: 7px 20px; background: var(--accent); color: var(--text-inverse); border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
 .btn-save:hover:not(:disabled) { background: var(--accent-deep); }
 .btn-cancel { padding: 7px 16px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 12px; cursor: pointer; }
 .btn-cancel:hover:not(:disabled) { background: var(--border); }

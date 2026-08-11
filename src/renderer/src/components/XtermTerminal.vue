@@ -649,7 +649,7 @@ onBeforeUnmount(() => {
 .exited-btn {
   padding: 8px 24px;
   background: var(--accent);
-  color: #fff;
+  color: var(--text-inverse);
   border: none;
   border-radius: var(--radius-md);
   font-size: 13px;

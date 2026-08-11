@@ -82,7 +82,7 @@ h2 {
   pointer-events: none;
 }
 .close { margin-left: auto; color: var(--text-secondary); padding: 2px 6px; border-radius: var(--radius-sm); display: flex; align-items: center; }
-.close:hover { background: var(--bg-input); color: var(--text-primary); }
+.close:hover { background: var(--bg-hover); color: var(--text-primary); }
 .content { flex: 1; overflow-y: auto; min-width: 0; padding: 12px 16px; }
 .foot {
   display: flex; align-items: center; gap: 6px;

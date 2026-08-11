@@ -155,12 +155,12 @@ onBeforeUnmount(() => {
   background: var(--bg-panel); color: var(--text-secondary);
 }
 .cloud-status .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
-.cloud-status.ok { border-color: #a7f3d0; background: var(--status-success-soft); color: #047857; }
-.cloud-status.ok .dot { background: var(--status-success); box-shadow: 0 0 6px rgba(34,197,94,.4); }
-.cloud-status.fail { border-color: #fecaca; background: rgba(239,68,68,.08); color: #b91c1c; }
-.cloud-status.fail .dot { background: #ef4444; }
-.cloud-status.testing { border-color: #fde68a; background: rgba(245,158,11,.08); color: #b45309; }
-.cloud-status.testing .dot { background: #f59e0b; animation: cloud-pulse 0.8s infinite; }
+.cloud-status.ok { border-color: var(--status-success-soft); background: var(--status-success-soft); color: var(--status-success); }
+.cloud-status.ok .dot { background: var(--status-success); box-shadow: 0 0 6px var(--status-success-soft); }
+.cloud-status.fail { border-color: var(--status-error-soft); background: var(--status-error-soft); color: var(--status-error); }
+.cloud-status.fail .dot { background: var(--status-error); }
+.cloud-status.testing { border-color: var(--status-warn-soft); background: var(--status-warn-soft); color: var(--status-warn); }
+.cloud-status.testing .dot { background: var(--status-warn); animation: cloud-pulse 0.8s infinite; }
 @keyframes cloud-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 .account {
   display: flex; align-items: center; gap: 8px;
@@ -168,7 +168,7 @@ onBeforeUnmount(() => {
 }
 .avatar {
   width: 22px; height: 22px; border-radius: 7px;
-  background: var(--accent); color: white;
+  background: var(--accent); color: var(--text-inverse);
   display: flex; align-items: center; justify-content: center;
   font-size: 9px; font-weight: 800;
 }
@@ -184,7 +184,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   margin-left: 4px;
 }
-.logout-btn:hover { color: var(--status-error); background: rgba(239,68,68,.08); }
+.logout-btn:hover { color: var(--status-error); background: var(--status-error-soft); }
 .win-btns { display: flex; align-items: center; gap: 2px; margin-left: 8px; }
 .win-btn {
   width: 26px; height: 22px; border-radius: 4px;
@@ -195,9 +195,9 @@ onBeforeUnmount(() => {
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.win-btn:hover { background: rgba(0,0,0,0.06); }
-.win-btn:active { background: rgba(0,0,0,0.10); }
-.win-btn.close:hover { background: var(--status-error); color: white; }
+.win-btn:hover { background: var(--bg-hover); }
+.win-btn:active { background: var(--border); }
+.win-btn.close:hover { background: var(--status-error); color: var(--text-inverse); }
 .win-btn.close:active { background: var(--status-error); filter: brightness(0.9); }
 .is-mac .titlebar { padding-left: 78px; }
 .titlebar.center .titlebar-left { visibility: hidden; }

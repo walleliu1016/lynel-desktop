@@ -229,7 +229,7 @@ function onSubmit() {
 .head { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px 10px; }
 h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
 .close { color: var(--text-secondary); padding: 2px 6px; border-radius: var(--radius-sm); display: flex; align-items: center; }
-.close:hover { background: var(--bg-input); color: var(--text-primary); }
+.close:hover { background: var(--bg-hover); color: var(--text-primary); }
 .tabs {
   display: flex; gap: 4px; padding: 0 20px 8px;
   border-bottom: 1px solid var(--border);
@@ -285,6 +285,7 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
   width: 100%; background: var(--bg-input); border: 1px solid var(--border-strong);
   border-radius: var(--radius-md); padding: 7px 10px;
   color: var(--text-primary); font-size: var(--fs-body-sm); font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 .form-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft-bg); }
 .pick-btn {
@@ -295,9 +296,9 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
 .pick-btn:hover { background: var(--border); }
 .area { resize: vertical; min-height: 80px; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
-.cancel { background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: var(--radius-md); padding: 6px 14px; font-size: var(--fs-body-sm); }
+.cancel { background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: var(--radius-md); padding: 6px 14px; font-size: var(--fs-body-sm); transition: border-color 0.15s, color 0.15s; }
 .cancel:hover { border-color: var(--accent); color: var(--accent); }
-.primary { padding: 7px 18px; background: var(--accent); color: var(--text-inverse); border: none; border-radius: var(--radius-md); font-size: var(--fs-body-sm); font-weight: 500; }
+.primary { padding: 7px 18px; background: var(--accent); color: var(--text-inverse); border: none; border-radius: var(--radius-md); font-size: var(--fs-body-sm); font-weight: 500; transition: filter 0.15s, box-shadow 0.15s; }
 .primary:hover:not(:disabled) { filter: brightness(1.06); }
 .primary:active:not(:disabled) { transform: scale(0.97); }
 .primary:disabled { opacity: 0.7; cursor: not-allowed; display: inline-flex; align-items: center; gap: 6px; }
