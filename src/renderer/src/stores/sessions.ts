@@ -220,7 +220,13 @@ export const useSessionsStore = defineStore('sessions', () => {
         sessionBots.value = { ...sessionBots.value, [id]: botId }
       }
       activeId.value = id
-      await select(id)
+      // 后台刷新（AdoptSession + ListSessions），不阻塞 onCreate 打开 tab。
+      // 此前 await select(id) 在 ListSessions 较慢时会延迟 tab 跳转；异常时会把
+      // sessions.create 的 id 返回吞掉，导致 tab 永不打开。与 onSelectSession 的
+      // 「先 openSession 后 select」顺序保持一致。
+      void select(id).catch((e: any) => {
+        console.error('[sessions] create select failed:', e?.message || e)
+      })
       return id
     } finally {
       creating.value = false
