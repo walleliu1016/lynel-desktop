@@ -9,65 +9,67 @@
         <p class="login-tagline">多 Agent 编程终端，请求全程可视化，权限远程一键审批。</p>
       </div>
 
-      <form @submit.prevent="onSubmit" class="form">
-        <div class="form-group">
-          <label class="form-label">用户名</label>
-          <input
-            class="form-input"
-            :class="{ error: errorField === 'username' }"
-            v-model="username"
-            placeholder="UM账户"
-            autocomplete="username"
-          />
-          <div class="form-hint">
-            <template v-if="errorField === 'username'">{{ error }}</template>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">密码</label>
-          <input
-            class="form-input"
-            :class="{ error: errorField === 'token' }"
-            v-model="token"
-            type="password"
-            :placeholder="cloudEnabled ? 'PIN+Token' : '密码任意'"
-            autocomplete="off"
-          />
-          <div class="form-hint">
-            <template v-if="errorField === 'token'">{{ error }}</template>
-          </div>
-        </div>
-
-        <div class="cloud-section">
-          <div class="cloud-toggle-row">
-            <Switch v-model="cloudEnabled" @change="onCloudToggle" />
-            <span class="cloud-toggle-label">启用云服务<span class="cloud-beta-text">（测试阶段）</span></span>
-            <span class="cloud-info-icon" data-tooltip="开启后，会话消息与权限请求将实时推送到移动 App，便于远程审批与查看进度">
-              <Icon name="alert-circle" :size="14" />
-            </span>
-          </div>
-          <div class="cloud-url-group" v-if="cloudEnabled">
-            <label class="form-label">服务地址</label>
+      <div class="login-card">
+        <form @submit.prevent="onSubmit" class="form">
+          <div class="form-group">
+            <label class="form-label">用户名</label>
             <input
               class="form-input"
-              v-model="cloudUrl"
-              placeholder="https://ease.example.com"
+              :class="{ error: errorField === 'username' }"
+              v-model="username"
+              placeholder="UM账户"
+              autocomplete="username"
             />
+            <div class="form-hint">
+              <template v-if="errorField === 'username'">{{ error }}</template>
+            </div>
           </div>
-        </div>
 
-        <button class="login-btn" type="submit" :disabled="!canSubmit || loading">
-          {{ loading ? '登录中...' : '登录' }}
-        </button>
-        <div class="login-footer">
-          <span>Lynel Desktop v{{ version }}</span>
-          <button class="footer-settings-btn" @click="goSettings">
-            <Icon name="settings" :size="11" />
-            设置
+          <div class="form-group">
+            <label class="form-label">密码</label>
+            <input
+              class="form-input"
+              :class="{ error: errorField === 'token' }"
+              v-model="token"
+              type="password"
+              :placeholder="cloudEnabled ? 'PIN+Token' : '密码任意'"
+              autocomplete="off"
+            />
+            <div class="form-hint">
+              <template v-if="errorField === 'token'">{{ error }}</template>
+            </div>
+          </div>
+
+          <div class="cloud-section">
+            <div class="cloud-toggle-row">
+              <Switch v-model="cloudEnabled" @change="onCloudToggle" />
+              <span class="cloud-toggle-label">启用云服务<span class="cloud-beta-text">（测试阶段）</span></span>
+              <span class="cloud-info-icon" data-tooltip="开启后，会话消息与权限请求将实时推送到移动 App，便于远程审批与查看进度">
+                <Icon name="alert-circle" :size="14" />
+              </span>
+            </div>
+            <div class="cloud-url-group" v-if="cloudEnabled">
+              <label class="form-label">服务地址</label>
+              <input
+                class="form-input"
+                v-model="cloudUrl"
+                placeholder="https://ease.example.com"
+              />
+            </div>
+          </div>
+
+          <button class="login-btn" type="submit" :disabled="!canSubmit || loading">
+            {{ loading ? '登录中...' : '登录' }}
           </button>
-        </div>
-      </form>
+          <div class="login-footer">
+            <span>Lynel Desktop v{{ version }}</span>
+            <button class="footer-settings-btn" @click="goSettings">
+              <Icon name="settings" :size="11" />
+              设置
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
     <SettingsDialog v-if="showSettings" @close="closeSettings" />
   </div>
@@ -198,17 +200,29 @@ async function closeSettings() {
 .login { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .login-body {
   flex: 1;
-  background: radial-gradient(ellipse at top, var(--bg-input) 0%, var(--bg-primary) 70%);
-  padding: 18px 22px 14px;
+  background: var(--bg-primary);
+  padding: 18px 10px 14px;
   display: flex; flex-direction: column;
   justify-content: center;
+  align-items: center;
 }
 .login-head { display: flex; flex-direction: column; align-items: center; margin-bottom: 16px; }
-.brand-row { display: flex; align-items: center; gap: 6px; font-size: 20px; font-weight: 700; }
+.brand-row { display: flex; align-items: center; gap: 6px; font-size: var(--fs-hero); font-weight: 700; letter-spacing: -0.02em; }
 .brand-lynel { color: var(--accent); }
 .brand-desktop { color: var(--status-error); font-weight: 500; }
-.login-tagline { margin-top: 8px; font-size: 12px; color: var(--text-secondary); text-align: center; line-height: 1.5; max-width: 240px; }
-.form { flex: 1; display: flex; flex-direction: column; }
+.login-tagline { margin-top: 8px; font-size: var(--fs-body); color: var(--text-secondary); text-align: center; line-height: 1.5; max-width: 280px; }
+.login-card {
+  width: min(300px, 100%);
+  box-sizing: border-box;
+  padding: 24px 22px;
+  background: var(--material-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-window);
+}
+.form { width: 100%; display: flex; flex-direction: column; }
 .form-group { margin-bottom: 6px; }
 .form-label {
   display: block; font-size: 11px; color: var(--text-secondary);
@@ -217,17 +231,17 @@ async function closeSettings() {
 }
 .form-input {
   width: 100%;
-  background: var(--bg-input); border: 1px solid var(--border);
+  background: var(--bg-input); border: 1px solid var(--border-strong);
   border-radius: var(--radius-md); padding: 7px 10px;
   color: var(--text-primary); font-size: 12px;
 }
 .form-input.error { border-color: var(--status-error); }
-.form-input:focus { outline: none; border-color: var(--accent); }
+.form-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft-bg); }
 .form-hint { font-size: 10px; color: var(--status-error); margin-top: 3px; min-height: 14px; }
 .cloud-section {
   margin: 8px 0 6px;
   padding: 8px 10px;
-  background: var(--bg-input);
+  background: var(--bg-hover);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
@@ -256,8 +270,8 @@ async function closeSettings() {
   right: -6px;
   width: 220px;
   padding: 8px 12px;
-  background: var(--bg-tooltip, #2d2d2d);
-  color: var(--text-tooltip, #e0e0e0);
+  background: var(--tooltip-bg);
+  color: var(--tooltip-color);
   font-size: 11px;
   line-height: 1.5;
   border-radius: var(--radius-md, 6px);
@@ -269,15 +283,15 @@ async function closeSettings() {
 .cloud-url-group { margin-top: 6px; }
 .login-btn {
   width: 100%;
-  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  background: var(--accent);
   color: white; padding: 8px; border-radius: var(--radius-md);
-  font-size: 13px; font-weight: 500;
+  font-size: var(--fs-body); font-weight: 500;
   box-shadow: var(--shadow-accent);
   margin-top: 6px;
-  transition: filter 0.15s, box-shadow 0.15s;
+  transition: filter 0.15s, box-shadow 0.15s, transform 0.1s;
 }
-.login-btn:hover:not(:disabled) { filter: brightness(1.05); }
-.login-btn:active:not(:disabled) { filter: brightness(0.95); }
+.login-btn:hover:not(:disabled) { filter: brightness(1.06); }
+.login-btn:active:not(:disabled) { transform: scale(0.98); }
 .login-btn:disabled { opacity: 0.4; box-shadow: none; }
 .login-footer {
   font-size: 11px; color: var(--text-tertiary); text-align: center; margin-top: 10px;
