@@ -1,4 +1,4 @@
-export type Theme = 'light'
+export type Theme = 'light' | 'dark' | 'system'
 
 /**
  * 终端配色预设。终端配色与 UI 主题解耦：

@@ -36,6 +36,17 @@
       <p class="form-hint">仅影响 xterm 终端窗口；UI 主题不受影响。</p>
     </section>
 
+    <!-- 主题 -->
+    <section class="section">
+      <div class="section-title">主题</div>
+      <div class="seg-group">
+        <button v-for="o in themeOptions" :key="o.value" class="seg" :class="{ active: themeMode === o.value }" @click="onThemeChange(o.value)">
+          {{ o.label }}
+        </button>
+      </div>
+      <p class="form-hint">「跟随系统」将随操作系统深浅色自动切换；仅影响 UI 界面，终端配色独立。</p>
+    </section>
+
     <!-- 字体 -->
     <section class="section">
       <div class="section-title">字体</div>
@@ -130,6 +141,7 @@ import Switch from '../Switch.vue'
 import { useSettingsStore } from '../../stores/settings'
 import { defaultTerminalConfig, type TerminalConfig, type TerminalTheme, type TerminalCursorStyle } from '../../types/settings'
 import { pushToast } from '../../composables/useToast'
+import { getThemeMode, setThemeMode, type ThemeMode } from '../../composables/useTheme'
 
 const settings = useSettingsStore()
 /**
@@ -194,6 +206,18 @@ const cursorStyles: { value: TerminalCursorStyle; label: string }[] = [
   { value: 'underline', label: '下划线' },
   { value: 'bar', label: '竖线' },
 ]
+
+const themeOptions = [
+  { value: 'light', label: '浅色' },
+  { value: 'dark', label: '深色' },
+  { value: 'system', label: '跟随系统' },
+] as const
+const themeMode = ref<ThemeMode>(getThemeMode())
+function onThemeChange(m: ThemeMode) {
+  themeMode.value = m
+  setThemeMode(m)
+  if (settings.cfg) { settings.cfg.theme = m; settings.markDirty() }
+}
 
 /**
  * 8 套主题的预览色（与 styles/theme.css 同步）。

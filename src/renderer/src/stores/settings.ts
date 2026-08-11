@@ -2,10 +2,11 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { defaultTerminalConfig, type Settings } from '../types/settings'
 import { GetSettings, UpdateSettings } from '../composables/useElectron'
+import { setThemeMode, type ThemeMode } from '../composables/useTheme'
 
 function defaultSettings(): Settings {
   return {
-    theme: 'light',
+    theme: 'system',
     claude_path: '',
     codex_path: '',
     opencode_path: '',
@@ -30,9 +31,9 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function load() {
     const raw = (await GetSettings()) as Partial<Settings> | null
-    // 兼容老版本：dark-pro / oled-dark 已下线，统一迁移到 light
-    if (raw && (raw.theme as string) !== 'light') {
-      raw.theme = 'light'
+    // 兼容老版本：dark-pro / oled-dark 等旧主题已下线，允许 light/dark/system 三值，未知值回退 system
+    if (raw && raw.theme !== 'light' && raw.theme !== 'dark' && raw.theme !== 'system') {
+      raw.theme = 'system'
     }
     const merged: Settings = { ...defaultSettings(), ...(raw || {}) }
     // 兼容老版本：缺 terminal 字段时填默认
@@ -42,6 +43,8 @@ export const useSettingsStore = defineStore('settings', () => {
       merged.terminal = { ...defaultTerminalConfig(), ...raw.terminal }
     }
     cfg.value = merged
+    // 从持久化设置同步主题（useTheme 负责应用与监听系统切换）
+    if (cfg.value.theme) setThemeMode(cfg.value.theme as ThemeMode)
     dirty.value = false
   }
 
