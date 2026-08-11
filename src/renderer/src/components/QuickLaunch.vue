@@ -14,7 +14,7 @@
     <div class="ql-bottom">
       <div class="ql-left">
         <button type="button" class="ql-dir" :title="workdir || '未选择，使用默认目录'" :disabled="loading" @click="onPick">
-          <Icon name="folder" :size="13" />
+          <Icon name="folder-open" :size="13" />
           <span class="ql-dir-text">{{ workdir || '默认目录' }}</span>
           <Icon name="chevron-down" :size="11" class="ql-chevron" />
         </button>
@@ -27,7 +27,7 @@
       </div>
       <button type="submit" class="ql-send" :disabled="!prompt.trim() || loading">
         <span v-if="loading" class="ql-spinner" />
-        <Icon v-else name="paper-plane" :size="14" />
+        <Icon v-else name="send" :size="14" />
       </button>
     </div>
   </form>
@@ -73,6 +73,7 @@ function getBotBoundSessionName(botId: string): string | undefined {
 }
 
 function onEnter(e: KeyboardEvent) {
+  if (e.isComposing) return
   if (e.shiftKey) return
   e.preventDefault()
   onSubmit()
