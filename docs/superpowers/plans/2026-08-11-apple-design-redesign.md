@@ -59,6 +59,8 @@
 - 圆角：`--radius-sm:8px / --radius-md:10px / --radius-lg:14px / --radius-pill:999px`。
 - 阴影（浅色）：`--shadow-window: 0 24px 48px -12px rgba(0,0,0,0.22), 0 4px 12px rgba(0,0,0,0.06)`；`--shadow-panel: 0 0 0 1px var(--border), 0 2px 6px rgba(0,0,0,0.05)`；`--shadow-accent: 0 4px 14px var(--accent-glow)`。
 - 材质：`--material-bg`（浅 `rgba(255,255,255,0.72)` / 深 `rgba(30,30,32,0.72)`）；`.material { background: var(--material-bg); backdrop-filter: blur(20px) saturate(180%); }`。
+- 遮罩：`--scrim`（浅 `rgba(0,0,0,0.40)` / 深 `rgba(0,0,0,0.55)`），供弹窗/TraceOverlay 遮罩。
+- 工具提示：`--tooltip-bg`（浅 `rgba(30,41,59,0.92)` / 深 `rgba(40,40,42,0.92)`）、`--tooltip-color: #FFF`。**不定义全局 `.tooltip` 类**（避免与 HomeView 等 scoped `.tooltip` 特异性冲突），各组件 tooltip 消费这两个 token。
 
 ---
 
@@ -99,15 +101,8 @@
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
-/* 统一 tooltip（替代各组件自定义的 .tooltip/.tooltip-down） */
-.tooltip {
-  position: fixed; z-index: 9999;
-  padding: 6px 10px; border-radius: var(--radius-sm);
-  background: var(--tooltip-bg, rgba(30,41,59,0.92));
-  color: #fff; font-size: var(--fs-caption); line-height: 1.4;
-  white-space: nowrap; pointer-events: none;
-  box-shadow: var(--shadow-panel);
-}
+/* 工具提示不定义全局类（避免与各组件 scoped .tooltip 冲突）；
+   统一由 --tooltip-bg / --tooltip-color token 驱动，Task 13 逐个消费。 */
 /* 基础按钮：主/幽灵/危险 */
 .btn-primary {
   background: var(--accent); color: var(--text-inverse);
@@ -311,21 +306,24 @@ Run: `cd src/renderer && pnpm add motion`（若 pnpm 不可用：`npm install mo
 若离线安装失败：跳过依赖，改用内置 rAF 弹簧——`useSpring.ts` 用下述回退实现（接口一致，后续 task 不受影响）：
 
 ```ts
-// 离线回退：Critically damped spring（无 bounce），rAF 驱动，支持 interrupt
-function springFallback(el: HTMLElement, target: Record<string, number | string>, onDone?: () => void) {
-  const start: Record<string, number> = {}
-  for (const k of Object.keys(target)) start[k] = parseFloat(el.style[k as any]) || 0
+// 离线回退：opacity 三次缓动补间 + transform 终值直设（不做插值），rAF 驱动，支持 interrupt
+function springFallback(
+  el: HTMLElement,
+  target: { opacity?: number; transform?: string },
+  opts: { duration?: number; onComplete?: () => void } = {},
+) {
+  const fromOpacity = parseFloat(el.style.opacity) || 0
+  const toOpacity = typeof target.opacity === 'number' ? target.opacity : 1
+  const dur = (opts.duration ?? 0.4) * 1000
   const t0 = performance.now()
   let raf = 0
   const step = (now: number) => {
-    const t = Math.min((now - t0) / 400, 1)  // ~400ms, ease-out cubic
+    const t = Math.min((now - t0) / dur, 1)
     const e = 1 - Math.pow(1 - t, 3)
-    for (const k of Object.keys(target)) {
-      const from = start[k], to = parseFloat(target[k] as string) || 0
-      el.style[k as any] = `${from + (to - from) * e}${typeof target[k] === 'string' && target[k].includes('%') ? '%' : ''}`
-    }
+    el.style.opacity = String(fromOpacity + (toOpacity - fromOpacity) * e)
+    if (typeof target.transform === 'string') el.style.transform = target.transform
     if (t < 1) raf = requestAnimationFrame(step)
-    else onDone?.()
+    else opts.onComplete?.()
   }
   raf = requestAnimationFrame(step)
   return { stop: () => cancelAnimationFrame(raf) }
