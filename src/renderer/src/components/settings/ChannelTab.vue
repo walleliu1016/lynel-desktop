@@ -207,7 +207,7 @@ function onAddChannel(type: string) {
   border: 1px solid transparent;
   color: var(--text-secondary);
 }
-.channel-item:hover { background: var(--bg-input); }
+.channel-item:hover { background: var(--bg-hover); }
 .channel-item:active { background: var(--border); }
 .channel-item.active { background: var(--accent-soft-bg); border-color: var(--accent-soft-border); color: var(--accent-light); }
 .ch-icon { flex-shrink: 0; }

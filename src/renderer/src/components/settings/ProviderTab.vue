@@ -316,7 +316,7 @@ async function onTest() {
   display: flex; align-items: center; gap: 10px;
   border: 1px solid transparent;
 }
-.provider-item:hover { background: var(--bg-input); }
+.provider-item:hover { background: var(--bg-hover); }
 .provider-item:active { background: var(--border); }
 .provider-item.active { background: var(--accent-soft-bg); border-color: var(--accent-soft-border); }
 .provider-item .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }

@@ -420,7 +420,7 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin: 0; }
   cursor: pointer;
   transition: background 0.15s;
 }
-.bot-summary:hover { background: var(--bg-input); }
+.bot-summary:hover { background: var(--bg-hover); }
 
 .col-status { width: 24px; flex-shrink: 0; display: flex; align-items: center; }
 .col-name { width: 110px; flex-shrink: 0; }
