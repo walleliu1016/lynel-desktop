@@ -31,6 +31,11 @@ import { initUpdater } from './updater/index.js';
 
 const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
 
+// 系统代理拦截修复：codex（Rust reqwest）在 Windows 遵循系统代理（如 Clash 127.0.0.1:7897），
+// 连接本地代理 127.0.0.1:<port> 会被代理服务拦截导致 Trace 为空/发消息失败（已实测，加 NO_PROXY 后恢复）。
+// 对所有 agent 统一注入 NO_PROXY 排除本地地址直连；opencode（Go）/omp（Bun fetch）原生也读 NO_PROXY，无害兜底。
+const LOCAL_NO_PROXY = '127.0.0.1,localhost,::1';
+
 function resolveAnthropicBaseUrl(): string {
   const candidates = [
     path.resolve('.claude/settings.local.json'),
@@ -63,6 +68,24 @@ function readCodexModelProvider(): { provider: string; baseUrl: string } | null 
     getLogger().warn(`[app] read codex config.toml failed: ${err.message}`);
     return null;
   }
+}
+
+// 按 Agent 解析代理转发目标（upstream）：
+// - codex：优先读 ~/.codex/config.toml 的 model_providers.<name>.base_url（对齐 ccglass cli.js:242），
+//   否则回退 spec.upstream。此前用默认 api.openai.com 会导致 codex 的 deepseek 流量转发到错误上游。
+// - claude：走 Anthropic 协议，从 ~/.claude/settings.json 解析（支持供应商切换）。
+// - omp/其余：spec.upstream（omp=api.deepseek.com，opencode=env 解析）。
+function resolveUpstream(spec: AgentSpec): string {
+  if (spec.kind === 'codex') {
+    const codexConfig = readCodexModelProvider();
+    if (codexConfig?.baseUrl) {
+      getLogger().info(`[app] codex upstream from config.toml: ${codexConfig.baseUrl}`);
+      return codexConfig.baseUrl;
+    }
+    return spec.upstream || 'https://api.openai.com';
+  }
+  if (spec.envVar === 'ANTHROPIC_BASE_URL') return resolveAnthropicBaseUrl();
+  return spec.upstream || 'https://api.openai.com';
 }
 
 // 检测 codex 是否处于 ChatGPT 登录模式：auth.json 的 auth_mode === 'chatgpt'，
@@ -131,6 +154,58 @@ function createSettingsOverrideFile(proxyUrl: string, hookUrl?: string): { args:
     notifyExternal({ source: 'session:setup', level: 'warn', message: `生成 Claude 临时配置失败，将使用默认代理路径: ${errMessage(err)}` });
     return { args: [], tmpFile: '', cleanup: () => {} };
   }
+}
+
+// 把 proxyUrl 合并进 ~/.omp/agent/models.yml 的 providers.deepseek.baseUrl，保留用户已有内容。
+// omp 的 models.yml 支持「override-only provider」：providers.deepseek 只有 baseUrl、无 models 时
+// 深合并覆盖内置 deepseek provider 的 base_url（已实测 raw 验证）。目标文件是简单 YAML，这里做定向文本
+// 合并（不引入 YAML 依赖），覆盖四个分支：文件不存在/空、无 providers、有 providers 无 deepseek、已有 deepseek。
+function mergeOmpDeepseekBaseUrl(existing: string | null, proxyUrl: string): string {
+  const dsBlock = ['  deepseek:', `    baseUrl: "${proxyUrl}"`];
+  if (existing == null || !existing.trim()) {
+    return `providers:\n${dsBlock.join('\n')}\n`;
+  }
+  const lines = existing.split('\n');
+  // 定位顶层 providers 块（行号 + 到下一个顶层键为止的范围）
+  let providersIdx = -1;
+  let blockEnd = lines.length;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith('providers:')) { providersIdx = i; break; }
+  }
+  if (providersIdx === -1) {
+    // 无顶层 providers：末尾追加 override-only 块
+    return existing.replace(/\s*$/, '') + `\nproviders:\n${dsBlock.join('\n')}\n`;
+  }
+  for (let i = providersIdx + 1; i < lines.length; i++) {
+    if (lines[i].length > 0 && !/^\s/.test(lines[i])) { blockEnd = i; break; }
+  }
+  const block = lines.slice(providersIdx, blockEnd);
+  // 在 providers 块内定位 deepseek 子块
+  let dsIdx = -1;
+  for (let i = 0; i < block.length; i++) {
+    if (block[i].trimStart().startsWith('deepseek:')) { dsIdx = i; break; }
+  }
+  if (dsIdx === -1) {
+    // 有 providers 无 deepseek：在 providers 行后插入
+    lines.splice(providersIdx + 1, 0, ...dsBlock);
+    return lines.join('\n');
+  }
+  // deepseek 块存在：在其子键范围内（到下一个 2 空格兄弟键为止）替换 baseUrl，无则补
+  const absDs = providersIdx + dsIdx;
+  let dsEnd = blockEnd;
+  for (let i = absDs + 1; i < blockEnd; i++) {
+    if (/^ {2}\S/.test(lines[i])) { dsEnd = i; break; }
+  }
+  let buIdx = -1;
+  for (let i = absDs + 1; i < dsEnd; i++) {
+    if (lines[i].trimStart().startsWith('baseUrl:')) { buIdx = i; break; }
+  }
+  if (buIdx >= 0) {
+    lines[buIdx] = `    baseUrl: "${proxyUrl}"`;
+  } else {
+    lines.splice(absDs + 1, 0, `    baseUrl: "${proxyUrl}"`);
+  }
+  return lines.join('\n');
 }
 
 // 把 Claude 标准 hook 映射为 HookEventLike.kind，供 ChannelDispatcher 分发。
@@ -1090,20 +1165,24 @@ export class App {
     }
   }
 
-  /** 按 agent 生成 PTY 启动的注入参数：claude 走 --settings 文件；codex 走 -c config 覆盖；
-   *  opencode/omp 走 env。返回 { args, envOverride, cleanup, tmpFile }。 */
+  /** 按 agent 生成 PTY 启动的注入参数：claude 走 --settings 文件；codex 走 -c config 覆盖 + env 兜底；
+   *  opencode 走 env；omp 写 ~/.omp/agent/models.yml override-only provider（--config overlay 不合并 providers）。
+   *  所有 agent 统一注入 NO_PROXY 绕过 Windows 系统代理。返回 { args, envOverride, cleanup, tmpFile }。 */
   private buildAgentInjection(spec: AgentSpec, proxyUrl: string, hookUrl?: string): {
     args: string[];
     envOverride: Record<string, string>;
     cleanup: () => void;
     tmpFile: string;
   } {
+    // 绕过 Windows 系统代理：codex/opencode/omp 连本地代理时若系统代理(Clash)开启会被拦截
     if (spec.kind === 'claude') {
       const { args, cleanup, tmpFile } = createSettingsOverrideFile(proxyUrl, hookUrl);
-      return { args, envOverride: {}, cleanup, tmpFile };
+      return { args, envOverride: { NO_PROXY: LOCAL_NO_PROXY, no_proxy: LOCAL_NO_PROXY }, cleanup, tmpFile };
     }
-    const envOverride: Record<string, string> = {};
+    const envOverride: Record<string, string> = { NO_PROXY: LOCAL_NO_PROXY, no_proxy: LOCAL_NO_PROXY };
     const args: string[] = [];
+    let cleanup: () => void = () => {};
+    let tmpFile = '';
     if (spec.envVar) envOverride[spec.envVar] = proxyUrl;
     if (spec.kind === 'codex') {
       const codexProvider = readCodexModelProvider();
@@ -1112,24 +1191,45 @@ export class App {
         args.unshift('-c', `${configKey}="${proxyUrl}"`);
         getLogger().info(`[app:agentInjection] codex override ${configKey} (was ${codexProvider.baseUrl}) -> ${proxyUrl}`);
       }
+    } else if (spec.kind === 'omp') {
+      // omp 的 deepseek provider base_url 内置在模型表；--config overlay 只合并 settings schema
+      // （providers 段被忽略，已实测 raw 验证），必须写 ~/.omp/agent/models.yml override-only provider
+      // （models.yml 支持无 models 列表、仅 baseUrl 的 override，深合并覆盖内置 deepseek）。
+      const modelsPath = path.join(os.homedir(), '.omp', 'agent', 'models.yml');
+      try {
+        const original = fs.existsSync(modelsPath) ? fs.readFileSync(modelsPath, 'utf8') : null;
+        fs.writeFileSync(modelsPath, mergeOmpDeepseekBaseUrl(original, proxyUrl), 'utf8');
+        getLogger().info(`[app:agentInjection] omp models.yml providers.deepseek.baseUrl -> ${proxyUrl}`);
+        // 退出时恢复：原本不存在则删除，原本存在则写回原内容
+        cleanup = () => {
+          try {
+            if (original === null) fs.unlinkSync(modelsPath);
+            else fs.writeFileSync(modelsPath, original, 'utf8');
+          } catch (err: any) {
+            getLogger().warn(`[app:agentInjection] omp models.yml restore failed: ${err.message}`);
+          }
+        };
+      } catch (err: any) {
+        getLogger().warn(`[app:agentInjection] omp models.yml override failed: ${err.message}`);
+      }
     }
-    return { args, envOverride, cleanup: () => {}, tmpFile: '' };
+    return { args, envOverride, cleanup, tmpFile };
   }
 
   private async createSessionInternal(workDir: string, prompt: string, extraArgs: string[] = [], autoTrust = false, botId?: string, agent?: AgentKind): Promise<string> {
     const realId = randomUUID();
     const spec = agentSpec(agent);
-    // claude/omp 走 Anthropic 协议，上游从 ~/.claude/settings.json 解析（支持供应商切换）；
-    // codex/opencode 用 spec 默认上游（opencode 的 auto 解析在接入 step 细化，先用 openai 默认兜底防空）。
-    const upstream = spec.envVar === 'ANTHROPIC_BASE_URL' ? resolveAnthropicBaseUrl() : (spec.upstream || 'https://api.openai.com');
-    const proxy = await startProxy(workDir, realId, (env) => this.dispatcher.dispatch(env), spec.format, upstream);
+    // upstream 按 agent 解析：codex 读 config.toml 的 base_url，claude 读 settings.json，omp/opencode 用 spec 默认。
+    const upstream = resolveUpstream(spec);
+    const proxy = await startProxy(workDir, realId, (env) => this.dispatcher.dispatch(env), spec.format, upstream, spec.kind);
     this.apiProxies.push(proxy);
     const proxyUrl = `http://127.0.0.1:${proxy.port}`;
     const hookUrl = this.hookServer ? `http://127.0.0.1:${this.hookServer.getPort()}/hook` : undefined;
     // 按 agent 生成注入参数（逻辑集中在 buildAgentInjection）：
     // - claude：临时 --settings 文件注入 ANTHROPIC_BASE_URL + hooks
     // - codex：-c model_providers.<name>.base_url="<proxyUrl>" 覆盖 config.toml
-    // - opencode/omp：通过 env 注入代理 base url（opencode=OPENAI_BASE_URL / omp=ANTHROPIC_BASE_URL）
+    // - opencode：通过 env 注入 OPENAI_BASE_URL
+    // - omp：写 ~/.omp/agent/models.yml override-only provider 覆盖 providers.deepseek.baseUrl
     // 非 claude 不传 claude 专属的 --session-id / --settings，PtyMode 走 Auto（不带 session 参数）。
     const isClaude = spec.kind === 'claude';
     const { args, cleanup, tmpFile, envOverride } = this.buildAgentInjection(spec, proxyUrl, hookUrl);
@@ -1150,7 +1250,7 @@ export class App {
         notifyExternal({ source: 'session:start', level: 'warn', message: 'OpenCode 未配置 OPENAI_API_KEY，无法发请求，请先配置' });
       }
     } else if (!isClaude && spec.kind === 'omp') {
-      // omp：ANTHROPIC_BASE_URL 已由 buildAgentInjection env 注入；需在设置/配置文件配模型 provider 的 API key
+      // omp：models.yml 已注入代理 baseUrl；需在设置/配置文件配模型 provider 的 API key
       notifyExternal({ source: 'session:start', level: 'warn', message: 'OMP 需在设置/配置文件配置模型 provider 的 API key' });
     }
     getLogger().info(`[app:createSession] agent=${spec.kind} proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId} extraArgs=${extraArgs.join(',')}`);
@@ -2169,10 +2269,10 @@ export class App {
     const recAgent = this.withRecentLock(() => readRecentSessions().find((r) => r.sessionId === id)?.agent);
     const spec = agentSpec(recAgent as AgentKind);
     const isClaude = spec.kind === 'claude';
-    const upstream = isClaude ? resolveAnthropicBaseUrl() : (spec.upstream || 'https://api.openai.com');
+    const upstream = resolveUpstream(spec);
     // PTY spawn 完成后立即 resolve，让前端隐藏 loading；proxy 启动失败不阻塞 PTY
     return new Promise<boolean>((resolvePty) => {
-      startProxy(workDir, id, (env) => this.dispatcher.dispatch(env), spec.format, upstream).then((proxy) => {
+      startProxy(workDir, id, (env) => this.dispatcher.dispatch(env), spec.format, upstream, spec.kind).then((proxy) => {
         this.apiProxies.push(proxy);
         const proxyUrl = `http://127.0.0.1:${proxy.port}`;
         const hookUrl = this.hookServer ? `http://127.0.0.1:${this.hookServer.getPort()}/hook` : undefined;

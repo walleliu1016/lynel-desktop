@@ -54,6 +54,7 @@ export const AGENTS: Record<AgentKind, AgentSpec> = {
     label: 'Codex (OpenAI)',
     command: 'codex',
     format: openaiAdapter,
+    envVar: 'OPENAI_BASE_URL', // env 兜底注入（config.toml 的 -c 覆盖为主，对齐 ccglass 双保险）
     configTemplate: 'codex-toml',
     sessionStrategy: 'codex-exec',
     permission: 'codex-hook',
@@ -76,12 +77,17 @@ export const AGENTS: Record<AgentKind, AgentSpec> = {
     kind: 'omp',
     label: 'OMP (oh-my-pi)',
     command: 'omp',
-    format: anthropicAdapter, // omp Anthropic provider 直读 ANTHROPIC_BASE_URL；OpenAI provider 走 openaiAdapter（后续按 provider 分派）
-    envVar: 'ANTHROPIC_BASE_URL',
+    // deepseek provider 走 openai-completions 协议（omp 内置模型表 + 内置 base_url）；
+    // Anthropic/其他 provider 的分派留待后续（当前按 deepseek 适配）
+    format: openaiAdapter,
+    // envVar 移除：deepseek provider 的 base_url 内置，env 无法覆盖。
+    // 写 ~/.omp/agent/models.yml override-only provider 覆盖 providers.deepseek.baseUrl（buildAgentInjection）。
+    // 注：`--config` overlay 只合并 settings schema、不合并 models.yml 的 providers 段（已实测 raw 证伪），
+    // 必须写全局 models.yml 并在 session 退出时恢复原文件。
     sessionStrategy: 'omp-jsonl',
     permission: 'omp-hook',
     exitCommands: ompExit,
-    upstream: 'https://api.anthropic.com',
+    upstream: 'https://api.deepseek.com',
   },
 };
 
