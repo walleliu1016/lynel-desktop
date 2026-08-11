@@ -108,7 +108,7 @@ function onSubmit() {
 <style scoped>
 .quick-launch {
   display: flex; flex-direction: column; gap: 8px;
-  border: 1px solid var(--accent-soft-border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   background: var(--bg-input);
   padding: 10px 12px;
@@ -116,12 +116,12 @@ function onSubmit() {
 }
 .quick-launch:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft-bg);
+  box-shadow: 0 0 0 3px var(--accent-soft-bg);
 }
 .ql-agent { width: auto; min-width: 140px; flex-shrink: 0; }
 .ql-input {
   width: 100%; border: none; outline: none; background: transparent;
-  color: var(--text-primary); font-size: 14px; font-family: inherit;
+  color: var(--text-primary); font-size: var(--fs-body); font-family: inherit;
   resize: none; line-height: 1.5;
 }
 .ql-input::placeholder { color: var(--text-tertiary); }
@@ -129,24 +129,25 @@ function onSubmit() {
 .ql-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .ql-dir {
   display: flex; align-items: center; gap: 6px; max-width: 200px;
-  padding: 5px 10px; border-radius: var(--radius-md);
-  border: 1px solid var(--border); background: var(--bg-panel);
-  color: var(--text-secondary); font-size: 12px; cursor: pointer;
+  padding: 6px 12px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong); background: var(--bg-input);
+  color: var(--text-primary); font-size: var(--fs-body-sm); cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
 }
-.ql-dir:hover:not(:disabled) { border-color: var(--accent); color: var(--text-primary); }
+.ql-dir:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .ql-dir-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ql-chevron { color: var(--text-tertiary); flex-shrink: 0; }
 .ql-bot-wrap { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.ql-bot-label { font-size: 11px; color: var(--text-secondary); font-weight: 600; flex-shrink: 0; white-space: nowrap; }
+.ql-bot-label { font-size: var(--fs-caption); color: var(--text-secondary); font-weight: 600; flex-shrink: 0; white-space: nowrap; }
 .ql-bot { max-width: 160px; }
 .ql-send {
   width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
-  border: none; background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  border: none; background: var(--accent);
   color: var(--text-inverse); display: flex; align-items: center; justify-content: center;
-  cursor: pointer; transition: filter 0.15s;
+  cursor: pointer; transition: filter 0.15s, transform 0.1s;
 }
-.ql-send:hover:not(:disabled) { filter: brightness(1.08); }
+.ql-send:hover:not(:disabled) { filter: brightness(1.06); }
+.ql-send:active:not(:disabled) { transform: scale(0.97); }
 .ql-send:disabled { opacity: 0.45; cursor: not-allowed; }
 .ql-spinner {
   width: 14px; height: 14px; border: 2px solid var(--border);

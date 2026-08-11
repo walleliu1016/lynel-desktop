@@ -1,50 +1,52 @@
 <template>
   <div class="home-tab">
-    <div class="card">
-      <div class="hero">
-        <div class="brand">
-          <div class="brand-name">
-            <span class="brand-lynel">Lynel</span>
-            <span class="brand-desktop">Desktop</span>
+    <SpringTransition>
+      <div class="card">
+        <div class="hero">
+          <div class="brand">
+            <div class="brand-name">
+              <span class="brand-lynel">Lynel</span>
+              <span class="brand-desktop">Desktop</span>
+            </div>
           </div>
+          <p class="tagline">集成 Claude / Codex / OpenCode 的多 Agent 桌面终端，请求与成本全程可视化，权限审批经企业微信与手机远程完成。</p>
+          <div class="badges">
+            <span class="badge">多 Agent 终端</span>
+            <span class="badge">请求可视化</span>
+            <span class="badge">远程审批</span>
+          </div>
+          <QuickLaunch class="quick" :loading="creating" @create="onQuickCreate" />
         </div>
-        <p class="tagline">集成 Claude / Codex / OpenCode 的多 Agent 桌面终端，请求与成本全程可视化，权限审批经企业微信与手机远程完成。</p>
-        <div class="badges">
-          <span class="badge">多 Agent 终端</span>
-          <span class="badge">请求可视化</span>
-          <span class="badge">远程审批</span>
-        </div>
-        <QuickLaunch class="quick" :loading="creating" @create="onQuickCreate" />
-      </div>
-      <div class="recent-section">
-        <div class="section-header">
-          <div class="section-title">历史会话</div>
-          <span v-if="recent.recentSessions.length" class="count">{{ recentSearchText ? `${filteredRecent.length} / ${recent.recentSessions.length}` : recent.recentSessions.length }}</span>
-        </div>
-        <div v-if="recent.loading" class="loading">加载中...</div>
-        <template v-else>
-          <div class="recent-search">
-            <Icon name="search" :size="12" class="search-icon" />
-            <input
-              v-model="recentSearchText"
-              class="search-input"
-              placeholder="搜索（项目 / 标题 / 目录）"
-              @keydown.escape="recentSearchText = ''"
+        <div class="recent-section">
+          <div class="section-header">
+            <div class="section-title">历史会话</div>
+            <span v-if="recent.recentSessions.length" class="count">{{ recentSearchText ? `${filteredRecent.length} / ${recent.recentSessions.length}` : recent.recentSessions.length }}</span>
+          </div>
+          <div v-if="recent.loading" class="loading">加载中...</div>
+          <template v-else>
+            <div class="recent-search">
+              <Icon name="search" :size="12" class="search-icon" />
+              <input
+                v-model="recentSearchText"
+                class="search-input"
+                placeholder="搜索（项目 / 标题 / 目录）"
+                @keydown.escape="recentSearchText = ''"
+              />
+              <button v-if="recentSearchText" class="search-clear" aria-label="清除搜索" title="清除搜索" @click="recentSearchText = ''">
+                <Icon name="close" :size="12" />
+              </button>
+            </div>
+            <div v-if="!filteredRecent.length" class="loading">{{ recentSearchText ? '无匹配结果' : '暂无历史会话' }}</div>
+            <RecentSessionList
+              v-else
+              :list="filteredRecent"
+              :limit="10"
+              @select="$emit('open-recent', $event)"
             />
-            <button v-if="recentSearchText" class="search-clear" aria-label="清除搜索" title="清除搜索" @click="recentSearchText = ''">
-              <Icon name="close" :size="12" />
-            </button>
-          </div>
-          <div v-if="!filteredRecent.length" class="loading">{{ recentSearchText ? '无匹配结果' : '暂无历史会话' }}</div>
-          <RecentSessionList
-            v-else
-            :list="filteredRecent"
-            :limit="10"
-            @select="$emit('open-recent', $event)"
-          />
-        </template>
+          </template>
+        </div>
       </div>
-    </div>
+    </SpringTransition>
   </div>
 </template>
 
@@ -53,6 +55,7 @@ import { computed, onMounted } from 'vue'
 import Icon from './Icon.vue'
 import QuickLaunch from './QuickLaunch.vue'
 import RecentSessionList from './RecentSessionList.vue'
+import SpringTransition from './SpringTransition.vue'
 import { useRecentStore } from '../stores/recent'
 import { useSessionsStore } from '../stores/sessions'
 import { useRecentSessionSearch } from '../composables/useRecentSessionSearch'
@@ -94,11 +97,11 @@ onMounted(() => {
 }
 .hero { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 0 16px; }
 .brand { display: flex; justify-content: center; margin-bottom: 14px; }
-.brand-name { display: flex; align-items: center; gap: 8px; font-size: 34px; font-weight: 700; letter-spacing: -0.5px; }
+.brand-name { display: flex; align-items: center; gap: 8px; font-size: var(--fs-hero); font-weight: 700; letter-spacing: -0.02em; }
 .brand-lynel { color: var(--accent); }
 .brand-desktop { color: var(--status-error); font-weight: 500; }
 .tagline {
-  margin: 6px 0 10px; font-size: 13px; color: var(--text-secondary);
+  margin: 6px 0 10px; font-size: var(--fs-body); color: var(--text-secondary);
   text-align: center; line-height: 1.6;
 }
 .badges { display: flex; justify-content: center; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
@@ -109,7 +112,7 @@ onMounted(() => {
 .quick { width: 100%; max-width: 560px; }
 .recent-section { flex: 0 1 auto; max-height: 42%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; margin-top: 18px; }
 .section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.section-title { font-size: 11px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; }
+.section-title { font-size: var(--fs-caption); font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; }
 .count { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft-bg); color: var(--accent); }
 .loading { padding: 16px; text-align: center; font-size: 12px; color: var(--text-secondary); }
 .recent-search { position: relative; margin-bottom: 10px; }

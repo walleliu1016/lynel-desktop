@@ -79,7 +79,7 @@ function duration(lastOpenedAt: number) {
 .recent-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 4px; }
 .recent-item {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 10px; border-radius: var(--radius-md);
+  padding: 6px 10px; border-radius: var(--radius-sm);
   cursor: pointer; background: transparent;
   transition: background 0.15s;
 }
@@ -100,7 +100,7 @@ function duration(lastOpenedAt: number) {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .meta {
-  font-size: 11px; color: var(--text-secondary);
+  font-size: var(--fs-caption); color: var(--text-secondary);
   white-space: nowrap; flex-shrink: 0;
 }
 .toggle-more {
