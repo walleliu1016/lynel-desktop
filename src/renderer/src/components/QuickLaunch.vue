@@ -134,14 +134,14 @@ function onSubmit() {
 .ql-send {
   width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
   border: none; background: linear-gradient(135deg, var(--accent), var(--accent-deep));
-  color: white; display: flex; align-items: center; justify-content: center;
+  color: var(--text-inverse); display: flex; align-items: center; justify-content: center;
   cursor: pointer; transition: filter 0.15s;
 }
 .ql-send:hover:not(:disabled) { filter: brightness(1.08); }
 .ql-send:disabled { opacity: 0.45; cursor: not-allowed; }
 .ql-spinner {
-  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4);
-  border-top-color: #fff; border-radius: 50%;
+  width: 14px; height: 14px; border: 2px solid var(--border);
+  border-top-color: var(--text-inverse); border-radius: 50%;
   animation: ql-spin 0.75s linear infinite;
 }
 @keyframes ql-spin { to { transform: rotate(360deg); } }

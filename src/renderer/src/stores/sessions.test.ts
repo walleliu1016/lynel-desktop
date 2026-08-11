@@ -164,10 +164,14 @@ describe('store', () => {
     expect(store.list[0].ai_title).toBe('T1') // 权威 ai_title 为空时保留本地已有值
   })
 
-  it('create 透传 agent 到 CreateSession', async () => {
+  it('create 透传 agent 到 CreateSession，并用返回的归一化 workdir 写入列表', async () => {
     const store = useSessionsStore()
-    await store.create('/w', 'p', [], undefined, 'omp')
-    expect(CreateSession).toHaveBeenCalledWith('/w', 'p', [], 'omp')
+    vi.mocked(CreateSession).mockResolvedValue({ id: 's-new', workdir: '/real/dir' } as any)
+    await store.create('', 'p', [], undefined, 'omp')
+    expect(CreateSession).toHaveBeenCalledWith('', 'p', [], 'omp')
+    expect(store.list[0].workdir).toBe('/real/dir')
+    expect(store.list[0].project).toBe('dir')
+    expect(store.activeId).toBe('s-new')
   })
 
   it('select 时 AdoptSession 抛错仍执行 refreshList，列表不保持陈旧', async () => {

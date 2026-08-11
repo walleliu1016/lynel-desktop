@@ -199,13 +199,15 @@ export const useSessionsStore = defineStore('sessions', () => {
   async function create(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string, agent?: string) {
     creating.value = true
     try {
-      const id = await CreateSession(workdir, prompt, extraArgs, agent)
+      // 主进程会对空 workdir 归一化为默认主目录并随结果回传，必须用它写 meta，
+      // 否则快速框未选目录时 meta.workdir 为 ''，Trace 面板 / 重开 PTY / 云端同步都会失效。
+      const { id, workdir: realWd } = await CreateSession(workdir, prompt, extraArgs, agent)
       adopted.value = { ...adopted.value, [id]: true }
       state.value = { ...state.value, [id]: 'waiting' }
       if (!list.value.find(s => s.id === id)) {
-        const project = workdir.split(/[\\/]/).filter(Boolean).pop() || workdir
+        const project = realWd.split(/[\\/]/).filter(Boolean).pop() || realWd
         list.value = trimList([{
-          id, workdir, project, mtime: Math.floor(Date.now() / 1000), msg_count: 0,
+          id, workdir: realWd, project, mtime: Math.floor(Date.now() / 1000), msg_count: 0,
           first_prompt: prompt, ai_title: '', size: 0,
           user_title: undefined, title_source: 'first_prompt',
           agent,
