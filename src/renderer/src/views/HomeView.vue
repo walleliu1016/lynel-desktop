@@ -5,6 +5,10 @@
         <div class="left-top" :class="{ mac: isMac, win: isWindows, collapsed: sidebarCollapsed, searching: searchOpen }">
           <template v-if="!sidebarCollapsed && !searchOpen">
             <span v-if="!isMac" class="brand-inline" aria-hidden="true">Lynel Desktop</span>
+            <button class="top-btn tooltip-wrap" aria-label="首页" title="首页" @click="tabsStore.openWelcome()">
+              <Icon name="sparkles" :size="16" />
+              <span class="tooltip-down">首页</span>
+            </button>
             <button class="top-btn tooltip-wrap" aria-label="打开 Session" @click="showNewSession = true">
               <Icon name="folder-open" :size="16" />
               <span class="tooltip-down">打开 Session</span>
@@ -115,7 +119,7 @@
         <div class="content">
           <div v-show="tabsStore.activeType === 'welcome'" class="content-pane">
             <WelcomeTab
-              @create="showOpenFolder = true"
+              @create="onCreateFromHome"
               @guide="openGuideTab"
               @open-recent="onOpenRecent"
             />
@@ -154,12 +158,6 @@
         @toggle-collapse="traceCollapsed = !traceCollapsed"
       />
     </div>
-    <OpenFolderDialog
-      :open="showOpenFolder"
-      :loading="sessions.creating"
-      @close="showOpenFolder = false"
-      @create="onCreateFromFolder"
-    />
     <NewSessionDialog
       :open="showNewSession"
       :loading="sessions.creating"
@@ -199,7 +197,6 @@ import WelcomeTab from '../components/WelcomeTab.vue'
 import SessionTabContent from '../components/SessionTabContent.vue'
 import SettingsTab from '../components/SettingsTab.vue'
 import GuideTab from '../components/GuideTab.vue'
-import OpenFolderDialog from '../components/OpenFolderDialog.vue'
 import NewSessionDialog from '../components/NewSessionDialog.vue'
 import CloseSessionDialog from '../components/CloseSessionDialog.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
@@ -222,7 +219,6 @@ const tabsStore = useTabsStore()
 const trace = useTraceStore()
 useEventStream()
 
-const showOpenFolder = ref(false)
 const showNewSession = ref(false)
 const username = ref('')
 const version = ref('')
@@ -459,9 +455,8 @@ async function onCreate(workdir: string, prompt: string, extraArgs: string[] = [
   }
 }
 
-async function onCreateFromFolder(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string, agent?: string) {
+async function onCreateFromHome(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string, agent?: string) {
   await onCreate(workdir, prompt, extraArgs, botId, agent)
-  showOpenFolder.value = false
 }
 
 async function onCreateFromSession(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string, agent?: string) {
