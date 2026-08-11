@@ -11,18 +11,6 @@
         @mouseenter="hoverId = tab.id"
         @mouseleave="hoverId = null"
       >
-        <span v-if="tab.id === activeId" class="tab-bridge left">
-          <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
-            <path d="M12 0 A12 12 0 0 0 0 12 L12 12 Z" class="bridge-fill" />
-            <path d="M12 0 A12 12 0 0 0 0 12" class="bridge-arc" />
-          </svg>
-        </span>
-        <span v-if="tab.id === activeId" class="tab-bridge right">
-          <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
-            <path d="M0 0 A12 12 0 0 1 12 12 L0 12 Z" class="bridge-fill" />
-            <path d="M0 0 A12 12 0 0 1 12 12" class="bridge-arc" />
-          </svg>
-        </span>
         <span v-if="tab.type !== 'session'" class="tab-icon">
           <Icon v-if="tab.type === 'settings'" name="settings" :size="12" />
           <Icon v-else-if="tab.type === 'guide'" name="help" :size="12" />
@@ -116,20 +104,20 @@ function onMouseDown(e: MouseEvent, id: string) {
 <style scoped>
 .global-tabs {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   height: 32px;
   min-height: 32px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border-strong);
   user-select: none;
-  padding: 0 8px 0 0;
+  padding: 0 6px;
   gap: 2px;
 }
 
 .tabs-scroll {
   flex: 1;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
@@ -138,71 +126,23 @@ function onMouseDown(e: MouseEvent, id: string) {
 .tabs-scroll::-webkit-scrollbar { display: none; }
 
 .tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  max-width: 180px;
-  min-width: 80px;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-  background: transparent;
-  border: 1px solid transparent;
-  border-bottom: none;
-  /* Chrome 风格：顶部大弧形，底部直角与内容区融合 */
-  border-radius: 12px 12px 0 0;
-  font-size: 12px;
-  color: var(--text-secondary);
-  position: relative;
-  transition: background 0.12s, border-color 0.12s;
+  display: flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 10px;
+  max-width: 180px; min-width: 72px;
+  cursor: pointer; -webkit-app-region: no-drag;
+  border: none; background: transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-body-sm); color: var(--text-secondary);
+  position: relative; margin: 2px 2px 4px;
+  transition: background .15s, color .15s;
 }
-
-.tab:hover {
-  background: var(--session-item-hover-bg);
-}
-
-.tab.active {
-  background: var(--bg-terminal);
-  color: var(--text-primary);
-  border-color: var(--border-strong);
-  border-bottom: 1px solid var(--bg-terminal);
-  margin-bottom: -1px;
-  z-index: 1;
-}
-
+.tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tab.active { background: var(--accent-soft-bg); color: var(--accent); }
 .tab.active::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--accent);
-  border-radius: 12px 12px 0 0;
+  content: ''; position: absolute; top: -2px; left: 8px; right: 8px; height: 2px;
+  background: var(--accent); border-radius: 2px;
 }
-
-/* Chrome 风格底部裙边：激活标签两侧底部鼓出的弧形扇面（内容色填充 + 1px 弧形描边） */
-.tab.active .tab-bridge {
-  position: absolute;
-  bottom: -1px;
-  width: 12px;
-  height: 12px;
-  pointer-events: none;
-}
-.tab-bridge.left { left: -12px; }
-.tab-bridge.right { right: -12px; }
-.tab-bridge svg {
-  display: block;
-  overflow: visible;
-}
-.tab-bridge path.bridge-fill { fill: var(--bg-terminal); stroke: none; }
-.tab-bridge path.bridge-arc {
-  fill: none;
-  stroke: var(--border-strong);
-  stroke-width: 1;
-  stroke-linecap: round;
-}
+.tab.active.awaiting::before { background: var(--status-error); }
 
 .tab-icon {
   display: flex;
@@ -274,9 +214,5 @@ function onMouseDown(e: MouseEvent, id: string) {
 
 .tab.awaiting:not(.active) {
   background: var(--status-error-soft);
-}
-
-.tab.active.awaiting::before {
-  background: var(--status-error);
 }
 </style>
