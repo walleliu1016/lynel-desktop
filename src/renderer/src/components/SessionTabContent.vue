@@ -121,14 +121,14 @@ async function onTerminalData(data: string) {
   background: var(--bg-terminal-loading);
   pointer-events: none;
 }
-.loading-text { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.loading-text { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-body-sm); }
 </style>
 
 <style>
 .spinner-static {
   width: 28px;
   height: 28px;
-  border: 3px solid var(--border);
+  border: 3px solid var(--border-strong);
   border-top-color: var(--accent);
   border-radius: 50%;
 }

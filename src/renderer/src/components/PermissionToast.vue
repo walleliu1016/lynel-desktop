@@ -1,33 +1,36 @@
 <template>
   <div v-if="visible" class="permission-overlay">
-    <div class="permission-box">
-      <small class="permission-label">需要你的授权</small>
-      <h3 class="permission-title">{{ displayTitle }}</h3>
-      <p class="permission-desc">{{ displayDesc }}</p>
-      <div class="permission-meta">
-        <div class="meta-row">
-          <span>工具</span>
-          <b>{{ toolName || 'Unknown' }}</b>
+    <SpringTransition>
+      <div class="permission-box material">
+        <small class="permission-label">需要你的授权</small>
+        <h3 class="permission-title">{{ displayTitle }}</h3>
+        <p class="permission-desc">{{ displayDesc }}</p>
+        <div class="permission-meta">
+          <div class="meta-row">
+            <span>工具</span>
+            <b>{{ toolName || 'Unknown' }}</b>
+          </div>
+          <div v-if="command" class="meta-row">
+            <span>命令</span>
+            <b>{{ command }}</b>
+          </div>
+          <div class="meta-row">
+            <span>影响范围</span>
+            <b>{{ impactScope }}</b>
+          </div>
         </div>
-        <div v-if="command" class="meta-row">
-          <span>命令</span>
-          <b>{{ command }}</b>
-        </div>
-        <div class="meta-row">
-          <span>影响范围</span>
-          <b>{{ impactScope }}</b>
+        <div class="permission-actions">
+          <button class="perm-deny" @click.stop="onDeny">拒绝</button>
+          <button class="perm-allow" @click.stop="onAllow">允许</button>
         </div>
       </div>
-      <div class="permission-actions">
-        <button class="perm-deny" @click.stop="onDeny">拒绝</button>
-        <button class="perm-allow" @click.stop="onAllow">允许</button>
-      </div>
-    </div>
+    </SpringTransition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import SpringTransition from './SpringTransition.vue'
 import { ResolvePermission } from '../composables/useElectron'
 
 const props = defineProps<{
@@ -90,7 +93,7 @@ function onDeny() {
   position: absolute;
   inset: 0;
   z-index: 50;
-  background: rgba(13, 19, 33, 0.65);
+  background: var(--scrim);
   backdrop-filter: blur(2px);
   display: grid;
   place-items: center;
@@ -103,10 +106,12 @@ function onDeny() {
 .permission-box {
   width: min(440px, calc(100% - 40px));
   padding: 20px;
-  border-radius: 16px;
-  background: var(--bg-panel);
+  border-radius: var(--radius-lg);
+  background: var(--material-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--status-error-soft);
-  box-shadow: 0 25px 80px rgba(13, 24, 41, 0.28);
+  box-shadow: var(--shadow-window);
 }
 .permission-label {
   display: block;
