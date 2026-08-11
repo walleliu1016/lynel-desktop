@@ -45,9 +45,9 @@ watch(() => props.open, (open) => {
 </script>
 
 <template>
-  <div v-if="open" class="overlay" @click.self="$emit('cancel')">
+  <div class="overlay" :class="{ open }" @click.self="open && $emit('cancel')">
     <SpringTransition>
-    <div class="dialog" role="dialog" aria-modal="true">
+    <div v-if="open" class="dialog" role="dialog" aria-modal="true">
       <div class="head">
         <h2>关闭会话</h2>
         <button class="close" aria-label="关闭" title="关闭" @click="$emit('cancel')">
@@ -79,7 +79,10 @@ watch(() => props.open, (open) => {
   position: fixed; inset: 0; background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s ease;
 }
+.overlay.open { opacity: 1; pointer-events: auto; }
 .dialog {
   width: 440px;
   max-width: calc(100% - 40px);

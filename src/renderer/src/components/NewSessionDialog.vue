@@ -1,7 +1,7 @@
 <template>
-  <div v-if="open" class="overlay" @click.self="$emit('close')">
+  <div class="overlay" :class="{ open }" @click.self="open && $emit('close')">
     <SpringTransition>
-    <div class="dialog">
+    <div v-if="open" class="dialog">
       <div class="head">
         <h2>打开 Session</h2>
         <button class="close" aria-label="关闭" title="关闭" @click="$emit('close')">
@@ -210,7 +210,10 @@ function onSubmit() {
   position: fixed; inset: 0; background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s ease;
 }
+.overlay.open { opacity: 1; pointer-events: auto; }
 .dialog {
   width: 520px;
   max-width: calc(100% - 40px);
