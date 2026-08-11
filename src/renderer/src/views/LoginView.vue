@@ -277,7 +277,7 @@ async function closeSettings() {
   font-size: 11px;
   line-height: 1.5;
   border-radius: var(--radius-md, 6px);
-  box-shadow: var(--shadow-window);
+  box-shadow: var(--shadow-panel);
   white-space: normal;
   z-index: 1000;
   pointer-events: none;
