@@ -1,5 +1,5 @@
 <template>
-  <Transition :css="false" @enter="onEnter" @leave="onLeave">
+  <Transition :css="false" appear @enter="onEnter" @leave="onLeave">
     <slot />
   </Transition>
 </template>
