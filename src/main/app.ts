@@ -1517,7 +1517,7 @@ export class App {
 
     ipcMain.handle('app:createSession', async (_event, workDir: string, prompt: string, extraArgs: string[] = [], agent?: string) => {
       try {
-        const wd = normalizeWorkdir(workDir)
+        const wd = normalizeWorkdir(workDir);
         const id = await this.createSessionInternal(wd, prompt, extraArgs, false, undefined, agent as AgentKind);
         // 归一化后的目录（空/空白 → 默认主目录）必须回传，渲染层用它写 meta.workdir，
         // 否则快速框未选目录时写 ''，导致 Trace 面板空 wd、重开 PTY 无效 cwd、云端同步空目录。
