@@ -66,12 +66,15 @@ export const AGENTS: Record<AgentKind, AgentSpec> = {
     label: 'OpenCode',
     command: 'opencode',
     format: openaiAdapter,
-    envVar: 'OPENAI_BASE_URL',
+    // envVar 移除：OPENAI_BASE_URL 只对 openai provider 生效，而 opencode 默认 provider 是
+    // opencode-go（opencode.ai 官方网关），必须用 OPENCODE_CONFIG 覆盖 provider.opencode-go.options.baseURL
+    // （buildAgentInjection 写临时配置文件，已实测 raw 收到 POST /chat/completions）。
     configTemplate: 'opencode-json',
     sessionStrategy: 'opencode-serve',
     permission: 'opencode-plugin',
     exitCommands: opencodeExit,
-    upstream: '', // auto：从当前 env 解析
+    // opencode-go 官方网关默认 base_url（代理转发目标）；此前留空回退 api.openai.com 导致上游错误
+    upstream: 'https://opencode.ai/zen/go/v1',
   },
   omp: {
     kind: 'omp',

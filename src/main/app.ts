@@ -1212,6 +1212,33 @@ export class App {
       } catch (err: any) {
         getLogger().warn(`[app:agentInjection] omp models.yml override failed: ${err.message}`);
       }
+    } else if (spec.kind === 'opencode') {
+      // opencode 的 OPENAI_BASE_URL 只对 openai provider 生效，而默认 provider 是 opencode-go
+      // （opencode.ai 官方网关）；必须写临时 OPENCODE_CONFIG 配置文件覆盖
+      // provider.opencode-go / provider.opencode 的 options.baseURL，已实测 raw 收到 POST /chat/completions。
+      const tmpDir = path.join(os.tmpdir(), 'lynel-desktop');
+      try {
+        fs.mkdirSync(tmpDir, { recursive: true });
+        const configFile = path.join(tmpDir, `opencode-config-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+        const opencodeConfig = {
+          provider: {
+            'opencode-go': { options: { baseURL: proxyUrl } },
+            opencode: { options: { baseURL: proxyUrl } },
+          },
+        };
+        fs.writeFileSync(configFile, JSON.stringify(opencodeConfig, null, 2), 'utf8');
+        envOverride.OPENCODE_CONFIG = configFile;
+        tmpFile = configFile;
+        getLogger().info(`[app:agentInjection] opencode OPENCODE_CONFIG provider.opencode-go.baseURL -> ${proxyUrl}`);
+        cleanup = () => {
+          try {
+            fs.unlinkSync(configFile);
+            getLogger().info(`[app:agentInjection] removed opencode config: ${configFile}`);
+          } catch {}
+        };
+      } catch (err: any) {
+        getLogger().warn(`[app:agentInjection] opencode OPENCODE_CONFIG override failed: ${err.message}`);
+      }
     }
     return { args, envOverride, cleanup, tmpFile };
   }
@@ -1228,7 +1255,7 @@ export class App {
     // 按 agent 生成注入参数（逻辑集中在 buildAgentInjection）：
     // - claude：临时 --settings 文件注入 ANTHROPIC_BASE_URL + hooks
     // - codex：-c model_providers.<name>.base_url="<proxyUrl>" 覆盖 config.toml
-    // - opencode：通过 env 注入 OPENAI_BASE_URL
+    // - opencode：写临时 OPENCODE_CONFIG 配置文件覆盖 provider.opencode-go.options.baseURL
     // - omp：写 ~/.omp/agent/models.yml override-only provider 覆盖 providers.deepseek.baseUrl
     // 非 claude 不传 claude 专属的 --session-id / --settings，PtyMode 走 Auto（不带 session 参数）。
     const isClaude = spec.kind === 'claude';
