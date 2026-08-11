@@ -455,7 +455,7 @@ async function unbindBot() {
 .bound-hint {
   flex-shrink: 0;
   font-size: 10px;
-  color: var(--status-success);
+  color: color-mix(in srgb, var(--status-success) 40%, var(--text-primary));
   background: var(--status-success-soft);
   padding: 1px 6px;
   border-radius: 4px;

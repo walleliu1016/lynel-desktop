@@ -767,11 +767,11 @@ watch(
   -webkit-app-region: no-drag;
 }
 .cloud-status .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
-.cloud-status.ok { border-color: var(--status-success); background: var(--status-success-soft); color: var(--status-success); }
-.cloud-status.ok .dot { background: var(--status-success); box-shadow: 0 0 6px color-mix(in srgb, var(--status-success) 40%, transparent); }
-.cloud-status.fail { border-color: var(--status-error); background: var(--status-error-soft); color: var(--status-error); }
+.cloud-status.ok { border-color: color-mix(in srgb, var(--status-success) 30%, transparent); background: var(--status-success-soft); color: color-mix(in srgb, var(--status-success) 40%, var(--text-primary)); }
+.cloud-status.ok .dot { background: var(--status-success); box-shadow: 0 0 6px color-mix(in srgb, var(--status-success) 50%, transparent); }
+.cloud-status.fail { border-color: color-mix(in srgb, var(--status-error) 30%, transparent); background: var(--status-error-soft); color: color-mix(in srgb, var(--status-error) 40%, var(--text-primary)); }
 .cloud-status.fail .dot { background: var(--status-error); }
-.cloud-status.testing { border-color: var(--status-warn); background: var(--status-warn-soft); color: var(--status-warn); }
+.cloud-status.testing { border-color: color-mix(in srgb, var(--status-warn) 30%, transparent); background: var(--status-warn-soft); color: color-mix(in srgb, var(--status-warn) 40%, var(--text-primary)); }
 .cloud-status.testing .dot { background: var(--status-warn); animation: cloud-pulse 0.8s infinite; }
 @keyframes cloud-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 .account {
