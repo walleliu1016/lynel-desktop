@@ -4,6 +4,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import './styles/reset.css'
+import './styles/base.css'
 import './styles/theme.css'
 
 // 启动时应用保存的主题，避免闪烁；无保存时默认使用浅色主题
