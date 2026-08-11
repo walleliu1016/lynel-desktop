@@ -133,7 +133,7 @@ function onMouseDown(e: MouseEvent, id: string) {
   border: none; background: transparent;
   border-radius: var(--radius-sm);
   font-size: var(--fs-body-sm); color: var(--text-secondary);
-  position: relative; margin: 2px 2px 4px;
+  position: relative; margin: 2px 2px;
   transition: background .15s, color .15s;
 }
 .tab:hover { background: var(--bg-hover); color: var(--text-primary); }
