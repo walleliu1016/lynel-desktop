@@ -41,9 +41,6 @@
         </button>
       </div>
     </div>
-    <span v-if="props.center" class="titlebar-brand-center">
-      <span class="brand-lynel">Lynel</span> <span class="brand-desktop">Desktop</span>
-    </span>
   </div>
 </template>
 
@@ -143,7 +140,6 @@ onBeforeUnmount(() => {
   gap: 6px;
   -webkit-app-region: no-drag;
 }
-.brand-desktop { font-weight: 500; color: var(--status-error); }
 .iconbtn {
   width: 26px; height: 26px;
   border: 1px solid var(--border); border-radius: 8px;
@@ -205,18 +201,4 @@ onBeforeUnmount(() => {
 .win-btn.close:active { background: var(--status-error); filter: brightness(0.9); }
 .is-mac .titlebar { padding-left: 78px; }
 .titlebar.center .titlebar-left { visibility: hidden; }
-.titlebar-brand-center {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  margin-top: 8px;
-  font-weight: 800;
-  font-size: 14px;
-  letter-spacing: -0.3px;
-  pointer-events: none;
-  user-select: none;
-}
-.titlebar-brand-center .brand-lynel { color: var(--accent); }
-.titlebar-brand-center .brand-desktop { font-weight: 500; color: var(--status-error); }
 </style>

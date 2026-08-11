@@ -1,25 +1,28 @@
 <template>
-  <select class="agent-select" :value="modelValue" @change="onChange">
-    <option v-for="k in AGENT_KINDS" :key="k" :value="k">{{ agentMeta(k).abbr }} {{ agentMeta(k).short }}</option>
-  </select>
+  <Select
+    :model-value="modelValue"
+    :options="options"
+    placeholder="选择 Agent"
+    @update:model-value="onChange"
+  />
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import Select from './Select.vue'
 import { AGENT_KINDS, agentMeta, type AgentKind } from '../types/agents'
 
-defineProps<{ modelValue: AgentKind }>()
+const props = defineProps<{ modelValue: AgentKind }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: AgentKind): void }>()
 
-function onChange(e: Event) {
-  emit('update:modelValue', (e.target as HTMLSelectElement).value as AgentKind)
+const options = computed(() =>
+  AGENT_KINDS.map((k) => ({
+    value: k,
+    label: `${agentMeta(k).abbr} ${agentMeta(k).short}`,
+  })),
+)
+
+function onChange(v: string) {
+  emit('update:modelValue', v as AgentKind)
 }
 </script>
-
-<style scoped>
-.agent-select {
-  width: 100%; background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 8px 10px;
-  color: var(--text-primary); font-size: 12px; font-family: inherit;
-}
-.agent-select:focus { outline: none; border-color: var(--accent); }
-</style>

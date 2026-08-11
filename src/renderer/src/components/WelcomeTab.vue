@@ -1,23 +1,21 @@
 <template>
   <div class="home-tab">
     <div class="card">
-      <div class="brand">
-        <div class="brand-name">
-          <span class="brand-lynel">Lynel</span>
-          <span class="brand-desktop">Desktop</span>
+      <div class="hero">
+        <div class="brand">
+          <div class="brand-name">
+            <span class="brand-lynel">Lynel</span>
+            <span class="brand-desktop">Desktop</span>
+          </div>
         </div>
-        <button class="guide-btn" @click="$emit('guide')">
-          <Icon name="help" :size="15" />
-          <span>使用指南</span>
-        </button>
+        <p class="tagline">集成 Claude / Codex / OpenCode 的多 Agent 桌面终端，请求与成本全程可视化，权限审批经企业微信与手机远程完成。</p>
+        <div class="badges">
+          <span class="badge">多 Agent 终端</span>
+          <span class="badge">请求可视化</span>
+          <span class="badge">远程审批</span>
+        </div>
+        <QuickLaunch class="quick" :loading="creating" @create="onQuickCreate" />
       </div>
-      <p class="tagline">集成 Claude / Codex / OpenCode 的多 Agent 桌面终端，请求与成本全程可视化，权限审批经企业微信与手机远程完成。</p>
-      <div class="badges">
-        <span class="badge">多 Agent 终端</span>
-        <span class="badge">请求可视化</span>
-        <span class="badge">远程审批</span>
-      </div>
-      <QuickLaunch class="quick" :loading="creating" @create="onQuickCreate" />
       <div class="recent-section">
         <div class="section-header">
           <div class="section-title">历史会话</div>
@@ -69,7 +67,6 @@ const { search: recentSearchText, filtered: filteredRecent } = useRecentSessionS
 const creating = computed(() => sessions.creating)
 
 const emit = defineEmits<{
-  guide: []
   create: [workdir: string, prompt: string, extraArgs: string[], botId?: string, agent?: AgentKind]
   'open-recent': [item: RecentSession]
 }>()
@@ -85,26 +82,21 @@ onMounted(() => {
 
 <style scoped>
 .home-tab {
-  flex: 1; display: flex; align-items: center; justify-content: center;
+  flex: 1; display: flex; flex-direction: column; align-items: center;
   background: var(--bg-primary); padding: 24px; min-height: 0; overflow: auto;
 }
 .card {
-  width: min(680px, 100%); max-height: min(760px, calc(100% - 48px));
+  width: 100%; max-width: 860px;
+  flex: 1 1 auto; min-height: 0;
   background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-panel);
   padding: 28px 28px 22px; display: flex; flex-direction: column; overflow: hidden;
 }
-.brand { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.brand-name { display: flex; align-items: center; gap: 6px; font-size: 24px; font-weight: 700; }
+.hero { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 0 16px; }
+.brand { display: flex; justify-content: center; margin-bottom: 14px; }
+.brand-name { display: flex; align-items: center; gap: 8px; font-size: 34px; font-weight: 700; letter-spacing: -0.5px; }
 .brand-lynel { color: var(--accent); }
 .brand-desktop { color: var(--status-error); font-weight: 500; }
-.guide-btn {
-  display: flex; align-items: center; gap: 6px; padding: 7px 14px;
-  border: none; border-radius: var(--radius-md); background: var(--accent);
-  color: var(--text-inverse); font-size: 13px; font-weight: 600; cursor: pointer;
-  transition: all 0.15s;
-}
-.guide-btn:hover { background: var(--accent-deep); }
 .tagline {
   margin: 6px 0 10px; font-size: 13px; color: var(--text-secondary);
   text-align: center; line-height: 1.6;
@@ -114,8 +106,8 @@ onMounted(() => {
   padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
   color: var(--accent); background: var(--accent-soft-bg);
 }
-.quick { margin-bottom: 22px; }
-.recent-section { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.quick { width: 100%; max-width: 560px; }
+.recent-section { flex: 0 1 auto; max-height: 42%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; margin-top: 18px; }
 .section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .section-title { font-size: 11px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; }
 .count { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft-bg); color: var(--accent); }

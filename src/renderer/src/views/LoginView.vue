@@ -3,10 +3,10 @@
     <TitleBar center hide-settings hide-cloud hide-logout />
     <div class="login-body">
       <div class="login-head">
-        <div class="login-logo">L</div>
-        <div class="login-title-row">
-          <span class="login-title">登录 Lynel Desktop</span>
+        <div class="brand-row">
+          <span class="brand-lynel">Lynel</span><span class="brand-desktop">Desktop</span>
         </div>
+        <p class="login-tagline">多 Agent 编程终端，请求全程可视化，权限远程一键审批。</p>
       </div>
 
       <form @submit.prevent="onSubmit" class="form">
@@ -108,7 +108,7 @@ const onCloudToggle = () => {
   resizeWindowForCloud(cloudEnabled.value)
 }
 
-const BASE_HEIGHT = 400
+const BASE_HEIGHT = 430
 const CLOUD_EXTRA_HEIGHT = 80
 function resizeWindowForCloud(enabled: boolean) {
   const h = enabled ? BASE_HEIGHT + CLOUD_EXTRA_HEIGHT : BASE_HEIGHT
@@ -203,17 +203,11 @@ async function closeSettings() {
   display: flex; flex-direction: column;
   justify-content: center;
 }
-.login-head { display: flex; flex-direction: column; align-items: center; margin-bottom: 10px; }
-.login-logo {
-  width: 28px; height: 28px; border-radius: 7px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
-  display: flex; align-items: center; justify-content: center;
-  color: white; font-size: 13px; font-weight: 700;
-  box-shadow: var(--shadow-accent);
-  margin-bottom: 6px;
-}
-.login-title-row { display: flex; align-items: center; gap: 8px; }
-.login-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.login-head { display: flex; flex-direction: column; align-items: center; margin-bottom: 16px; }
+.brand-row { display: flex; align-items: center; gap: 6px; font-size: 20px; font-weight: 700; }
+.brand-lynel { color: var(--accent); }
+.brand-desktop { color: var(--status-error); font-weight: 500; }
+.login-tagline { margin-top: 8px; font-size: 12px; color: var(--text-secondary); text-align: center; line-height: 1.5; max-width: 240px; }
 .form { flex: 1; display: flex; flex-direction: column; }
 .form-group { margin-bottom: 6px; }
 .form-label {

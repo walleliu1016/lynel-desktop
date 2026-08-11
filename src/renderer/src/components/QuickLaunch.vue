@@ -1,8 +1,5 @@
 <template>
   <form class="quick-launch" @submit.prevent="onSubmit">
-    <div class="ql-top">
-      <AgentSelect v-model="agent" class="ql-agent" />
-    </div>
     <textarea
       v-model="prompt"
       class="ql-input"
@@ -13,17 +10,23 @@
     />
     <div class="ql-bottom">
       <div class="ql-left">
+        <AgentSelect v-model="agent" class="ql-agent" />
         <button type="button" class="ql-dir" :title="workdir || '未选择，使用默认目录'" :disabled="loading" @click="onPick">
           <Icon name="folder-open" :size="13" />
           <span class="ql-dir-text">{{ workdir || '默认目录' }}</span>
           <Icon name="chevron-down" :size="11" class="ql-chevron" />
         </button>
-        <select class="ql-bot" v-model="selectedBot" :disabled="loading">
-          <option value="">不绑定</option>
-          <option v-for="b in botOptions" :key="b.id" :value="b.id" :disabled="!isBotAvailable(b.id)">
-            {{ b.name }}{{ getBotBoundSessionName(b.id) ? `（已绑定 ${getBotBoundSessionName(b.id)}）` : '' }}
-          </option>
-        </select>
+        <div class="ql-bot-wrap">
+          <span class="ql-bot-label">Bot</span>
+          <Select
+            v-model="selectedBot"
+            :options="botSelectOptions"
+            size="sm"
+            placeholder="不绑定"
+            :disabled="loading"
+            class="ql-bot"
+          />
+        </div>
       </div>
       <button type="submit" class="ql-send" :disabled="!prompt.trim() || loading">
         <span v-if="loading" class="ql-spinner" />
@@ -37,6 +40,7 @@
 import { ref, computed, onMounted } from 'vue'
 import Icon from './Icon.vue'
 import AgentSelect from './AgentSelect.vue'
+import Select, { type SelectOption } from './Select.vue'
 import { agentMeta, type AgentKind } from '../types/agents'
 import { PickDirectory } from '../composables/useElectron'
 import { useBotsStore } from '../stores/bots'
@@ -72,6 +76,15 @@ function getBotBoundSessionName(botId: string): string | undefined {
   return sessions.getBotBoundSessionName(botId)
 }
 
+const botSelectOptions = computed<SelectOption[]>(() => [
+  { value: '', label: '不绑定' },
+  ...botOptions.value.map((b) => ({
+    value: b.id,
+    label: getBotBoundSessionName(b.id) ? `${b.name}（已绑定 ${getBotBoundSessionName(b.id)}）` : b.name,
+    disabled: !isBotAvailable(b.id),
+  })),
+])
+
 function onEnter(e: KeyboardEvent) {
   if (e.isComposing) return
   if (e.shiftKey) return
@@ -95,7 +108,7 @@ function onSubmit() {
 <style scoped>
 .quick-launch {
   display: flex; flex-direction: column; gap: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--accent-soft-border);
   border-radius: var(--radius-lg);
   background: var(--bg-input);
   padding: 10px 12px;
@@ -105,8 +118,7 @@ function onSubmit() {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-soft-bg);
 }
-.ql-top { display: flex; }
-.ql-agent { width: auto; min-width: 140px; padding: 6px 10px; font-size: 12px; }
+.ql-agent { width: auto; min-width: 140px; flex-shrink: 0; }
 .ql-input {
   width: 100%; border: none; outline: none; background: transparent;
   color: var(--text-primary); font-size: 14px; font-family: inherit;
@@ -125,12 +137,9 @@ function onSubmit() {
 .ql-dir:hover:not(:disabled) { border-color: var(--accent); color: var(--text-primary); }
 .ql-dir-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ql-chevron { color: var(--text-tertiary); flex-shrink: 0; }
-.ql-bot {
-  max-width: 160px; padding: 5px 8px; border-radius: var(--radius-md);
-  border: 1px solid var(--border); background: var(--bg-panel);
-  color: var(--text-primary); font-size: 12px; font-family: inherit;
-}
-.ql-bot:focus { outline: none; border-color: var(--accent); }
+.ql-bot-wrap { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ql-bot-label { font-size: 11px; color: var(--text-secondary); font-weight: 600; flex-shrink: 0; white-space: nowrap; }
+.ql-bot { max-width: 160px; }
 .ql-send {
   width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
   border: none; background: linear-gradient(135deg, var(--accent), var(--accent-deep));

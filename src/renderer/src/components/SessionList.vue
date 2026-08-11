@@ -6,6 +6,9 @@
           <Icon :name="expanded ? 'chevron-down' : 'chevron-right'" :size="12" />
           <span>会话列表({{ filteredList.length }})</span>
         </button>
+        <div class="sidehead-actions">
+          <slot name="actions" />
+        </div>
       </div>
       <div v-show="expanded" class="items">
         <template v-if="sessions.loading && !list.length">
@@ -78,7 +81,7 @@ const dupProjects = computed(() => {
 .session-list.collapsed .content { display: none; }
 .sidehead {
   margin: 4px 4px 8px;
-  display: flex; align-items: center;
+  display: flex; align-items: center; justify-content: space-between;
   flex-shrink: 0;
 }
 .sidehead-toggle {
@@ -95,6 +98,10 @@ const dupProjects = computed(() => {
 .sidehead-toggle:hover {
   color: var(--text-primary);
   background: var(--bg-input);
+}
+.sidehead-actions {
+  display: flex; align-items: center; gap: 2px;
+  flex-shrink: 0;
 }
 .items { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; }
 

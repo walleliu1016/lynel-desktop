@@ -8,7 +8,7 @@
     @contextmenu.prevent="onContextMenu"
     ref="itemEl"
   >
-    <AgentBadge :agent="props.meta.agent" size="md" />
+    <AgentBadge :agent="props.meta.agent" size="sm" />
     <div class="body">
       <div class="row-top">
         <input
@@ -369,11 +369,9 @@ async function unbindBot() {
 }
 .title {
   flex: 1; min-width: 0;
-  font-size: 13px; color: var(--accent); font-weight: 700;
+  font-size: 13px; color: var(--text-primary); font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  letter-spacing: 0.02em;
 }
-.session-item.active .title { color: var(--accent-deep); }
 .title-input {
   flex: 1; min-width: 0;
   font-size: 12px; font-weight: 600;
@@ -389,7 +387,7 @@ async function unbindBot() {
   flex-shrink: 0;
 }
 .time {
-  font-size: 10px; color: var(--text-tertiary);
+  font-size: 11px; color: var(--text-tertiary);
   white-space: nowrap;
 }
 .dot {
@@ -410,7 +408,7 @@ async function unbindBot() {
 }
 .meta {
   flex: 1;
-  font-size: 10px; color: var(--text-secondary);
+  font-size: 11px; color: var(--text-secondary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .bot-tag {
@@ -422,7 +420,7 @@ async function unbindBot() {
   white-space: nowrap; flex-shrink: 0;
 }
 .event {
-  font-size: 10px; color: var(--text-secondary); margin-top: 2px;
+  font-size: 11px; color: var(--text-secondary); margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .event :deep(b), .event b { font-weight: 600; color: var(--text-primary); }

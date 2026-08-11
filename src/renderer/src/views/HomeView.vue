@@ -2,21 +2,9 @@
   <div class="home">
     <div class="layout">
       <aside class="left" :class="{ collapsed: sidebarCollapsed }">
-        <div class="left-top" :class="{ mac: isMac, win: isWindows, collapsed: sidebarCollapsed, searching: searchOpen }">
-          <template v-if="!sidebarCollapsed && !searchOpen">
+        <div class="left-top" :class="{ mac: isMac, win: isWindows, collapsed: sidebarCollapsed }">
+          <template v-if="!sidebarCollapsed">
             <span v-if="!isMac" class="brand-inline" aria-hidden="true">Lynel Desktop</span>
-            <button class="top-btn tooltip-wrap" aria-label="首页" title="首页" @click="tabsStore.openWelcome()">
-              <Icon name="sparkles" :size="16" />
-              <span class="tooltip-down">首页</span>
-            </button>
-            <button class="top-btn tooltip-wrap" aria-label="打开 Session" @click="showNewSession = true">
-              <Icon name="folder-open" :size="16" />
-              <span class="tooltip-down">打开 Session</span>
-            </button>
-            <button class="top-btn tooltip-wrap" aria-label="搜索会话" @click="openSearch">
-              <Icon name="search" :size="16" />
-              <span class="tooltip-down">搜索会话</span>
-            </button>
             <button class="top-btn tooltip-wrap" :aria-label="sidebarCollapsed ? '展开会话列表' : '收起会话列表'" @click="sidebarCollapsed = !sidebarCollapsed">
               <Icon :name="sidebarCollapsed ? 'panel-left-open' : 'panel-left-close'" :size="16" />
               <span class="tooltip-down">{{ sidebarCollapsed ? '展开会话列表' : '收起会话列表' }}</span>
@@ -26,41 +14,50 @@
               <span class="label">{{ cloudStatusText }}</span>
             </div>
           </template>
-          <template v-else-if="!sidebarCollapsed && searchOpen">
-            <button class="top-btn tooltip-wrap" :aria-label="sidebarCollapsed ? '展开会话列表' : '收起会话列表'" @click="sidebarCollapsed = !sidebarCollapsed">
-              <Icon :name="sidebarCollapsed ? 'panel-left-open' : 'panel-left-close'" :size="16" />
-              <span class="tooltip-down">{{ sidebarCollapsed ? '展开会话列表' : '收起会话列表' }}</span>
-            </button>
-            <div class="search-box">
-              <Icon name="search" :size="12" class="search-box-icon" />
-              <input
-                ref="searchInputEl"
-                v-model="searchQuery"
-                class="search-box-input"
-                placeholder="搜索会话…"
-                @keydown.escape="closeSearch"
-                @blur="closeSearch"
-              />
-              <button v-if="searchQuery" class="search-box-clear" aria-label="清除搜索" title="清除搜索" @mousedown.prevent="searchQuery = ''">
-                <Icon name="close" :size="12" />
-              </button>
-            </div>
-          </template>
-          <template v-else>
-            <!-- 折叠态：展开按钮统一放在内容区顶部的 center-top，避免被红绿灯遮挡 -->
-          </template>
         </div>
         <div v-if="isMac && !sidebarCollapsed" class="left-brand-area">
           <span class="brand-title">Lynel Desktop</span>
           <span class="brand-version">(v{{ version }})</span>
         </div>
+        <!-- 会话列表上方：首页入口（全宽） -->
+        <button v-if="!sidebarCollapsed" class="home-entry" aria-label="首页" title="首页" @click="tabsStore.openWelcome()">
+          <Icon name="sparkles" :size="16" />
+          <span>首页</span>
+        </button>
+        <template v-if="!sidebarCollapsed">
+          <button v-if="!searchOpen" class="home-entry search-entry" aria-label="搜索会话" title="搜索会话" @click="openSearch">
+            <Icon name="search" :size="16" />
+            <span>搜索会话</span>
+          </button>
+          <div v-else class="search-inplace">
+            <Icon name="search" :size="13" class="search-box-icon" />
+            <input
+              ref="searchInputEl"
+              v-model="searchQuery"
+              class="search-inplace-input"
+              placeholder="搜索会话…"
+              @keydown.escape="closeSearch"
+              @blur="closeSearch"
+            />
+            <button v-if="searchQuery" class="search-box-clear" aria-label="清除搜索" title="清除搜索" @mousedown.prevent="searchQuery = ''">
+              <Icon name="close" :size="12" />
+            </button>
+          </div>
+        </template>
         <SessionList
           :list="sessions.list"
           :active-id="activeSessionId"
           :collapsed="sidebarCollapsed"
           :search="searchQuery"
           @select="onSelectSession"
-        />
+        >
+          <template #actions>
+            <button class="head-action tooltip-wrap" aria-label="打开 Session" title="打开 Session" @click="showNewSession = true">
+              <Icon name="folder-open" :size="13" />
+              <span class="tooltip-down">打开 Session</span>
+            </button>
+          </template>
+        </SessionList>
         <div v-if="!sidebarCollapsed" class="left-bottom">
           <div class="bottom-actions">
             <div v-if="username" class="account">
@@ -120,7 +117,6 @@
           <div v-show="tabsStore.activeType === 'welcome'" class="content-pane">
             <WelcomeTab
               @create="onCreateFromHome"
-              @guide="openGuideTab"
               @open-recent="onOpenRecent"
             />
           </div>
@@ -646,10 +642,46 @@ watch(
   top: 50%;
   transform: translateY(-50%);
 }
-/* 搜索展开时避开左上角红绿灯（macOS） */
-.left-top.mac.searching {
-  padding-left: 78px;
+/* 搜索按钮原位变为输入框 */
+.search-inplace {
+  display: flex; align-items: center; gap: 6px;
+  margin: 0 10px 6px;
+  height: 36px; padding: 0 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-md);
 }
+.search-inplace:focus-within { border-color: var(--accent); }
+.search-inplace-input {
+  flex: 1; min-width: 0;
+  border: none; outline: none; background: transparent;
+  color: var(--text-primary); font-size: 13px; font-family: inherit;
+}
+.search-inplace-input::placeholder { color: var(--text-tertiary); }
+/* 会话列表上方：首页入口（全宽按钮） */
+.home-entry {
+  display: flex; align-items: center; justify-content: flex-start; gap: 6px;
+  padding: 0 12px;
+  margin: 8px 10px 6px;
+  height: 36px; flex-shrink: 0;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--bg-input); color: var(--text-primary);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  -webkit-app-region: no-drag;
+}
+.home-entry:hover {
+  background: var(--bg-panel); border-color: var(--accent); color: var(--accent);
+}
+.search-entry { margin-top: 0; }
+/* 会话列表标题行右侧：打开/搜索 */
+.head-action {
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: var(--text-tertiary);
+  border-radius: 5px; cursor: pointer; flex-shrink: 0;
+  transition: color 0.12s, background 0.12s;
+}
+.head-action:hover { color: var(--text-primary); background: var(--bg-input); }
 .center-top {
   height: 40px;
   flex-shrink: 0;
@@ -703,19 +735,6 @@ watch(
   color: var(--text-primary);
   background: var(--bg-input);
 }
-.search-box {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 26px;
-  min-width: 0;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 0 6px;
-}
-.search-box:focus-within { border-color: var(--accent); }
 .search-box-icon { color: var(--text-tertiary); flex-shrink: 0; }
 .search-box-input {
   flex: 1;
