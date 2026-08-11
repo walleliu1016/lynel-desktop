@@ -895,7 +895,6 @@ watch(
   min-height: 0;
   position: relative;
   background: var(--bg-primary);
-  border-right: 1px solid var(--border);
 }
 .content { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; position: relative; }
 .content-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
