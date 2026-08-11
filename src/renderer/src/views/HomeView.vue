@@ -575,6 +575,7 @@ watch(
   gap: 6px;
   padding: 0 10px;
   background: var(--bg-panel);
+  font-size: var(--fs-body-sm);
   box-sizing: border-box;
   position: relative;
   -webkit-app-region: drag;
@@ -596,7 +597,7 @@ watch(
   font-size: 16px;
   letter-spacing: -0.2px;
   color: var(--accent);
-  background: linear-gradient(135deg, #ef4444, #3b82f6);
+  background: var(--brand-grad);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -618,7 +619,7 @@ watch(
   white-space: nowrap;
   flex-shrink: 0;
   margin-right: auto;
-  background: linear-gradient(135deg, #ef4444, #3b82f6);
+  background: var(--brand-grad);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -663,9 +664,9 @@ watch(
   padding: 0 12px;
   margin: 8px 10px 6px;
   height: 36px; flex-shrink: 0;
-  border: 1px solid var(--border); border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-md);
   background: var(--bg-input); color: var(--text-primary);
-  font-size: 13px; font-weight: 600; cursor: pointer;
+  font-size: var(--fs-body-sm); font-weight: 600; cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
   -webkit-app-region: no-drag;
 }
@@ -690,6 +691,7 @@ watch(
   gap: 8px;
   padding: 0 10px 0 2px;
   background: var(--bg-panel);
+  font-size: var(--fs-body-sm);
   min-width: 0;
   -webkit-app-region: drag;
   --wails-draggable: drag;
@@ -718,8 +720,8 @@ watch(
   min-width: 0;
 }
 .top-btn {
-  height: 28px;
-  min-width: 28px;
+  height: 26px;
+  min-width: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -733,7 +735,7 @@ watch(
 }
 .top-btn:hover {
   color: var(--text-primary);
-  background: var(--bg-input);
+  background: var(--bg-hover);
 }
 .search-box-icon { color: var(--text-tertiary); flex-shrink: 0; }
 .search-box-input {
@@ -765,12 +767,12 @@ watch(
   -webkit-app-region: no-drag;
 }
 .cloud-status .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
-.cloud-status.ok { border-color: #a7f3d0; background: var(--status-success-soft); color: #047857; }
-.cloud-status.ok .dot { background: var(--status-success); box-shadow: 0 0 6px rgba(34,197,94,.4); }
-.cloud-status.fail { border-color: #fecaca; background: rgba(239,68,68,.08); color: #b91c1c; }
-.cloud-status.fail .dot { background: #ef4444; }
-.cloud-status.testing { border-color: #fde68a; background: rgba(245,158,11,.08); color: #b45309; }
-.cloud-status.testing .dot { background: #f59e0b; animation: cloud-pulse 0.8s infinite; }
+.cloud-status.ok { border-color: var(--status-success); background: var(--status-success-soft); color: var(--status-success); }
+.cloud-status.ok .dot { background: var(--status-success); box-shadow: 0 0 6px color-mix(in srgb, var(--status-success) 40%, transparent); }
+.cloud-status.fail { border-color: var(--status-error); background: var(--status-error-soft); color: var(--status-error); }
+.cloud-status.fail .dot { background: var(--status-error); }
+.cloud-status.testing { border-color: var(--status-warn); background: var(--status-warn-soft); color: var(--status-warn); }
+.cloud-status.testing .dot { background: var(--status-warn); animation: cloud-pulse 0.8s infinite; }
 @keyframes cloud-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 .account {
   display: flex; align-items: center; gap: 8px;
@@ -779,9 +781,9 @@ watch(
 }
 .avatar {
   width: 22px; height: 22px; border-radius: 7px;
-  background: var(--accent); color: white;
+  background: var(--accent); color: var(--text-inverse);
   display: flex; align-items: center; justify-content: center;
-  font-size: 9px; font-weight: 800;
+  font-size: var(--fs-caption); font-weight: 800;
 }
 .info { display: flex; flex-direction: column; }
 .info b { font-size: 10px; color: var(--text-primary); }
@@ -794,7 +796,7 @@ watch(
   border: none;
   cursor: pointer;
 }
-.logout-btn:hover { color: var(--status-error); background: rgba(239,68,68,.08); }
+.logout-btn:hover { color: var(--status-error); background: var(--status-error-soft); }
 .win-btns { display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
 .win-btn {
   width: 26px; height: 22px; border-radius: 4px;
@@ -805,7 +807,7 @@ watch(
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.win-btn:hover { background: rgba(0,0,0,0.06); }
+.win-btn:hover { background: var(--bg-hover); }
 .win-btn.close:hover { background: var(--status-error); color: white; }
 .left-bottom {
   flex-shrink: 0;
@@ -874,10 +876,11 @@ watch(
   opacity: 1;
 }
 
-.layout { flex: 1; display: flex; min-height: 0; gap: 1px; background: var(--border); }
+.layout { flex: 1; display: flex; min-height: 0; gap: 0; background: transparent; }
 .left {
   width: 280px; display: flex; flex-direction: column;
   background: var(--bg-panel);
+  border-right: 1px solid var(--border);
   box-shadow: var(--shadow-panel);
   min-height: 0; overflow: hidden;
   z-index: 1;
@@ -892,6 +895,7 @@ watch(
   min-height: 0;
   position: relative;
   background: var(--bg-primary);
+  border-right: 1px solid var(--border);
 }
 .content { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; position: relative; }
 .content-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
