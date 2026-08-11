@@ -1,5 +1,6 @@
 <template>
   <div v-if="open" class="overlay" @click.self="$emit('close')">
+    <SpringTransition>
     <div class="dialog">
       <div class="head">
         <h2>打开 Session</h2>
@@ -109,12 +110,14 @@
         </form>
       </div>
     </div>
+    </SpringTransition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import Icon from './Icon.vue'
+import SpringTransition from './SpringTransition.vue'
 import AgentSelect from './AgentSelect.vue'
 import RecentSessionList from './RecentSessionList.vue'
 import { useRecentStore } from '../stores/recent'
@@ -204,7 +207,7 @@ function onSubmit() {
 
 <style scoped>
 .overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  position: fixed; inset: 0; background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
 }
@@ -212,7 +215,9 @@ function onSubmit() {
   width: 520px;
   max-width: calc(100% - 40px);
   max-height: calc(100vh - 80px);
-  background: var(--bg-panel);
+  background: var(--material-bg, rgba(255,255,255,0.72));
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--border); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-window);
   display: flex; flex-direction: column;
@@ -274,11 +279,11 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
 .dir-row { display: flex; gap: 8px; }
 .dir-row .form-input { flex: 1; cursor: pointer; }
 .form-input {
-  width: 100%; background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 8px 10px;
-  color: var(--text-primary); font-size: 12px; font-family: inherit;
+  width: 100%; background: var(--bg-input); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md); padding: 7px 10px;
+  color: var(--text-primary); font-size: var(--fs-body-sm); font-family: inherit;
 }
-.form-input:focus { outline: none; border-color: var(--accent); }
+.form-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft-bg); }
 .pick-btn {
   padding: 8px 14px; background: var(--bg-input); border: 1px solid var(--border);
   border-radius: var(--radius-md); color: var(--text-primary); font-size: 12px;
@@ -287,10 +292,11 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
 .pick-btn:hover { background: var(--border); }
 .area { resize: vertical; min-height: 80px; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
-.cancel { padding: 7px 16px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 12px; color: var(--text-primary); }
-.cancel:hover { background: var(--border); }
-.primary { padding: 7px 18px; background: var(--accent); color: white; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; }
-.primary:hover:not(:disabled) { background: var(--accent-deep); }
+.cancel { background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: var(--radius-md); padding: 6px 14px; font-size: var(--fs-body-sm); }
+.cancel:hover { border-color: var(--accent); color: var(--accent); }
+.primary { padding: 7px 18px; background: var(--accent); color: var(--text-inverse); border: none; border-radius: var(--radius-md); font-size: var(--fs-body-sm); font-weight: 500; }
+.primary:hover:not(:disabled) { filter: brightness(1.06); }
+.primary:active:not(:disabled) { transform: scale(0.97); }
 .primary:disabled { opacity: 0.7; cursor: not-allowed; display: inline-flex; align-items: center; gap: 6px; }
 .cancel:disabled { opacity: 0.5; cursor: not-allowed; }
 .form-input:disabled { opacity: 0.6; cursor: not-allowed; }

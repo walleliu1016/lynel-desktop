@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import Icon from './Icon.vue'
+import SpringTransition from './SpringTransition.vue'
 
 const props = defineProps<{
   open: boolean
@@ -45,6 +46,7 @@ watch(() => props.open, (open) => {
 
 <template>
   <div v-if="open" class="overlay" @click.self="$emit('cancel')">
+    <SpringTransition>
     <div class="dialog" role="dialog" aria-modal="true">
       <div class="head">
         <h2>关闭会话</h2>
@@ -68,19 +70,22 @@ watch(() => props.open, (open) => {
         <button ref="confirmBtn" class="primary" @click="$emit('confirm')">确认终止</button>
       </div>
     </div>
+    </SpringTransition>
   </div>
 </template>
 
 <style scoped>
 .overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  position: fixed; inset: 0; background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
 }
 .dialog {
   width: 440px;
   max-width: calc(100% - 40px);
-  background: var(--bg-panel);
+  background: var(--material-bg, rgba(255,255,255,0.72));
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--border); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-window);
   display: flex; flex-direction: column;
@@ -107,15 +112,16 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
   padding: 12px 20px 18px;
 }
 .cancel {
-  padding: 7px 16px; background: var(--bg-input);
-  border: 1px solid var(--border); border-radius: var(--radius-md);
-  font-size: 12px; color: var(--text-primary);
+  background: var(--bg-input); color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-md);
+  padding: 6px 14px; font-size: var(--fs-body-sm);
 }
-.cancel:hover { background: var(--border); }
+.cancel:hover { border-color: var(--accent); color: var(--accent); }
 .primary {
-  padding: 7px 18px; background: var(--accent); color: white;
-  border-radius: var(--radius-md); font-size: 12px; font-weight: 500;
+  padding: 7px 18px; background: var(--accent); color: var(--text-inverse);
+  border: none; border-radius: var(--radius-md); font-size: var(--fs-body-sm); font-weight: 500;
 }
-.primary:hover { background: var(--accent-deep); }
+.primary:hover:not(:disabled) { filter: brightness(1.06); }
+.primary:active:not(:disabled) { transform: scale(0.97); }
 .primary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-glow); }
 </style>

@@ -1,5 +1,6 @@
 <template>
   <div class="overlay" @click.self="$emit('close')">
+    <SpringTransition>
     <div class="dialog">
       <div class="head">
         <h2>设置</h2>
@@ -20,12 +21,14 @@
         Hook :{{ hookPort }}
       </div>
     </div>
+    </SpringTransition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import Icon from './Icon.vue'
+import SpringTransition from './SpringTransition.vue'
 import SettingsTabs, { type Tab } from './SettingsTabs.vue'
 import GeneralTab from './settings/GeneralTab.vue'
 import AppearanceTab from './settings/AppearanceTab.vue'
@@ -47,13 +50,15 @@ onMounted(async () => {
 <style scoped>
 .overlay {
   position: fixed; inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
 }
 .dialog {
   width: 700px; height: 520px;
-  background: var(--bg-primary);
+  background: var(--material-bg, rgba(255,255,255,0.72));
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-window);
