@@ -8,6 +8,7 @@ import { getBus } from './events.js';
 import { getLogger } from './log.js';
 import * as jsonl from './jsonl.js';
 import * as session from './session.js';
+import { normalizeWorkdir } from './workdir.js';
 
 import { HookServer } from './hookserver.js';
 import { ChannelDispatcher } from './channels/registry.js';
@@ -1516,7 +1517,7 @@ export class App {
 
     ipcMain.handle('app:createSession', async (_event, workDir: string, prompt: string, extraArgs: string[] = [], agent?: string) => {
       try {
-        return await this.createSessionInternal(workDir, prompt, extraArgs, false, undefined, agent as AgentKind);
+        return await this.createSessionInternal(normalizeWorkdir(workDir), prompt, extraArgs, false, undefined, agent as AgentKind);
       } catch (err: any) {
         getLogger().error(`[app:createSession] failed: ${err?.message ?? err}`);
         notifyExternal({ source: 'session:start', level: 'error', message: `新建会话失败: ${errMessage(err)}` });
