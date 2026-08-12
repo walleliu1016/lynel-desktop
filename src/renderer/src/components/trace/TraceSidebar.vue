@@ -225,7 +225,7 @@ function fmtTokens(n: number): string {
   border-bottom: 1px solid var(--border);
   font-size: 11px;
   flex-shrink: 0;
-  -webkit-app-region: drag;
+  /* 不设 drag：右侧窗口控制按钮叠加在本条上，拖拽区会吞掉其点击 */
 }
 .trace-toolbar {
   height: 32px;

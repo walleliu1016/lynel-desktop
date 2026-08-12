@@ -57,7 +57,11 @@ function onEscape() {
 <style scoped>
 .trace-overlay {
   position: absolute;
-  inset: 0;
+  /* 从工具栏（40px）下方开始覆盖，避免遮挡右上角窗口控制按钮 */
+  top: 40px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 50;
   display: flex;
   justify-content: flex-end;
@@ -71,7 +75,8 @@ function onEscape() {
 .panel {
   position: relative;
   z-index: 1;
-  width: 50%;
+  /* 足够容纳 7 个详情 tab（约 532px），避免出现横向滚动条 */
+  width: clamp(600px, 62%, 85%);
   max-width: 100%;
   height: 100%;
   display: flex;
