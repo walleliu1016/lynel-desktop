@@ -333,7 +333,7 @@ async function unbindBot() {
 
 <style scoped>
 .session-item {
-  display: flex; align-items: stretch; gap: 10px;
+  display: flex; align-items: center; gap: 10px;
   padding: 10px; border-radius: var(--radius-sm);
   cursor: pointer; position: relative;
   background: transparent;
