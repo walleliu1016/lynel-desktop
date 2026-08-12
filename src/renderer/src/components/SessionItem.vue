@@ -471,7 +471,7 @@ async function unbindBot() {
 .picker-overlay { z-index: 1001; }
 .bot-picker .menu-item {
   border-bottom: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius-md);
   padding: 8px 10px;
 }
 .bot-picker .menu-item:last-of-type {
@@ -480,7 +480,7 @@ async function unbindBot() {
 .bot-picker .menu-item:hover {
   background: var(--bg-hover);
 }
-.bot-picker { min-width: 200px; }
+.bot-picker { min-width: 200px; border-radius: var(--radius-lg); }
 .picker-title {
   padding: 6px 10px; font-size: var(--fs-body-sm); color: var(--text-tertiary);
   font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
