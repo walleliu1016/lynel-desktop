@@ -8,7 +8,10 @@
       :disabled="disabled"
       @click="toggle"
     >
-      <span v-if="selectedIcon" class="ls-badge" :style="selectedIconStyle">{{ selectedIcon.text }}</span>
+      <span v-if="selectedIcon" class="ls-badge" :style="selectedIconStyle">
+        <svg v-if="selectedIcon.svg" class="ls-badge-svg" :viewBox="selectedIcon.viewBox" v-html="selectedIcon.svg" />
+        <template v-else>{{ selectedIcon.text }}</template>
+      </span>
       <span class="ls-value" :class="{ placeholder: !selectedLabel }">{{ selectedLabel || placeholder || '请选择' }}</span>
       <Icon name="chevron-down" :size="12" class="ls-chevron" :class="{ open }" />
     </button>
@@ -23,7 +26,10 @@
           :disabled="opt.disabled"
           @click="pick(opt)"
         >
-          <span v-if="opt.icon" class="ls-badge" :style="badgeStyle(opt)">{{ opt.icon.text }}</span>
+          <span v-if="opt.icon" class="ls-badge" :style="badgeStyle(opt)">
+            <svg v-if="opt.icon.svg" class="ls-badge-svg" :viewBox="opt.icon.viewBox" v-html="opt.icon.svg" />
+            <template v-else>{{ opt.icon.text }}</template>
+          </span>
           <span class="ls-option-label">{{ opt.label }}</span>
           <Icon v-if="opt.value === modelValue" name="check" :size="13" class="ls-check" />
         </button>
@@ -41,8 +47,8 @@ export interface SelectOption {
   value: string
   label: string
   disabled?: boolean
-  /** 选项前缀徽章（如 Agent monogram）：渲染在 label 前 */
-  icon?: { text: string; bg: string; fg: string }
+  /** 选项前缀徽章（如 Agent logo）：渲染在 label 前；有 svg 渲染品牌图标，否则渲染 text 文字徽章 */
+  icon?: { bg: string; fg: string; text?: string; svg?: string; viewBox?: string }
 }
 
 const props = withDefaults(defineProps<{
@@ -142,7 +148,9 @@ onBeforeUnmount(close)
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px; border-radius: 5px;
   font-size: 8px; font-weight: 800; flex-shrink: 0; user-select: none;
+  overflow: hidden;
 }
+.ls-badge-svg { width: 100%; height: 100%; display: block; flex-shrink: 0; }
 .ls-value { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ls-value.placeholder { color: var(--text-tertiary); }
 .ls-chevron { color: var(--text-tertiary); flex-shrink: 0; transition: transform 0.15s; }

@@ -11,6 +11,7 @@
 import { computed } from 'vue'
 import Select, { type SelectOption } from './Select.vue'
 import { AGENT_KINDS, agentMeta, type AgentKind } from '../types/agents'
+import { AGENT_LOGOS } from '../agentLogos'
 
 const props = defineProps<{ modelValue: AgentKind }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: AgentKind): void }>()
@@ -18,10 +19,16 @@ const emit = defineEmits<{ (e: 'update:modelValue', v: AgentKind): void }>()
 const options = computed<SelectOption[]>(() =>
   AGENT_KINDS.map((k) => {
     const m = agentMeta(k)
+    const logo = AGENT_LOGOS[k]
     return {
       value: k,
       label: m.label,
-      icon: { text: m.abbr, bg: `var(${m.bgVar})`, fg: `var(${m.fgVar})` },
+      icon: {
+        bg: `var(${m.bgVar})`,
+        fg: `var(${m.fgVar})`,
+        svg: logo.inner,
+        viewBox: logo.viewBox,
+      },
     }
   }),
 )
