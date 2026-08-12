@@ -3,10 +3,7 @@
     class="session-item"
     :class="{ active: isActive, awaiting: state === 'awaiting_permission' }"
     @click="$emit('select')"
-    @mouseenter="onEnter"
-    @mouseleave="onLeave"
     @contextmenu.prevent="onContextMenu"
-    ref="itemEl"
   >
     <AgentBadge :agent="props.meta.agent" size="sm" />
     <div class="body">
@@ -82,20 +79,12 @@
         </div>
       </div>
     </div>
-    <SessionTooltip
-      v-if="showTip"
-      :meta="meta"
-      :anchor="tipAnchor"
-      @mouseenter="cancelHide"
-      @mouseleave="onLeave"
-    />
   </Teleport>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, nextTick, onMounted, onUnmounted } from 'vue'
 import AgentBadge from './AgentBadge.vue'
-import SessionTooltip from './SessionTooltip.vue'
 import Icon from './Icon.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useBotsStore } from '../stores/bots'
@@ -109,12 +98,7 @@ const emit = defineEmits<{ (e: 'select'): void }>()
 
 const sessions = useSessionsStore()
 const botsStore = useBotsStore()
-const showTip = ref(false)
-const itemEl = ref<HTMLElement | null>(null)
-const tipAnchor = ref({ x: 0, y: 0 })
 const showBotPicker = ref(false)
-let showTimer: ReturnType<typeof setTimeout> | null = null
-let hideTimer: ReturnType<typeof setTimeout> | null = null
 
 const editing = ref(false)
 const editValue = ref('')
@@ -123,27 +107,8 @@ const inputEl = ref<HTMLInputElement | null>(null)
 const menuOpen = ref(false)
 const menuStyle = ref({ top: '0px', left: '0px' })
 
-function onEnter() {
-  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
-  showTimer = setTimeout(() => {
-    showTip.value = true
-    if (itemEl.value) {
-      const r = itemEl.value.getBoundingClientRect()
-      tipAnchor.value = { x: r.right + 8, y: r.top }
-    }
-  }, 1000)
-}
-function onLeave() {
-  if (showTimer) { clearTimeout(showTimer); showTimer = null }
-  hideTimer = setTimeout(() => { showTip.value = false }, 150)
-}
-
 function closeMenu() {
   menuOpen.value = false
-}
-function cancelHide() {
-  if (showTimer) { clearTimeout(showTimer); showTimer = null }
-  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
 }
 
 async function onContextMenu(e: MouseEvent) {
