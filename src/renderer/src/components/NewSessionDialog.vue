@@ -315,6 +315,13 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
   animation: spin 0.75s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* reset.css 在系统「减少动态效果」时会把所有动画压成 0.01ms/1 次，
+   loading 转圈是状态反馈动画，仍需保持旋转，故在此豁免 */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: spin 0.75s linear infinite !important;
+  }
+}
 
 .option-disabled {
   padding: 8px 10px; background: var(--bg-input); border: 1px dashed var(--border);
