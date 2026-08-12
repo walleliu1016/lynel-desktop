@@ -10,28 +10,22 @@
   >
     <AgentBadge :agent="props.meta.agent" size="sm" />
     <div class="body">
-      <div class="row-top">
-        <input
-          v-if="editing"
-          ref="inputEl"
-          v-model="editValue"
-          class="title-input"
-          @blur="commitRename"
-          @keydown.enter="commitRename"
-          @keydown.escape="cancelRename"
-        />
-        <span v-else class="title" :title="title">{{ title }}</span>
-        <div class="right-group">
-          <span class="time">{{ duration }}</span>
-          <span v-if="stateDotClass" class="dot" :class="stateDotClass"></span>
-        </div>
-      </div>
-      <div class="row-bottom">
-        <span class="meta" :title="`${projectName} · ${msgCount}`">{{ projectName }} · {{ msgCount }}</span>
-        <span v-if="currentBotName" class="bot-tag"><Icon name="bot" :size="10" />{{ currentBotName }}</span>
-      </div>
-      <div v-if="eventText" class="event">{{ eventText }}</div>
+      <input
+        v-if="editing"
+        ref="inputEl"
+        v-model="editValue"
+        class="title-input"
+        @blur="commitRename"
+        @keydown.enter="commitRename"
+        @keydown.escape="cancelRename"
+      />
+      <span v-else class="title">{{ title }}</span>
     </div>
+    <span class="time">{{ duration }}</span>
+    <span v-if="currentBotId" class="bot-mark" :title="botMarkTitle">
+      <Icon name="bot" :size="12" />
+    </span>
+    <span v-if="stateDotClass" class="dot" :class="stateDotClass"></span>
   </div>
   <Teleport to="body">
     <div
@@ -92,7 +86,6 @@
       v-if="showTip"
       :meta="meta"
       :anchor="tipAnchor"
-      :settings-path="settingsPath"
       @mouseenter="cancelHide"
       @mouseleave="onLeave"
     />
@@ -108,10 +101,10 @@ import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useBotsStore } from '../stores/bots'
 import { pushToast } from '../composables/useToast'
 
-import { ClipboardWrite, GetSessionSettingsPath } from '../composables/useElectron'
+import { ClipboardWrite } from '../composables/useElectron'
 import type { SessionMeta } from '../types/session'
 
-const props = defineProps<{ meta: SessionMeta; isActive: boolean; dup?: boolean }>()
+const props = defineProps<{ meta: SessionMeta; isActive: boolean }>()
 const emit = defineEmits<{ (e: 'select'): void }>()
 
 const sessions = useSessionsStore()
@@ -130,8 +123,6 @@ const inputEl = ref<HTMLInputElement | null>(null)
 const menuOpen = ref(false)
 const menuStyle = ref({ top: '0px', left: '0px' })
 
-const settingsPath = ref('')
-
 function onEnter() {
   if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
   showTimer = setTimeout(() => {
@@ -140,7 +131,6 @@ function onEnter() {
       const r = itemEl.value.getBoundingClientRect()
       tipAnchor.value = { x: r.right + 8, y: r.top }
     }
-    GetSessionSettingsPath(props.meta.id).then((p) => { settingsPath.value = p }).catch(() => {})
   }, 1000)
 }
 function onLeave() {
@@ -207,26 +197,6 @@ function openBotPicker() {
 
 const title = computed(() => sessionDisplayTitle(props.meta))
 
-const msgCount = computed(() => {
-  const n = props.meta.msg_count || 0
-  return n ? `${n} 条消息` : '暂无消息'
-})
-
-const eventText = computed(() => {
-  if (props.meta.lastEvent) {
-    return `${props.meta.lastEvent.type} · ${props.meta.lastEvent.summary}`
-  }
-  return ''
-})
-
-const projectName = computed(() => {
-  const name = props.meta.project || props.meta.workdir || '新会话'
-  if (props.dup) {
-    return name + ' #' + props.meta.id.slice(0, 4)
-  }
-  return name
-})
-
 // 每分钟更新一次，驱动 duration 重新计算
 const tick = ref(0)
 let timer: ReturnType<typeof setInterval> | null = null
@@ -285,6 +255,8 @@ const stateDotClass = computed(() => {
     case 'done':
     case 'ended':
       return 'done'
+    case 'idle':
+      return 'idle'
     default: return ''
   }
 })
@@ -292,6 +264,9 @@ const stateDotClass = computed(() => {
 // Bot 绑定
 const currentBotName = computed(() => sessions.getSessionBotName(props.meta.id))
 const currentBotId = computed(() => sessions.getSessionBotId(props.meta.id))
+const botMarkTitle = computed(() =>
+  currentBotName.value ? `已绑定 Bot：${currentBotName.value}` : '已绑定 Bot'
+)
 
 const botList = computed(() => botsStore.bots)
 
@@ -344,17 +319,18 @@ async function unbindBot() {
 .session-item.active {
   background: var(--session-item-active-bg);
 }
-.session-item.active .title { color: var(--accent); }
+/* 选中强调：左侧 accent 竖条，与背景 tint + 标题着色构成清晰对比 */
+.session-item.active::before {
+  content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
+  background: var(--accent); border-radius: 2px;
+}
+.session-item.active .title { color: var(--accent); font-weight: 600; }
 .session-item.awaiting {
   background: var(--status-error-soft);
 }
 .body {
   flex: 1; min-width: 0;
-  display: flex; flex-direction: column;
-  justify-content: center; gap: 3px;
-}
-.row-top {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center;
 }
 .title {
   flex: 1; min-width: 0;
@@ -371,13 +347,16 @@ async function unbindBot() {
   padding: 2px 6px;
   outline: none;
 }
-.right-group {
-  display: flex; align-items: center; gap: 6px;
-  flex-shrink: 0;
-}
 .time {
   font-size: var(--fs-caption); color: var(--text-tertiary);
-  white-space: nowrap;
+  white-space: nowrap; flex-shrink: 0;
+}
+.bot-mark {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center;
+  color: var(--accent);
+  margin-right: 2px;
+  cursor: default;
 }
 .dot {
   width: 6px; height: 6px; border-radius: 50%;
@@ -388,31 +367,11 @@ async function unbindBot() {
   box-shadow: 0 0 6px var(--accent-glow);
 }
 .dot.done { background: var(--status-success); }
+.dot.idle { background: var(--text-tertiary); }
 .dot.awaiting {
   background: var(--status-error);
   animation: pulse-opacity 1.2s ease-in-out infinite;
 }
-.row-bottom {
-  display: flex; align-items: center; gap: 8px;
-}
-.meta {
-  flex: 1;
-  font-size: var(--fs-body-sm); color: var(--text-secondary);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.bot-tag {
-  display: inline-flex; align-items: center; gap: 3px;
-  font-size: 9px; padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--accent-soft-bg);
-  color: var(--accent-light);
-  white-space: nowrap; flex-shrink: 0;
-}
-.event {
-  font-size: var(--fs-body-sm); color: var(--text-secondary); margin-top: 2px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.event :deep(b), .event b { font-weight: 600; color: var(--text-primary); }
 .context-menu-overlay {
   position: fixed; inset: 0; z-index: 999;
 }

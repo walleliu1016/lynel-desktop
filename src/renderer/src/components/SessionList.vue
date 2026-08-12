@@ -26,7 +26,6 @@
             :key="s.id"
             :meta="s"
             :is-active="s.id === activeId"
-            :dup="dupProjects.has(s.project)"
             @select="$emit('select', s.id)"
           />
           <div v-if="!filteredList.length" class="empty">
@@ -64,14 +63,6 @@ const filteredList = computed(() => {
     const sid = s.id.toLowerCase()
     return pn.includes(q) || wd.includes(q) || title.includes(q) || sid.includes(q)
   })
-})
-
-const dupProjects = computed(() => {
-  const counts: Record<string, number> = {}
-  for (const s of props.list) {
-    counts[s.project] = (counts[s.project] || 0) + 1
-  }
-  return new Set(Object.keys(counts).filter((k) => counts[k] > 1))
 })
 </script>
 
