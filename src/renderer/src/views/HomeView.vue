@@ -20,7 +20,7 @@
           <span class="brand-version">(v{{ version }})</span>
         </div>
         <!-- 会话列表上方：首页入口（全宽） -->
-        <button v-if="!sidebarCollapsed" class="home-entry" aria-label="首页" title="首页" @click="tabsStore.openWelcome()">
+        <button v-if="!sidebarCollapsed" class="home-entry" :class="{ active: tabsStore.activeType === 'welcome' }" aria-label="首页" title="首页" @click="tabsStore.openWelcome()">
           <Icon name="sparkles" :size="16" />
           <span>首页</span>
         </button>
@@ -658,21 +658,20 @@ watch(
   color: var(--text-primary); font-size: 13px; font-family: inherit;
 }
 .search-inplace-input::placeholder { color: var(--text-tertiary); }
-/* 会话列表上方：首页入口（全宽按钮） */
+/* 会话列表上方：首页入口（平铺导航项） */
 .home-entry {
   display: flex; align-items: center; justify-content: flex-start; gap: 6px;
   padding: 0 12px;
-  margin: 8px 10px 6px;
+  margin: 6px 8px 4px;
   height: 36px; flex-shrink: 0;
-  border: 1px solid var(--border-strong); border-radius: var(--radius-md);
-  background: var(--bg-input); color: var(--text-primary);
+  border: none; border-radius: var(--radius-md);
+  background: transparent; color: var(--text-secondary);
   font-size: var(--fs-body-sm); font-weight: 600; cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s;
   -webkit-app-region: no-drag;
 }
-.home-entry:hover {
-  background: var(--bg-panel); border-color: var(--accent); color: var(--accent);
-}
+.home-entry:hover { background: var(--bg-hover); color: var(--text-primary); }
+.home-entry.active { color: var(--accent); }
 .search-entry { margin-top: 0; }
 /* 会话列表标题行右侧：打开/搜索 */
 .head-action {

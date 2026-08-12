@@ -107,34 +107,29 @@ function onSubmit() {
 
 <style scoped>
 .quick-launch {
-  display: flex; flex-direction: column; gap: 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  background: var(--bg-input);
-  padding: 10px 12px;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 4px 2px;
 }
-.quick-launch:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft-bg);
-}
-.ql-agent { width: auto; min-width: 140px; flex-shrink: 0; }
+.ql-agent { flex-shrink: 0; }
 .ql-input {
-  width: 100%; border: none; outline: none; background: transparent;
+  width: 100%; border: none; border-bottom: 1px solid var(--border-strong);
+  border-radius: 0; outline: none; background: transparent;
   color: var(--text-primary); font-size: var(--fs-body); font-family: inherit;
-  resize: none; line-height: 1.5;
+  resize: none; line-height: 1.5; padding: 4px 2px;
+  transition: border-color 0.15s;
 }
+.ql-input:focus { border-bottom-color: var(--accent); }
 .ql-input::placeholder { color: var(--text-tertiary); }
 .ql-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .ql-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .ql-dir {
   display: flex; align-items: center; gap: 6px; max-width: 200px;
-  padding: 6px 12px; border-radius: var(--radius-md);
-  border: 1px solid var(--border-strong); background: var(--bg-input);
-  color: var(--text-primary); font-size: var(--fs-body-sm); cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  padding: 6px 10px; border-radius: var(--radius-md);
+  border: none; background: transparent;
+  color: var(--text-secondary); font-size: var(--fs-body-sm); cursor: pointer;
+  transition: background 0.12s, color 0.12s;
 }
-.ql-dir:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.ql-dir:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
 .ql-dir-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ql-chevron { color: var(--text-tertiary); flex-shrink: 0; }
 .ql-bot-wrap { display: flex; align-items: center; gap: 6px; min-width: 0; }

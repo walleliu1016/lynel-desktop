@@ -91,9 +91,7 @@ onMounted(() => {
 .card {
   width: 100%; max-width: 860px;
   flex: 1 1 auto; min-height: 0;
-  background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); box-shadow: var(--shadow-panel);
-  padding: 28px 28px 22px; display: flex; flex-direction: column; overflow: hidden;
+  padding: 8px 4px 22px; display: flex; flex-direction: column; overflow: hidden;
 }
 .hero { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 0 16px; }
 .brand { display: flex; justify-content: center; margin-bottom: 14px; }
@@ -109,7 +107,7 @@ onMounted(() => {
   padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
   color: var(--accent); background: var(--accent-soft-bg);
 }
-.quick { width: 100%; max-width: 560px; }
+.quick { width: 100%; max-width: 720px; }
 .recent-section { flex: 0 1 auto; max-height: 42%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; margin-top: 18px; }
 .section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .section-title { font-size: var(--fs-caption); font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; }
