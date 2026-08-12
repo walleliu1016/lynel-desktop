@@ -1,39 +1,37 @@
 <template>
   <div class="tip" :style="{ left: anchor.x + 'px', top: anchor.y + 'px' }" @mouseenter="$emit('mouseenter')" @mouseleave="onMouseLeave" @contextmenu.stop="onCtx">
-    <div class="section" v-if="meta.agent">
-      <div class="agent-row">
-        <AgentBadge :agent="meta.agent" size="sm" />
-        <span class="value">{{ agentMeta(meta.agent).label }}</span>
-      </div>
+    <div class="agent-row" v-if="meta.agent">
+      <AgentBadge :agent="meta.agent" size="sm" />
+      <span class="agent-name">{{ agentMeta(meta.agent).label }}</span>
     </div>
-    <div class="section">
-      <div class="label">Session ID</div>
-      <div class="mono-value">{{ meta.id }}</div>
+    <div class="line" v-if="botName">
+      <span class="k">绑定 Bot</span>
+      <span class="v" :title="botName">{{ botName }}</span>
     </div>
-    <div class="section" v-if="settingsPath">
-      <div class="label">Settings</div>
-      <div class="mono-value">{{ settingsPath }}</div>
+    <div class="line">
+      <span class="k">SessionID</span>
+      <span class="v mono" :title="meta.id">{{ meta.id }}</span>
     </div>
-    <div class="section">
-      <div class="label">Project</div>
-      <div class="value">{{ meta.project || meta.workdir }}</div>
+    <div class="line">
+      <span class="k">项目</span>
+      <span class="v" :title="meta.project || meta.workdir">{{ meta.project || meta.workdir }}</span>
     </div>
-    <div class="section">
-      <div class="label">工作目录</div>
-      <div class="value">{{ meta.workdir }}</div>
+    <div class="line">
+      <span class="k">工作目录</span>
+      <span class="v" :title="meta.workdir">{{ meta.workdir }}</span>
     </div>
     <div class="divider" />
-    <div class="section" v-if="meta.user_title">
-      <div class="label">用户标题</div>
-      <div class="value">{{ meta.user_title }}</div>
+    <div class="line" v-if="meta.user_title">
+      <span class="k">用户标题</span>
+      <span class="v" :title="meta.user_title">{{ meta.user_title }}</span>
     </div>
-    <div class="section" v-if="meta.ai_title">
-      <div class="label">AI 标题</div>
-      <div class="value">{{ meta.ai_title }}</div>
+    <div class="line" v-if="meta.ai_title">
+      <span class="k">AI 标题</span>
+      <span class="v" :title="meta.ai_title">{{ meta.ai_title }}</span>
     </div>
-    <div class="section">
-      <div class="label">首条提示</div>
-      <div class="value">{{ meta.first_prompt?.slice(0, 80) || '-' }}{{ (meta.first_prompt?.length || 0) > 80 ? '…' : '' }}</div>
+    <div class="line">
+      <span class="k">首条提示</span>
+      <span class="v" :title="meta.first_prompt || ''">{{ meta.first_prompt?.trim() || '-' }}</span>
     </div>
     <div class="divider" />
     <div class="stats">
@@ -57,9 +55,13 @@
 import { computed, ref } from 'vue'
 import AgentBadge from './AgentBadge.vue'
 import { agentMeta } from '../types/agents'
+import { useSessionsStore } from '../stores/sessions'
 import type { SessionMeta } from '../types/session'
 
-const props = defineProps<{ meta: SessionMeta; anchor: { x: number; y: number }; settingsPath?: string }>()
+const props = defineProps<{ meta: SessionMeta; anchor: { x: number; y: number } }>()
+
+const sessions = useSessionsStore()
+const botName = computed(() => sessions.getSessionBotName(props.meta.id))
 const emit = defineEmits<{ (e: 'mouseenter'): void; (e: 'mouseleave'): void }>()
 
 const ctxOpen = ref(false)
@@ -89,38 +91,51 @@ const formatSize = computed(() => {
 <style scoped>
 .tip {
   position: fixed;
-  background: var(--tooltip-bg);
-  border-radius: var(--radius-sm);
-  padding: 14px 16px;
-  min-width: 320px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  min-width: 300px;
   max-width: 400px;
   z-index: 1000;
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--shadow-window);
+  color: var(--text-primary);
 }
-.section { margin-bottom: 8px; }
-.section:last-child { margin-bottom: 0; }
-.agent-row { display: flex; align-items: center; gap: 8px; }
-.label {
-  font-size: 9px; color: color-mix(in srgb, var(--tooltip-color) 60%, transparent);
-  text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 2px;
+.agent-row {
+  display: flex; align-items: center; gap: 8px;
+  padding-bottom: 8px;
 }
-.value {
-  font-size: var(--fs-caption); color: var(--tooltip-color);
-  line-height: 1.4; word-break: break-all;
+.agent-name {
+  font-size: var(--fs-body); font-weight: 600; color: var(--text-primary);
 }
-.mono-value {
-  font-size: var(--fs-caption); font-family: var(--font-mono);
-  color: var(--accent-light); word-break: break-all; line-height: 1.4;
+.line {
+  display: flex; align-items: center; gap: 8px;
+  padding: 3px 0;
+  font-size: var(--fs-body-sm);
+}
+.k {
+  flex-shrink: 0; width: 68px;
+  font-size: var(--fs-caption); color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.k::after { content: ':'; }
+.v {
+  flex: 1; min-width: 0;
+  color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.v.mono {
+  font-family: var(--font-mono); color: var(--accent);
 }
 .divider {
-  border-top: 1px solid color-mix(in srgb, var(--tooltip-color) 15%, transparent); margin: 10px 0;
+  border-top: 1px solid var(--border); margin: 8px 0;
 }
 .stats {
-  display: flex; gap: 16px;
+  display: flex; gap: 20px; padding-top: 2px;
 }
 .stat {
   display: flex; flex-direction: column; gap: 1px;
 }
-.stat-v { font-size: var(--fs-caption); color: var(--tooltip-color); font-weight: 500; }
-.stat-k { font-size: 9px; color: color-mix(in srgb, var(--tooltip-color) 60%, transparent); }
+.stat-v { font-size: var(--fs-body-sm); color: var(--text-primary); font-weight: 500; }
+.stat-k { font-size: 9px; color: var(--text-tertiary); }
 </style>

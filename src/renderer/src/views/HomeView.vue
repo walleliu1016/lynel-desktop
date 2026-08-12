@@ -52,7 +52,7 @@
           @select="onSelectSession"
         >
           <template #actions>
-            <button class="head-action tooltip-wrap" aria-label="打开 Session" title="打开 Session" @click="showNewSession = true">
+            <button class="head-action tooltip-wrap" aria-label="打开 Session" @click="showNewSession = true">
               <Icon name="folder-open" :size="13" />
               <span class="tooltip-down">打开 Session</span>
             </button>
