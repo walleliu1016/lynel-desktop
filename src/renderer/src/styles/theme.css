@@ -74,7 +74,7 @@
 
   --session-item-bg: transparent;
   --session-item-hover-bg: #f3f4f6;
-  --session-item-active-bg: #e8f0fe;
+  --session-item-active-bg: #d5e6fa;
 
   --assistant-card-bg: #ffffff;
   --message-card-shadow: var(--shadow-card);
@@ -211,7 +211,7 @@
 
   --session-item-bg: transparent;
   --session-item-hover-bg: #3A3A3C;
-  --session-item-active-bg: #1E2A3A;
+  --session-item-active-bg: #26466b;
 
   --assistant-card-bg: #2C2C2E;
   --message-card-shadow: var(--shadow-card);

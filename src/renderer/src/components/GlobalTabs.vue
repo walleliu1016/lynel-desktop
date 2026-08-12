@@ -137,7 +137,7 @@ function onMouseDown(e: MouseEvent, id: string) {
   transition: background .15s, color .15s;
 }
 .tab:hover { background: var(--bg-hover); color: var(--text-primary); }
-.tab.active { background: var(--accent-soft-bg); color: var(--accent); }
+.tab.active { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); font-weight: 600; }
 .tab.active::before {
   content: ''; position: absolute; top: -2px; left: 8px; right: 8px; height: 2px;
   background: var(--accent); border-radius: 2px;
