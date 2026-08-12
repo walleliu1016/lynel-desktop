@@ -1,4 +1,6 @@
 <template>
+  <!-- Teleport 到 body：弹窗脱离 .home 的层级，避免被中间终端区域的合成层盖住右侧 -->
+  <Teleport to="body">
   <div class="overlay" :class="{ open }" @click.self="open && $emit('close')">
     <SpringTransition>
     <div v-if="open" class="dialog">
@@ -102,6 +104,7 @@
     </div>
     </SpringTransition>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -211,7 +214,8 @@ function onSubmit() {
 .overlay {
   position: fixed; inset: 0; background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
-  z-index: 1000;
+  /* Teleport 到 body 顶层后，z-index 提到接近 toast，确保盖住终端合成层 */
+  z-index: 9998;
   opacity: 0; pointer-events: none;
   transition: opacity 0.2s ease;
 }
