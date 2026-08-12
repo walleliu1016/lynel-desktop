@@ -469,18 +469,25 @@ async function unbindBot() {
   height: 1px; background: var(--border); margin: 4px 0;
 }
 .picker-overlay { z-index: 1001; }
-.bot-picker .menu-item {
-  border-bottom: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 8px 10px;
+/* Bot 选择弹窗：与 Agent 下拉面板（Select.ls-panel）同款样式 */
+.bot-picker {
+  min-width: 200px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  max-height: 280px;
+  overflow-y: auto;
 }
-.bot-picker .menu-item:last-of-type {
+.bot-picker .menu-item {
   border-bottom: none;
+  border-radius: var(--radius-md);
+  padding: 7px 10px;
 }
 .bot-picker .menu-item:hover {
-  background: var(--bg-hover);
+  background: var(--accent-soft-bg);
 }
-.bot-picker { min-width: 200px; border-radius: var(--radius-lg); }
 .picker-title {
   padding: 6px 10px; font-size: var(--fs-body-sm); color: var(--text-tertiary);
   font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
@@ -502,7 +509,7 @@ async function unbindBot() {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   text-align: left;
   background: transparent;
   border: none;
