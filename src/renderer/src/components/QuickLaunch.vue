@@ -108,17 +108,20 @@ function onSubmit() {
 <style scoped>
 .quick-launch {
   display: flex; flex-direction: column; gap: 10px;
-  padding: 4px 2px;
+  padding: 2px;
 }
-.ql-agent { flex-shrink: 0; }
+.ql-agent { width: auto; min-width: 150px; max-width: 210px; flex-shrink: 0; }
 .ql-input {
-  width: 100%; border: none; border-bottom: 1px solid var(--border-strong);
-  border-radius: 0; outline: none; background: transparent;
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
   color: var(--text-primary); font-size: var(--fs-body); font-family: inherit;
-  resize: none; line-height: 1.5; padding: 4px 2px;
-  transition: border-color 0.15s;
+  resize: none; line-height: 1.5;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-.ql-input:focus { border-bottom-color: var(--accent); }
+.ql-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft-bg); }
 .ql-input::placeholder { color: var(--text-tertiary); }
 .ql-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .ql-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
