@@ -9,21 +9,7 @@
               <span class="brand-desktop">Desktop</span>
             </div>
           </div>
-          <p class="tagline">一个终端，调度所有 Agent——请求、成本、审批，全程透明可控。</p>
-          <ul class="feats">
-            <li>
-              <Icon name="terminal" :size="14" />
-              <span>Claude / Codex / OpenCode / OMP 四款 Agent 统一调度</span>
-            </li>
-            <li>
-              <Icon name="activity" :size="14" />
-              <span>API 调用逐笔透明——模型、Token、延迟、费用一目了然</span>
-            </li>
-            <li>
-              <Icon name="smartphone" :size="14" />
-              <span>权限请求推送企业微信与手机，远程一键审批，流程不被打断</span>
-            </li>
-          </ul>
+          <p class="tagline">一个终端支持多 Agent，Trace 全程可查，企业微信与手机消息同步、远程审批。</p>
           <QuickLaunch class="quick" :loading="creating" @create="onQuickCreate" />
         </div>
         <div class="recent-section">
@@ -111,17 +97,6 @@ onMounted(() => {
   margin: 6px 0 14px; font-size: var(--fs-body); color: var(--text-secondary);
   text-align: center; line-height: 1.6; max-width: 600px;
 }
-.feats {
-  list-style: none; padding: 0; margin: 0 0 18px;
-  width: fit-content;
-  display: flex; flex-direction: column; align-items: flex-start; gap: 9px;
-}
-.feats li {
-  display: flex; align-items: center; gap: 10px;
-  font-size: var(--fs-body-sm); color: var(--text-secondary); line-height: 1.5;
-  text-align: left;
-}
-.feats li svg { color: var(--accent); flex: 0 0 14px; }
 .quick { width: 100%; max-width: 720px; }
 /* 宽度与上方 QuickLaunch 输入框对齐（.quick 同为 max-width: 720px） */
 .recent-section { flex: 0 1 auto; max-height: 42%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; width: 100%; max-width: 720px; margin: 18px auto 0; }
