@@ -49,7 +49,7 @@
             <RecentSessionList
               v-else
               :list="filteredRecent"
-              :limit="10"
+              :limit="5"
               @select="$emit('open-recent', $event)"
             />
           </template>
@@ -123,7 +123,8 @@ onMounted(() => {
 }
 .feats li svg { color: var(--accent); flex: 0 0 14px; }
 .quick { width: 100%; max-width: 720px; }
-.recent-section { flex: 0 1 auto; max-height: 42%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; margin-top: 18px; }
+/* 宽度与上方 QuickLaunch 输入框对齐（.quick 同为 max-width: 720px） */
+.recent-section { flex: 0 1 auto; max-height: 42%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; width: 100%; max-width: 720px; margin: 18px auto 0; }
 .section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .section-title { font-size: var(--fs-caption); font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; }
 .count { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft-bg); color: var(--accent); }

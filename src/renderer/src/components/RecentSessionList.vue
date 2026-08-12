@@ -1,5 +1,5 @@
 <template>
-  <div class="recent-list">
+  <div class="recent-list" :class="{ expanded }">
     <div
       v-for="item in visibleList"
       :key="item.sessionId"
@@ -16,7 +16,7 @@
       class="toggle-more"
       @click.stop="expanded = !expanded"
     >
-      {{ expanded ? '收起' : `显示另外 ${list.length - limit} 个会话...` }}
+      {{ expanded ? '收起' : `另外 ${list.length - limit} 个会话` }}
     </button>
   </div>
 </template>
@@ -76,7 +76,9 @@ function duration(lastOpenedAt: number) {
 </script>
 
 <style scoped>
-.recent-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 4px; }
+/* 默认折叠只显示前 5 条，隐藏滚动条；点击"另外 xx 会话"展开后才可滚动 */
+.recent-list { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 4px; }
+.recent-list.expanded { overflow-y: auto; overflow-x: hidden; }
 .recent-item {
   display: flex; align-items: center; gap: 8px;
   padding: 6px 10px; border-radius: var(--radius-sm);
