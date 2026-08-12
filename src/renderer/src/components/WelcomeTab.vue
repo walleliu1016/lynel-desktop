@@ -113,7 +113,7 @@ onMounted(() => {
 }
 .feats {
   list-style: none; padding: 0; margin: 0 0 18px;
-  width: 100%; max-width: 520px;
+  width: fit-content;
   display: flex; flex-direction: column; align-items: flex-start; gap: 9px;
 }
 .feats li {
