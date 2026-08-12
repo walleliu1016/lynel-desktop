@@ -23,8 +23,10 @@ const options = computed<SelectOption[]>(() =>
     return {
       value: k,
       label: m.label,
+      // 与 AgentBadge 一致：不设背景色块，claude/codex 单色 logo 用 fg 色渲染，
+      // opencode/omp 官方 logo 自带品牌底色。
       icon: {
-        bg: `var(${m.bgVar})`,
+        bg: 'transparent',
         fg: `var(${m.fgVar})`,
         svg: logo.inner,
         viewBox: logo.viewBox,

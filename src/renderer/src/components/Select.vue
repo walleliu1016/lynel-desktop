@@ -144,9 +144,10 @@ onBeforeUnmount(close)
 .ls-trigger.open { border-color: var(--accent); }
 .ls-trigger:disabled { opacity: 0.5; cursor: not-allowed; }
 .ls-trigger.is-sm { height: 30px; padding: 0 8px; font-size: 12px; }
+/* 尺寸与 AgentBadge.sm 对齐（16px、圆角 4px），保证下拉框里的图标与列表一致 */
 .ls-badge {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; border-radius: 5px;
+  width: 16px; height: 16px; border-radius: 4px;
   font-size: 8px; font-weight: 800; flex-shrink: 0; user-select: none;
   overflow: hidden;
 }
