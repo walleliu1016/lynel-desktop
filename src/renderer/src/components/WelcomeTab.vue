@@ -109,18 +109,19 @@ onMounted(() => {
 .brand-desktop { color: var(--status-error); font-weight: 500; }
 .tagline {
   margin: 6px 0 14px; font-size: var(--fs-body); color: var(--text-secondary);
-  text-align: center; line-height: 1.6; max-width: 380px;
+  text-align: center; line-height: 1.6; max-width: 600px;
 }
 .feats {
   list-style: none; padding: 0; margin: 0 0 18px;
-  display: flex; flex-direction: column; align-items: center; gap: 9px;
+  width: 100%; max-width: 520px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 9px;
 }
 .feats li {
-  display: flex; align-items: center; gap: 9px;
+  display: flex; align-items: center; gap: 10px;
   font-size: var(--fs-body-sm); color: var(--text-secondary); line-height: 1.5;
   text-align: left;
 }
-.feats li svg { color: var(--accent); flex-shrink: 0; }
+.feats li svg { color: var(--accent); flex: 0 0 14px; }
 .quick { width: 100%; max-width: 720px; }
 .recent-section { flex: 0 1 auto; max-height: 42%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; margin-top: 18px; }
 .section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
