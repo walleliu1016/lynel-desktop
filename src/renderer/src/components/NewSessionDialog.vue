@@ -88,17 +88,7 @@
           </div>
           <div class="form-group">
             <label class="form-label">绑定机器人（可选）</label>
-            <select class="form-input" v-model="selectedBot">
-              <option value="">不绑定</option>
-              <option
-                v-for="b in botOptions"
-                :key="b.id"
-                :value="b.id"
-                :disabled="!isBotAvailable(b.id)"
-              >
-                {{ b.name }}{{ getBotBoundSessionName(b.id) ? `（已绑定 ${getBotBoundSessionName(b.id)}）` : '' }}
-              </option>
-            </select>
+            <Select v-model="selectedBot" :options="botSelectOptions" placeholder="不绑定" :disabled="loading" />
           </div>
           <div class="form-actions">
             <button type="button" class="cancel" :disabled="loading" @click="$emit('close')">取消</button>
@@ -119,6 +109,7 @@ import { ref, watch, computed } from 'vue'
 import Icon from './Icon.vue'
 import SpringTransition from './SpringTransition.vue'
 import AgentSelect from './AgentSelect.vue'
+import Select, { type SelectOption } from './Select.vue'
 import RecentSessionList from './RecentSessionList.vue'
 import { useRecentStore } from '../stores/recent'
 import { useBotsStore } from '../stores/bots'
@@ -146,7 +137,6 @@ const flagsOpen = ref(false)
 const selectedFlags = ref<string[]>([])
 const selectedBot = ref('')
 const isClaude = computed(() => agent.value === 'claude')
-const botOptions = computed(() => botsStore.bots)
 const { search: historySearch, filtered: filteredRecentSessions } = useRecentSessionSearch()
 
 function isBotAvailable(botId: string): boolean {
@@ -159,6 +149,18 @@ function getBotBoundSessionName(botId: string): string | undefined {
   if (!sessionId) return undefined
   return sessions.getBotBoundSessionName(botId)
 }
+
+const botSelectOptions = computed<SelectOption[]>(() => {
+  const opts: SelectOption[] = [{ value: '', label: '不绑定' }]
+  for (const b of botsStore.bots) {
+    opts.push({
+      value: b.id,
+      label: getBotBoundSessionName(b.id) ? `${b.name}（已绑定 ${getBotBoundSessionName(b.id)}）` : b.name,
+      disabled: !isBotAvailable(b.id),
+    })
+  }
+  return opts
+})
 
 const flagOptions = [
   { value: '--verbose', label: '--verbose', desc: '输出详细的调试信息' },
