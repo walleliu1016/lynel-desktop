@@ -29,6 +29,9 @@ import { notifyExternal, errMessage } from './channels/notify-error.js';
 import { OutputBatcher } from './output-batcher.js';
 import { consumeInputForExitDetect, type EscapePhase } from './exit-detect.js';
 import { initUpdater } from './updater/index.js';
+import { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
+
+export { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
 
 const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
 
@@ -285,38 +288,6 @@ function normalizeHookActivity(name: string, evt: any): SessionActivity | null {
 function extractToolInput(input: any): string {
   if (!input || typeof input !== 'object') return '';
   return input.command || input.file_path || input.pattern || input.url || input.query || '';
-}
-
-interface RecentSessionRecord {
-  sessionId: string;
-  workdir: string;
-  project: string;
-  aiTitle: string;
-  firstPrompt: string;
-  userTitle?: string;
-  lastOpenedAt: number;
-  state: string;
-  botId?: string;
-  agent?: AgentKind;   // agent 类型，缺省 claude
-  /** 用户在 claude 终端里主动执行了 /exit（或其他退出命令）。
-   *  claude CLI 内部会把这种 session 标记为终止，即使 jsonl 完整存在，
-   *  后续 `claude --resume <sid>` 也会被它自己拒绝。
-   *  openTerminal 检测到该标志就走 PtyMode.New + 同 sid 重新拉起，
-   *  避免触发 "No conversation found" 错误。spawn 成功后立刻清掉，
-   *  保证新 session 的下一次 reconnect 走正常的 Resume 路径。 */
-  terminated?: boolean;
-}
-
-/** 把 recents 里最新的 agent 字段合并到 jsonl SessionMeta 上（纯函数，便于单测）。 */
-export function mergeRecentAgentField(raw: jsonl.SessionMeta[], recents: RecentSessionRecord[]): jsonl.SessionMeta[] {
-  const map = new Map(recents.map((r) => [r.sessionId, r]));
-  return raw.map((s) => {
-    const r = map.get(s.id);
-    if (!r) return s;
-    const merged: jsonl.SessionMeta = { ...s };
-    if (r.agent) merged.agent = r.agent;
-    return merged;
-  });
 }
 
 const RECENT_SESSIONS_PATH = path.join(os.homedir(), '.lynel-desktop', 'recent-sessions.json');
