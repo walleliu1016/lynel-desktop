@@ -110,8 +110,8 @@ const onCloudToggle = () => {
   resizeWindowForCloud(cloudEnabled.value)
 }
 
-const BASE_HEIGHT = 430
-const CLOUD_EXTRA_HEIGHT = 80
+const BASE_HEIGHT = 510
+const CLOUD_EXTRA_HEIGHT = 60
 function resizeWindowForCloud(enabled: boolean) {
   const h = enabled ? BASE_HEIGHT + CLOUD_EXTRA_HEIGHT : BASE_HEIGHT
   try {
