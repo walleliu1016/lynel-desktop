@@ -9,12 +9,21 @@
               <span class="brand-desktop">Desktop</span>
             </div>
           </div>
-          <p class="tagline">集成 Claude / Codex / OpenCode 的多 Agent 桌面终端，请求与成本全程可视化，权限审批经企业微信与手机远程完成。</p>
-          <div class="badges">
-            <span class="badge">多 Agent 终端</span>
-            <span class="badge">请求可视化</span>
-            <span class="badge">远程审批</span>
-          </div>
+          <p class="tagline">一个终端，调度所有 Agent——请求、成本、审批，全程透明可控。</p>
+          <ul class="feats">
+            <li>
+              <Icon name="terminal" :size="14" />
+              <span>Claude / Codex / OpenCode / OMP 四款 Agent 统一调度</span>
+            </li>
+            <li>
+              <Icon name="activity" :size="14" />
+              <span>API 调用逐笔透明——模型、Token、延迟、费用一目了然</span>
+            </li>
+            <li>
+              <Icon name="smartphone" :size="14" />
+              <span>权限请求推送企业微信与手机，远程一键审批，流程不被打断</span>
+            </li>
+          </ul>
           <QuickLaunch class="quick" :loading="creating" @create="onQuickCreate" />
         </div>
         <div class="recent-section">
@@ -99,14 +108,19 @@ onMounted(() => {
 .brand-lynel { color: var(--accent); }
 .brand-desktop { color: var(--status-error); font-weight: 500; }
 .tagline {
-  margin: 6px 0 10px; font-size: var(--fs-body); color: var(--text-secondary);
-  text-align: center; line-height: 1.6;
+  margin: 6px 0 14px; font-size: var(--fs-body); color: var(--text-secondary);
+  text-align: center; line-height: 1.6; max-width: 380px;
 }
-.badges { display: flex; justify-content: center; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
-.badge {
-  padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
-  color: var(--accent); background: var(--accent-soft-bg);
+.feats {
+  list-style: none; padding: 0; margin: 0 0 18px;
+  display: flex; flex-direction: column; align-items: center; gap: 9px;
 }
+.feats li {
+  display: flex; align-items: center; gap: 9px;
+  font-size: var(--fs-body-sm); color: var(--text-secondary); line-height: 1.5;
+  text-align: left;
+}
+.feats li svg { color: var(--accent); flex-shrink: 0; }
 .quick { width: 100%; max-width: 720px; }
 .recent-section { flex: 0 1 auto; max-height: 42%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; margin-top: 18px; }
 .section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
