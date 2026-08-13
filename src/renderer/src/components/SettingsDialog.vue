@@ -12,6 +12,7 @@
       <div class="content">
         <GeneralTab v-if="active === 'general'" />
         <AppearanceTab v-else-if="active === 'appearance'" />
+        <BuddyTab v-else-if="active === 'buddy'" />
         <CloudTab v-else-if="active === 'cloud'" />
         <ProviderTab v-else-if="active === 'provider'" />
         <BotManagement v-else-if="active === 'bot'" />
@@ -32,6 +33,7 @@ import SpringTransition from './SpringTransition.vue'
 import SettingsTabs, { type Tab } from './SettingsTabs.vue'
 import GeneralTab from './settings/GeneralTab.vue'
 import AppearanceTab from './settings/AppearanceTab.vue'
+import BuddyTab from './settings/BuddyTab.vue'
 import CloudTab from './settings/CloudTab.vue'
 import ProviderTab from './settings/ProviderTab.vue'
 import BotManagement from './settings/BotManagement.vue'

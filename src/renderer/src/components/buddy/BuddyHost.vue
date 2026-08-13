@@ -14,8 +14,7 @@ import type { SessionState } from '../../types/session'
 import BuddyPet from './BuddyPet.vue'
 import { useBuddyStats } from '../../composables/useBuddyStats'
 import { useSettingsStore } from '../../stores/settings'
-import { validateCustomAscii } from '../../data/buddies/validate'
-import type { BuddyRole } from '../../data/buddies/types'
+import { applyCustomAscii } from '../../data/buddies/validate'
 
 const props = withDefaults(defineProps<{
   sessionId?: string | null
@@ -28,32 +27,8 @@ const props = withDefaults(defineProps<{
 const settings = useSettingsStore()
 const { role, stats, startDecay } = useBuddyStats(() => props.sessionId)
 
-/**
- * 自定义 ASCII 覆盖角色画：粘贴内容合法时，把 idle/thinking/celebration/alarm
- * 四组帧都替换为自定义图案（单帧，退化为通用浮动）。
- * 首尾空行剔除：粘贴时首/尾换行会在 lines 里留下空行，渲染会多出空行；
- * 这里只剔除头部/尾部的空行，保留中部空行以维持构图。
- */
-const effectiveRole = computed<BuddyRole>(() => {
-  const base = role.value
-  const ascii = settings.cfg?.buddyCustomAscii || ''
-  const r = validateCustomAscii(ascii)
-  if (!r.ok) return base
-  const lines = r.lines.slice()
-  while (lines.length && lines[0].trim() === '') lines.shift()
-  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop()
-  if (!lines.length) return base
-  return {
-    ...base,
-    frames: {
-      ...base.frames,
-      idle: lines,
-      thinking: lines,
-      celebration: lines,
-      alarm: lines,
-    },
-  }
-})
+/** 自定义 ASCII 覆盖角色画（校验 + 首尾空行剔除见 applyCustomAscii） */
+const effectiveRole = computed(() => applyCustomAscii(role.value, settings.cfg?.buddyCustomAscii || ''))
 
 onMounted(() => {
   startDecay()

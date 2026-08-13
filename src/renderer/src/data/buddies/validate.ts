@@ -1,3 +1,5 @@
+import type { BuddyRole } from './types'
+
 export const MAX_ASCII_LINES = 40
 export const MAX_ASCII_WIDTH = 80
 
@@ -18,4 +20,29 @@ export function validateCustomAscii(input: string): ValidateResult {
     }
   }
   return { ok: true, lines }
+}
+
+/**
+ * 自定义 ASCII 覆盖角色画：粘贴内容合法时，把 idle/thinking/celebration/alarm
+ * 四组帧都替换为自定义图案（单帧，退化为通用浮动）；内容为空或非法时原样返回角色。
+ * 首尾空行剔除：粘贴时首/尾换行会在 lines 里留下空行，渲染会多出空行；
+ * 这里只剔除头部/尾部的空行，保留中部空行以维持构图。
+ */
+export function applyCustomAscii(role: BuddyRole, ascii: string): BuddyRole {
+  const r = validateCustomAscii(ascii)
+  if (!r.ok) return role
+  const lines = r.lines.slice()
+  while (lines.length && lines[0].trim() === '') lines.shift()
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop()
+  if (!lines.length) return role
+  return {
+    ...role,
+    frames: {
+      ...role.frames,
+      idle: lines,
+      thinking: lines,
+      celebration: lines,
+      alarm: lines,
+    },
+  }
 }
