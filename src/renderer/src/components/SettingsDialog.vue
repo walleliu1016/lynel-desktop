@@ -16,6 +16,7 @@
         <CloudTab v-else-if="active === 'cloud'" />
         <ProviderTab v-else-if="active === 'provider'" />
         <BotManagement v-else-if="active === 'bot'" />
+        <UpdaterTab v-else-if="active === 'updater'" />
       </div>
       <div v-if="hookPort" class="foot">
         <span class="port-dot" />
@@ -37,6 +38,7 @@ import BuddyTab from './settings/BuddyTab.vue'
 import CloudTab from './settings/CloudTab.vue'
 import ProviderTab from './settings/ProviderTab.vue'
 import BotManagement from './settings/BotManagement.vue'
+import UpdaterTab from './settings/UpdaterTab.vue'
 import { GetHookServerPort } from '../composables/useElectron'
 
 defineEmits<{ (e: 'close'): void }>()
