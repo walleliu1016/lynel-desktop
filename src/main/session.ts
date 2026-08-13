@@ -125,7 +125,10 @@ export function sendSafe(id: string, prompt: string): void {
   s.process.write(text);
   setTimeout(() => {
     try {
-      s.process.write('\r');
+      // 闭包内重新查找：session 可能在 300ms 内被移除，且避免外部 s.process 空引用
+      const p = sessions.get(id)?.process;
+      if (!p) return;
+      p.write('\r');
     } catch {
       /* pty 已退出 */
     }
