@@ -12,9 +12,11 @@
           v-for="k in AGENT_KINDS"
           :key="k"
           class="agent-btn"
-          :class="{ active: selectedAgent === k }"
+          :class="['a-' + k, { active: selectedAgent === k }]"
           @click="onSwitchAgent(k)"
-        >{{ agentMeta(k).abbr }}</button>
+        >
+          <AgentBadge :agent="k" size="sm" />
+        </button>
       </div>
       <div class="list">
         <div
@@ -102,10 +104,11 @@
 <script setup lang="ts">
 import { onMounted, ref, computed, watch } from 'vue'
 import Icon from '../../components/Icon.vue'
+import AgentBadge from '../../components/AgentBadge.vue'
 import { useProvidersStore } from '../../stores/providers'
 import { TestProviderConnection, FetchProviderModels } from '../../composables/useElectron'
 import { pushToast } from '../../composables/useToast'
-import { AGENT_KINDS, agentMeta } from '../../types/agents'
+import { AGENT_KINDS } from '../../types/agents'
 
 const store = useProvidersStore()
 const selectedId = ref('')
@@ -295,13 +298,16 @@ async function onTest() {
   border-bottom: 1px solid var(--border);
 }
 .agent-btn {
-  flex: 1; padding: 5px 0; font-size: 11px; font-weight: 600;
+  flex: 1; padding: 6px 0; display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--border); border-radius: var(--radius-md);
-  background: var(--bg-input); color: var(--text-tertiary); cursor: pointer;
-  text-align: center;
+  background: var(--bg-input); cursor: pointer;
 }
-.agent-btn:hover { border-color: var(--accent); color: var(--text-primary); }
-.agent-btn.active { background: var(--accent); border-color: var(--accent); color: var(--text-inverse); }
+.agent-btn:hover { border-color: var(--accent); }
+.agent-btn.active { border-color: transparent; }
+.agent-btn.a-claude.active { background: var(--agent-claude-bg); }
+.agent-btn.a-codex.active { background: var(--agent-codex-bg); }
+.agent-btn.a-opencode.active { background: var(--agent-opencode-bg); }
+.agent-btn.a-omp.active { background: var(--agent-omp-bg); }
 .add-btn {
   width: 24px; height: 24px; border-radius: var(--radius-sm);
   border: 1px solid var(--border); background: var(--bg-input);
