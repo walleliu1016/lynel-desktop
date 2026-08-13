@@ -1530,10 +1530,16 @@ export class App {
       this.applyCloudSettings();
     });
     ipcMain.handle('app:updateSettings', (_event, cfg: any) => {
+      // 仅当 cloud 字段实际变化才重连 socket，避免任意字段自动保存都触发重连
+      const cloudChanged = !!cfg && typeof cfg === 'object' &&
+        (('cloud_service_enabled' in cfg && cfg.cloud_service_enabled !== this.settingsStore.get('cloud_service_enabled', false)) ||
+         ('cloud_service_url' in cfg && cfg.cloud_service_url !== this.settingsStore.get('cloud_service_url', '')));
       this.settingsStore.set(cfg);
       this.applyAutoSettings();
       this.applyPushSettings();
-      this.applyCloudSettings();
+      if (cloudChanged) {
+        this.applyCloudSettings();
+      }
     });
 
     ipcMain.handle('app:getWeComConfig', () => {
@@ -1750,6 +1756,14 @@ export class App {
     });
 
     // Bot 管理
+    ipcMain.handle('app:getBotThreshold', () => {
+      return this.settingsStore.get('botThreshold', 5) as number;
+    });
+    ipcMain.handle('app:setBotThreshold', (_event, value: number) => {
+      const n = Math.max(1, Math.min(50, Math.floor(Number(value) || 5)));
+      this.settingsStore.set('botThreshold', n);
+      return n;
+    });
     ipcMain.handle('app:listBots', () => {
       const bots = this.settingsStore.get('wecomBots', {}) as Record<string, BotConfig>;
       return Object.values(bots);

@@ -40,6 +40,8 @@ export const CloudConnectionState = () => api().cloudConnectionState();
 export const ListBots = () => api().listBots();
 export const SaveBot = (bot: any) => api().saveBot(bot);
 export const DeleteBot = (id: string) => api().deleteBot(id);
+export const GetBotThreshold = () => api().getBotThreshold();
+export const SetBotThreshold = (value: number) => api().setBotThreshold(value);
 export const BindSessionBot = (sessionId: string, botId: string | null) => api().bindSessionBot(sessionId, botId);
 export const GetSessionBotBinding = (sessionId: string) => api().getSessionBotBinding(sessionId);
 export const GetBotConnectionStatus = () => api().getBotConnectionStatus();

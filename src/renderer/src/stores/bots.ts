@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { BotItem } from '../types/bots'
-import { ListBots, SaveBot, DeleteBot, GetBotConnectionStatus } from '../composables/useElectron'
+import { ListBots, SaveBot, DeleteBot, GetBotConnectionStatus, GetBotThreshold, SetBotThreshold } from '../composables/useElectron'
 
 export const useBotsStore = defineStore('bots', () => {
   const bots = ref<BotItem[]>([])
@@ -24,6 +24,8 @@ export const useBotsStore = defineStore('bots', () => {
       try {
         const configs = (await ListBots()) as any[]
         const status = (await GetBotConnectionStatus()) as Record<string, boolean>
+        const th = await GetBotThreshold()
+        threshold.value = typeof th === 'number' && th > 0 ? th : 5
         bots.value = configs.map(c => ({
           ...c,
           connected: status[c.id] ?? false,
@@ -52,5 +54,15 @@ export const useBotsStore = defineStore('bots', () => {
     await load(true)
   }
 
-  return { bots, loading, dirty, threshold, count, overThreshold, load, save, remove }
+  /** 更新并持久化阈值（主进程 clamp 到 1-50） */
+  async function setThreshold(value: number) {
+    threshold.value = value
+    try {
+      threshold.value = await SetBotThreshold(value)
+    } catch (err) {
+      console.error('[bots] 阈值持久化失败:', err)
+    }
+  }
+
+  return { bots, loading, dirty, threshold, count, overThreshold, load, save, remove, setThreshold }
 })

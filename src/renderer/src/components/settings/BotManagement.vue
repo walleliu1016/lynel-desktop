@@ -353,7 +353,7 @@ async function onDelete(id: string) {
 function onThresholdChange(e: Event) {
   const val = parseInt((e.target as HTMLInputElement).value, 10)
   if (!isNaN(val) && val > 0) {
-    store.threshold = val
+    void store.setThreshold(val)
   }
 }
 </script>

@@ -33,6 +33,8 @@ const api = {
   listBots: () => ipcRenderer.invoke('app:listBots'),
   saveBot: (bot: any) => ipcRenderer.invoke('app:saveBot', bot),
   deleteBot: (id: string) => ipcRenderer.invoke('app:deleteBot', id),
+  getBotThreshold: () => ipcRenderer.invoke('app:getBotThreshold'),
+  setBotThreshold: (value: number) => ipcRenderer.invoke('app:setBotThreshold', value),
   bindSessionBot: (sessionId: string, botId: string | null) =>
     ipcRenderer.invoke('app:bindSessionBot', sessionId, botId),
   getSessionBotBinding: (sessionId: string) =>
