@@ -91,10 +91,14 @@ export function useBuddyStats(sessionIdRef: () => string | null) {
   watch(
     () => trace.errorCount,
     (n) => {
-      if (n > lastErrorCount) {
+      // 清空/缩水时重新基线到当前值，不触发（trace.setSession 切换会话会先清空 requests，errorCount 随之回落）
+      if (n < lastErrorCount) {
         lastErrorCount = n
-        stats.value = applyEvent(stats.value, 'error')
+        return
       }
+      if (n <= lastErrorCount) return
+      lastErrorCount = n
+      stats.value = applyEvent(stats.value, 'error')
     },
   )
 

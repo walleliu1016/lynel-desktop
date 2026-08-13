@@ -80,6 +80,25 @@ describe('useBuddyStats', () => {
     expect(stats.value.chaos).toBe(20.2)
   })
 
+  it('errorCount 缩水（清空）重新基线且不触发 error 事件', async () => {
+    const trace = useTraceStore()
+    const sid = () => 's1'
+    const { stats } = useBuddyStats(sid)
+    // 一次真实错误 → debugging +0.5 / chaos +0.2
+    trace.requests = [
+      { seq: 1, ts: 0, model: null, status: 500, latencyMs: 0, error: true,
+        cost: { usd: 0, input: 0, output: 0 }, trace: { totalMs: 0, ttftMs: 0, genMs: 0 }, toolCount: 0 },
+    ]
+    await nextTick()
+    expect(stats.value.debugging).toBe(40.5)
+    expect(stats.value.chaos).toBe(20.2)
+    // 清空模拟 trace.setSession 切会话：errorCount 缩水重新基线，不触发 error
+    trace.requests = []
+    await nextTick()
+    expect(stats.value.debugging).toBe(40.5)
+    expect(stats.value.chaos).toBe(20.2)
+  })
+
   it('startDecay 到点衰减，stopDecay 停止', async () => {
     const sid = () => 's1'
     const { stats, startDecay, stopDecay } = useBuddyStats(sid)

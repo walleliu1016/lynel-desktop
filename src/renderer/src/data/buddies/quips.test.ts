@@ -31,7 +31,7 @@ describe('quips 吐槽段子库', () => {
     expect(qLow).toBe('干得漂亮！')
   })
 
-  it('空 stats 也能正常返回', () => {
+  it('中性属性（各 50）也能正常返回段子', () => {
     const q = pickQuip('idle', FLAT)
     expect(typeof q).toBe('string')
   })

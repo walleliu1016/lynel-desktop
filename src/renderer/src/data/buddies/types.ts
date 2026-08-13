@@ -22,7 +22,7 @@ export interface BuddyRole {
   rarity: BuddyRarity
   personality: BuddyPersonality
   frames: BuddyFrames
-  /** 属性基线（会话起步值，默认全 50） */
+  /** 属性基线（会话起步值）；数值由各角色预设独立定义（见 presets.ts 的 BUDDY_ROLES），并非统一 50 */
   baseline: BuddyStats
 }
 
