@@ -89,5 +89,7 @@ describe('AppearanceTab buddy 取消回滚', () => {
     expect(wrapper.findAll('.switch-stub')[1].text()).toBe('false')
     expect(wrapper.findAll('.select-stub')[2].attributes('data-model')).toBe('duck')
     expect(wrapper.find('textarea').element.value).toBe('')
+    // 取消后 asciiError 为空：默认空 ASCII 不显示「内容为空」错误
+    expect(wrapper.find('p.form-hint[style*="status-error"]').exists()).toBe(false)
   })
 })

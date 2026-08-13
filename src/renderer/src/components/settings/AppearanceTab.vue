@@ -229,8 +229,9 @@ watch(
     buddyEnabled.value = c.buddyEnabled
     buddyRoleId.value = c.buddyRoleId
     buddyCustomAscii.value = c.buddyCustomAscii || ''
+    // 空 ASCII 是默认配置，不报「内容为空」，仅对非空值走校验
     const r = validateCustomAscii(buddyCustomAscii.value)
-    asciiError.value = r.ok ? '' : r.error
+    asciiError.value = buddyCustomAscii.value ? (r.ok ? '' : r.error) : ''
     syncing = false
   },
 )
