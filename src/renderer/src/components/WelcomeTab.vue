@@ -87,8 +87,11 @@ onMounted(() => {
   width: 100%; max-width: 860px;
   flex: 1 1 auto; min-height: 0;
   padding: 8px 4px 22px; display: flex; flex-direction: column; overflow: hidden;
+  /* hero + 历史会话整体垂直居中；safe 前缀让矮窗口退化为靠上，避免顶部被裁 */
+  justify-content: safe center;
 }
-.hero { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 0 16px; }
+/* 不撑满剩余空间：历史会话紧跟对话框下方，避免中间出现大段空白（flex: 0 1 auto 矮窗口仍可收缩） */
+.hero { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 0 16px; }
 .brand { display: flex; justify-content: center; margin-bottom: 14px; }
 .brand-name { display: flex; align-items: center; gap: 8px; font-size: var(--fs-hero); font-weight: 700; letter-spacing: -0.02em; }
 .brand-lynel { color: var(--accent); }
