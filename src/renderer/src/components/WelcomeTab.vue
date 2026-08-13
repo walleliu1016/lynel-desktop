@@ -42,6 +42,8 @@
         </div>
       </div>
     </SpringTransition>
+    <!-- 常驻 Buddy：右下角陪伴（无会话，idle 帧），定位由 BuddyHost 自带 .buddy-host 决定 -->
+    <BuddyHost />
   </div>
 </template>
 
@@ -51,6 +53,7 @@ import Icon from './Icon.vue'
 import QuickLaunch from './QuickLaunch.vue'
 import RecentSessionList from './RecentSessionList.vue'
 import SpringTransition from './SpringTransition.vue'
+import BuddyHost from './buddy/BuddyHost.vue'
 import { useRecentStore } from '../stores/recent'
 import { useSessionsStore } from '../stores/sessions'
 import { useRecentSessionSearch } from '../composables/useRecentSessionSearch'
@@ -80,6 +83,8 @@ onMounted(() => {
 
 <style scoped>
 .home-tab {
+  /* position: relative 作为 BuddyHost 绝对定位的参照（右下角常驻） */
+  position: relative;
   flex: 1; display: flex; flex-direction: column; align-items: center;
   background: var(--bg-primary); padding: 24px; min-height: 0; overflow: auto;
 }

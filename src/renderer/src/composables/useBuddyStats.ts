@@ -29,12 +29,30 @@ export function useBuddyStats(sessionIdRef: () => string | null) {
   let lastRequestCount = trace.requests.length
   let lastErrorCount = trace.errorCount
 
-  /** 会话切换归零回基线 */
+  /**
+   * 幂等重新基线：用 trace 当前实际条数校准计数。
+   * trace.setSession 会先清空 requests 再异步回填首页，若按长度 slice 增量，
+   * 回填的整页数据会被误判为「新增」触发虚假 request 事件。重新基线后，
+   * 只有真正新增/追加的条目才会触发事件。
+   */
+  function rebaselineCounters() {
+    lastRequestCount = trace.requests.length
+    lastErrorCount = trace.errorCount
+  }
+
+  /** 会话切换归零回基线 + 按 trace 当前实际条数重新基线（而非硬编码 0） */
   watch(sessionIdRef, () => {
     stats.value = resetToBaseline(role.value.baseline)
-    lastRequestCount = 0
-    lastErrorCount = 0
+    rebaselineCounters()
   })
+
+  /** trace store 切换会话时同步重新基线，与 sessionIdRef watch 形成双保险（幂等） */
+  watch(
+    () => trace.sessionId,
+    () => {
+      rebaselineCounters()
+    },
+  )
 
   /** sessions state → 属性增量（awaiting→patience，done→归零） */
   watch(
@@ -56,6 +74,11 @@ export function useBuddyStats(sessionIdRef: () => string | null) {
   watch(
     () => trace.requests.length,
     (n) => {
+      // 清空/缩水时重新基线到当前条数，不触发（trace.setSession 切换会话会先清空 requests）
+      if (n < lastRequestCount) {
+        lastRequestCount = n
+        return
+      }
       if (n <= lastRequestCount) return
       const added = trace.requests.slice(lastRequestCount, n)
       const ok = added.some((r) => !r.error && r.status < 400)

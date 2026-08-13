@@ -6,6 +6,8 @@
         <AgentBadge :agent="agent" size="sm" />
         正在启动 {{ agentLabel }} 会话…
       </div>
+      <!-- 加载遮罩内的 Buddy：不传 state，缺省 idle 帧陪伴 -->
+      <BuddyHost :session-id="sessionId" />
     </div>
     <XtermTerminal
       :session-id="sessionId"
@@ -21,6 +23,17 @@
       :session-id="sessionId"
       :id="permissionRequestId"
     />
+    <!--
+      等待审批专属 Buddy：alarm 帧 + 等待吐槽。
+      v-if="!loading && isAwaitingPermission" 门控：若 loading 与 awaiting 同时成立
+      （启动期就触发权限），会与加载遮罩内的 BuddyHost 并存成双实例，导致同一 session
+      的请求/错误事件被重复累计。保证同一 session 同一时刻只有一个 BuddyHost 实例。
+    -->
+    <BuddyHost
+      v-if="!loading && isAwaitingPermission"
+      :session-id="sessionId"
+      state="awaiting_permission"
+    />
   </div>
 </template>
 
@@ -29,6 +42,7 @@ import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import AgentBadge from './AgentBadge.vue'
 import XtermTerminal from './XtermTerminal.vue'
 import PermissionToast from './PermissionToast.vue'
+import BuddyHost from './buddy/BuddyHost.vue'
 import { useSessionsStore } from '../stores/sessions'
 import { agentMeta } from '../types/agents'
 import { WriteTerminalInput } from '../composables/useElectron'
@@ -48,6 +62,9 @@ let spinnerRaf = 0
 
 const agent = computed(() => sessions.list.find((s) => s.id === props.sessionId)?.agent)
 const agentLabel = computed(() => agentMeta(agent.value).label)
+
+/** 会话是否处于等待审批状态：作为 Buddy alarm 帧与等待吐槽的显示门控 */
+const isAwaitingPermission = computed(() => sessions.state[props.sessionId] === 'awaiting_permission')
 
 function runSpinner() {
   if (!spinnerEl.value) return

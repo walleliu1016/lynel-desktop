@@ -134,6 +134,36 @@
         />
       </div>
     </section>
+
+    <!-- Buddy 电子宠物 -->
+    <section class="section">
+      <div class="section-title">Buddy 电子宠物</div>
+      <div class="form-group">
+        <label class="switch-row">
+          <span class="switch-label">启用 Buddy 陪伴</span>
+          <Switch v-model="buddyEnabled" @change="onBuddyEnabledChange" />
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">角色</label>
+        <Select
+          :model-value="buddyRoleId"
+          :options="buddyRoleOptions"
+          @update:model-value="onBuddyRoleChange"
+        />
+      </div>
+      <div class="form-group">
+        <label class="form-label">自定义 ASCII（选填，粘贴即覆盖角色画）</label>
+        <textarea
+          v-model="buddyCustomAscii"
+          rows="6"
+          class="buddy-textarea"
+          placeholder="粘贴自定义 ASCII 字符画，最多 40 行 × 80 列"
+          @input="onBuddyAsciiInput"
+        />
+        <p v-if="asciiError" class="form-hint" style="color: var(--status-error)">{{ asciiError }}</p>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -145,6 +175,8 @@ import { useSettingsStore } from '../../stores/settings'
 import { defaultTerminalConfig, type TerminalConfig, type TerminalTheme, type TerminalCursorStyle } from '../../types/settings'
 import { pushToast } from '../../composables/useToast'
 import { getThemeMode, setThemeMode, type ThemeMode } from '../../composables/useTheme'
+import { BUDDY_ROLES } from '../../data/buddies/presets'
+import { validateCustomAscii } from '../../data/buddies/validate'
 
 const settings = useSettingsStore()
 /**
@@ -167,6 +199,10 @@ onMounted(async () => {
     syncing = true
     cfg.value = { ...settings.cfg.terminal }
     syncing = false
+    // Buddy 相关字段与 terminal 独立，直接读 store 同步到本地 ref
+    buddyEnabled.value = settings.cfg.buddyEnabled
+    buddyRoleId.value = settings.cfg.buddyRoleId
+    buddyCustomAscii.value = settings.cfg.buddyCustomAscii || ''
   }
 })
 
@@ -214,6 +250,33 @@ function onFontFamilyChange(v: string) {
 function onScrollbackChange(v: string) {
   cfg.value.scrollback = Number(v)
   markDirty()
+}
+
+// ---- Buddy 电子宠物 ----
+const buddyEnabled = ref(false)
+const buddyRoleId = ref('duck')
+const buddyCustomAscii = ref('')
+const asciiError = ref('')
+
+const buddyRoleOptions = BUDDY_ROLES.map((r) => ({ value: r.id, label: `${r.name} · ${r.rarity}` }))
+
+function onBuddyRoleChange(v: string) {
+  buddyRoleId.value = v
+  if (settings.cfg) { settings.cfg.buddyRoleId = v; settings.markDirty() }
+}
+
+function onBuddyAsciiInput() {
+  const r = validateCustomAscii(buddyCustomAscii.value)
+  asciiError.value = r.ok ? '' : r.error
+  if (settings.cfg) { settings.cfg.buddyCustomAscii = buddyCustomAscii.value; settings.markDirty() }
+}
+
+/**
+ * Switch 的 change 事件不带参数（只 emit 'change'），v-model 已把开关状态写进 buddyEnabled ref。
+ * 这里把当前值同步到 store 并标脏，供「保存」按钮提交（local markDirty 只覆盖 terminal 子对象）。
+ */
+function onBuddyEnabledChange() {
+  if (settings.cfg) { settings.cfg.buddyEnabled = buddyEnabled.value; settings.markDirty() }
 }
 
 const cursorStyles: { value: TerminalCursorStyle; label: string }[] = [
@@ -423,4 +486,20 @@ input[type="range"] {
 .btn-cancel { padding: 7px 16px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 12px; cursor: pointer; }
 .btn-cancel:hover:not(:disabled) { background: var(--border); }
 .btn-save:disabled, .btn-cancel:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Buddy 自定义 ASCII 文本框 */
+.buddy-textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 8px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.3;
+  resize: vertical;
+}
+.buddy-textarea:focus { border-color: var(--accent); outline: none; }
 </style>
