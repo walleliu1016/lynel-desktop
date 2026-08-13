@@ -70,6 +70,8 @@
 
   --bg-card: #ffffff;
   --bg-hover: #F0F0F2;
+  /* tab hover 底色：比 --bg-hover 更深的中性灰，与选中态（accent 色调）区分 */
+  --tab-hover-bg: #E4E4E7;
   --bg-selected: var(--accent-soft-bg);
 
   --session-item-bg: transparent;
@@ -207,6 +209,7 @@
 
   --bg-card: #2C2C2E;
   --bg-hover: #3A3A3C;
+  --tab-hover-bg: #474749;
   --bg-selected: var(--accent-soft-bg);
 
   --session-item-bg: transparent;

@@ -17,7 +17,7 @@
         </span>
         <!-- 会话 tab：左侧直接用 agent 标识（CC/CX/OC/PI）替代转圈状态图标；待审批以 tab 背景色提示 -->
         <AgentBadge v-if="tab.type === 'session'" :agent="sessionAgent(tab.id)" size="sm" class="tab-agent" />
-        <span class="tab-title" :title="tooltipFor(tab)">{{ tab.title }}</span>
+        <span class="tab-title">{{ tab.title }}</span>
         <span
           v-if="showClose(tab.id)"
           class="tab-close"
@@ -37,7 +37,7 @@
 import { ref, computed } from 'vue'
 import AgentBadge from './AgentBadge.vue'
 import Icon from './Icon.vue'
-import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
+import { useSessionsStore } from '../stores/sessions'
 import type { Tab } from '../types/tab'
 
 const props = defineProps<{
@@ -73,20 +73,6 @@ function isAwaitingPermission(tabId: string) {
   const sid = sessionIdFromTab(tabId)
   if (!sid) return false
   return sessions.state[sid] === 'awaiting_permission'
-}
-
-function tooltipFor(tab: Tab) {
-  if (tab.type !== 'session') return tab.title
-  const sid = sessionIdFromTab(tab.id)
-  if (!sid) return tab.title
-  const meta = sessions.list.find((s) => s.id === sid)
-  const state = sessions.state[sid] || 'idle'
-  return [
-    sessionDisplayTitle(meta ?? { id: sid }),
-    `项目：${meta?.project || meta?.workdir || '未知'}`,
-    `Session：${sid}`,
-    `状态：${state}`,
-  ].join('\n')
 }
 
 function showClose(id: string) {
@@ -136,7 +122,7 @@ function onMouseDown(e: MouseEvent, id: string) {
   position: relative; margin: 2px 2px;
   transition: background .15s, color .15s;
 }
-.tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tab:hover { background: var(--tab-hover-bg); color: var(--text-primary); }
 .tab.active { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); font-weight: 600; }
 
 .tab-icon {
