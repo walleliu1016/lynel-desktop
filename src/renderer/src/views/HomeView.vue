@@ -682,6 +682,13 @@ watch(
   transition: color 0.12s, background 0.12s;
 }
 .head-action:hover { color: var(--text-primary); background: var(--bg-input); }
+/* 「打开 Session」按钮位于标题行最右，tooltip 右对齐向左展开，
+   避免向右超出左面板（overflow:hidden）被裁剪 */
+.head-action .tooltip-down {
+  left: auto;
+  right: 0;
+  transform: none;
+}
 .center-top {
   height: 40px;
   flex-shrink: 0;
