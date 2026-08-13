@@ -1269,11 +1269,11 @@ export class App {
     proc.onExit(() => cleanup());
 
     getLogger().info(`[app:createSession] session created id=${realId} workDir=${workDir}`);
-    // autoTrust：监听 PTY 输出，出现工作区信任确认时回车接受默认选项；
+    // autoTrust：工作区信任确认（claude/codex 各自文案）由 armAutoTrust 统一自动回车接受；
     // 等输入框就绪（"? for shortcuts"）再发提示词。提示词与回车分开写入，
     // 避免同一 chunk 被 ink 粘贴检测吞掉回车导致不执行。
     if (autoTrust) {
-      let trusted = false;
+      this.armAutoTrust(proc);
       let promptSent = !prompt;
       let buffer = '';
       const sendPrompt = () => {
@@ -1291,15 +1291,9 @@ export class App {
       // 兜底：15s 内没检测到就绪标志也强制发送，避免提示词丢失
       const fallback = setTimeout(sendPrompt, 15000);
       proc.onData((data) => {
-        if (trusted && promptSent) return;
+        if (promptSent) return;
         buffer = (buffer + data).slice(-4000);
-        if (!trusted && /trust the files|Do you trust/i.test(buffer)) {
-          trusted = true;
-          buffer = '';
-          try { proc.write('\r'); } catch { /* pty 已退出 */ }
-          return;
-        }
-        if (!promptSent && /\? for shortcuts/.test(buffer)) {
+        if (/\? for shortcuts/.test(buffer)) {
           clearTimeout(fallback);
           sendPrompt();
         }
@@ -1489,7 +1483,8 @@ export class App {
     ipcMain.handle('app:createSession', async (_event, workDir: string, prompt: string, extraArgs: string[] = [], agent?: string) => {
       try {
         const wd = normalizeWorkdir(workDir);
-        const id = await this.createSessionInternal(wd, prompt, extraArgs, false, undefined, agent as AgentKind);
+        // autoTrust=true：监听 PTY 输出，出现工作区信任确认时自动回车接受，桌面端与云端创建会话都覆盖
+        const id = await this.createSessionInternal(wd, prompt, extraArgs, true, undefined, agent as AgentKind);
         // 归一化后的目录（空/空白 → 默认主目录）必须回传，渲染层用它写 meta.workdir，
         // 否则快速框未选目录时写 ''，导致 Trace 面板空 wd、重开 PTY 无效 cwd、云端同步空目录。
         return { id, workdir: wd };
@@ -2021,6 +2016,24 @@ export class App {
     ipcMain.on('window:quit', () => app.quit());
   }
 
+  /** 工作区信任确认自动接受：监听 PTY 输出，出现 claude/codex 的信任确认界面时
+   *  自动发一个回车选择默认项（claude 选 "Yes, I trust this folder"；codex 选
+   *  "Yes, continue"）。检测到一次后即不再处理，避免后续误触发。 */
+  private armAutoTrust(proc: import('./pty.js').PtyProcess): void {
+    let trusted = false;
+    let buffer = '';
+    proc.onData((data) => {
+      if (trusted) return;
+      buffer = (buffer + data).slice(-4000);
+      if (/trust the files|Do you trust|Quick safety check|I trust this folder|you trust/i.test(buffer)) {
+        trusted = true;
+        buffer = '';
+        try { proc.write('\r'); } catch { /* pty 已退出 */ }
+        getLogger().info('[app:autoTrust] workspace trust confirmation detected, accepted by enter');
+      }
+    });
+  }
+
   private wirePty(id: string, proc: import('./pty.js').PtyProcess): void {
     this.ptyCleanups.get(id)?.();
     let exited = false;
@@ -2312,6 +2325,8 @@ export class App {
           if (ls) ls.settingsFile = tmpFile || undefined;
           proc.onExit(() => cleanup());
           this.setSessionState(id, 'running');
+          // 打开已有会话同样可能触发工作区信任确认（claude/codex），自动接受
+          this.armAutoTrust(proc);
           this.wirePty(id, proc);
           this.syncCloudSession(id, workDir, 'open', 'opened');
           // 有 bot 绑定的会话启动后推送通知
