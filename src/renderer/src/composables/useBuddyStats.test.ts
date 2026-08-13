@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 import { useBuddyStats } from './useBuddyStats'
 import { useSessionsStore } from '../stores/sessions'
 import { useTraceStore } from '../stores/trace'
@@ -24,10 +24,16 @@ vi.mock('../composables/useElectron', () => ({
   GetTraceRequest: vi.fn(),
   DiffTraceRequests: vi.fn(),
   ExportTraceRequest: vi.fn(),
-  WatchTraceSession: vi.fn(),
-  UnwatchTraceSession: vi.fn(),
+  WatchTraceSession: vi.fn().mockResolvedValue(undefined),
+  UnwatchTraceSession: vi.fn().mockResolvedValue(undefined),
   EventsOn: vi.fn(() => vi.fn()),
 }))
+
+/** 构造一条成功请求摘要（request 事件只 +debugging 0.1 / wisdom 0.4） */
+function okReq(seq: number) {
+  return { seq, ts: 0, model: null, status: 200, latencyMs: 0, error: false,
+    cost: { usd: 0, input: 0, output: 0 }, trace: { totalMs: 0, ttftMs: 0, genMs: 0 }, toolCount: 0 }
+}
 
 describe('useBuddyStats', () => {
   beforeEach(() => {
@@ -87,5 +93,57 @@ describe('useBuddyStats', () => {
     const after = stats.value.debugging
     vi.advanceTimersByTime(3000)
     expect(stats.value.debugging).toBe(after)
+  })
+
+  it('requests 清空（setSession 缩水分支）重新基线且不触发 request 事件', async () => {
+    const trace = useTraceStore()
+    const sid = () => 's1'
+    const { stats } = useBuddyStats(sid)
+    // 先推进 lastRequestCount：一次真实 request
+    trace.requests = [okReq(1)]
+    await nextTick()
+    expect(stats.value.debugging).toBe(40.1)
+    // 清空模拟 trace.setSession 切会话：缩水分支重新基线，不触发
+    trace.requests = []
+    await nextTick()
+    expect(stats.value.debugging).toBe(40.1)
+  })
+
+  it('sessionId 切换时按 trace 当前实际条数重新基线，已有请求不重复计入', async () => {
+    const trace = useTraceStore()
+    // 用 ref 模拟响应式的 props.sessionId（真实组件中 props 是响应式的，普通变量不触发 watch）
+    const sid = ref<string | null>('s1')
+    const { stats } = useBuddyStats(() => sid.value)
+    // s1 已加载 50 条 → 触发一次真实 request，lastRequestCount 推进到 50
+    trace.requests = Array.from({ length: 50 }, (_, i) => okReq(i + 1))
+    await nextTick()
+    expect(stats.value.debugging).toBe(40.1)
+    // 切到 s2：此时 trace 已含 s2 数据（模拟已加载会话被重新打开）→ 按实际条数重新基线
+    trace.requests = Array.from({ length: 50 }, (_, i) => okReq(i + 100))
+    sid.value = 's2'
+    await nextTick()
+    // stats 归零回基线；这 50 条因重新基线不触发 request
+    expect(stats.value.debugging).toBe(40)
+    // 后续真实追加一条 → 只触发一次
+    trace.requests = [...Array.from({ length: 50 }, (_, i) => okReq(i + 100)), okReq(200)]
+    await nextTick()
+    expect(stats.value.debugging).toBe(40.1)
+  })
+
+  it('trace.sessionId 切换清空后重新基线，后续真实增量只触发一次', async () => {
+    const trace = useTraceStore()
+    const sid = () => 's1'
+    const { stats } = useBuddyStats(sid)
+    trace.requests = [okReq(1)]
+    await nextTick()
+    expect(stats.value.debugging).toBe(40.1)
+    // trace.setSession 清空 requests + 切换 sessionId：缩水分支与 sessionId watch 双保险
+    trace.setSession('wd2', 's2')
+    await nextTick()
+    expect(stats.value.debugging).toBe(40.1) // 清空不触发
+    // 新会话真实回填 2 条 → 作为一批只触发一次 request
+    trace.requests = [okReq(2), okReq(3)]
+    await nextTick()
+    expect(stats.value.debugging).toBe(40.2)
   })
 })
