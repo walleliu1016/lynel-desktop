@@ -79,8 +79,8 @@ describe('BuddyTab 设计 + 实时预览', () => {
     expect(wrapper.findAll('.select-stub')[1].attributes('data-model')).toBe('none')
     expect(wrapper.find('textarea').element.value).toBe('')
     expect(wrapper.find('.ascii-error').exists()).toBe(false)
-    // 稀有度跟随物种（duck → common）
-    expect(wrapper.findAll('.seg')[0].classes()).toContain('active')
+    // 稀有度跟随物种（空串 = 跟随物种）
+    expect(wrapper.findAll('.select-stub')[2].attributes('data-model')).toBe('')
     // 预览收到默认外观参数
     expect(wrapper.find('.buddy-stub').text()).toBe('duck|·|none|false')
   })
@@ -90,19 +90,19 @@ describe('BuddyTab 设计 + 实时预览', () => {
     await flushPromises()
     const store = useSettingsStore()
 
-    // 物种 → goose、眼睛 → ✦、帽子 → crown、shiny 开启、稀有度 → epic、粘贴 ASCII
+    // 物种 → goose、眼睛 → ✦、帽子 → crown、shiny 开启、稀有度 → common（stub emit options[1]）、粘贴 ASCII
     await wrapper.findAll('.select-stub')[0].find('button').trigger('click')
     await wrapper.findAll('.eye-btn')[1].trigger('click')
     await wrapper.findAll('.select-stub')[1].find('button').trigger('click')
     await wrapper.findAll('.switch-stub')[1].trigger('click')
-    await wrapper.findAll('.seg').find((b) => b.text().includes('epic'))!.trigger('click')
+    await wrapper.findAll('.select-stub')[2].find('button').trigger('click')
     await wrapper.find('textarea').setValue('ART')
 
     expect(store.cfg!.buddyRoleId).toBe('goose')
     expect(store.cfg!.buddyEye).toBe('✦')
     expect(store.cfg!.buddyHat).toBe('crown')
     expect(store.cfg!.buddyShiny).toBe(true)
-    expect(store.cfg!.buddyRarity).toBe('epic')
+    expect(store.cfg!.buddyRarity).toBe('common')
     expect(store.cfg!.buddyCustomAscii).toBe('ART')
     // 预览外观参数同步更新（customFrames 非空时基座被覆盖，仍传 species/eye/hat）
     expect(wrapper.find('.buddy-stub').text()).toBe('goose|✦|crown|true')
