@@ -52,9 +52,12 @@
       <div class="section-title">字体</div>
       <div class="form-group">
         <label class="form-label">字体族</label>
-        <select class="form-select" v-model="cfg.fontFamily" @change="markDirty">
-          <option v-for="f in fontPresets" :key="f.value" :value="f.value">{{ f.label }}</option>
-        </select>
+        <Select
+          :model-value="cfg.fontFamily"
+          :options="fontSelectOptions"
+          placeholder="选择字体族"
+          @update:model-value="onFontFamilyChange"
+        />
         <p class="form-hint">首选字体在系统未安装时自动回退到等宽备选。</p>
       </div>
 
@@ -124,12 +127,11 @@
           回滚行数
           <span class="form-value">{{ cfg.scrollback }}</span>
         </label>
-        <select class="form-select" v-model.number="cfg.scrollback" @change="markDirty">
-          <option :value="500">500</option>
-          <option :value="1000">1,000</option>
-          <option :value="5000">5,000</option>
-          <option :value="10000">10,000</option>
-        </select>
+        <Select
+          :model-value="String(cfg.scrollback)"
+          :options="scrollbackOptions"
+          @update:model-value="onScrollbackChange"
+        />
       </div>
     </section>
   </div>
@@ -138,6 +140,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import Switch from '../Switch.vue'
+import Select from '../Select.vue'
 import { useSettingsStore } from '../../stores/settings'
 import { defaultTerminalConfig, type TerminalConfig, type TerminalTheme, type TerminalCursorStyle } from '../../types/settings'
 import { pushToast } from '../../composables/useToast'
@@ -200,6 +203,18 @@ const fontPresets: { value: string; label: string }[] = [
   { value: 'Menlo, Consolas, monospace', label: 'Menlo' },
   { value: '"Source Code Pro", "JetBrains Mono", monospace', label: 'Source Code Pro' },
 ]
+const fontSelectOptions = fontPresets.map(f => ({ value: f.value, label: f.label }))
+const scrollbackOptions = [500, 1000, 5000, 10000].map(n => ({ value: String(n), label: n.toLocaleString('en-US') }))
+
+function onFontFamilyChange(v: string) {
+  cfg.value.fontFamily = v
+  markDirty()
+}
+
+function onScrollbackChange(v: string) {
+  cfg.value.scrollback = Number(v)
+  markDirty()
+}
 
 const cursorStyles: { value: TerminalCursorStyle; label: string }[] = [
   { value: 'block', label: '块' },
@@ -351,12 +366,6 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
   color: var(--text-primary);
   font-size: 12px;
 }
-.form-select, .form-input {
-  width: 100%; background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 7px 10px;
-  color: var(--text-primary); font-size: 13px; font-family: inherit;
-}
-.form-select:focus, .form-input:focus { outline: none; border-color: var(--accent); }
 .form-hint { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
 .form-hint kbd {
   font-family: var(--font-mono);

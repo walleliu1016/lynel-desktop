@@ -130,7 +130,7 @@ const statusText = computed(() => {
 .v { flex: 1; }
 .v > input, .v > select {
   width: 100%; background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 6px 10px;
+  border-radius: var(--radius-lg); padding: 6px 10px;
   color: var(--text-primary); font-size: 12px; font-family: inherit;
 }
 .v > input:disabled, .v > select:disabled { opacity: 0.5; }
