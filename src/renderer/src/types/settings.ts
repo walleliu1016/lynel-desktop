@@ -51,6 +51,12 @@ export interface Settings {
   push_tool_calls: boolean
   prevent_sleep: boolean
   terminal: TerminalConfig
+  /** 是否启用 ASCII 电子宠物（buddy） */
+  buddyEnabled: boolean
+  /** buddy 角色 ID */
+  buddyRoleId: string
+  /** 自定义 ASCII 宠物内容 */
+  buddyCustomAscii: string
 }
 
 export const DEFAULT_TERMINAL_FONT = '"JetBrains Mono", "SF Mono", Menlo, Consolas, "Courier New", monospace'

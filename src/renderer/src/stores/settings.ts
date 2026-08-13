@@ -27,6 +27,9 @@ function defaultSettings(): Settings {
     push_tool_calls: false,
     prevent_sleep: false,
     terminal: defaultTerminalConfig(),
+    buddyEnabled: false,
+    buddyRoleId: 'duck',
+    buddyCustomAscii: '',
   }
 }
 
