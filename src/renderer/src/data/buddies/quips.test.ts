@@ -22,11 +22,13 @@ describe('quips 吐槽段子库', () => {
   })
 
   it('snark 高时 done 分组更倾向毒舌段子', () => {
-    // rng 恒返回 0：固定命中权重累加后的第一条
+    // rng=0.5：FLAT(snark=50) 权重 [3,1,1] 共 5 → roll=2.5 命中「干得漂亮！」
+    //           snark=95 权重 [3,3,1] 共 7 → roll=3.5 落在第二条「我早说能跑通。」
     const snarky: BuddyStats = { ...FLAT, snark: 95 }
-    const q1 = pickQuip('done', snarky, () => 0)
-    const q2 = pickQuip('done', FLAT, () => 0)
-    expect(q1).toBe(q2) // 同样 rng=0 时二者都会命中同一"权重最高"条
+    const qHigh = pickQuip('done', snarky, () => 0.5)
+    const qLow = pickQuip('done', FLAT, () => 0.5)
+    expect(qHigh).toBe('我早说能跑通。')
+    expect(qLow).toBe('干得漂亮！')
   })
 
   it('空 stats 也能正常返回', () => {
