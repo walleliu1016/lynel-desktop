@@ -65,12 +65,6 @@
         </label>
       </div>
     </div>
-
-    <div class="actions">
-      <div class="spacer" />
-      <button class="btn-cancel" :disabled="!settings.dirty" @click="settings.load">取消</button>
-      <button class="btn-save" :disabled="!settings.dirty" @click="onSave">保存</button>
-    </div>
   </div>
 </template>
 
@@ -78,7 +72,6 @@
 import { onMounted, computed, ref } from 'vue'
 import Switch from '../../components/Switch.vue'
 import { useSettingsStore } from '../../stores/settings'
-import { pushToast } from '../../composables/useToast'
 import { AGENT_KINDS, agentMeta, type AgentKind } from '../../types/agents'
 import { AGENT_LOGOS } from '../../agentLogos'
 
@@ -110,15 +103,6 @@ const selectedPath = computed({
 
 onMounted(() => settings.load())
 function markDirty() { settings.markDirty() }
-
-async function onSave() {
-  try {
-    await settings.save()
-    pushToast({ level: 'info', source: 'settings', message: '保存成功' })
-  } catch (e: any) {
-    pushToast({ level: 'error', source: 'settings', message: '保存失败：' + (e?.message ?? e) })
-  }
-}
 </script>
 
 <style scoped>
@@ -159,14 +143,4 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 }
 .switch-row:hover { background: var(--bg-hover); }
 .switch-label { font-size: 13px; color: var(--text-primary); }
-
-.actions { display: flex; align-items: center; gap: 8px; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); }
-.btn-danger { padding: 7px 14px; background: none; border: 1px solid var(--status-error); color: var(--status-error); border-radius: var(--radius-md); font-size: 12px; cursor: pointer; }
-.btn-danger:hover { background: var(--status-error); color: var(--text-inverse); }
-.spacer { flex: 1; }
-.btn-save { padding: 7px 20px; background: var(--accent); color: var(--text-inverse); border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
-.btn-save:hover:not(:disabled) { background: var(--accent-deep); }
-.btn-cancel { padding: 7px 16px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 12px; cursor: pointer; }
-.btn-cancel:hover:not(:disabled) { background: var(--border); }
-.btn-save:disabled, .btn-cancel:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

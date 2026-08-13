@@ -44,6 +44,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const dirty = ref(false)
   // 终端配色是否由用户显式设置（持久化过）。未显式设置时默认跟随 UI 主题。
   let terminalExplicit = false
+  // 即改即存防抖定时器：连续改动只落盘一次
+  let saveTimer: ReturnType<typeof setTimeout> | null = null
 
   async function load() {
     const raw = (await GetSettings()) as Partial<Settings> | null
@@ -86,7 +88,15 @@ export const useSettingsStore = defineStore('settings', () => {
     dirty.value = false
   }
 
-  function markDirty() { dirty.value = true }
+  /** 即改即存：标记改动并防抖落盘，避免高频输入（滑块/拖拽）打爆 IPC */
+  function markDirty() {
+    dirty.value = true
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => {
+      saveTimer = null
+      save().catch((e) => console.error('[settings] 自动保存失败:', e))
+    }, 500)
+  }
 
   return { cfg, dirty, load, save, markDirty }
 })

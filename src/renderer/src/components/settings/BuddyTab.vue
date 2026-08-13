@@ -1,11 +1,5 @@
 <template>
   <div class="buddy-tab">
-    <div class="actions">
-      <div class="spacer" />
-      <button class="btn-cancel" :disabled="!settings.dirty" @click="settings.load">取消</button>
-      <button class="btn-save" :disabled="!settings.dirty" @click="onSave">保存</button>
-    </div>
-
     <!-- 实时预览：顶部紧凑横排卡（宠物 + 属性条并排） -->
     <div class="preview">
       <div class="preview-head">
@@ -127,13 +121,12 @@ import { RARITIES, RARITY_STARS, RARITY_COLORS, STAT_COLORS, rollSpeciesStats } 
 import { applyCustomAscii, validateCustomAscii } from '../../data/buddies/validate'
 import { BUDDY_STAT_KEYS } from '../../data/buddies/types'
 import type { BuddyRarity } from '../../data/buddies/types'
-import { pushToast } from '../../composables/useToast'
 
 const settings = useSettingsStore()
 
 /**
- * 直接响应式绑定 settings.cfg：v-model 改字段即 markDirty，
- * 取消走 settings.load()（替换 cfg 引用）后 computed 自动回退到持久化值，无需本地镜像 ref。
+ * 直接响应式绑定 settings.cfg：v-model 改字段即 markDirty（自动保存），
+ * store.load() 替换 cfg 引用后 computed 自动回退到持久化值，无需本地镜像 ref。
  */
 const buddyEnabled = computed({
   get: () => settings.cfg?.buddyEnabled ?? false,
@@ -223,30 +216,10 @@ const statRows = computed(() =>
 onMounted(async () => {
   if (!settings.cfg) await settings.load()
 })
-
-async function onSave() {
-  try {
-    await settings.save()
-    pushToast({ level: 'info', source: 'settings', message: '保存成功' })
-  } catch (e: any) {
-    pushToast({ level: 'error', source: 'settings', message: '保存失败：' + (e?.message ?? e) })
-  }
-}
 </script>
 
 <style scoped>
 .buddy-tab { padding: 8px 16px 14px; }
-
-.actions {
-  display: flex; align-items: center; gap: 8px;
-  margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
-}
-.spacer { flex: 1; }
-.btn-save { padding: 6px 18px; background: var(--accent); color: var(--text-inverse); border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
-.btn-save:hover:not(:disabled) { background: var(--accent-deep); }
-.btn-cancel { padding: 6px 14px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 12px; cursor: pointer; }
-.btn-cancel:hover:not(:disabled) { background: var(--border); }
-.btn-save:disabled, .btn-cancel:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* 顶部预览卡：紧凑横排，宠物 + 属性条并排 */
 .preview {

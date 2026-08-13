@@ -2,12 +2,6 @@
   <div class="appearance-tab">
     <h2>外观</h2>
 
-    <div class="actions">
-      <div class="spacer" />
-      <button class="btn-cancel" :disabled="!settings.dirty" @click="settings.load">取消</button>
-      <button class="btn-save" :disabled="!settings.dirty" @click="onSave">保存</button>
-    </div>
-
     <!-- 终端配色 -->
     <section class="section">
       <div class="section-title">终端配色</div>
@@ -143,13 +137,12 @@ import Switch from '../Switch.vue'
 import Select from '../Select.vue'
 import { useSettingsStore } from '../../stores/settings'
 import { defaultTerminalConfig, type TerminalConfig, type TerminalTheme, type TerminalCursorStyle } from '../../types/settings'
-import { pushToast } from '../../composables/useToast'
 import { getThemeMode, setThemeMode, type ThemeMode } from '../../composables/useTheme'
 
 const settings = useSettingsStore()
 /**
  * 本地 ref 镜像 store.terminal。v-model 写到本地 ref，再通过显式 sync() 同步到 store。
- * 不用双向 watch 避免循环触发。store 重新 load（取消按钮）时从外部重新同步到本地。
+ * 不用双向 watch 避免循环触发。store 重新 load 时从外部重新同步到本地。
  */
 const cfg = ref<TerminalConfig>(defaultTerminalConfig())
 /** 防止 watch 回环 */
@@ -170,7 +163,7 @@ onMounted(async () => {
   }
 })
 
-// store 重新 load（取消按钮）时同步回本地
+// store 重新 load 时同步回本地
 watch(() => settings.cfg?.terminal, (t) => {
   if (!t) return
   syncing = true
@@ -273,15 +266,6 @@ function setCursorStyle(s: TerminalCursorStyle) {
 /** 字号拖动时 markDirty 即可；watcher 会实时应用到 xterm */
 function onFontSizeInput() {
   markDirty()
-}
-
-async function onSave() {
-  try {
-    await settings.save()
-    pushToast({ level: 'info', source: 'settings', message: '保存成功' })
-  } catch (e: any) {
-    pushToast({ level: 'error', source: 'settings', message: '保存失败：' + (e?.message ?? e) })
-  }
 }
 </script>
 
@@ -412,15 +396,4 @@ input[type="range"] {
 }
 .switch-row:hover { background: var(--bg-input); }
 .switch-label { font-size: 13px; color: var(--text-primary); }
-
-.actions {
-  display: flex; align-items: center; gap: 8px;
-  margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
-}
-.spacer { flex: 1; }
-.btn-save { padding: 7px 20px; background: var(--accent); color: var(--text-inverse); border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
-.btn-save:hover:not(:disabled) { background: var(--accent-deep); }
-.btn-cancel { padding: 7px 16px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 12px; cursor: pointer; }
-.btn-cancel:hover:not(:disabled) { background: var(--border); }
-.btn-save:disabled, .btn-cancel:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

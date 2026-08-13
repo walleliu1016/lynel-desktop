@@ -108,7 +108,7 @@ describe('BuddyTab 设计 + 实时预览', () => {
     expect(wrapper.find('.buddy-stub').text()).toBe('goose|✦|crown|true')
   })
 
-  it('取消（load 替换 cfg 引用）后 computed 自动回退到持久化值', async () => {
+  it('store.load()（替换 cfg 引用）后 computed 自动回退到持久化值', async () => {
     wrapper = mountBuddyTab()
     await flushPromises()
     const store = useSettingsStore()

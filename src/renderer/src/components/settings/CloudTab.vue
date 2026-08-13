@@ -19,12 +19,6 @@
         <span class="status-label">{{ statusText }}</span>
       </div>
     </div>
-
-    <div class="actions">
-      <div class="spacer" />
-      <button class="cancel" :disabled="!settings.dirty" @click="settings.load">取消</button>
-      <button class="save" :disabled="!settings.dirty" @click="onSave">保存</button>
-    </div>
   </div>
 </template>
 
@@ -64,13 +58,6 @@ onUnmounted(() => {
 })
 
 function markDirty() { settings.markDirty() }
-
-async function onSave() {
-  try { await settings.save() }
-  catch (e: any) { alert('保存失败：' + (e?.message ?? e)) }
-  // 保存后立刻刷新一次状态
-  refreshState()
-}
 
 function startPolling() {
   refreshState()
@@ -143,10 +130,4 @@ const statusText = computed(() => {
 .dot.testing { background: var(--status-warn) !important; animation: pulse 0.8s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 .toggle .v { display: flex; }
-.actions { display: flex; align-items: center; gap: 8px; margin-top: 24px; }
-.spacer { flex: 1; }
-.save { padding: 6px 16px; background: var(--accent); color: var(--text-inverse); border-radius: var(--radius-md); }
-.save:hover:not(:disabled) { background: var(--accent-light); }
-.cancel { padding: 6px 16px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-md); }
-.save:disabled, .cancel:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
