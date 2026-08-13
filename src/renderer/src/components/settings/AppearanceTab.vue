@@ -214,6 +214,27 @@ watch(() => settings.cfg?.terminal, (t) => {
   syncing = false
 }, { deep: true })
 
+/**
+ * 取消（settings.load()）会用新对象替换整个 cfg 引用（settings.ts load() 里 cfg.value = merged）。
+ * 用户编辑 buddy 字段是原地写 settings.cfg.buddyXxx，引用不变，这里不触发；
+ * load() 替换引用后，把 buddy 本地 ref 重新同步回持久化值，避免 UI 谎报。
+ * 只同步 buddy 字段；terminal 由上面的 deep watch 处理。
+ * 挂载时 onMounted 里的首次 load() 也会触发本 watch，与手动同步幂等。
+ */
+watch(
+  () => settings.cfg,
+  (c) => {
+    if (!c) return
+    syncing = true
+    buddyEnabled.value = c.buddyEnabled
+    buddyRoleId.value = c.buddyRoleId
+    buddyCustomAscii.value = c.buddyCustomAscii || ''
+    const r = validateCustomAscii(buddyCustomAscii.value)
+    asciiError.value = r.ok ? '' : r.error
+    syncing = false
+  },
+)
+
 function markDirty() {
   // 本地 cfg 任何字段变化都推到 store，XtermTerminal 的 watch 才能实时应用到 xterm
   syncToStore()
