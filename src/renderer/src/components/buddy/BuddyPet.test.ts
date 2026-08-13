@@ -58,4 +58,40 @@ describe('BuddyPet', () => {
     await wrapper.find('.buddy-body').trigger('click')
     expect(wrapper.find('.buddy-bubble').exists()).toBe(true)
   })
+
+  /** 推进 rAF 帧：requestAnimationFrame 被 stub 为 setTimeout(cb, 0)，每次 await 让 macrotask 队列跑一帧 runFloat */
+  async function advanceFrames(n = 1) {
+    for (let i = 0; i < n; i += 1) await new Promise((r) => setTimeout(r, 0))
+  }
+
+  it('hover 后 tilt 持续参与 transform 合成（等待超过 motion spring 时长后仍保留 rotate）', async () => {
+    const wrapper = mount(BuddyPet, {
+      props: { role, stats: flat, state: null },
+    })
+    const body = wrapper.find('.buddy-body').element as HTMLElement
+    await wrapper.find('.buddy-body').trigger('mouseenter')
+    // 等待超过旧实现 useSpring 的 spring 时长（0.4s）：
+    // 旧实现此时只剩 runFloat 帧（transform 无 rotate，倾斜被覆写）；
+    // 新实现 tilt 由 runFloat 每帧合成并持续存在。
+    await new Promise((r) => setTimeout(r, 500))
+    const t = body.style.transform
+    const rx = t.match(/rotateX\((-?[\d.]+)deg\)/)
+    const ry = t.match(/rotateY\((-?[\d.]+)deg\)/)
+    expect(rx).not.toBeNull()
+    expect(ry).not.toBeNull()
+    expect(Math.abs(parseFloat(rx![1]))).toBeGreaterThan(1)
+    expect(Math.abs(parseFloat(ry![1]))).toBeGreaterThan(1)
+  })
+
+  it('点击后 runFloat 合成的 scale 进入挤压（<0.99，区别于呼吸浮动区间 [0.99,1.01]）', async () => {
+    const wrapper = mount(BuddyPet, {
+      props: { role, stats: flat, state: null },
+    })
+    const body = wrapper.find('.buddy-body').element as HTMLElement
+    await wrapper.find('.buddy-body').trigger('click')
+    await advanceFrames(1)
+    const m = body.style.transform.match(/scale\(([\d.]+)\)/)
+    expect(m).not.toBeNull()
+    expect(parseFloat(m![1])).toBeLessThan(0.99)
+  })
 })
