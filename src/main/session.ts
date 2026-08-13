@@ -111,6 +111,27 @@ export function send(id: string, prompt: string): void {
   s.process.write(normalized);
 }
 
+/** 分两步写：先写文本，再延迟写回车。外部通道（企微/云端/API）转发时使用，
+ *  避免文本+回车同一 chunk 被 ink 粘贴检测吞掉回车导致消息不执行（同 app.ts autoTrust 处理）。 */
+export function sendSafe(id: string, prompt: string): void {
+  const s = sessions.get(id);
+  if (!s || !s.process) throw new Error(`session ${id} not found or no process`);
+  const text = prompt.replace(/[\r\n]+$/, '');
+  // 文本末已带换行：原样整体写入，无需拆分
+  if (text.length !== prompt.length) {
+    s.process.write(prompt);
+    return;
+  }
+  s.process.write(text);
+  setTimeout(() => {
+    try {
+      s.process.write('\r');
+    } catch {
+      /* pty 已退出 */
+    }
+  }, 300);
+}
+
 export function writeInput(id: string, data: string): void {
   const s = sessions.get(id);
   if (!s || !s.process) throw new Error(`session ${id} not found or no process`);

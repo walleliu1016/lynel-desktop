@@ -565,7 +565,7 @@ export class App {
     // cloud: Mobile -> Desktop chat 路由到对应 session 的 PTY
     this.desktopSocket.onChatMessage = (sessionId, question) => {
       try {
-        session.send(sessionId, question);
+        session.sendSafe(sessionId, question);
         getLogger().info(`[app] desktop chat forwarded sid=${sessionId.slice(0, 8)} len=${question.length}`);
       } catch (err: any) {
         const sidShort = sessionId.slice(0, 8);
@@ -1039,7 +1039,7 @@ export class App {
 
     this.hookServer.onSend(async (sid, prompt) => {
       try {
-        session.send(sid, prompt);
+        session.sendSafe(sid, prompt);
         return { ok: true };
       } catch (err: any) {
         return { ok: false, error: err.message };

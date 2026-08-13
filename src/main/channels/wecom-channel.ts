@@ -1150,7 +1150,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
   /** 把企微入站文本转发给 Claude，并记录来源，供 claude 回显去重使用。 */
   private forwardWecomPrompt(sessionId: string, text: string): void {
     this.wecomOriginatedTexts.set(sessionId, { text, at: Date.now() });
-    session.send(sessionId, text);
+    session.sendSafe(sessionId, text);
   }
 
   /** 处理企业微信控制指令，发送原始控制字符到 PTY */
