@@ -3,9 +3,10 @@ import type { ComputedRef, Ref } from 'vue'
 import { useSessionsStore } from '../stores/sessions'
 import { useTraceStore } from '../stores/trace'
 import { useSettingsStore } from '../stores/settings'
-import { getBuddyRole } from '../data/buddies/presets'
+import { getBuddySpecies } from '../data/buddies/presets'
+import { rollSpeciesStats } from '../data/buddies/rarity'
 import { applyEvent, createStats, decay, resetToBaseline, type StatEventKind } from '../data/buddies/buddyStats'
-import type { BuddyRole, BuddyStats } from '../data/buddies/types'
+import type { BuddySpecies, BuddyStats } from '../data/buddies/types'
 import type { SessionState } from '../types/session'
 
 /**
@@ -18,12 +19,15 @@ export function useBuddyStats(sessionIdRef: () => string | null) {
   const trace = useTraceStore()
   const settings = useSettingsStore()
 
-  const role: ComputedRef<BuddyRole> = computed(() => {
+  const role: ComputedRef<BuddySpecies> = computed(() => {
     const id = settings.cfg?.buddyRoleId || 'duck'
-    return getBuddyRole(id)
+    return getBuddySpecies(id)
   })
 
-  const stats: Ref<BuddyStats> = ref(createStats(role.value.baseline))
+  /** 属性基线：物种 id + 稀有度确定 seed，稀有度驱动生成（可复现） */
+  const baseline = computed(() => rollSpeciesStats(role.value))
+
+  const stats: Ref<BuddyStats> = ref(createStats(baseline.value))
 
   // 从当前值起步，避免组件挂载时已有历史请求被一次性重复计入
   let lastRequestCount = trace.requests.length
@@ -42,7 +46,7 @@ export function useBuddyStats(sessionIdRef: () => string | null) {
 
   /** 会话切换归零回基线 + 按 trace 当前实际条数重新基线（而非硬编码 0） */
   watch(sessionIdRef, () => {
-    stats.value = resetToBaseline(role.value.baseline)
+    stats.value = resetToBaseline(baseline.value)
     rebaselineCounters()
   })
 
@@ -63,8 +67,8 @@ export function useBuddyStats(sessionIdRef: () => string | null) {
         stats.value = applyEvent(stats.value, 'awaiting')
       } else if (st === 'done' || st === 'ended') {
         stats.value = applyEvent(stats.value, 'done')
-        stats.value = resetToBaseline(role.value.baseline)
-      } else if (st === 'idle' && stats.value.patience > role.value.baseline.patience) {
+        stats.value = resetToBaseline(baseline.value)
+      } else if (st === 'idle' && stats.value.patience > baseline.value.patience) {
         // 等待审批解除：patience 保留，仅停止累加
       }
     },
@@ -105,12 +109,12 @@ export function useBuddyStats(sessionIdRef: () => string | null) {
   /** 手动触发一次事件（如外部 done 信号） */
   function emitKind(k: StatEventKind) {
     stats.value = applyEvent(stats.value, k)
-    if (k === 'done') stats.value = resetToBaseline(role.value.baseline)
+    if (k === 'done') stats.value = resetToBaseline(baseline.value)
   }
 
   /** 手动归零（会话切换兜底） */
   function reset() {
-    stats.value = resetToBaseline(role.value.baseline)
+    stats.value = resetToBaseline(baseline.value)
   }
 
   let timer: ReturnType<typeof setInterval> | null = null
@@ -119,7 +123,7 @@ export function useBuddyStats(sessionIdRef: () => string | null) {
   function startDecay(intervalMs = 30_000) {
     stopDecay()
     timer = setInterval(() => {
-      stats.value = decay(stats.value, role.value.baseline)
+      stats.value = decay(stats.value, baseline.value)
     }, intervalMs)
   }
 

@@ -4,28 +4,28 @@ export type BuddyStatKey = 'debugging' | 'patience' | 'chaos' | 'wisdom' | 'snar
 /** 5 项属性值，0-100 */
 export type BuddyStats = Record<BuddyStatKey, number>
 
-/** 表情帧：idle 空闲 / thinking 思考 / celebration 庆祝 / alarm 警觉（等待审批） */
+/** 会话状态 → 帧键：idle 空闲 / thinking 思考 / celebration 庆祝 / alarm 警觉（等待审批） */
 export type BuddyFrameKey = 'idle' | 'thinking' | 'celebration' | 'alarm'
 
-/** 每帧是一个字符串数组（多行 ASCII），行数即字符画高度 */
-export type BuddyFrames = Record<BuddyFrameKey, string[]>
+/** 稀有度：参考实现 5 档（common → legendary） */
+export type BuddyRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
 
-/** 性格倾向：影响动画参数与吐槽风格 */
-export type BuddyPersonality = 'chill' | 'chaotic' | 'nerd'
+/** 眼睛字符（参考 EYES 数组） */
+export type BuddyEye = '·' | '✦' | '×' | '◉' | '@' | '°'
 
-/** 稀有度：角色固有标签 */
-export type BuddyRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic'
+/** 帽子 id（参考 HATS 数组） */
+export type BuddyHat = 'none' | 'crown' | 'tophat' | 'propeller' | 'halo' | 'wizard' | 'beanie' | 'tinyduck'
 
-export interface BuddyRole {
+/**
+ * 物种基座：3 帧动画，每帧是字符串数组（行），行内含 {E} 眼睛占位符。
+ * 渲染时用当前眼睛字符替换 {E}，帽子叠加到首行，blink 时眼睛替换为 '-'
+ * （移植参考实现 buddy/sprites.ts 的 BODIES 数据）。
+ */
+export interface BuddySpecies {
   id: string
   name: string
   rarity: BuddyRarity
-  personality: BuddyPersonality
-  frames: BuddyFrames
-  /** 属性基线（会话起步值）；数值由各角色预设独立定义（见 presets.ts 的 BUDDY_ROLES），并非统一 50 */
-  baseline: BuddyStats
+  frames: string[][]
 }
 
 export const BUDDY_STAT_KEYS: BuddyStatKey[] = ['debugging', 'patience', 'chaos', 'wisdom', 'snark']
-
-export const BUDDY_FRAME_KEYS: BuddyFrameKey[] = ['idle', 'thinking', 'celebration', 'alarm']

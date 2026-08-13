@@ -29,6 +29,12 @@ function defaultSettings(): Settings {
     terminal: defaultTerminalConfig(),
     buddyEnabled: false,
     buddyRoleId: 'duck',
+    buddyEye: '·',
+    buddyHat: 'none',
+    buddyShiny: false,
+    buddyRarity: null,
+    buddy3DTilt: 8,
+    buddyFloatAmp: 3,
     buddyCustomAscii: '',
   }
 }

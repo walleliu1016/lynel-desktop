@@ -29,6 +29,11 @@ vi.mock('../../composables/useElectron', () => ({
 
 vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => window.setTimeout(cb, 0))
 
+/** duck 帧 0 用指定眼睛渲染后的行（renderSprite 结果：{E} 替换 + 空首行剔除） */
+function duckFrame0(eye: string): string {
+  return ['    __      ', `  <(${eye} )___ `, ' (  ._>    ', '   `--´     '].join('\n')
+}
+
 describe('BuddyHost', () => {
   let wrapper: ReturnType<typeof mount> | null = null
 
@@ -78,8 +83,8 @@ describe('BuddyHost', () => {
     configure('   \n\n ')
     wrapper = mount(BuddyHost)
     const pre = wrapper.find('pre')
-    // 剔除首尾空行后空数组 → 回退 duck idle 帧
-    expect(pre.element.textContent).toBe(['  __  ', ' <(o_o)>', '   \\_/ ', '  /| |\\ '].join('\n'))
+    // 剔除首尾空行后空数组 → 回退 duck idle 帧（默认眼睛 ·，帽子 none）
+    expect(pre.element.textContent).toBe(duckFrame0('·'))
   })
 
   it('非法自定义 ASCII（超行数）回退角色画', () => {
@@ -87,6 +92,6 @@ describe('BuddyHost', () => {
     configure(tooMany)
     wrapper = mount(BuddyHost)
     const pre = wrapper.find('pre')
-    expect(pre.element.textContent).toBe(['  __  ', ' <(o_o)>', '   \\_/ ', '  /| |\\ '].join('\n'))
+    expect(pre.element.textContent).toBe(duckFrame0('·'))
   })
 })

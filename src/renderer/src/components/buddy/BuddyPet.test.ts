@@ -3,15 +3,20 @@ import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import BuddyPet from './BuddyPet.vue'
-import { getBuddyRole } from '../../data/buddies/presets'
+import { getBuddySpecies } from '../../data/buddies/presets'
 import type { BuddyStats } from '../../data/buddies/types'
 
-const role = getBuddyRole('duck')
+const duck = getBuddySpecies('duck')
 const flat: BuddyStats = { debugging: 50, patience: 50, chaos: 50, wisdom: 50, snark: 50 }
 
 vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => window.setTimeout(cb, 0))
 
-describe('BuddyPet', () => {
+/** duck 帧 0 用指定眼睛渲染后的行（renderSprite 结果：{E} 替换 + 空首行剔除） */
+function duckFrame0(eye: string): string {
+  return ['    __      ', `  <(${eye} )___ `, ' (  ._>    ', '   `--´     '].join('\n')
+}
+
+describe('BuddyPet 动态组合渲染', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })
@@ -19,41 +24,70 @@ describe('BuddyPet', () => {
     vi.clearAllMocks()
   })
 
-  it('渲染角色 idle 帧内容', () => {
+  it('idle 渲染基座帧：{E} 替换为眼睛字符', () => {
     const wrapper = mount(BuddyPet, {
-      props: { role, stats: flat, state: null },
+      props: { species: duck, eye: '·', hat: 'none', stats: flat, state: null },
       global: { stubs: { transition: false } },
     })
     const pre = wrapper.find('pre')
-    expect(pre.exists()).toBe(true)
-    // 用 textContent 而非 text()：VTU 的 text() 会 trim，剥掉 ASCII 帧首行前导/末行尾随空格
-    expect(pre.element.textContent).toBe(role.frames.idle.join('\n'))
+    // 用 textContent 而非 text()：VTU 的 text() 会 trim，剥掉 ASCII 帧前导/尾随空格
+    expect(pre.element.textContent).toBe(duckFrame0('·'))
   })
 
-  it('state 映射到对应帧：awaiting_permission → alarm', () => {
+  it('不同眼睛字符替换基座 {E}', () => {
     const wrapper = mount(BuddyPet, {
-      props: { role, stats: flat, state: 'awaiting_permission' as any },
+      props: { species: duck, eye: '×', hat: 'none', stats: flat, state: null },
     })
-    expect(wrapper.find('pre').element.textContent).toBe(role.frames.alarm.join('\n'))
+    expect(wrapper.find('pre').element.textContent).toBe(duckFrame0('×'))
   })
 
-  it('state 映射：done → celebration', () => {
+  it('帽子叠加到空首行（crown 覆盖首行）', () => {
     const wrapper = mount(BuddyPet, {
-      props: { role, stats: flat, state: 'done' as any },
+      props: { species: duck, eye: '·', hat: 'crown', stats: flat, state: null },
     })
-    expect(wrapper.find('pre').element.textContent).toBe(role.frames.celebration.join('\n'))
+    const lines = wrapper.find('pre').element.textContent!.split('\n')
+    expect(lines[0].trim()).toBe('\\^^^/')
+    expect(lines[1]).toContain('__')
   })
 
-  it('state 映射：thinking → thinking 帧', () => {
+  it('state 映射：awaiting_permission → 帧 0 + 眼睛 !', () => {
     const wrapper = mount(BuddyPet, {
-      props: { role, stats: flat, state: 'thinking' as any },
+      props: { species: duck, eye: '·', hat: 'none', stats: flat, state: 'awaiting_permission' as any },
     })
-    expect(wrapper.find('pre').element.textContent).toBe(role.frames.thinking.join('\n'))
+    expect(wrapper.find('pre').element.textContent).toBe(duckFrame0('!'))
+  })
+
+  it('state 映射：thinking → 帧 1 + 眼睛 .', () => {
+    const wrapper = mount(BuddyPet, {
+      props: { species: duck, eye: '·', hat: 'none', stats: flat, state: 'thinking' as any },
+    })
+    expect(wrapper.find('pre').element.textContent).toContain('(. )')
+  })
+
+  it('state 映射：done → 帧 2 + 眼睛 ^', () => {
+    const wrapper = mount(BuddyPet, {
+      props: { species: duck, eye: '·', hat: 'none', stats: flat, state: 'done' as any },
+    })
+    expect(wrapper.find('pre').element.textContent).toContain('(^ )')
+  })
+
+  it('自定义 ASCII 完全覆盖基座渲染', () => {
+    const wrapper = mount(BuddyPet, {
+      props: { species: duck, eye: '·', hat: 'crown', stats: flat, state: null, customFrames: ['A', 'B'] },
+    })
+    expect(wrapper.find('pre').element.textContent).toBe('A\nB')
+  })
+
+  it('shiny 时附加 shiny class', () => {
+    const wrapper = mount(BuddyPet, {
+      props: { species: duck, eye: '·', hat: 'none', shiny: true, stats: flat, state: null },
+    })
+    expect(wrapper.find('.buddy').classes()).toContain('shiny')
   })
 
   it('点击宠物弹出气泡', async () => {
     const wrapper = mount(BuddyPet, {
-      props: { role, stats: flat, state: null },
+      props: { species: duck, eye: '·', hat: 'none', stats: flat, state: null },
     })
     await wrapper.find('.buddy-body').trigger('click')
     expect(wrapper.find('.buddy-bubble').exists()).toBe(true)
@@ -64,15 +98,13 @@ describe('BuddyPet', () => {
     for (let i = 0; i < n; i += 1) await new Promise((r) => setTimeout(r, 0))
   }
 
-  it('hover 后 tilt 持续参与 transform 合成（等待超过 motion spring 时长后仍保留 rotate）', async () => {
+  it('hover 后 tilt 持续参与 transform 合成（tilt 由 runFloat 每帧合成并持续存在）', async () => {
     const wrapper = mount(BuddyPet, {
-      props: { role, stats: flat, state: null },
+      props: { species: duck, eye: '·', hat: 'none', stats: flat, state: null, tilt: 8 },
     })
     const body = wrapper.find('.buddy-body').element as HTMLElement
     await wrapper.find('.buddy-body').trigger('mouseenter')
-    // 等待超过旧实现 useSpring 的 spring 时长（0.4s）：
-    // 旧实现此时只剩 runFloat 帧（transform 无 rotate，倾斜被覆写）；
-    // 新实现 tilt 由 runFloat 每帧合成并持续存在。
+    // 等待超过旧实现 useSpring 的 spring 时长（0.4s），确认倾斜由 rAF 持续合成
     await new Promise((r) => setTimeout(r, 500))
     const t = body.style.transform
     const rx = t.match(/rotateX\((-?[\d.]+)deg\)/)
@@ -83,9 +115,20 @@ describe('BuddyPet', () => {
     expect(Math.abs(parseFloat(ry![1]))).toBeGreaterThan(1)
   })
 
+  it('tilt=0 时 hover 无 3D 倾斜', async () => {
+    const wrapper = mount(BuddyPet, {
+      props: { species: duck, eye: '·', hat: 'none', stats: flat, state: null, tilt: 0 },
+    })
+    const body = wrapper.find('.buddy-body').element as HTMLElement
+    await wrapper.find('.buddy-body').trigger('mouseenter')
+    await advanceFrames(3)
+    const t = body.style.transform
+    expect(t).not.toMatch(/rotateX\((-?[1-9]|0\.[1-9])/)
+  })
+
   it('点击后 runFloat 合成的 scale 进入挤压（<0.99，区别于呼吸浮动区间 [0.99,1.01]）', async () => {
     const wrapper = mount(BuddyPet, {
-      props: { role, stats: flat, state: null },
+      props: { species: duck, eye: '·', hat: 'none', stats: flat, state: null },
     })
     const body = wrapper.find('.buddy-body').element as HTMLElement
     await wrapper.find('.buddy-body').trigger('click')

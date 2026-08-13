@@ -1,7 +1,13 @@
 <template>
   <BuddyPet
     v-if="settings.cfg?.buddyEnabled"
-    :role="effectiveRole"
+    :species="role"
+    :eye="eye"
+    :hat="hat"
+    :shiny="!!settings.cfg?.buddyShiny"
+    :tilt="settings.cfg?.buddy3DTilt ?? 8"
+    :float-amp="settings.cfg?.buddyFloatAmp ?? 3"
+    :custom-frames="customFrames"
     :stats="stats"
     :state="props.state"
     class-name="buddy-host"
@@ -14,6 +20,7 @@ import type { SessionState } from '../../types/session'
 import BuddyPet from './BuddyPet.vue'
 import { useBuddyStats } from '../../composables/useBuddyStats'
 import { useSettingsStore } from '../../stores/settings'
+import { getBuddySpecies } from '../../data/buddies/presets'
 import { applyCustomAscii } from '../../data/buddies/validate'
 
 const props = withDefaults(defineProps<{
@@ -27,8 +34,10 @@ const props = withDefaults(defineProps<{
 const settings = useSettingsStore()
 const { role, stats, startDecay } = useBuddyStats(() => props.sessionId)
 
-/** 自定义 ASCII 覆盖角色画（校验 + 首尾空行剔除见 applyCustomAscii） */
-const effectiveRole = computed(() => applyCustomAscii(role.value, settings.cfg?.buddyCustomAscii || ''))
+/** 自定义 ASCII 覆盖基座画（校验 + 首尾空行剔除见 applyCustomAscii） */
+const customFrames = computed(() => applyCustomAscii(settings.cfg?.buddyCustomAscii || '') ?? undefined)
+const eye = computed(() => settings.cfg?.buddyEye || '·')
+const hat = computed(() => settings.cfg?.buddyHat || 'none')
 
 onMounted(() => {
   startDecay()
