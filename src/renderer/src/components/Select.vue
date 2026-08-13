@@ -156,8 +156,9 @@ onBeforeUnmount(close)
 .ls-value.placeholder { color: var(--text-tertiary); }
 .ls-chevron { color: var(--text-tertiary); flex-shrink: 0; transition: transform 0.15s; }
 .ls-chevron.open { transform: rotate(180deg); }
+/* 10000：盖过 NewSessionDialog 遮罩（9998）等弹窗层，避免下拉面板被弹窗盖住 */
 .ls-panel {
-  z-index: 1000; max-height: 280px; overflow-y: auto;
+  z-index: 10000; max-height: 280px; overflow-y: auto;
   background: var(--bg-panel); border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-window);
