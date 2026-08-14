@@ -1037,7 +1037,18 @@ export class App {
       if (kind === 'claude') {
         const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
         let data: Record<string, any> = {};
-        try { if (fs.existsSync(settingsPath)) data = JSON.parse(fs.readFileSync(settingsPath, 'utf8')); } catch {}
+        try {
+          if (fs.existsSync(settingsPath)) {
+            const raw = fs.readFileSync(settingsPath, 'utf8');
+            if (raw.trim()) data = JSON.parse(raw);
+          }
+        } catch (err: any) {
+          if (err.code !== 'ENOENT') {
+            getLogger().error(`[app] read settings.json for provider failed: ${err.message}`);
+            notifyExternal({ source: 'provider', level: 'error', message: `读取 ~/.claude/settings.json 失败，无法切换供应商: ${errMessage(err)}` });
+            return false;
+          }
+        }
         if (!data.env) data.env = {};
         Object.assign(data.env, applyClaudeEnv(p));
         fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
