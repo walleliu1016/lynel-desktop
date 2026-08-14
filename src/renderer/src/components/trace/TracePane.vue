@@ -193,7 +193,7 @@ function fmtTokens(n: number): string {
 
 .trace-split { flex: 1; display: flex; min-height: 0; }
 .trace-list {
-  width: 46%; max-width: 320px; flex-shrink: 0;
+  width: 280px; flex-shrink: 0;
   display: flex; flex-direction: column; min-height: 0;
   border-right: 1px solid var(--border);
   overflow-y: auto; padding: 8px 6px;

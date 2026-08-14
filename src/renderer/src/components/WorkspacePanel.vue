@@ -8,10 +8,10 @@ defineEmits<{ (e: 'toggle-collapse'): void }>()
 <template>
   <aside class="workspace-panel" :class="{ collapsed }">
     <div class="ws-head">
-      <span class="ws-title">Workspace</span>
       <button class="collapse-btn" aria-label="收起 Workspace" title="收起 Workspace" @click="$emit('toggle-collapse')">
         <Icon name="panel-right-close" :size="16" />
       </button>
+      <span class="ws-title">Workspace</span>
     </div>
     <div class="ws-placeholder">
       <span>Workspace 面板待实现</span>
@@ -34,8 +34,8 @@ defineEmits<{ (e: 'toggle-collapse'): void }>()
 .workspace-panel.collapsed { width: 0; border-left: none; }
 .ws-head {
   height: 40px; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 6px 0 12px;
+  display: flex; align-items: center; justify-content: flex-start; gap: 6px;
+  padding: 0 6px 0 10px;
   border-bottom: 1px solid var(--border);
 }
 .ws-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
