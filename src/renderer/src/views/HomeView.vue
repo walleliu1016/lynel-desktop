@@ -6,7 +6,7 @@
           <template v-if="!sidebarCollapsed">
             <span v-if="!isMac" class="brand-inline" aria-hidden="true">Lynel Desktop</span>
             <button class="top-btn tooltip-wrap" :aria-label="sidebarCollapsed ? '展开会话列表' : '收起会话列表'" @click="sidebarCollapsed = !sidebarCollapsed">
-              <Icon :name="sidebarCollapsed ? 'arrow-right-from-line' : 'arrow-left-to-line'" :size="16" />
+              <Icon :name="sidebarCollapsed ? 'panel-left-open' : 'panel-left-close'" :size="16" />
               <span class="tooltip-down">{{ sidebarCollapsed ? '展开会话列表' : '收起会话列表' }}</span>
             </button>
             <div v-if="cloudEnabled" class="cloud-status" :class="cloudStatusClass" :title="cloudStatusTitle">
@@ -91,7 +91,7 @@
             aria-label="展开会话列表"
             @click="sidebarCollapsed = false"
           >
-            <Icon name="arrow-right-from-line" :size="16" />
+            <Icon name="panel-left-open" :size="16" />
             <span class="tooltip-down">展开会话列表</span>
           </button>
           <GlobalTabs
