@@ -21,7 +21,7 @@
           <label>Auth Token</label>
           <input class="v" type="password" v-model="form.auth_token" @input="onUrlOrTokenInput" />
         </div>
-        <div class="form-group">
+        <div v-if="agent !== 'omp'" class="form-group">
           <label>默认模型</label>
           <div class="combo-wrap">
             <input class="v" v-model="form.default_model" placeholder="留空则使用默认模型" @focus="activeModelField = 'model'" @blur="onComboBlur" />
@@ -151,7 +151,7 @@ function onSave() {
 }
 .dialog {
   width: 520px; max-width: 90vw; max-height: 80vh; overflow-y: auto;
-  background: var(--bg-window); border: 1px solid var(--border);
+  background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: var(--radius-lg); padding: 20px;
 }
 .dialog-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }

@@ -47,6 +47,13 @@ describe('mergeCodexConfigToml', () => {
     expect(out).toContain('base_url = "https://new.com"');
     expect(out).toContain('[model_providers.other]');
   });
+  it('已存在的同段保留用户自定义键', () => {
+    const existing = '[model_providers.lynel]\nname = "lynel"\nbase_url = "https://old.com"\nmax_tokens = 1000\n';
+    const out = mergeCodexConfigToml(existing, { ...base, base_url: 'https://new.com' });
+    expect(out).toContain('max_tokens = 1000');
+    expect(out).toContain('base_url = "https://new.com"');
+    expect(out).not.toContain('https://old.com');
+  });
   it('codex_provider 自定义段名', () => {
     const out = mergeCodexConfigToml(null, { ...base, codex_provider: 'deepseek' });
     expect(out).toContain('[model_providers.deepseek]');
@@ -111,6 +118,15 @@ describe('mergeOpencodeConfig', () => {
     expect(out.provider.other.options.baseURL).toBe('https://o.com');
     expect(out.provider['opencode-go'].options.baseURL).toBe('https://new.com');
   });
+  it('已存在 models 时新的 default_model 仍覆盖生效', () => {
+    const existing = JSON.stringify({ provider: { 'opencode-go': { options: { baseURL: 'https://old.com', models: { 'old-model': { name: 'old-model' } } } } } });
+    const out = JSON.parse(mergeOpencodeConfig(existing, { ...base, default_model: 'new-model' }));
+    expect(out.provider['opencode-go'].options.models).toEqual({ 'new-model': { name: 'new-model' } });
+  });
+  it('无法解析的 JSON（注释/尾逗号）原样返回不覆盖', () => {
+    const existing = '{ "provider": { /* c */ } }';
+    expect(mergeOpencodeConfig(existing, { ...base, base_url: 'https://new.com' })).toBe(existing);
+  });
 });
 
 describe('mergeOmpModelsYml', () => {
@@ -128,6 +144,24 @@ describe('mergeOmpModelsYml', () => {
   it('无 apiKey 时不输出 apiKey 行', () => {
     const out = mergeOmpModelsYml(null, 'https://a.com');
     expect(out).not.toContain('apiKey');
+  });
+  it('deepseek 块保留 apiKey 与 models，仅更新 baseUrl', () => {
+    const existing = 'providers:\n  deepseek:\n    baseUrl: "https://old.com"\n    apiKey: "old"\n    models:\n      - name: deepseek-chat\n';
+    const out = mergeOmpModelsYml(existing, 'https://new.com');
+    expect(out).toContain('baseUrl: "https://new.com"');
+    expect(out).toContain('apiKey: "old"');
+    expect(out).toContain('models:');
+    expect(out).toContain('- name: deepseek-chat');
+    expect(out).not.toContain('https://old.com');
+  });
+  it('4 空格缩进的 providers 块保留同级 provider', () => {
+    const existing = 'providers:\n    deepseek:\n        baseUrl: "https://old.com"\n        models:\n            - name: x\n    other:\n        baseUrl: "https://o.com"\n';
+    const out = mergeOmpModelsYml(existing, 'https://new.com');
+    expect(out).toContain('baseUrl: "https://new.com"');
+    expect(out).toContain('    other:');
+    expect(out).toContain('        baseUrl: "https://o.com"');
+    expect(out).toContain('- name: x');
+    expect(out).not.toContain('https://old.com');
   });
 });
 
