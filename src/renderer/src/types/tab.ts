@@ -12,4 +12,4 @@ export interface SessionTabPayload {
   workdir: string
 }
 
-// TraceTabPayload 已移除，Trace 功能移至 TraceSidebar/TraceOverlay
+// TraceTabPayload 已移除，Trace 功能移至 TracePane

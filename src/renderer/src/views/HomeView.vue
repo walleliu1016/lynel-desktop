@@ -893,8 +893,6 @@ watch(
 .content-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .empty { flex: 1; display: flex; align-items: center; justify-content: center; }
 .empty-text { color: var(--text-tertiary); font-size: 12px; }
-/* session content 需要 position: relative 给 overlay 定位 */
-.session-content { position: relative; }
 /* 会话视图内部：终端 / Trace 双 tab */
 .sub-tabs {
   height: 34px; min-height: 34px;
