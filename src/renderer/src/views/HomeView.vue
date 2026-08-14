@@ -104,13 +104,13 @@
             @create="onCreateTab"
           />
           <button
-            v-if="activeSessionId && traceCollapsed"
+            v-if="workspaceCollapsed"
             class="top-btn tooltip-wrap"
-            aria-label="展开 Trace"
-            @click="traceCollapsed = false"
+            aria-label="展开 Workspace"
+            @click="workspaceCollapsed = false"
           >
             <Icon name="panel-right-open" :size="16" />
-            <span class="tooltip-down">展开 Trace</span>
+            <span class="tooltip-down">展开 Workspace</span>
           </button>
         </div>
         <div class="content">
@@ -122,21 +122,27 @@
           </div>
           <div v-show="tabsStore.activeType === 'session'" class="content-pane session-content">
             <template v-if="sessionTabs.length > 0">
-              <SessionTabContent
-                v-for="tab in sessionTabs"
-                :key="tab.payload?.sessionId as string"
-                v-show="activeSessionId === tab.payload?.sessionId"
-                :session-id="tab.payload?.sessionId as string"
-                :workdir="tab.payload?.workdir as string"
-                :visible="activeSessionId === tab.payload?.sessionId"
-              />
+              <div class="sub-tabs">
+                <button class="sub-tab" :class="{ active: activeSubTab === 'terminal' }" @click="activeSubTab = 'terminal'">
+                  <span class="sub-dot" /> 终端
+                </button>
+                <button class="sub-tab" :class="{ active: activeSubTab === 'trace' }" @click="activeSubTab = 'trace'">Trace</button>
+              </div>
+              <div v-show="activeSubTab === 'terminal'" class="sub-pane">
+                <SessionTabContent
+                  v-for="tab in sessionTabs"
+                  :key="tab.payload?.sessionId as string"
+                  v-show="activeSessionId === tab.payload?.sessionId"
+                  :session-id="tab.payload?.sessionId as string"
+                  :workdir="tab.payload?.workdir as string"
+                  :visible="activeSessionId === tab.payload?.sessionId"
+                />
+              </div>
+              <div v-show="activeSubTab === 'trace'" class="sub-pane">
+                <TracePane />
+              </div>
             </template>
             <div v-else class="empty"><div class="empty-text">未选择会话</div></div>
-            <!-- Trace overlay (only when session active and overlay open) -->
-            <TraceOverlay
-              v-if="activeSessionId && showTraceOverlay"
-              @close="closeTraceOverlay"
-            />
           </div>
           <div v-show="tabsStore.activeType === 'settings'" class="content-pane">
             <SettingsTab :active="settingsActiveTab" @update:active="settingsActiveTab = $event" />
@@ -146,12 +152,10 @@
           </div>
         </div>
       </div>
-      <!-- Right sidebar: visible only when session is active -->
-      <TraceSidebar
-        v-if="activeSessionId"
-        :collapsed="traceCollapsed"
-        @select="onTraceSelect"
-        @toggle-collapse="traceCollapsed = !traceCollapsed"
+      <!-- 右侧 Workspace（占位，可折叠） -->
+      <WorkspacePanel
+        :collapsed="workspaceCollapsed"
+        @toggle-collapse="workspaceCollapsed = !workspaceCollapsed"
       />
     </div>
     <NewSessionDialog
@@ -187,8 +191,8 @@ import { useRouter } from 'vue-router'
 import Icon from '../components/Icon.vue'
 import GlobalTabs from '../components/GlobalTabs.vue'
 import SessionList from '../components/SessionList.vue'
-import TraceSidebar from '../components/trace/TraceSidebar.vue'
-import TraceOverlay from '../components/trace/TraceOverlay.vue'
+import TracePane from '../components/trace/TracePane.vue'
+import WorkspacePanel from '../components/WorkspacePanel.vue'
 import WelcomeTab from '../components/WelcomeTab.vue'
 import SessionTabContent from '../components/SessionTabContent.vue'
 import SettingsTab from '../components/SettingsTab.vue'
@@ -219,8 +223,8 @@ const showNewSession = ref(false)
 const username = ref('')
 const version = ref('')
 const sidebarCollapsed = ref(false)
-const traceCollapsed = ref(false)
-const showTraceOverlay = ref(false)
+const workspaceCollapsed = ref(false)
+const activeSubTab = ref<'terminal' | 'trace'>('terminal')
 const settingsActiveTab = ref<SettingsTabKey>('general')
 const showCloseDialog = ref(false)
 const pendingCloseTabId = ref<string | null>(null)
@@ -299,11 +303,10 @@ const activeSessionWorkdir = computed(() => {
 const sessionTabs = computed(() => tabsStore.tabs.filter((t) => t.type === 'session'))
 // 移除 traceTabs、activeTraceId
 
-// 切 session 时关闭 overlay 并加载 trace 数据。
+// 切 session 时加载 trace 数据。
 // 去掉 newId === trace.sessionId 的早退：即使切回已加载过的会话也重新拉取，
-// 保证 resume / 重开后右侧 trace 始终是最新数据。
+// 保证 resume / 重开后 trace 始终是最新数据。
 watch(activeSessionId, (newId) => {
-  showTraceOverlay.value = false
   if (!newId) return
   const wd = activeSessionWorkdir.value
   if (!wd) return
@@ -381,7 +384,6 @@ async function onCloseTab(id: string) {
   }
 
   tabsStore.close(id)
-  showTraceOverlay.value = false
 }
 
 async function closeSessionTab(id: string, sid: string) {
@@ -392,7 +394,6 @@ async function closeSessionTab(id: string, sid: string) {
   }
   sessions.remove(sid)
   tabsStore.close(id)
-  showTraceOverlay.value = false
 }
 
 function onConfirmCloseSession() {
@@ -423,20 +424,6 @@ async function onSelectSession(id: string) {
     trace.load()
   }
   // 非 wasActive 时 trace 加载由 activeSessionId watch 统一处理
-}
-
-function closeTraceOverlay() {
-  showTraceOverlay.value = false
-}
-
-function onTraceSelect(seq: number) {
-  if (showTraceOverlay.value && trace.selectedSeq === seq) {
-    // 点击已选中的行 → 关闭
-    showTraceOverlay.value = false
-  } else {
-    trace.select(seq)
-    showTraceOverlay.value = true
-  }
 }
 
 async function onCreate(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string, agent?: string) {
@@ -908,4 +895,26 @@ watch(
 .empty-text { color: var(--text-tertiary); font-size: 12px; }
 /* session content 需要 position: relative 给 overlay 定位 */
 .session-content { position: relative; }
+/* 会话视图内部：终端 / Trace 双 tab */
+.sub-tabs {
+  height: 34px; min-height: 34px;
+  display: flex; align-items: center; gap: 4px;
+  padding: 0 10px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.sub-tab {
+  display: flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 14px;
+  border: none; background: transparent;
+  border-radius: var(--radius-sm);
+  font-size: 12px; font-weight: 500; color: var(--text-secondary);
+  cursor: pointer; font-family: inherit;
+  transition: background 0.15s, color 0.15s;
+}
+.sub-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.sub-tab.active { background: var(--accent-soft-bg); color: var(--accent); font-weight: 600; }
+.sub-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--status-success); }
+.sub-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 </style>
