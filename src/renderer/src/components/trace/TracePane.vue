@@ -29,7 +29,7 @@
           @scroll="onScroll"
         >
           <div
-            v-for="r in filteredRequests"
+            v-for="r in displayRequests"
             :key="r.seq"
             class="thumb-row"
             :class="{ selected: r.seq === trace.selectedSeq }"
@@ -62,7 +62,7 @@
           </div>
           <div v-if="trace.hasMore" class="load-more-hint">
             <span v-if="trace.loading">加载中...</span>
-            <span v-else>向上滚动加载更多</span>
+            <span v-else>向下滚动加载更多</span>
           </div>
         </div>
         <!-- Empty state -->
@@ -97,14 +97,14 @@ watch(() => [trace.modelFilter, trace.errorsOnly], () => {
   trace.load()
 })
 
-// 新请求到达时自动滚动到底部（仅当用户在底部附近时）
+// 新请求到达时自动滚动到顶部（逆序下最新在顶部；仅当用户已在顶部附近时）
 watch(() => trace.filteredRequests.length, () => {
   void nextTick(() => {
     const el = thumbListEl.value
     if (!el) return
     const threshold = 50
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < threshold) {
-      el.scrollTop = el.scrollHeight
+    if (el.scrollTop < threshold) {
+      el.scrollTop = 0
     }
   })
 })
@@ -114,16 +114,17 @@ function reload() {
   trace.load()
 }
 
-// 滚动检测：接近顶部时加载更多
+// 滚动检测：接近底部时加载更多（逆序下底部是更旧的历史）
 function onScroll() {
   const el = thumbListEl.value
   if (!el) return
-  if (el.scrollTop < 50 && trace.hasMore && !trace.loading) {
-    const prevHeight = el.scrollHeight
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 50 && trace.hasMore && !trace.loading) {
+    const prevScrollTop = el.scrollTop
     trace.loadMore().then(() => {
       void nextTick(() => {
         if (thumbListEl.value) {
-          thumbListEl.value.scrollTop = thumbListEl.value.scrollHeight - prevHeight
+          // 更旧条目追加到底部，保持当前滚动位置即可看到新内容
+          thumbListEl.value.scrollTop = prevScrollTop
         }
       })
     })
@@ -131,6 +132,8 @@ function onScroll() {
 }
 
 const filteredRequests = computed(() => trace.filteredRequests)
+// 逆序显示：最新（seq 大）在上，更旧的在底部；loadMore 向下加载更旧
+const displayRequests = computed(() => [...filteredRequests.value].reverse())
 
 const totalCost = computed(() => {
   let sum = 0
