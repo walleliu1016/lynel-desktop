@@ -160,7 +160,15 @@
             <GuideTab />
           </div>
           <!-- DeepSeek Harness：普通 tab pane -->
-          <div v-show="tabsStore.activeType === 'harness'" class="content-pane">
+          <!-- DeepSeek Harness：iframe 始终挂载，非激活时 opacity:0 垫底。
+               避免 Chromium 冻结 display:none 的跨源 iframe 导致切回时重新加载页面。 -->
+          <div class="dsh-frame-wrap" :class="{ active: tabsStore.activeType === 'harness' }">
+            <iframe
+              v-if="harnessUrl"
+              :src="harnessUrl"
+              class="dsh-frame"
+              allow="clipboard-read; clipboard-write"
+            />
             <div v-if="harnessLoading" class="dsh-state">
               <Icon name="loader" :size="18" class="dsh-spinner" />
               <span>正在启动 DeepSeek Harness…</span>
@@ -170,12 +178,6 @@
               <span class="dsh-error-text">{{ harnessError }}</span>
               <button class="dsh-retry" @click="loadHarness">重试</button>
             </div>
-            <iframe
-              v-else-if="harnessUrl"
-              :src="harnessUrl"
-              class="dsh-frame"
-              allow="clipboard-read; clipboard-write"
-            />
           </div>
         </div>
       </div>
@@ -1001,17 +1003,29 @@ watch(
 .sub-tab.active { background: var(--accent-soft-bg); color: var(--accent); font-weight: 600; }
 .sub-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--status-success); }
 .sub-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-/* DeepSeek Harness：普通 tab pane（.content-pane 已提供 flex 布局） */
+/* DeepSeek Harness：iframe 始终挂载，非激活时透明垫底（不 display:none，避免冻结重载） */
+.dsh-frame-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  pointer-events: none;
+  background: var(--bg-primary);
+}
+.dsh-frame-wrap.active {
+  z-index: 20;
+  opacity: 1;
+  pointer-events: auto;
+}
 .dsh-frame {
   width: 100%;
-  flex: 1;
-  min-height: 0;
+  height: 100%;
   border: none;
   display: block;
 }
 .dsh-state {
-  flex: 1;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1022,6 +1036,13 @@ watch(
 }
 .dsh-spinner { animation: dsh-spin 1s linear infinite; }
 @keyframes dsh-spin { to { transform: rotate(360deg); } }
+/* reset.css 在系统「减少动态效果」时会把所有动画压成 0.01ms/1 次，
+   loading 转圈是状态反馈动画，仍需保持旋转，故在此豁免 */
+@media (prefers-reduced-motion: reduce) {
+  .dsh-spinner {
+    animation: dsh-spin 1s linear infinite !important;
+  }
+}
 .dsh-error-text { color: var(--status-error); max-width: 420px; text-align: center; line-height: 1.5; }
 .dsh-retry {
   padding: 6px 14px;
