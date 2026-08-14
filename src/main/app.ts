@@ -30,6 +30,7 @@ import { OutputBatcher } from './output-batcher.js';
 import { consumeInputForExitDetect, type EscapePhase } from './exit-detect.js';
 import { initUpdater } from './updater/index.js';
 import { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
+import { readCodexModelProvider, mergeOmpModelsYml, mergeCodexConfigToml, mergeOpencodeConfig, applyClaudeEnv, migrateActiveProviders, AGENT_KINDS } from './providers-apply.js';
 
 export { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
 
@@ -57,21 +58,6 @@ function resolveAnthropicBaseUrl(): string {
   }
   getLogger().warn(`[app] no ANTHROPIC_BASE_URL found in settings, using default: ${DEFAULT_ANTHROPIC_BASE_URL}`);
   return DEFAULT_ANTHROPIC_BASE_URL;
-}
-
-// 读取 ~/.codex/config.toml 的 model_providers.<name>.base_url（参照 ccglass codexConfigBaseUrl）。
-// codex 新版弃用 OPENAI_BASE_URL，config.toml 优先于 env；必须读出来用命令行 -c 覆盖回本地代理。
-function readCodexModelProvider(): { provider: string; baseUrl: string } | null {
-  const configPath = path.join(os.homedir(), '.codex', 'config.toml');
-  try {
-    if (!fs.existsSync(configPath)) return null;
-    const toml = fs.readFileSync(configPath, 'utf8');
-    const m = toml.match(/^\[model_providers\.(\S+)\][^\[]*?^base_url\s*=\s*"([^"]+)"/m);
-    return m ? { provider: m[1], baseUrl: m[2] } : null;
-  } catch (err: any) {
-    getLogger().warn(`[app] read codex config.toml failed: ${err.message}`);
-    return null;
-  }
 }
 
 // 按 Agent 解析代理转发目标（upstream）：
@@ -158,58 +144,6 @@ function createSettingsOverrideFile(proxyUrl: string, hookUrl?: string): { args:
     notifyExternal({ source: 'session:setup', level: 'warn', message: `生成 Claude 临时配置失败，将使用默认代理路径: ${errMessage(err)}` });
     return { args: [], tmpFile: '', cleanup: () => {} };
   }
-}
-
-// 把 proxyUrl 合并进 ~/.omp/agent/models.yml 的 providers.deepseek.baseUrl，保留用户已有内容。
-// omp 的 models.yml 支持「override-only provider」：providers.deepseek 只有 baseUrl、无 models 时
-// 深合并覆盖内置 deepseek provider 的 base_url（已实测 raw 验证）。目标文件是简单 YAML，这里做定向文本
-// 合并（不引入 YAML 依赖），覆盖四个分支：文件不存在/空、无 providers、有 providers 无 deepseek、已有 deepseek。
-function mergeOmpDeepseekBaseUrl(existing: string | null, proxyUrl: string): string {
-  const dsBlock = ['  deepseek:', `    baseUrl: "${proxyUrl}"`];
-  if (existing == null || !existing.trim()) {
-    return `providers:\n${dsBlock.join('\n')}\n`;
-  }
-  const lines = existing.split('\n');
-  // 定位顶层 providers 块（行号 + 到下一个顶层键为止的范围）
-  let providersIdx = -1;
-  let blockEnd = lines.length;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].startsWith('providers:')) { providersIdx = i; break; }
-  }
-  if (providersIdx === -1) {
-    // 无顶层 providers：末尾追加 override-only 块
-    return existing.replace(/\s*$/, '') + `\nproviders:\n${dsBlock.join('\n')}\n`;
-  }
-  for (let i = providersIdx + 1; i < lines.length; i++) {
-    if (lines[i].length > 0 && !/^\s/.test(lines[i])) { blockEnd = i; break; }
-  }
-  const block = lines.slice(providersIdx, blockEnd);
-  // 在 providers 块内定位 deepseek 子块
-  let dsIdx = -1;
-  for (let i = 0; i < block.length; i++) {
-    if (block[i].trimStart().startsWith('deepseek:')) { dsIdx = i; break; }
-  }
-  if (dsIdx === -1) {
-    // 有 providers 无 deepseek：在 providers 行后插入
-    lines.splice(providersIdx + 1, 0, ...dsBlock);
-    return lines.join('\n');
-  }
-  // deepseek 块存在：在其子键范围内（到下一个 2 空格兄弟键为止）替换 baseUrl，无则补
-  const absDs = providersIdx + dsIdx;
-  let dsEnd = blockEnd;
-  for (let i = absDs + 1; i < blockEnd; i++) {
-    if (/^ {2}\S/.test(lines[i])) { dsEnd = i; break; }
-  }
-  let buIdx = -1;
-  for (let i = absDs + 1; i < dsEnd; i++) {
-    if (lines[i].trimStart().startsWith('baseUrl:')) { buIdx = i; break; }
-  }
-  if (buIdx >= 0) {
-    lines[buIdx] = `    baseUrl: "${proxyUrl}"`;
-  } else {
-    lines.splice(absDs + 1, 0, `    baseUrl: "${proxyUrl}"`);
-  }
-  return lines.join('\n');
 }
 
 // 把 Claude 标准 hook 映射为 HookEventLike.kind，供 ChannelDispatcher 分发。
@@ -1085,54 +1019,60 @@ export class App {
 
   private applyActiveProvider(): boolean {
     const cfg = (this.providersStore.get('config', {}) as Record<string, any>) || {};
-    const activeId = cfg.active_provider_id as string | undefined;
-    if (!activeId) return false;
-    const providers = cfg.providers as any[] | undefined;
-    if (!Array.isArray(providers)) return false;
-    const active = providers.find((p: any) => p.id === activeId);
-    if (!active) return false;
+    const providers = (cfg.providers as any[] | undefined) || [];
+    const active = (cfg.active_providers as Record<string, string> | undefined) || {};
+    let anyApplied = false;
+    for (const kind of AGENT_KINDS) {
+      const id = active[kind];
+      if (!id) continue;
+      const p = providers.find((x: any) => x.id === id && (x.agent || 'claude') === kind);
+      if (!p) continue;
+      if (this.applyProviderFor(kind, p)) anyApplied = true;
+    }
+    return anyApplied;
+  }
 
-    const envKeys: Record<string, string> = {
-      base_url: 'ANTHROPIC_BASE_URL',
-      auth_token: 'ANTHROPIC_AUTH_TOKEN',
-      default_model: 'ANTHROPIC_MODEL',
-      default_haiku_model: 'ANTHROPIC_DEFAULT_HAIKU_MODEL',
-      default_sonnet_model: 'ANTHROPIC_DEFAULT_SONNET_MODEL',
-      default_opus_model: 'ANTHROPIC_DEFAULT_OPUS_MODEL',
-    };
-    // 推理模型使用通用模型名
-    const reasoningModel = active.reasoning_model as string | undefined;
-
-    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
-    let data: Record<string, any> = {};
+  private applyProviderFor(kind: string, p: any): boolean {
     try {
-      const raw = fs.readFileSync(settingsPath, 'utf8');
-      if (raw.trim()) data = JSON.parse(raw);
-    } catch (err: any) {
-      if (err.code !== 'ENOENT') {
-        getLogger().error(`[app] read settings.json for provider failed: ${err.message}`);
-        notifyExternal({ source: 'provider', level: 'error', message: `读取 ~/.claude/settings.json 失败，无法切换供应商: ${errMessage(err)}` });
-        return false;
+      if (kind === 'claude') {
+        const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+        let data: Record<string, any> = {};
+        try { if (fs.existsSync(settingsPath)) data = JSON.parse(fs.readFileSync(settingsPath, 'utf8')); } catch {}
+        if (!data.env) data.env = {};
+        Object.assign(data.env, applyClaudeEnv(p));
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2), 'utf8');
+        getLogger().info(`[app] applied provider "${p.name}" to settings.json`);
+        return true;
       }
-    }
-
-    if (!data.env) data.env = {};
-    for (const [key, envName] of Object.entries(envKeys)) {
-      const val = active[key] as string | undefined;
-      if (val) data.env[envName] = val;
-    }
-    if (reasoningModel) {
-      data.env['ANTHROPIC_REASONING_MODEL'] = reasoningModel;
-    }
-
-    try {
-      fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-      fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2), 'utf8');
-      getLogger().info(`[app] applied provider "${active.name}" to settings.json`);
-      return true;
+      if (kind === 'codex') {
+        const cfgPath = path.join(os.homedir(), '.codex', 'config.toml');
+        const existing = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf8') : null;
+        fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
+        fs.writeFileSync(cfgPath, mergeCodexConfigToml(existing, p), 'utf8');
+        getLogger().info(`[app] applied provider "${p.name}" to codex config.toml`);
+        return true;
+      }
+      if (kind === 'opencode') {
+        const cfgPath = path.join(os.homedir(), '.config', 'opencode', 'opencode.json');
+        const existing = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf8') : null;
+        fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
+        fs.writeFileSync(cfgPath, mergeOpencodeConfig(existing, p), 'utf8');
+        getLogger().info(`[app] applied provider "${p.name}" to opencode.json`);
+        return true;
+      }
+      if (kind === 'omp') {
+        const modelsPath = path.join(os.homedir(), '.omp', 'agent', 'models.yml');
+        const existing = fs.existsSync(modelsPath) ? fs.readFileSync(modelsPath, 'utf8') : null;
+        fs.mkdirSync(path.dirname(modelsPath), { recursive: true });
+        fs.writeFileSync(modelsPath, mergeOmpModelsYml(existing, p.base_url || '', p.auth_token || undefined), 'utf8');
+        getLogger().info(`[app] applied provider "${p.name}" to omp models.yml`);
+        return true;
+      }
+      return false;
     } catch (err: any) {
-      getLogger().error(`[app] write settings.json for provider failed: ${err.message}`);
-      notifyExternal({ source: 'provider', level: 'error', message: `写入 ~/.claude/settings.json 失败，供应商切换未生效: ${errMessage(err)}` });
+      getLogger().error(`[app] apply provider "${p.name}" for ${kind} failed: ${err.message}`);
+      notifyExternal({ source: 'provider', level: 'error', message: `写入 ${kind} 配置失败，供应商切换未生效: ${errMessage(err)}` });
       return false;
     }
   }
@@ -1170,7 +1110,7 @@ export class App {
       const modelsPath = path.join(os.homedir(), '.omp', 'agent', 'models.yml');
       try {
         const original = fs.existsSync(modelsPath) ? fs.readFileSync(modelsPath, 'utf8') : null;
-        fs.writeFileSync(modelsPath, mergeOmpDeepseekBaseUrl(original, proxyUrl), 'utf8');
+        fs.writeFileSync(modelsPath, mergeOmpModelsYml(original, proxyUrl), 'utf8');
         getLogger().info(`[app:agentInjection] omp models.yml providers.deepseek.baseUrl -> ${proxyUrl}`);
         // 退出时恢复：原本不存在则删除，原本存在则写回原内容
         cleanup = () => {
@@ -1865,14 +1805,14 @@ export class App {
         // 首次使用：从 ~/.claude/settings.json 读取已有 env 配置作为默认供应商
         const defaultProvider = this.readDefaultProviderFromSettings();
         const newCfg = {
-          active_provider_id: defaultProvider.id,
+          active_providers: { claude: defaultProvider.id },
           providers: [defaultProvider],
         };
         this.providersStore.set('config', newCfg);
         getLogger().info('[app] auto-created default provider from settings.json');
         return newCfg;
       }
-      return cfg;
+      return migrateActiveProviders(cfg);
     });
 
     ipcMain.handle('app:saveProvidersConfig', (_event, cfg: Record<string, any>) => {
