@@ -123,10 +123,10 @@
           <div v-show="tabsStore.activeType === 'session'" class="content-pane session-content">
             <template v-if="sessionTabs.length > 0">
               <div class="sub-tabs">
-                <button class="sub-tab" :class="{ active: activeSubTab === 'terminal' }" @click="activeSubTab = 'terminal'">
+                <button class="sub-tab" :class="{ active: activeSubTab === 'terminal' }" @click="setSubTab('terminal')">
                   <span class="sub-dot" /> 终端
                 </button>
-                <button class="sub-tab" :class="{ active: activeSubTab === 'trace' }" @click="activeSubTab = 'trace'">Trace</button>
+                <button class="sub-tab" :class="{ active: activeSubTab === 'trace' }" @click="setSubTab('trace')">Trace</button>
               </div>
               <div v-show="activeSubTab === 'terminal'" class="sub-pane">
                 <SessionTabContent
@@ -224,7 +224,18 @@ const username = ref('')
 const version = ref('')
 const sidebarCollapsed = ref(false)
 const workspaceCollapsed = ref(true)
-const activeSubTab = ref<'terminal' | 'trace'>('terminal')
+// 每个会话各自的 终端/Trace 选中态（按 sessionId 记录），切回会话时保留
+const subTabBySession = ref<Record<string, 'terminal' | 'trace'>>({})
+const activeSubTab = computed<'terminal' | 'trace'>(() => {
+  const sid = activeSessionId.value
+  return (sid && subTabBySession.value[sid]) || 'terminal'
+})
+
+function setSubTab(tab: 'terminal' | 'trace') {
+  const sid = activeSessionId.value
+  if (!sid) return
+  subTabBySession.value = { ...subTabBySession.value, [sid]: tab }
+}
 const settingsActiveTab = ref<SettingsTabKey>('general')
 const showCloseDialog = ref(false)
 const pendingCloseTabId = ref<string | null>(null)
@@ -394,6 +405,12 @@ async function closeSessionTab(id: string, sid: string) {
   }
   sessions.remove(sid)
   tabsStore.close(id)
+  // 清理该会话的 sub-tab 选中记录
+  if (subTabBySession.value[sid]) {
+    const next = { ...subTabBySession.value }
+    delete next[sid]
+    subTabBySession.value = next
+  }
 }
 
 function onConfirmCloseSession() {
@@ -432,8 +449,6 @@ async function onCreate(workdir: string, prompt: string, extraArgs: string[] = [
     const meta = sessions.list.find((s) => s.id === id)
     if (meta) {
       tabsStore.openSession(id, meta.workdir, sessionDisplayTitle(meta) || prompt)
-      // 新建会话默认进入终端视图，避免停留在 Trace 页
-      activeSubTab.value = 'terminal'
     }
   } catch (e: any) {
     pushToast({ level: 'error', source: 'session', message: '创建失败：' + (e?.message ?? e) })
