@@ -64,6 +64,25 @@ describe('mergeCodexConfigToml', () => {
     expect(out).toContain('[model_providers.other]');
     expect(out).toContain('base_url = "https://o.com"');
   });
+  it('替换路径前面已有其他表时，顶层 model/model_provider 仍落在根级区', () => {
+    const existing = 'model = "gpt-5"\nmodel_provider = "openai"\n[model_providers.openai]\nname = "OpenAI"\nbase_url = "https://api.openai.com"\n[model_providers.lynel]\nname = "lynel"\nbase_url = "https://old.com"\n';
+    const out = mergeCodexConfigToml(existing, { ...base, default_model: 'm', base_url: 'https://new.com' });
+    const head = out.split('\n');
+    const root = head.slice(0, head.findIndex((l) => /^\s*\[/.test(l)));
+    expect(root.filter((l) => l.trim().startsWith('model ='))).toHaveLength(1);
+    expect(root.filter((l) => l.trim().startsWith('model_provider ='))).toHaveLength(1);
+    expect(root.some((l) => l.trim() === 'model = "m"')).toBe(true);
+    expect(root.some((l) => l.trim() === 'model_provider = "lynel"')).toBe(true);
+    expect(root.some((l) => l.trim() === 'model = "gpt-5"')).toBe(false);
+    // 前面已存在的 [model_providers.openai] 块内容完整保留，且未被新增顶层键污染
+    const openaiIdx = out.indexOf('[model_providers.openai]');
+    const lynelIdx = out.indexOf('[model_providers.lynel]');
+    expect(openaiIdx).toBeGreaterThan(-1);
+    expect(lynelIdx).toBeGreaterThan(openaiIdx);
+    expect(out).toContain('name = "OpenAI"');
+    expect(out).toContain('base_url = "https://api.openai.com"');
+    expect(out).toContain('base_url = "https://new.com"');
+  });
   it('无既有同段时同样避免重复顶层 model/model_provider', () => {
     const existing = 'model = "gpt-5"\nmodel_provider = "openai"\n\n[model_providers.other]\nbase_url = "https://o.com"\n';
     const out = mergeCodexConfigToml(existing, { ...base, default_model: 'gpt-new', base_url: 'https://new.com' });

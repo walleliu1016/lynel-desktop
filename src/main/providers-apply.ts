@@ -115,9 +115,18 @@ export function mergeCodexConfigToml(existing: string | null, p: ApplyProvider):
   for (let i = headerIdx + 1; i < lines.length; i++) {
     if (isTomlHeader(lines[i])) { segEnd = i; break; }
   }
-  out.push(...stripRootModelKeys(lines.slice(0, headerIdx), Boolean(p.default_model)));
-  out.push(...modelLines, '');
-  out.push(...newSeg);
+  // 替换路径与无既有同段路径一致：把保留内容按「根级区 / 表区域」拆分，
+  // 新的顶层 model/model_provider 必须插在首个表头之前，否则会被前面已存在的表吞并。
+  const preserved = stripRootModelKeys(lines.slice(0, headerIdx), Boolean(p.default_model));
+  const root: string[] = [];
+  const rest: string[] = [];
+  let inTable = false;
+  for (const raw of preserved) {
+    if (isTomlHeader(raw)) inTable = true;
+    if (inTable) rest.push(raw);
+    else root.push(raw);
+  }
+  out.push(...root, ...modelLines, '', ...rest, ...newSeg);
   out.push(...lines.slice(segEnd));
   return out.join('\n') + '\n';
 }
