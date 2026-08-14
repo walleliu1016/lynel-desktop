@@ -73,6 +73,7 @@ const icons: Record<string, unknown> = {
   'chevron-right': ChevronRight,
   'chevron-down': ChevronDown,
   plus: Plus,
+  copy: Copy,
   trash: Trash2,
   activity: Activity,
   'alert-circle': AlertCircle,

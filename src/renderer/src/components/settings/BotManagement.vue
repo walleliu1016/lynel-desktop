@@ -176,11 +176,22 @@
       </div>
     </div>
   </Teleport>
+
+  <ConfirmDialog
+    :open="showDeleteDialog"
+    title="删除机器人"
+    message="确定删除此机器人配置？已绑定的会话会自动解绑。"
+    confirm-text="删除"
+    :danger="true"
+    @confirm="confirmDelete"
+    @cancel="showDeleteDialog = false"
+  />
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import Icon from '../Icon.vue'
+import ConfirmDialog from '../ConfirmDialog.vue'
 import type { BotItem, BotSource } from '../../types/bots'
 import { useBotsStore } from '../../stores/bots'
 import { useSessionsStore, sessionDisplayTitle } from '../../stores/sessions'
@@ -198,6 +209,8 @@ const SOURCE_LABELS: Record<BotSource, string> = {
 }
 
 const editingId = ref<string | null>(null)
+const showDeleteDialog = ref(false)
+const deleteTargetId = ref<string | null>(null)
 const editForm = reactive({
   name: '',
   source: 'wecom' as BotSource,
@@ -339,8 +352,16 @@ async function onSaveEdit() {
   }
 }
 
-async function onDelete(id: string) {
-  if (!confirm('确定删除此机器人配置？已绑定的会话会自动解绑。')) return
+function onDelete(id: string) {
+  deleteTargetId.value = id
+  showDeleteDialog.value = true
+}
+
+async function confirmDelete() {
+  const id = deleteTargetId.value
+  if (!id) return
+  showDeleteDialog.value = false
+  deleteTargetId.value = null
   try {
     await store.remove(id)
     if (editingId.value === id) editingId.value = null

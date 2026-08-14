@@ -172,7 +172,7 @@ async function commitRename() {
   try {
     await sessions.renameSession(props.meta.id, trimmed)
   } catch (e: any) {
-    alert('重命名失败：' + (e?.message ?? e))
+    pushToast({ level: 'error', source: 'session', message: '重命名失败：' + (e?.message ?? e) })
   }
 }
 

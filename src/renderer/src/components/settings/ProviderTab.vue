@@ -10,12 +10,9 @@
           @click="selectedAgent = k"
         >
           <AgentBadge :agent="k" size="sm" />
+          <span>{{ agentMeta(k).short }}</span>
         </button>
       </div>
-      <button class="add-btn" @click="onAdd">
-        <Icon name="plus" :size="14" />
-        <span>新增供应商</span>
-      </button>
     </div>
 
     <div v-if="providers.length > 0" class="card-grid">
@@ -25,6 +22,7 @@
         :provider="p"
         :is-active="p.id === activeId"
         @edit="openEdit(p)"
+        @copy="onCopy(p)"
         @set-active="onSetActive(p.id)"
         @remove="onDelete(p)"
       />
@@ -46,6 +44,16 @@
       :agent="selectedAgent"
       @save="onSave"
     />
+
+    <ConfirmDialog
+      :open="showDeleteDialog"
+      title="删除供应商"
+      :message="`确定删除供应商「${deleteTarget?.name || '未命名'}」吗？`"
+      confirm-text="删除"
+      :danger="true"
+      @confirm="confirmDelete"
+      @cancel="showDeleteDialog = false"
+    />
   </div>
 </template>
 
@@ -55,15 +63,18 @@ import Icon from '../../components/Icon.vue'
 import AgentBadge from '../../components/AgentBadge.vue'
 import ProviderCard from './ProviderCard.vue'
 import ProviderDialog from './ProviderDialog.vue'
+import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import { useProvidersStore } from '../../stores/providers'
 import { pushToast } from '../../composables/useToast'
-import { AGENT_KINDS } from '../../types/agents'
+import { AGENT_KINDS, agentMeta } from '../../types/agents'
 import type { Provider } from '../../types/providers'
 
 const store = useProvidersStore()
 const selectedAgent = ref('claude')
 const dialogOpen = ref(false)
 const editingProvider = ref<Provider | null>(null)
+const showDeleteDialog = ref(false)
+const deleteTarget = ref<Provider | null>(null)
 
 const allProviders = computed(() => store.cfg?.providers ?? [])
 const providers = computed(() => allProviders.value.filter(p => (p.agent || 'claude') === selectedAgent.value))
@@ -95,6 +106,23 @@ async function onSave(p: Provider) {
   }
 }
 
+async function onCopy(p: Provider) {
+  if (!store.cfg) return
+  const copy: Provider = {
+    ...JSON.parse(JSON.stringify(p)),
+    id: crypto.randomUUID(),
+    name: (p.name || '未命名供应商') + '-copy',
+  }
+  store.cfg.providers.push(copy)
+  try {
+    await store.save()
+    pushToast({ level: 'info', source: 'provider', message: '已复制，请修改配置' })
+    openEdit(copy)
+  } catch (e: any) {
+    pushToast({ level: 'error', source: 'provider', message: '复制失败：' + (e?.message ?? e) })
+  }
+}
+
 async function onSetActive(id: string) {
   try {
     await store.setActive(id)
@@ -104,8 +132,16 @@ async function onSetActive(id: string) {
   }
 }
 
-async function onDelete(p: Provider) {
-  if (!confirm(`确定删除供应商「${p.name || '未命名'}」吗？`)) return
+function onDelete(p: Provider) {
+  deleteTarget.value = p
+  showDeleteDialog.value = true
+}
+
+async function confirmDelete() {
+  const p = deleteTarget.value
+  if (!p) return
+  showDeleteDialog.value = false
+  deleteTarget.value = null
   try {
     await store.removeProvider(p.id)
     pushToast({ level: 'info', source: 'provider', message: '已删除' })
@@ -121,26 +157,25 @@ async function onDelete(p: Provider) {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 16px; border-bottom: 1px solid var(--border);
 }
-.agent-switch { display: flex; gap: 6px; }
+.agent-switch { display: flex; gap: 6px; flex: 1; }
 .agent-btn {
-  width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 0; font-size: 12px; font-weight: 600;
   border: 1px solid var(--border); border-radius: var(--radius-md);
-  background: var(--bg-input); cursor: pointer;
+  background: var(--bg-input); color: var(--text-tertiary); cursor: pointer;
+  font-family: inherit;
 }
-.agent-btn:hover { border-color: var(--accent); }
+.agent-btn:hover { border-color: var(--border-strong); color: var(--text-primary); }
 .agent-btn.active { border-color: transparent; }
-.agent-btn.a-claude.active { background: var(--agent-claude-bg); }
-.agent-btn.a-codex.active { background: var(--agent-codex-bg); }
-.agent-btn.a-opencode.active { background: var(--agent-opencode-bg); }
-.agent-btn.a-omp.active { background: var(--agent-omp-bg); }
-.add-btn {
-  display: flex; align-items: center; gap: 6px;
-  padding: 7px 14px; border-radius: var(--radius-md); font-size: 12px;
-  border: 1px solid var(--border); background: var(--accent); color: var(--text-inverse); cursor: pointer;
-}
+.agent-btn.a-claude.active { background: var(--agent-claude-bg); color: var(--agent-claude-fg); }
+.agent-btn.a-codex.active { background: var(--agent-codex-bg); color: var(--agent-codex-fg); }
+.agent-btn.a-opencode.active { background: var(--agent-opencode-bg); color: var(--agent-opencode-fg); }
+.agent-btn.a-omp.active { background: var(--agent-omp-bg); color: var(--agent-omp-fg); }
 .card-grid {
   flex: 1; overflow-y: auto; padding: 16px;
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; align-content: start;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px; align-content: start;
 }
 .add-card {
   min-height: 96px; border: 1px dashed var(--border); border-radius: var(--radius-md);

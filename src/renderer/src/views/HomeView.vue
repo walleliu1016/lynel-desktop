@@ -447,7 +447,7 @@ async function onCreate(workdir: string, prompt: string, extraArgs: string[] = [
       tabsStore.openSession(id, meta.workdir, sessionDisplayTitle(meta) || prompt)
     }
   } catch (e: any) {
-    alert('创建失败：' + (e?.message ?? e))
+    pushToast({ level: 'error', source: 'session', message: '创建失败：' + (e?.message ?? e) })
   }
 }
 
@@ -486,7 +486,7 @@ async function onOpenRecent(item: RecentSession) {
     }
   } catch (e: any) {
     console.error('[home] open recent failed:', e?.message || e)
-    alert('打开最近会话失败：' + (e?.message || e))
+    pushToast({ level: 'error', source: 'session', message: '打开最近会话失败：' + (e?.message || e) })
   }
 }
 
