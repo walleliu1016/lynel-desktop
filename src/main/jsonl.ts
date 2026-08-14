@@ -16,6 +16,7 @@ export interface SessionMeta {
   size: number;
   user_title?: string;
   title_source?: 'user' | 'ai' | 'first_prompt';
+  agent?: string;   // agent 类型，缺省 claude
 }
 
 export type TitleSource = 'user' | 'ai' | 'first_prompt';

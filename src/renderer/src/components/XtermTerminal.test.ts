@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import XtermTerminal from './XtermTerminal.vue'
 import {
   OpenSessionTerminalSized,
@@ -86,9 +87,22 @@ vi.mock('../composables/useElectron', () => ({
   OpenSessionTerminalSized: vi.fn(() => Promise.resolve()),
   ResizeTerminal: vi.fn(() => Promise.resolve()),
   OpenExternal: vi.fn(() => Promise.resolve()),
+  GetSettings: vi.fn(() => Promise.resolve(null)),
 }))
 
+/** rAF 被 stub 成 setTimeout(cb, 0)，initializeTerminal 的异步链（waitForSize/字体/fit 等）
+ *  需要多个 macrotask tick 才能完成，这里循环泵足 tick 让整条链跑完。 */
+async function flushAsync() {
+  for (let i = 0; i < 50; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+}
+
 describe('XtermTerminal', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   afterEach(() => {
     eventHandlers.clear()
     renderHandlers.length = 0
@@ -104,12 +118,15 @@ describe('XtermTerminal', () => {
         visible: true,
       },
     })
+    const terminalEl = wrapper.find('.xterm-container').element as HTMLElement
+    Object.defineProperty(terminalEl, 'clientWidth', { value: 1000, configurable: true })
+    Object.defineProperty(terminalEl, 'clientHeight', { value: 500, configurable: true })
 
     const loading = wrapper.find('[data-testid="terminal-loading"]')
     expect(loading.exists()).toBe(true)
 
     await wrapper.vm.$nextTick()
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await flushAsync()
 
     eventHandlers.get('session:sid-1')?.('\x1b[2J\x1b[H')
     renderHandlers.forEach((cb) => cb())
@@ -139,6 +156,7 @@ describe('XtermTerminal', () => {
 
     await wrapper.setProps({ visible: true })
     await wrapper.vm.$nextTick()
+    await flushAsync()
 
     expect(OpenSessionTerminalSized).toHaveBeenCalledWith('sid-1', '/tmp', 120, 30)
     expect(fitMocks[0]).toHaveBeenCalled()

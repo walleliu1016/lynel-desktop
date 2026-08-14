@@ -4,38 +4,41 @@
 ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, #3f3f46); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover, #52525b); }
 
-/* === 浅色（红蓝主题，唯一主题） === */
+/* === 浅色（Apple 调色板，默认主题） === */
 :root, [data-theme="light"] {
-  --bg-primary: #f6f7f9;
-  --bg-panel: #ffffff;
-  --bg-input: #ffffff;
-  --bg-titlebar: linear-gradient(180deg, #ffffff 0%, #f6f7f9 100%);
+  --bg-primary: #F5F5F7;
+  --bg-panel: #FFFFFF;
+  --bg-input: #FFFFFF;
+  --bg-titlebar: linear-gradient(180deg, #FFFFFF 0%, #F5F5F7 100%);
   --bg-terminal: #fafafa;
   --bg-terminal-header: #f1f5f9;
   --bg-terminal-loading: #fafafa;
 
-  --accent: #1e5af5;
-  --accent-deep: #1749cc;
-  --accent-light: #3b82f6;
-  --accent-soft-bg: rgba(30, 90, 245, 0.10);
-  --accent-soft-border: rgba(30, 90, 245, 0.30);
-  --accent-glow: rgba(30, 90, 245, 0.22);
+  --brand-grad: linear-gradient(135deg, #EF4444 0%, #3B82F6 100%);
 
-  --text-primary: #0d1321;
-  --text-secondary: #6b7280;
-  --text-tertiary: #9ca3af;
-  --text-inverse: #ffffff;
+  --accent: #0071E3;
+  --accent-deep: #0060DF;
+  --accent-light: #5E9CFF;
+  --accent-soft-bg: rgba(0,113,227,0.10);
+  --accent-soft-border: rgba(0,113,227,0.30);
+  --accent-glow: rgba(0,113,227,0.20);
 
-  --status-success: #10b981;
-  --status-success-soft: rgba(16, 185, 129, 0.12);
-  --status-warn: #f59e0b;
-  --status-error: #e63946;
-  --status-error-soft: rgba(230, 57, 70, 0.12);
+  --text-primary: #1D1D1F;
+  --text-secondary: #6E6E73;
+  --text-tertiary: #86868B;
+  --text-inverse: #FFFFFF;
+
+  --status-success: #34C759;
+  --status-success-soft: rgba(52,199,89,0.12);
+  --status-warn: #FF9F0A;
+  --status-warn-soft: rgba(255,159,10,0.12);
+  --status-error: #FF3B30;
+  --status-error-soft: rgba(255,59,48,0.12);
   --status-warn-bg: rgba(245, 158, 11, 0.12);
   --status-warn-border: rgba(245, 158, 11, 0.35);
 
-  --border: #eef1f5;
-  --border-strong: #e2e8f0;
+  --border: rgba(0,0,0,0.08);
+  --border-strong: rgba(0,0,0,0.12);
   --border-focus: var(--accent);
   --switch-track: #D1D5DB;
   --switch-knob: #FFFFFF;
@@ -44,22 +47,36 @@
   --scrollbar-thumb: #d1d5db;
   --scrollbar-thumb-hover: #9ca3af;
 
-  --radius-sm: 6px;
+  --radius-sm: 8px;
   --radius-md: 10px;
   --radius-lg: 14px;
+  --radius-pill: 999px;
 
-  --shadow-window: 0 8px 32px rgba(13, 24, 41, 0.12);
+  --fs-caption: 12px;
+  --fs-body-sm: 13px;
+  --fs-body: 14px;
+  --fs-title: 18px;
+  --fs-hero: 30px;
+
+  --shadow-window: 0 24px 48px -12px rgba(0,0,0,0.22), 0 4px 12px rgba(0,0,0,0.06);
   --shadow-accent: 0 4px 14px var(--accent-glow);
-  --shadow-panel: 0 0 0 1px var(--border), 0 2px 6px rgba(13, 24, 41, 0.04);
+  --shadow-panel: 0 0 0 1px var(--border), 0 2px 6px rgba(0,0,0,0.05);
   --shadow-card: 0 1px 3px rgba(13, 24, 41, 0.04);
 
+  --material-bg: rgba(255,255,255,0.72);
+  --scrim: rgba(0,0,0,0.40);
+  --tooltip-bg: rgba(30,41,59,0.92);
+  --tooltip-color: #FFF;
+
   --bg-card: #ffffff;
-  --bg-hover: #f3f4f6;
+  --bg-hover: #F0F0F2;
+  /* tab hover 底色：比 --bg-hover 更深的中性灰，与选中态（accent 色调）区分 */
+  --tab-hover-bg: #E4E4E7;
   --bg-selected: var(--accent-soft-bg);
 
   --session-item-bg: transparent;
   --session-item-hover-bg: #f3f4f6;
-  --session-item-active-bg: #e8f0fe;
+  --session-item-active-bg: #d5e6fa;
 
   --assistant-card-bg: #ffffff;
   --message-card-shadow: var(--shadow-card);
@@ -114,6 +131,154 @@
 
   --commit-card-bg: #fff7ed;
   --commit-card-border: #f97316;
+
+  /* agent 类型标识配色 */
+  --agent-claude-bg: #fde68a;
+  --agent-claude-fg: #92400e;
+  --agent-codex-bg: #dcfce7;
+  --agent-codex-fg: #166534;
+  --agent-opencode-bg: #dbeafe;
+  --agent-opencode-fg: #1e40af;
+  --agent-omp-bg: #ede9fe;
+  --agent-omp-fg: #5b21b6;
+}
+
+/* === 深色（Apple 调色板） === */
+[data-theme="dark"] {
+  --bg-primary: #1C1C1E;
+  --bg-panel: #2C2C2E;
+  --bg-input: #2C2C2E;
+  --bg-titlebar: linear-gradient(180deg, #2C2C2E 0%, #1C1C1E 100%);
+  --bg-terminal: #202024;
+  --bg-terminal-header: #2C2C2E;
+  --bg-terminal-loading: #1C1C1E;
+
+  --brand-grad: linear-gradient(135deg, #EF4444 0%, #3B82F6 100%);
+
+  --accent: #0A84FF;
+  --accent-deep: #0071E3;
+  --accent-light: #5E9CFF;
+  --accent-soft-bg: rgba(10,132,255,0.16);
+  --accent-soft-border: rgba(10,132,255,0.30);
+  --accent-glow: rgba(10,132,255,0.25);
+
+  --text-primary: #F5F5F7;
+  --text-secondary: #98989D;
+  --text-tertiary: #6E6E73;
+  --text-inverse: #FFFFFF;
+
+  --status-success: #30D158;
+  --status-success-soft: rgba(48,209,88,0.16);
+  --status-warn: #FFD60A;
+  --status-warn-soft: rgba(255,214,10,0.16);
+  --status-error: #FF453A;
+  --status-error-soft: rgba(255,69,58,0.16);
+  --status-warn-bg: rgba(255, 214, 10, 0.16);
+  --status-warn-border: rgba(255, 214, 10, 0.45);
+
+  --border: rgba(255,255,255,0.12);
+  --border-strong: rgba(255,255,255,0.20);
+  --border-focus: var(--accent);
+  --switch-track: #4A4A4C;
+  --switch-knob: #FFFFFF;
+
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #4A4A4C;
+  --scrollbar-thumb-hover: #5A5A5C;
+
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  --fs-caption: 12px;
+  --fs-body-sm: 13px;
+  --fs-body: 14px;
+  --fs-title: 18px;
+  --fs-hero: 30px;
+
+  --shadow-window: 0 24px 48px -12px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.3);
+  --shadow-accent: 0 4px 14px var(--accent-glow);
+  --shadow-panel: 0 0 0 1px var(--border), 0 2px 6px rgba(0,0,0,0.35);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.3);
+
+  --material-bg: rgba(30,30,32,0.72);
+  --scrim: rgba(0,0,0,0.55);
+  --tooltip-bg: rgba(40,40,42,0.92);
+  --tooltip-color: #FFF;
+
+  --bg-card: #2C2C2E;
+  --bg-hover: #3A3A3C;
+  --tab-hover-bg: #474749;
+  --bg-selected: var(--accent-soft-bg);
+
+  --session-item-bg: transparent;
+  --session-item-hover-bg: #3A3A3C;
+  --session-item-active-bg: #26466b;
+
+  --assistant-card-bg: #2C2C2E;
+  --message-card-shadow: var(--shadow-card);
+  --timeline-item-hover-bg: var(--bg-input);
+  --composer-shadow: 0 -2px 6px rgba(0,0,0,0.3);
+
+  /* === 对话历史渲染专用变量（深色镜像） === */
+  --code-bg: #1a1f2e;
+  --code-text: #d1d5db;
+
+  --user-bg: rgba(10, 132, 255, 0.10);
+  --user-border: var(--accent);
+
+  --thinking-bg: #3a3324;
+  --thinking-border: #FFD60A;
+  --thinking-label: #ffd60a;
+
+  --tool-bg: #1e2a3a;
+  --tool-border: var(--accent);
+  --tool-header: #5e9cff;
+
+  --tool-result-bg: #1e2a22;
+  --tool-result-border: #30D158;
+  --tool-error-bg: #2e2020;
+
+  --tool-reply-bg: #3a3324;
+  --tool-reply-border: #FFD60A;
+  --tool-reply-header: #ffd60a;
+
+  --write-bg: linear-gradient(135deg, #1e2a22 0%, #2e3a24 100%);
+  --write-border: #30D158;
+  --write-header: #30d158;
+
+  --edit-bg: linear-gradient(135deg, #3a2e24 0%, #3a2426 100%);
+  --edit-border: #FF9F0A;
+  --edit-header: #ff9f0a;
+  --edit-old-label: #ff453a;
+  --edit-new-label: #30d158;
+
+  --todo-bg: linear-gradient(135deg, #1e2a22 0%, #3a3a24 100%);
+  --todo-border: #30D158;
+  --todo-header: #30d158;
+
+  --ask-bg: #1e2a3a;
+  --ask-border: var(--accent);
+  --ask-header: #5e9cff;
+  --ask-option-bg: #2c2c2e;
+
+  --plan-bg: #1e2a3a;
+  --plan-border: var(--accent);
+  --plan-header: #5e9cff;
+
+  --commit-card-bg: #3a3324;
+  --commit-card-border: #FF9F0A;
+
+  /* agent 类型标识配色（深色镜像） */
+  --agent-claude-bg: #3a3324;
+  --agent-claude-fg: #fde68a;
+  --agent-codex-bg: #1e2a22;
+  --agent-codex-fg: #bbf7d0;
+  --agent-opencode-bg: #1e2a3a;
+  --agent-opencode-fg: #93c5fd;
+  --agent-omp-bg: #2e2438;
+  --agent-omp-fg: #ddd6fe;
 }
 
 /* =====================================================================

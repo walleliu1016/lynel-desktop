@@ -176,11 +176,22 @@
       </div>
     </div>
   </Teleport>
+
+  <ConfirmDialog
+    :open="showDeleteDialog"
+    title="删除机器人"
+    message="确定删除此机器人配置？已绑定的会话会自动解绑。"
+    confirm-text="删除"
+    :danger="true"
+    @confirm="confirmDelete"
+    @cancel="showDeleteDialog = false"
+  />
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import Icon from '../Icon.vue'
+import ConfirmDialog from '../ConfirmDialog.vue'
 import type { BotItem, BotSource } from '../../types/bots'
 import { useBotsStore } from '../../stores/bots'
 import { useSessionsStore, sessionDisplayTitle } from '../../stores/sessions'
@@ -198,6 +209,8 @@ const SOURCE_LABELS: Record<BotSource, string> = {
 }
 
 const editingId = ref<string | null>(null)
+const showDeleteDialog = ref(false)
+const deleteTargetId = ref<string | null>(null)
 const editForm = reactive({
   name: '',
   source: 'wecom' as BotSource,
@@ -339,8 +352,16 @@ async function onSaveEdit() {
   }
 }
 
-async function onDelete(id: string) {
-  if (!confirm('确定删除此机器人配置？已绑定的会话会自动解绑。')) return
+function onDelete(id: string) {
+  deleteTargetId.value = id
+  showDeleteDialog.value = true
+}
+
+async function confirmDelete() {
+  const id = deleteTargetId.value
+  if (!id) return
+  showDeleteDialog.value = false
+  deleteTargetId.value = null
   try {
     await store.remove(id)
     if (editingId.value === id) editingId.value = null
@@ -353,7 +374,7 @@ async function onDelete(id: string) {
 function onThresholdChange(e: Event) {
   const val = parseInt((e.target as HTMLInputElement).value, 10)
   if (!isNaN(val) && val > 0) {
-    store.threshold = val
+    void store.setThreshold(val)
   }
 }
 </script>
@@ -420,7 +441,7 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin: 0; }
   cursor: pointer;
   transition: background 0.15s;
 }
-.bot-summary:hover { background: var(--bg-input); }
+.bot-summary:hover { background: var(--bg-hover); }
 
 .col-status { width: 24px; flex-shrink: 0; display: flex; align-items: center; }
 .col-name { width: 110px; flex-shrink: 0; }
@@ -467,7 +488,7 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin: 0; }
 
 .edit-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; margin-bottom: 8px; }
 
-.btn-save { padding: 7px 20px; background: var(--accent); color: white; border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
+.btn-save { padding: 7px 20px; background: var(--accent); color: var(--text-inverse); border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
 .btn-save:hover:not(:disabled) { background: var(--accent-deep); }
 .btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
 

@@ -2,12 +2,6 @@
   <div class="appearance-tab">
     <h2>外观</h2>
 
-    <div class="actions">
-      <div class="spacer" />
-      <button class="btn-cancel" :disabled="!settings.dirty" @click="settings.load">取消</button>
-      <button class="btn-save" :disabled="!settings.dirty" @click="onSave">保存</button>
-    </div>
-
     <!-- 终端配色 -->
     <section class="section">
       <div class="section-title">终端配色</div>
@@ -36,14 +30,28 @@
       <p class="form-hint">仅影响 xterm 终端窗口；UI 主题不受影响。</p>
     </section>
 
+    <!-- 主题 -->
+    <section class="section">
+      <div class="section-title">主题</div>
+      <div class="seg-group">
+        <button v-for="o in themeOptions" :key="o.value" class="seg" :class="{ active: themeMode === o.value }" @click="onThemeChange(o.value)">
+          {{ o.label }}
+        </button>
+      </div>
+      <p class="form-hint">「跟随系统」将随操作系统深浅色自动切换；仅影响 UI 界面，终端配色独立。</p>
+    </section>
+
     <!-- 字体 -->
     <section class="section">
       <div class="section-title">字体</div>
       <div class="form-group">
         <label class="form-label">字体族</label>
-        <select class="form-select" v-model="cfg.fontFamily" @change="markDirty">
-          <option v-for="f in fontPresets" :key="f.value" :value="f.value">{{ f.label }}</option>
-        </select>
+        <Select
+          :model-value="cfg.fontFamily"
+          :options="fontSelectOptions"
+          placeholder="选择字体族"
+          @update:model-value="onFontFamilyChange"
+        />
         <p class="form-hint">首选字体在系统未安装时自动回退到等宽备选。</p>
       </div>
 
@@ -113,12 +121,11 @@
           回滚行数
           <span class="form-value">{{ cfg.scrollback }}</span>
         </label>
-        <select class="form-select" v-model.number="cfg.scrollback" @change="markDirty">
-          <option :value="500">500</option>
-          <option :value="1000">1,000</option>
-          <option :value="5000">5,000</option>
-          <option :value="10000">10,000</option>
-        </select>
+        <Select
+          :model-value="String(cfg.scrollback)"
+          :options="scrollbackOptions"
+          @update:model-value="onScrollbackChange"
+        />
       </div>
     </section>
   </div>
@@ -127,14 +134,15 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import Switch from '../Switch.vue'
+import Select from '../Select.vue'
 import { useSettingsStore } from '../../stores/settings'
 import { defaultTerminalConfig, type TerminalConfig, type TerminalTheme, type TerminalCursorStyle } from '../../types/settings'
-import { pushToast } from '../../composables/useToast'
+import { getThemeMode, setThemeMode, type ThemeMode } from '../../composables/useTheme'
 
 const settings = useSettingsStore()
 /**
  * 本地 ref 镜像 store.terminal。v-model 写到本地 ref，再通过显式 sync() 同步到 store。
- * 不用双向 watch 避免循环触发。store 重新 load（取消按钮）时从外部重新同步到本地。
+ * 不用双向 watch 避免循环触发。store 重新 load 时从外部重新同步到本地。
  */
 const cfg = ref<TerminalConfig>(defaultTerminalConfig())
 /** 防止 watch 回环 */
@@ -155,7 +163,7 @@ onMounted(async () => {
   }
 })
 
-// store 重新 load（取消按钮）时同步回本地
+// store 重新 load 时同步回本地
 watch(() => settings.cfg?.terminal, (t) => {
   if (!t) return
   syncing = true
@@ -188,12 +196,36 @@ const fontPresets: { value: string; label: string }[] = [
   { value: 'Menlo, Consolas, monospace', label: 'Menlo' },
   { value: '"Source Code Pro", "JetBrains Mono", monospace', label: 'Source Code Pro' },
 ]
+const fontSelectOptions = fontPresets.map(f => ({ value: f.value, label: f.label }))
+const scrollbackOptions = [500, 1000, 5000, 10000].map(n => ({ value: String(n), label: n.toLocaleString('en-US') }))
+
+function onFontFamilyChange(v: string) {
+  cfg.value.fontFamily = v
+  markDirty()
+}
+
+function onScrollbackChange(v: string) {
+  cfg.value.scrollback = Number(v)
+  markDirty()
+}
 
 const cursorStyles: { value: TerminalCursorStyle; label: string }[] = [
   { value: 'block', label: '块' },
   { value: 'underline', label: '下划线' },
   { value: 'bar', label: '竖线' },
 ]
+
+const themeOptions = [
+  { value: 'light', label: '浅色' },
+  { value: 'dark', label: '深色' },
+  { value: 'system', label: '跟随系统' },
+] as const
+const themeMode = ref<ThemeMode>(getThemeMode())
+function onThemeChange(m: ThemeMode) {
+  themeMode.value = m
+  setThemeMode(m)
+  if (settings.cfg) { settings.cfg.theme = m; settings.markDirty() }
+}
 
 /**
  * 8 套主题的预览色（与 styles/theme.css 同步）。
@@ -234,15 +266,6 @@ function setCursorStyle(s: TerminalCursorStyle) {
 /** 字号拖动时 markDirty 即可；watcher 会实时应用到 xterm */
 function onFontSizeInput() {
   markDirty()
-}
-
-async function onSave() {
-  try {
-    await settings.save()
-    pushToast({ level: 'info', source: 'settings', message: '保存成功' })
-  } catch (e: any) {
-    pushToast({ level: 'error', source: 'settings', message: '保存失败：' + (e?.message ?? e) })
-  }
 }
 </script>
 
@@ -327,12 +350,6 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
   color: var(--text-primary);
   font-size: 12px;
 }
-.form-select, .form-input {
-  width: 100%; background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 7px 10px;
-  color: var(--text-primary); font-size: 13px; font-family: inherit;
-}
-.form-select:focus, .form-input:focus { outline: none; border-color: var(--accent); }
 .form-hint { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
 .form-hint kbd {
   font-family: var(--font-mono);
@@ -379,15 +396,4 @@ input[type="range"] {
 }
 .switch-row:hover { background: var(--bg-input); }
 .switch-label { font-size: 13px; color: var(--text-primary); }
-
-.actions {
-  display: flex; align-items: center; gap: 8px;
-  margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
-}
-.spacer { flex: 1; }
-.btn-save { padding: 7px 20px; background: var(--accent); color: white; border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
-.btn-save:hover:not(:disabled) { background: var(--accent-deep); }
-.btn-cancel { padding: 7px 16px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 12px; cursor: pointer; }
-.btn-cancel:hover:not(:disabled) { background: var(--border); }
-.btn-save:disabled, .btn-cancel:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

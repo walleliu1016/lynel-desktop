@@ -3,9 +3,21 @@
     <h2>通用设置</h2>
 
     <div class="form-group">
-      <label class="form-label">Claude CLI 路径</label>
-      <input class="form-input" v-model="cfg.claude_path" @change="markDirty" placeholder="留空使用 PATH 中的 claude" />
-      <p class="form-hint">自定义 Claude 可执行文件路径。留空则自动查找 PATH。</p>
+      <label class="form-label">Agent 可执行文件路径</label>
+      <div class="agent-path-tabs">
+        <button
+          v-for="k in AGENT_KINDS"
+          :key="k"
+          class="agent-path-tab"
+          :class="['a-' + k, { active: selectedAgent === k }]"
+          @click="selectedAgent = k"
+        >
+          <svg class="agent-path-logo" :viewBox="AGENT_LOGOS[k].viewBox" v-html="AGENT_LOGOS[k].inner" />
+          <span>{{ agentMeta(k).short }}</span>
+        </button>
+      </div>
+      <input class="form-input" v-model="selectedPath" @change="markDirty" :placeholder="`留空使用 PATH 中的 ${selectedAgent}`" />
+      <p class="form-hint">自定义 {{ agentMeta(selectedAgent).label }} 可执行文件路径。留空则自动查找 PATH。</p>
     </div>
 
     <div class="form-group">
@@ -49,25 +61,23 @@
         </label>
       </div>
     </div>
-
-    <div class="actions">
-      <div class="spacer" />
-      <button class="btn-cancel" :disabled="!settings.dirty" @click="settings.load">取消</button>
-      <button class="btn-save" :disabled="!settings.dirty" @click="onSave">保存</button>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { onMounted, computed, ref } from 'vue'
 import Switch from '../../components/Switch.vue'
 import { useSettingsStore } from '../../stores/settings'
-import { pushToast } from '../../composables/useToast'
+import { AGENT_KINDS, agentMeta, type AgentKind } from '../../types/agents'
+import { AGENT_LOGOS } from '../../agentLogos'
 
 const settings = useSettingsStore()
 const cfg = computed(() => settings.cfg ?? (settings.cfg = {
   theme: 'light',
   claude_path: '',
+  codex_path: '',
+  opencode_path: '',
+  omp_path: '',
   log_enabled: false,
   auto_lock_minutes: 5,
   auto_start: false,
@@ -79,17 +89,15 @@ const cfg = computed(() => settings.cfg ?? (settings.cfg = {
   prevent_sleep: false,
 } as any))
 
+// Agent 路径 tab 切换：一次只显示当前 agent 的路径输入框
+const selectedAgent = ref<AgentKind>('claude')
+const selectedPath = computed({
+  get: () => (cfg.value as any)[`${selectedAgent.value}_path`] ?? '',
+  set: (v: string) => { (cfg.value as any)[`${selectedAgent.value}_path`] = v },
+})
+
 onMounted(() => settings.load())
 function markDirty() { settings.markDirty() }
-
-async function onSave() {
-  try {
-    await settings.save()
-    pushToast({ level: 'info', source: 'settings', message: '保存成功' })
-  } catch (e: any) {
-    pushToast({ level: 'error', source: 'settings', message: '保存失败：' + (e?.message ?? e) })
-  }
-}
 </script>
 
 <style scoped>
@@ -107,21 +115,27 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 .form-input::placeholder { color: var(--text-tertiary); }
 .form-hint { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
 
+.agent-path-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.agent-path-tab {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 0; font-size: 12px; font-weight: 600;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--bg-input); color: var(--text-tertiary); cursor: pointer;
+  font-family: inherit;
+}
+.agent-path-tab:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.agent-path-tab.active { border-color: transparent; }
+.agent-path-logo { width: 16px; height: 16px; flex-shrink: 0; }
+.agent-path-tab.a-claude.active { background: var(--agent-claude-bg); color: var(--agent-claude-fg); }
+.agent-path-tab.a-codex.active { background: var(--agent-codex-bg); color: var(--agent-codex-fg); }
+.agent-path-tab.a-opencode.active { background: var(--agent-opencode-bg); color: var(--agent-opencode-fg); }
+.agent-path-tab.a-omp.active { background: var(--agent-omp-bg); color: var(--agent-omp-fg); }
+
 .switch-list { display: flex; flex-direction: column; gap: 2px; }
 .switch-row {
   display: flex; align-items: center; justify-content: space-between;
   padding: 8px 10px; border-radius: var(--radius-md); cursor: pointer;
 }
-.switch-row:hover { background: var(--bg-input); }
+.switch-row:hover { background: var(--bg-hover); }
 .switch-label { font-size: 13px; color: var(--text-primary); }
-
-.actions { display: flex; align-items: center; gap: 8px; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); }
-.btn-danger { padding: 7px 14px; background: none; border: 1px solid var(--status-error); color: var(--status-error); border-radius: var(--radius-md); font-size: 12px; cursor: pointer; }
-.btn-danger:hover { background: var(--status-error); color: white; }
-.spacer { flex: 1; }
-.btn-save { padding: 7px 20px; background: var(--accent); color: white; border: none; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; cursor: pointer; }
-.btn-save:hover:not(:disabled) { background: var(--accent-deep); }
-.btn-cancel { padding: 7px 16px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 12px; cursor: pointer; }
-.btn-cancel:hover:not(:disabled) { background: var(--border); }
-.btn-save:disabled, .btn-cancel:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

@@ -1,4 +1,6 @@
-export type Theme = 'light'
+import type { BuddyEye, BuddyHat, BuddyRarity } from '../data/buddies/types'
+
+export type Theme = 'light' | 'dark' | 'system'
 
 /**
  * 终端配色预设。终端配色与 UI 主题解耦：
@@ -37,6 +39,9 @@ export interface TerminalConfig {
 export interface Settings {
   theme: Theme
   claude_path: string
+  codex_path: string
+  opencode_path: string
+  omp_path: string
   log_enabled: boolean
   auto_lock_minutes: number
   auto_start: boolean
@@ -47,6 +52,24 @@ export interface Settings {
   push_tool_calls: boolean
   prevent_sleep: boolean
   terminal: TerminalConfig
+  /** 是否启用 ASCII 电子宠物（buddy） */
+  buddyEnabled: boolean
+  /** buddy 物种 ID */
+  buddyRoleId: string
+  /** 眼睛字符 */
+  buddyEye: BuddyEye
+  /** 帽子 id */
+  buddyHat: BuddyHat
+  /** 是否 shiny（金色 + 光晕） */
+  buddyShiny: boolean
+  /** 稀有度（null = 使用物种固有稀有度） */
+  buddyRarity: BuddyRarity | null
+  /** 3D hover 倾斜角度（0 = 关闭 3D 旋转） */
+  buddy3DTilt: number
+  /** 呼吸浮动幅度 px（0 = 静止） */
+  buddyFloatAmp: number
+  /** 自定义 ASCII 宠物内容 */
+  buddyCustomAscii: string
 }
 
 export const DEFAULT_TERMINAL_FONT = '"JetBrains Mono", "SF Mono", Menlo, Consolas, "Courier New", monospace'

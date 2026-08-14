@@ -244,7 +244,7 @@ function statBin(bin: string): boolean | 'unknown' {
  *
  * Windows 上 `claude` 通常是 `.cmd` shim（Node 不直接支持），用 `cmd.exe /c` 包一层。
  */
-function probeBin(resolvedBin: string, env: Record<string, string>): void {
+function probeBin(resolvedBin: string, env: Record<string, string>, label: string, bin: string): void {
   const logger = getLogger();
   const PLATFORM = process.platform;
   const isWin = PLATFORM === 'win32';
@@ -282,20 +282,20 @@ function probeBin(resolvedBin: string, env: Record<string, string>): void {
       // EPERM: macOS sandbox / 系统完整性保护拒绝
       // ETIMEDOUT: 探测 timeout，binary 可能挂在 --version（罕见但需要让用户知道）
       logger.error(`[pty] probe 失败 bin=${resolvedBin} code=${code}: ${msg}`);
-      const hint = formatProbeFailureHint(code, resolvedBin, PLATFORM);
-      throw new Error(`Claude binary 探测失败 (${code}): ${msg}${hint ? `\n${hint}` : ''}`);
+      const hint = formatProbeFailureHint(code, resolvedBin, PLATFORM, label, bin);
+      throw new Error(`${label} 可执行文件探测失败 (${code}): ${msg}${hint ? `\n${hint}` : ''}`);
     }
   }
 }
 
 /** 针对常见错误码给出可执行的 user-facing 提示 */
-function formatProbeFailureHint(code: string, resolvedBin: string, platform: string): string {
+function formatProbeFailureHint(code: string, resolvedBin: string, platform: string, label: string, bin: string): string {
   if (code === 'ENOENT') {
     return [
       '可能原因：',
-      '- claude 未安装或不在 PATH 里',
-      '- macOS GUI 启动时 PATH 不完整；在"设置 -> Claude 路径"里配置绝对路径',
-      platform === 'darwin' ? `  终端执行 \`which claude\` 拿到绝对路径后填入设置` : '',
+      `- ${label} 未安装或不在 PATH 里`,
+      `- macOS GUI 启动时 PATH 不完整；在"设置 -> 通用"里为 ${label} 配置绝对路径`,
+      platform === 'darwin' ? `  终端执行 \`which ${bin}\` 拿到绝对路径后填入设置` : '',
     ].filter(Boolean).join('\n');
   }
   if (code === 'EACCES') {
@@ -308,7 +308,7 @@ function formatProbeFailureHint(code: string, resolvedBin: string, platform: str
     ].join('\n');
   }
   if (code === 'ETIMEDOUT') {
-    return '可能原因：claude --version 响应超过 3s；binary 可能在尝试连网络，请检查 ANTHROPIC_BASE_URL 或上游可达性';
+    return `可能原因：${label} --version 响应超过 3s；binary 可能在尝试连网络，请检查上游可达性`;
   }
   return '';
 }
@@ -376,6 +376,8 @@ export interface StartOptions {
    * macOS forkpty 失败只 onExit=1 拿不到 errno，故此开关专门用来消除 macOS 偶发失败。
    */
   probe?: boolean;
+  /** 错误提示用的 agent 展示名（如 'Codex (OpenAI)'）；缺省回退 bin */
+  agentLabel?: string;
 }
 
 export function start(
@@ -391,11 +393,12 @@ export function start(
   const logger = getLogger();
   const darwinEnv = resolveShellEnv();
   const resolvedBin = resolveBin(bin, darwinEnv);
+  const label = opts.agentLabel ?? bin;
 
   // resolveBin 返回 null 说明 PATH 全程找不到该命令 —— 直接 throw 而不是让
   // node-pty forkpty 静默 exit code=1 拿不到 errno
   if (!resolvedBin) {
-    const msg = `Claude binary 未在 PATH 中找到: ${bin}\n请在"设置 -> Claude 路径"配置绝对路径，或检查 claude 是否已安装`;
+    const msg = `未在 PATH 中找到 ${label} 可执行文件: ${bin}\n请在"设置 -> 通用"中为 ${label} 配置可执行文件路径，或检查 ${label} 是否已安装`;
     logger.error(`[pty] ${msg}`);
     throw new Error(msg);
   }
@@ -403,7 +406,7 @@ export function start(
   // 真正的 bin 存在性检查（绝对路径或带 sep 的相对路径才 stat）
   const binExists = statBin(resolvedBin);
   if (binExists === false) {
-    const msg = `Claude binary 不存在: ${resolvedBin}`;
+    const msg = `${label} 可执行文件不存在: ${resolvedBin}`;
     logger.error(`[pty] ${msg}`);
     throw new Error(msg);
   }
@@ -413,7 +416,7 @@ export function start(
   // 仅在 spawn 的是 claude（opts.probe=true）时运行，避免对通用 binary（cmd.exe /
   // /bin/sh 等）误判：--version 是 claude 专属，cmd.exe 不认会 exit 1。
   if (opts.probe) {
-    probeBin(resolvedBin, { ...process.env, ...darwinEnv, ...env } as { [key: string]: string });
+    probeBin(resolvedBin, { ...process.env, ...darwinEnv, ...env } as { [key: string]: string }, label, bin);
   }
 
   const { file, args } = buildCommand(resolvedBin, sessionId, mode, env, extraArgs);

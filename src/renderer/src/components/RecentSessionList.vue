@@ -1,33 +1,29 @@
 <template>
-  <div class="recent-list">
+  <div class="recent-list" :class="{ expanded }">
     <div
       v-for="item in visibleList"
       :key="item.sessionId"
       class="recent-item"
       @click="$emit('select', item)"
     >
-      <div class="status-dot" :class="item.state" />
-      <div class="body">
-        <div class="row1">
-          <span class="title" :title="displayTitle(item)">{{ displayTitle(item) }}</span>
-        </div>
-        <div class="row2">
-          <span class="meta" :title="metaTitle(item)">{{ item.project }} · {{ item.sessionId.slice(0, 8) }} · {{ duration(item.lastOpenedAt) }}</span>
-        </div>
-      </div>
+      <span class="status-dot" :class="item.state" />
+      <AgentBadge :agent="item.agent" size="sm" class="recent-agent" />
+      <span class="title" :title="displayTitle(item)">{{ displayTitle(item) }}</span>
+      <span class="meta">{{ item.project }} · {{ duration(item.lastOpenedAt) }}</span>
     </div>
     <button
       v-if="list.length > limit"
       class="toggle-more"
       @click.stop="expanded = !expanded"
     >
-      {{ expanded ? '收起' : `显示另外 ${list.length - limit} 个会话...` }}
+      {{ expanded ? '收起' : `另外 ${list.length - limit} 个会话` }}
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import AgentBadge from './AgentBadge.vue'
 import { sessionDisplayTitle } from '../stores/sessions'
 import type { RecentSession } from '../types/recent'
 
@@ -59,10 +55,6 @@ function displayTitle(item: RecentSession) {
   }) || item.project
 }
 
-function metaTitle(item: RecentSession) {
-  return `${item.project} · ${item.sessionId} · ${duration(item.lastOpenedAt)}`
-}
-
 function duration(lastOpenedAt: number) {
   void tick.value // 依赖 tick 确保每分钟重算
   if (!lastOpenedAt || lastOpenedAt <= 0) return '刚刚'
@@ -84,10 +76,12 @@ function duration(lastOpenedAt: number) {
 </script>
 
 <style scoped>
-.recent-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 4px; }
+/* 默认折叠只显示前 5 条，隐藏滚动条；点击"另外 xx 会话"展开后才可滚动 */
+.recent-list { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 4px; }
+.recent-list.expanded { overflow-y: auto; overflow-x: hidden; }
 .recent-item {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 8px 10px; border-radius: var(--radius-md);
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: var(--radius-sm);
   cursor: pointer; background: transparent;
   transition: background 0.15s;
 }
@@ -95,22 +89,21 @@ function duration(lastOpenedAt: number) {
 .recent-item:active { background: var(--session-item-hover-bg); transform: scale(0.995); }
 .status-dot {
   width: 6px; height: 6px; border-radius: 50%;
-  background: var(--text-tertiary); flex-shrink: 0; margin-top: 6px;
+  background: var(--text-tertiary); flex-shrink: 0;
 }
+.recent-agent { flex-shrink: 0; }
 .status-dot.running { background: var(--status-success); }
 .status-dot.done { background: var(--text-tertiary); }
 .status-dot.ended { background: var(--text-tertiary); box-shadow: inset 0 0 0 1.5px var(--text-tertiary); background: transparent; }
 .status-dot.awaiting_permission { background: var(--status-error); }
-.body { flex: 1; min-width: 0; }
 .title {
+  flex: 1; min-width: 0;
   font-size: 13px; color: var(--text-primary); font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .meta {
-  font-size: 11px; color: var(--text-secondary);
-  display: block;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 100%;
+  font-size: var(--fs-caption); color: var(--text-secondary);
+  white-space: nowrap; flex-shrink: 0;
 }
 .toggle-more {
   width: 100%; text-align: left;

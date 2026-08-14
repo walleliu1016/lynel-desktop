@@ -5,7 +5,9 @@ import { describe, it, expect } from 'vitest';
 const isCI = !!process.env.CI;
 
 describe('pty', () => {
-  it.skipIf(isCI)('spawns a process and exits', async () => {
+  // Windows 上 node-pty(ConPTY) spawn+exit 裸测约 1.4s，全量测试并发负载下可达 4-5s+，
+  // 5s 默认超时太紧导致偶发失败，故单独放宽。
+  it.skipIf(isCI)('spawns a process and exits', { timeout: 20000 }, async () => {
     const { start, PtyMode } = await import('../../src/main/pty.js');
     const isWin = process.platform === 'win32';
     const bin = isWin ? 'cmd.exe' : '/bin/sh';

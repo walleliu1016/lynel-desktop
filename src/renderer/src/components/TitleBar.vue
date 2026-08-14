@@ -1,18 +1,23 @@
 <template>
   <div class="titlebar" :class="{ 'is-mac': isMac, center: props.center }">
     <div class="titlebar-left">
-      <span v-if="!props.center" class="brand-name"><span class="brand-lynel">Lynel</span> <span class="brand-desktop">Desktop</span></span>
+      <button v-if="!props.center" class="iconbtn" aria-label="打开 Session" title="打开 Session" @click="$emit('open-session')">
+        <Icon name="folder-open" :size="12" />
+      </button>
+      <button v-if="!props.center" class="iconbtn" :title="props.collapsed ? '展开会话列表' : '收起会话列表'" @click="$emit('toggle-collapse')">
+        <Icon :name="props.collapsed ? 'panel-left-open' : 'panel-left-close'" :size="12" />
+      </button>
     </div>
     <div class="titlebar-right">
       <button v-if="props.showGuide" class="iconbtn" aria-label="使用指南" title="使用指南" @click="$emit('guide')">
-        <Icon name="help" :size="14" />
+        <Icon name="help" :size="12" />
       </button>
       <div v-if="cloudEnabled && !props.hideCloud" class="cloud-status" :class="cloudStatusClass" :title="cloudStatusTitle">
         <span class="dot" />
         <span class="label">{{ cloudStatusText }}</span>
       </div>
       <button v-if="!props.hideSettings" class="iconbtn" aria-label="设置" title="设置" @click="$emit('settings')">
-        <Icon name="settings" :size="14" />
+        <Icon name="settings" :size="12" />
       </button>
       <div v-if="props.username" class="account">
         <span class="avatar" aria-hidden="true">{{ avatar }}</span>
@@ -21,24 +26,21 @@
           <span>本地</span>
         </div>
         <button v-if="!props.hideLogout" class="logout-btn" aria-label="退出登录" title="退出登录" @click="$emit('logout')">
-          <Icon name="log-out" :size="13" />
+          <Icon name="log-out" :size="11" />
         </button>
       </div>
       <div v-if="!isMac" class="win-btns">
         <button class="win-btn" aria-label="最小化" title="最小化" @click="minimize">
-          <Icon name="minimize" :size="14" />
+          <Icon name="minimize" :size="12" />
         </button>
         <button class="win-btn" :aria-label="isMaximized ? '还原' : '最大化'" :title="isMaximized ? '还原' : '最大化'" @click="toggleMaximize">
-          <Icon :name="isMaximized ? 'restore' : 'maximize'" :size="14" />
+          <Icon :name="isMaximized ? 'restore' : 'maximize'" :size="12" />
         </button>
         <button class="win-btn close" aria-label="隐藏到托盘" title="隐藏到托盘" @click="hide">
-          <Icon name="close" :size="14" />
+          <Icon name="close" :size="12" />
         </button>
       </div>
     </div>
-    <span v-if="props.center" class="titlebar-brand-center">
-      <span class="brand-lynel">Lynel</span> <span class="brand-desktop">Desktop</span>
-    </span>
   </div>
 </template>
 
@@ -48,8 +50,8 @@ import { useWindowState } from '../composables/useWindowState'
 import { CloudConnectionState, GetSettings } from '../composables/useElectron'
 import Icon from './Icon.vue'
 
-const props = defineProps<{ username?: string; showGuide?: boolean; center?: boolean; hideSettings?: boolean; hideCloud?: boolean; hideLogout?: boolean }>()
-defineEmits<{ (e: 'settings'): void; (e: 'guide'): void; (e: 'logout'): void }>()
+const props = defineProps<{ username?: string; showGuide?: boolean; center?: boolean; collapsed?: boolean; hideSettings?: boolean; hideCloud?: boolean; hideLogout?: boolean }>()
+defineEmits<{ (e: 'settings'): void; (e: 'guide'): void; (e: 'logout'): void; (e: 'open-session'): void; (e: 'toggle-collapse'): void }>()
 
 const { isMaximized, minimize, toggleMaximize, hide } = useWindowState()
 
@@ -120,12 +122,12 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .titlebar {
-  height: 64px;
+  height: 50px;
   background: var(--bg-titlebar);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 18px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
   --wails-draggable: drag;
@@ -135,49 +137,46 @@ onBeforeUnmount(() => {
 .titlebar-left, .titlebar-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   -webkit-app-region: no-drag;
 }
-.titlebar-left { gap: 16px; }
-.brand-name { font-weight: 800; font-size: 18px; color: var(--accent); letter-spacing: -0.3px; transform: translateY(10px); }
-.brand-desktop { font-weight: 500; color: var(--status-error); }
 .iconbtn {
-  width: 32px; height: 32px;
-  border: 1px solid var(--border); border-radius: 9px;
+  width: 26px; height: 26px;
+  border: 1px solid var(--border); border-radius: 8px;
   background: var(--bg-panel); color: var(--text-secondary);
   display: flex; align-items: center; justify-content: center;
 }
 .iconbtn:hover { color: var(--text-primary); border-color: var(--accent); }
 .cloud-status {
-  display: flex; align-items: center; gap: 6px;
-  height: 28px; padding: 0 10px;
-  border-radius: 20px; font-size: 11px; font-weight: 600;
+  display: flex; align-items: center; gap: 5px;
+  height: 22px; padding: 0 8px;
+  border-radius: 16px; font-size: 10px; font-weight: 600;
   border: 1px solid var(--border);
   background: var(--bg-panel); color: var(--text-secondary);
 }
-.cloud-status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
-.cloud-status.ok { border-color: #a7f3d0; background: var(--status-success-soft); color: #047857; }
-.cloud-status.ok .dot { background: var(--status-success); box-shadow: 0 0 6px rgba(34,197,94,.4); }
-.cloud-status.fail { border-color: #fecaca; background: rgba(239,68,68,.08); color: #b91c1c; }
-.cloud-status.fail .dot { background: #ef4444; }
-.cloud-status.testing { border-color: #fde68a; background: rgba(245,158,11,.08); color: #b45309; }
-.cloud-status.testing .dot { background: #f59e0b; animation: cloud-pulse 0.8s infinite; }
+.cloud-status .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
+.cloud-status.ok { border-color: color-mix(in srgb, var(--status-success) 30%, transparent); background: var(--status-success-soft); color: color-mix(in srgb, var(--status-success) 40%, var(--text-primary)); }
+.cloud-status.ok .dot { background: var(--status-success); box-shadow: 0 0 6px color-mix(in srgb, var(--status-success) 50%, transparent); }
+.cloud-status.fail { border-color: color-mix(in srgb, var(--status-error) 30%, transparent); background: var(--status-error-soft); color: color-mix(in srgb, var(--status-error) 40%, var(--text-primary)); }
+.cloud-status.fail .dot { background: var(--status-error); }
+.cloud-status.testing { border-color: color-mix(in srgb, var(--status-warn) 30%, transparent); background: var(--status-warn-soft); color: color-mix(in srgb, var(--status-warn) 40%, var(--text-primary)); }
+.cloud-status.testing .dot { background: var(--status-warn); animation: cloud-pulse 0.8s infinite; }
 @keyframes cloud-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 .account {
   display: flex; align-items: center; gap: 8px;
   padding-left: 12px; border-left: 1px solid var(--border);
 }
 .avatar {
-  width: 28px; height: 28px; border-radius: 8px;
-  background: var(--accent); color: white;
+  width: 22px; height: 22px; border-radius: 7px;
+  background: var(--accent); color: var(--text-inverse);
   display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 800;
+  font-size: 9px; font-weight: 800;
 }
 .info { display: flex; flex-direction: column; }
-.info b { font-size: 11px; color: var(--text-primary); }
-.info span { font-size: 10px; color: var(--text-tertiary); }
+.info b { font-size: 10px; color: var(--text-primary); }
+.info span { font-size: 9px; color: var(--text-tertiary); }
 .logout-btn {
-  width: 22px; height: 22px; border-radius: 4px;
+  width: 18px; height: 18px; border-radius: 4px;
   display: flex; align-items: center; justify-content: center;
   color: var(--text-tertiary);
   background: transparent;
@@ -185,10 +184,10 @@ onBeforeUnmount(() => {
   cursor: pointer;
   margin-left: 4px;
 }
-.logout-btn:hover { color: var(--status-error); background: rgba(239,68,68,.08); }
+.logout-btn:hover { color: var(--status-error); background: var(--status-error-soft); }
 .win-btns { display: flex; align-items: center; gap: 2px; margin-left: 8px; }
 .win-btn {
-  width: 32px; height: 26px; border-radius: 4px;
+  width: 26px; height: 22px; border-radius: 4px;
   display: flex; align-items: center; justify-content: center;
   color: var(--text-secondary);
   background: transparent;
@@ -196,24 +195,10 @@ onBeforeUnmount(() => {
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.win-btn:hover { background: rgba(0,0,0,0.06); }
-.win-btn:active { background: rgba(0,0,0,0.10); }
-.win-btn.close:hover { background: var(--status-error); color: white; }
+.win-btn:hover { background: var(--bg-hover); }
+.win-btn:active { background: var(--border); }
+.win-btn.close:hover { background: var(--status-error); color: var(--text-inverse); }
 .win-btn.close:active { background: var(--status-error); filter: brightness(0.9); }
-.is-mac .titlebar { padding-left: 90px; }
+.is-mac .titlebar { padding-left: 78px; }
 .titlebar.center .titlebar-left { visibility: hidden; }
-.titlebar-brand-center {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  margin-top: 10px;
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: -0.3px;
-  pointer-events: none;
-  user-select: none;
-}
-.titlebar-brand-center .brand-lynel { color: var(--accent); }
-.titlebar-brand-center .brand-desktop { font-weight: 500; color: var(--status-error); }
 </style>

@@ -2,7 +2,12 @@
   <div class="session-tab-content">
     <div v-if="loading" class="terminal-area-loading">
       <div ref="spinnerEl" class="spinner-static" />
-      <div class="loading-text">正在启动 Claude 会话…</div>
+      <div class="loading-text">
+        <AgentBadge :agent="agent" size="sm" />
+        正在启动 {{ agentLabel }} 会话…
+      </div>
+      <!-- 加载遮罩内的 Buddy：不传 state，缺省 idle 帧陪伴 -->
+      <BuddyHost :session-id="sessionId" />
     </div>
     <XtermTerminal
       :session-id="sessionId"
@@ -18,14 +23,28 @@
       :session-id="sessionId"
       :id="permissionRequestId"
     />
+    <!--
+      等待审批专属 Buddy：alarm 帧 + 等待吐槽。
+      v-if="!loading && isAwaitingPermission" 门控：若 loading 与 awaiting 同时成立
+      （启动期就触发权限），会与加载遮罩内的 BuddyHost 并存成双实例，导致同一 session
+      的请求/错误事件被重复累计。保证同一 session 同一时刻只有一个 BuddyHost 实例。
+    -->
+    <BuddyHost
+      v-if="!loading && isAwaitingPermission"
+      :session-id="sessionId"
+      state="awaiting_permission"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
+import AgentBadge from './AgentBadge.vue'
 import XtermTerminal from './XtermTerminal.vue'
 import PermissionToast from './PermissionToast.vue'
+import BuddyHost from './buddy/BuddyHost.vue'
 import { useSessionsStore } from '../stores/sessions'
+import { agentMeta } from '../types/agents'
 import { WriteTerminalInput } from '../composables/useElectron'
 
 const props = withDefaults(defineProps<{
@@ -40,6 +59,12 @@ const sessions = useSessionsStore()
 const loading = ref(false)
 const spinnerEl = ref<HTMLElement | null>(null)
 let spinnerRaf = 0
+
+const agent = computed(() => sessions.list.find((s) => s.id === props.sessionId)?.agent)
+const agentLabel = computed(() => agentMeta(agent.value).label)
+
+/** 会话是否处于等待审批状态：作为 Buddy alarm 帧与等待吐槽的显示门控 */
+const isAwaitingPermission = computed(() => sessions.state[props.sessionId] === 'awaiting_permission')
 
 function runSpinner() {
   if (!spinnerEl.value) return
@@ -99,8 +124,6 @@ async function onTerminalData(data: string) {
   min-height: 0;
   overflow: hidden;
   background: var(--bg-terminal);
-  padding-left: 8px;
-  border-left: 1px solid var(--border-strong, var(--border));
 }
 .terminal-area-loading {
   position: absolute;
@@ -115,14 +138,14 @@ async function onTerminalData(data: string) {
   background: var(--bg-terminal-loading);
   pointer-events: none;
 }
-.loading-text { font-size: 12px; }
+.loading-text { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-body-sm); }
 </style>
 
 <style>
 .spinner-static {
   width: 28px;
   height: 28px;
-  border: 3px solid var(--border);
+  border: 3px solid var(--border-strong);
   border-top-color: var(--accent);
   border-radius: 50%;
 }

@@ -18,7 +18,7 @@ export const LoginWithToken = (userId: string, token: string) =>
   api().loginWithToken(userId, token);
 export const Logout = () => api().logout();
 export const ListSessions = (workDir?: string) => api().listSessions(workDir);
-export const CreateSession = (workDir: string, prompt: string, extraArgs: string[] = []) => api().createSession(workDir, prompt, extraArgs);
+export const CreateSession = (workDir: string, prompt: string, extraArgs: string[] = [], agent?: string) => api().createSession(workDir, prompt, extraArgs, agent);
 export const SendMessage = (id: string, prompt: string) => api().sendMessage(id, prompt);
 export const CloseSession = (id: string) => api().closeSession(id);
 export const GetSettings = () => api().getSettings();
@@ -40,6 +40,8 @@ export const CloudConnectionState = () => api().cloudConnectionState();
 export const ListBots = () => api().listBots();
 export const SaveBot = (bot: any) => api().saveBot(bot);
 export const DeleteBot = (id: string) => api().deleteBot(id);
+export const GetBotThreshold = () => api().getBotThreshold();
+export const SetBotThreshold = (value: number) => api().setBotThreshold(value);
 export const BindSessionBot = (sessionId: string, botId: string | null) => api().bindSessionBot(sessionId, botId);
 export const GetSessionBotBinding = (sessionId: string) => api().getSessionBotBinding(sessionId);
 export const GetBotConnectionStatus = () => api().getBotConnectionStatus();
@@ -101,5 +103,9 @@ export const QuitAndInstall = () => api().quitAndInstall();
 export const GetUpdateStatus = () => api().getUpdateStatus();
 export const GetUpdateConfig = () => api().getUpdateConfig();
 export const UpdateUpdateConfig = (cfg: any) => api().updateUpdateConfig(cfg);
+
+// DeepSeek Harness（dsh）
+export const DshEnsure = () => api().dshEnsure();
+export const DshShutdown = () => api().dshShutdown();
 
 export const isElectronDev = import.meta.env.DEV;

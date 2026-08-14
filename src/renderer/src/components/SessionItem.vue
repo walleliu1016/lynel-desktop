@@ -8,30 +8,24 @@
     @contextmenu.prevent="onContextMenu"
     ref="itemEl"
   >
-    <div class="avatar">CC</div>
+    <AgentBadge :agent="props.meta.agent" size="sm" />
     <div class="body">
-      <div class="row-top">
-        <input
-          v-if="editing"
-          ref="inputEl"
-          v-model="editValue"
-          class="title-input"
-          @blur="commitRename"
-          @keydown.enter="commitRename"
-          @keydown.escape="cancelRename"
-        />
-        <span v-else class="title" :title="title">{{ title }}</span>
-        <div class="right-group">
-          <span class="time">{{ duration }}</span>
-          <span v-if="stateDotClass" class="dot" :class="stateDotClass"></span>
-        </div>
-      </div>
-      <div class="row-bottom">
-        <span class="meta" :title="`${projectName} · ${msgCount}`">{{ projectName }} · {{ msgCount }}</span>
-        <span v-if="currentBotName" class="bot-tag"><Icon name="bot" :size="10" />{{ currentBotName }}</span>
-      </div>
-      <div v-if="eventText" class="event">{{ eventText }}</div>
+      <input
+        v-if="editing"
+        ref="inputEl"
+        v-model="editValue"
+        class="title-input"
+        @blur="commitRename"
+        @keydown.enter="commitRename"
+        @keydown.escape="cancelRename"
+      />
+      <span v-else class="title">{{ title }}</span>
     </div>
+    <span class="time">{{ duration }}</span>
+    <span v-if="currentBotId" class="bot-mark" :title="botMarkTitle">
+      <Icon name="bot" :size="12" />
+    </span>
+    <span v-if="stateDotClass" class="dot" :class="stateDotClass"></span>
   </div>
   <Teleport to="body">
     <div
@@ -92,7 +86,6 @@
       v-if="showTip"
       :meta="meta"
       :anchor="tipAnchor"
-      :settings-path="settingsPath"
       @mouseenter="cancelHide"
       @mouseleave="onLeave"
     />
@@ -101,16 +94,17 @@
 
 <script setup lang="ts">
 import { computed, ref, nextTick, onMounted, onUnmounted } from 'vue'
+import AgentBadge from './AgentBadge.vue'
 import SessionTooltip from './SessionTooltip.vue'
 import Icon from './Icon.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useBotsStore } from '../stores/bots'
 import { pushToast } from '../composables/useToast'
 
-import { ClipboardWrite, GetSessionSettingsPath } from '../composables/useElectron'
+import { ClipboardWrite } from '../composables/useElectron'
 import type { SessionMeta } from '../types/session'
 
-const props = defineProps<{ meta: SessionMeta; isActive: boolean; dup?: boolean }>()
+const props = defineProps<{ meta: SessionMeta; isActive: boolean }>()
 const emit = defineEmits<{ (e: 'select'): void }>()
 
 const sessions = useSessionsStore()
@@ -129,8 +123,6 @@ const inputEl = ref<HTMLInputElement | null>(null)
 const menuOpen = ref(false)
 const menuStyle = ref({ top: '0px', left: '0px' })
 
-const settingsPath = ref('')
-
 function onEnter() {
   if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
   showTimer = setTimeout(() => {
@@ -139,7 +131,6 @@ function onEnter() {
       const r = itemEl.value.getBoundingClientRect()
       tipAnchor.value = { x: r.right + 8, y: r.top }
     }
-    GetSessionSettingsPath(props.meta.id).then((p) => { settingsPath.value = p }).catch(() => {})
   }, 1000)
 }
 function onLeave() {
@@ -181,7 +172,7 @@ async function commitRename() {
   try {
     await sessions.renameSession(props.meta.id, trimmed)
   } catch (e: any) {
-    alert('重命名失败：' + (e?.message ?? e))
+    pushToast({ level: 'error', source: 'session', message: '重命名失败：' + (e?.message ?? e) })
   }
 }
 
@@ -206,26 +197,6 @@ function openBotPicker() {
 
 const title = computed(() => sessionDisplayTitle(props.meta))
 
-const msgCount = computed(() => {
-  const n = props.meta.msg_count || 0
-  return n ? `${n} 条消息` : '暂无消息'
-})
-
-const eventText = computed(() => {
-  if (props.meta.lastEvent) {
-    return `${props.meta.lastEvent.type} · ${props.meta.lastEvent.summary}`
-  }
-  return ''
-})
-
-const projectName = computed(() => {
-  const name = props.meta.project || props.meta.workdir || '新会话'
-  if (props.dup) {
-    return name + ' #' + props.meta.id.slice(0, 4)
-  }
-  return name
-})
-
 // 每分钟更新一次，驱动 duration 重新计算
 const tick = ref(0)
 let timer: ReturnType<typeof setInterval> | null = null
@@ -235,6 +206,8 @@ onMounted(() => {
 })
 onUnmounted(() => {
   if (timer) clearInterval(timer)
+  if (showTimer) clearTimeout(showTimer)
+  if (hideTimer) clearTimeout(hideTimer)
 })
 
 const duration = computed(() => {
@@ -284,6 +257,8 @@ const stateDotClass = computed(() => {
     case 'done':
     case 'ended':
       return 'done'
+    case 'idle':
+      return 'idle'
     default: return ''
   }
 })
@@ -291,6 +266,9 @@ const stateDotClass = computed(() => {
 // Bot 绑定
 const currentBotName = computed(() => sessions.getSessionBotName(props.meta.id))
 const currentBotId = computed(() => sessions.getSessionBotId(props.meta.id))
+const botMarkTitle = computed(() =>
+  currentBotName.value ? `已绑定 Bot：${currentBotName.value}` : '已绑定 Bot'
+)
 
 const botList = computed(() => botsStore.bots)
 
@@ -332,8 +310,8 @@ async function unbindBot() {
 
 <style scoped>
 .session-item {
-  display: flex; align-items: stretch; gap: 10px;
-  padding: 10px; border-radius: 10px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px; border-radius: var(--radius-sm);
   cursor: pointer; position: relative;
   background: transparent;
   transition: background 0.12s;
@@ -343,44 +321,24 @@ async function unbindBot() {
 .session-item.active {
   background: var(--session-item-active-bg);
 }
+/* 选中强调：左侧 accent 竖条，与背景 tint + 标题着色构成清晰对比 */
 .session-item.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%; transform: translateY(-50%);
-  width: 3px; height: 24px;
-  border-radius: 2px;
-  background: var(--accent);
+  content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
+  background: var(--accent); border-radius: 2px;
 }
+.session-item.active .title { color: var(--accent); font-weight: 600; }
 .session-item.awaiting {
   background: var(--status-error-soft);
 }
-.session-item.awaiting.active::before {
-  background: var(--status-error);
-}
-.avatar {
-  width: 34px; height: 34px; border-radius: 10px;
-  background: var(--accent-soft-bg);
-  color: var(--accent);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700;
-  flex-shrink: 0;
-}
 .body {
   flex: 1; min-width: 0;
-  display: flex; flex-direction: column;
-  justify-content: center; gap: 3px;
-}
-.row-top {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center;
 }
 .title {
   flex: 1; min-width: 0;
-  font-size: 13px; color: var(--accent); font-weight: 700;
+  font-size: var(--fs-body); color: var(--text-primary); font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  letter-spacing: 0.02em;
 }
-.session-item.active .title { color: var(--accent-deep); }
 .title-input {
   flex: 1; min-width: 0;
   font-size: 12px; font-weight: 600;
@@ -391,13 +349,16 @@ async function unbindBot() {
   padding: 2px 6px;
   outline: none;
 }
-.right-group {
-  display: flex; align-items: center; gap: 6px;
-  flex-shrink: 0;
-}
 .time {
-  font-size: 10px; color: var(--text-tertiary);
-  white-space: nowrap;
+  font-size: var(--fs-caption); color: var(--text-tertiary);
+  white-space: nowrap; flex-shrink: 0;
+}
+.bot-mark {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center;
+  color: var(--accent);
+  margin-right: 2px;
+  cursor: default;
 }
 .dot {
   width: 6px; height: 6px; border-radius: 50%;
@@ -408,38 +369,20 @@ async function unbindBot() {
   box-shadow: 0 0 6px var(--accent-glow);
 }
 .dot.done { background: var(--status-success); }
+.dot.idle { background: var(--text-tertiary); }
 .dot.awaiting {
   background: var(--status-error);
   animation: pulse-opacity 1.2s ease-in-out infinite;
 }
-.row-bottom {
-  display: flex; align-items: center; gap: 8px;
-}
-.meta {
-  flex: 1;
-  font-size: 10px; color: var(--text-secondary);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.bot-tag {
-  display: inline-flex; align-items: center; gap: 3px;
-  font-size: 9px; padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(59,130,246,0.12);
-  color: #60a5fa;
-  white-space: nowrap; flex-shrink: 0;
-}
-.event {
-  font-size: 10px; color: var(--text-secondary); margin-top: 2px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.event :deep(b), .event b { font-weight: 600; color: var(--text-primary); }
 .context-menu-overlay {
   position: fixed; inset: 0; z-index: 999;
 }
 .context-menu {
   position: fixed;
   z-index: 1000;
-  background: var(--bg-panel);
+  background: var(--material-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-window);
@@ -461,7 +404,7 @@ async function unbindBot() {
   cursor: pointer;
 }
 .menu-item:hover {
-  background: var(--session-item-hover-bg);
+  background: var(--bg-hover);
 }
 .menu-item:disabled {
   opacity: 0.45;
@@ -473,7 +416,7 @@ async function unbindBot() {
 .bound-hint {
   flex-shrink: 0;
   font-size: 10px;
-  color: #047857;
+  color: color-mix(in srgb, var(--status-success) 40%, var(--text-primary));
   background: var(--status-success-soft);
   padding: 1px 6px;
   border-radius: 4px;
@@ -487,20 +430,27 @@ async function unbindBot() {
   height: 1px; background: var(--border); margin: 4px 0;
 }
 .picker-overlay { z-index: 1001; }
-.bot-picker .menu-item {
-  border-bottom: 1px solid var(--border);
-  border-radius: 0;
-  padding: 8px 10px;
+/* Bot 选择弹窗：与 Agent 下拉面板（Select.ls-panel）同款样式 */
+.bot-picker {
+  min-width: 200px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  max-height: 280px;
+  overflow-y: auto;
 }
-.bot-picker .menu-item:last-of-type {
+.bot-picker .menu-item {
   border-bottom: none;
+  border-radius: var(--radius-md);
+  padding: 7px 10px;
 }
 .bot-picker .menu-item:hover {
-  background: rgba(128,128,128,0.2);
+  background: var(--accent-soft-bg);
 }
-.bot-picker { min-width: 200px; }
 .picker-title {
-  padding: 6px 10px; font-size: 11px; color: var(--text-tertiary);
+  padding: 6px 10px; font-size: var(--fs-body-sm); color: var(--text-tertiary);
   font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
 }
 .menu-item.selected { color: var(--accent); font-weight: 600; }
@@ -520,7 +470,7 @@ async function unbindBot() {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   text-align: left;
   background: transparent;
   border: none;

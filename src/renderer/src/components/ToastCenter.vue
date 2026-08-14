@@ -78,13 +78,15 @@ function onLeave(item: ToastItem) {
   width: 360px;
   max-width: calc(100vw - 32px);
   padding: 10px 12px;
-  background: var(--bg-panel);
-  color: var(--text-primary, #1f2937);
-  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.08));
+  background: var(--material-bg, rgba(255,255,255,0.72));
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
   border-left-width: 3px;
-  border-radius: var(--radius-md);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
-  font-size: 13px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-window);
+  font-size: var(--fs-body-sm);
   line-height: 1.4;
 }
 .toast-item.level-error {
@@ -99,7 +101,7 @@ function onLeave(item: ToastItem) {
 .toast-icon {
   flex: 0 0 16px;
   margin-top: 2px;
-  color: var(--text-secondary, #6b7280);
+  color: var(--text-secondary);
 }
 .toast-item.level-error .toast-icon { color: var(--status-error); }
 .toast-item.level-warn  .toast-icon { color: var(--status-warn); }
@@ -110,8 +112,8 @@ function onLeave(item: ToastItem) {
   min-width: 0;
 }
 .toast-source {
-  font-size: 11px;
-  color: var(--text-secondary, #6b7280);
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-bottom: 2px;
@@ -134,14 +136,14 @@ function onLeave(item: ToastItem) {
   background: transparent;
   border: none;
   border-radius: 4px;
-  color: var(--text-secondary, #6b7280);
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 0;
   margin-top: 1px;
 }
 .toast-close:hover {
-  background: var(--bg-hover, rgba(0, 0, 0, 0.06));
-  color: var(--text-primary, #1f2937);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 /* TransitionGroup 动画：新条目从上插入，旧的下移 */
@@ -151,11 +153,11 @@ function onLeave(item: ToastItem) {
 }
 .toast-enter-from {
   opacity: 0;
-  transform: translateX(20px);
+  transform: translateY(6px);
 }
 .toast-leave-to {
   opacity: 0;
-  transform: translateX(20px);
+  transform: translateY(6px);
 }
 .toast-move {
   transition: transform 0.18s ease;

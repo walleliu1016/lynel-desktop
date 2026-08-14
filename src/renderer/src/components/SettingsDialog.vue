@@ -1,5 +1,6 @@
 <template>
   <div class="overlay" @click.self="$emit('close')">
+    <SpringTransition>
     <div class="dialog">
       <div class="head">
         <h2>设置</h2>
@@ -11,27 +12,33 @@
       <div class="content">
         <GeneralTab v-if="active === 'general'" />
         <AppearanceTab v-else-if="active === 'appearance'" />
+        <BuddyTab v-else-if="active === 'buddy'" />
         <CloudTab v-else-if="active === 'cloud'" />
         <ProviderTab v-else-if="active === 'provider'" />
         <BotManagement v-else-if="active === 'bot'" />
+        <UpdaterTab v-else-if="active === 'updater'" />
       </div>
       <div v-if="hookPort" class="foot">
         <span class="port-dot" />
         Hook :{{ hookPort }}
       </div>
     </div>
+    </SpringTransition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import Icon from './Icon.vue'
+import SpringTransition from './SpringTransition.vue'
 import SettingsTabs, { type Tab } from './SettingsTabs.vue'
 import GeneralTab from './settings/GeneralTab.vue'
 import AppearanceTab from './settings/AppearanceTab.vue'
+import BuddyTab from './settings/BuddyTab.vue'
 import CloudTab from './settings/CloudTab.vue'
 import ProviderTab from './settings/ProviderTab.vue'
 import BotManagement from './settings/BotManagement.vue'
+import UpdaterTab from './settings/UpdaterTab.vue'
 import { GetHookServerPort } from '../composables/useElectron'
 
 defineEmits<{ (e: 'close'): void }>()
@@ -47,13 +54,15 @@ onMounted(async () => {
 <style scoped>
 .overlay {
   position: fixed; inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
 }
 .dialog {
   width: 700px; height: 520px;
-  background: var(--bg-primary);
+  background: var(--material-bg, rgba(255,255,255,0.72));
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-window);
@@ -77,7 +86,7 @@ h2 {
   pointer-events: none;
 }
 .close { margin-left: auto; color: var(--text-secondary); padding: 2px 6px; border-radius: var(--radius-sm); display: flex; align-items: center; }
-.close:hover { background: var(--bg-input); color: var(--text-primary); }
+.close:hover { background: var(--bg-hover); color: var(--text-primary); }
 .content { flex: 1; overflow-y: auto; min-width: 0; padding: 12px 16px; }
 .foot {
   display: flex; align-items: center; gap: 6px;

@@ -10,7 +10,7 @@
     "dev:stop": "node scripts/dev-cleanup.mjs",
     "dev:frontend": "cd src/renderer && vite",
     "dev:electron": "tsc --watch",
-    "dev:app": "wait-on http://localhost:5173 && electron .",
+    "dev:app": "wait-on http://localhost:5180 && electron .",
     "build": "npm run build:frontend && npm run build:electron",
     "build:frontend": "cd src/renderer && npx vue-tsc --noEmit && npx vite build",
     "build:electron": "tsc",
@@ -34,6 +34,7 @@
     "wait-on": "^9.0.10"
   },
   "dependencies": {
+    "@deepseek-ai/dsh": "^0.1.0-rc.6",
     "@napi-rs/canvas": "^0.1.68",
     "@wecom/aibot-node-sdk": "^1.0.7",
     "@wecom/wecom-openclaw-plugin": "^20206.7.201",
@@ -46,6 +47,7 @@
     "node-pty": "^1.0.0",
     "openclaw": "file:vendor/openclaw-stub",
     "socket.io-client": "^4.8.3",
+    "tree-kill": "^1.2.2",
     "undici": "^7.24.6"
   },
   "engines": {
@@ -58,6 +60,12 @@
     ]
   },
   "allowScripts": {
-    "electron-winstaller@5.4.0": true
+    "electron-winstaller@5.4.0": true,
+    "@deepseek-ai/dsh-subprocess-local": true,
+    "@google/genai": true,
+    "esbuild": true,
+    "koffi": true,
+    "node-pty": true,
+    "protobufjs": true
   }
 }

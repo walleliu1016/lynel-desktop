@@ -10,8 +10,10 @@
   padding: 16px;
 }
 .section-title {
-  font-size: 13px;
+  font-size: var(--fs-caption);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 </style>

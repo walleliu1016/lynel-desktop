@@ -24,7 +24,7 @@
   </div>
   <Teleport to="body">
     <div v-if="ctxOpen" class="term-ctx-overlay" @click="closeTermCtx" @contextmenu.prevent="closeTermCtx">
-      <div class="term-ctx-menu" :style="ctxStyle" @click.stop>
+      <div class="term-ctx-menu material" :style="ctxStyle" @click.stop>
         <button v-if="hasTermSelection" class="menu-item" @click="copyTermSelection">复制</button>
         <button class="menu-item" @click="pasteTerm">粘贴</button>
         <button class="menu-item" @click="selectAllTerm">全选</button>
@@ -625,7 +625,7 @@ onBeforeUnmount(() => {
 }
 
 .loading-text {
-  font-size: 12px;
+  font-size: var(--fs-body-sm);
 }
 
 .terminal-exited {
@@ -649,7 +649,7 @@ onBeforeUnmount(() => {
 .exited-btn {
   padding: 8px 24px;
   background: var(--accent);
-  color: #fff;
+  color: var(--text-inverse);
   border: none;
   border-radius: var(--radius-md);
   font-size: 13px;
@@ -676,7 +676,7 @@ onBeforeUnmount(() => {
 .spinner-static {
   width: 28px;
   height: 28px;
-  border: 3px solid var(--border);
+  border: 3px solid var(--border-strong);
   border-top-color: var(--accent);
   border-radius: 50%;
 }
@@ -684,10 +684,12 @@ onBeforeUnmount(() => {
 .term-ctx-overlay { position: fixed; inset: 0; z-index: 999; }
 .term-ctx-menu {
   position: fixed; z-index: 1000;
-  background: var(--bg-primary);
+  background: var(--material-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--shadow-window);
   padding: 4px; min-width: 100px;
 }
 .term-ctx-menu .menu-item {
@@ -696,5 +698,5 @@ onBeforeUnmount(() => {
   font-size: 12px; color: var(--text-primary);
   background: transparent; border: none; cursor: pointer;
 }
-.term-ctx-menu .menu-item:hover { background: var(--session-item-hover-bg); }
+.term-ctx-menu .menu-item:hover { background: var(--bg-hover); }
 </style>

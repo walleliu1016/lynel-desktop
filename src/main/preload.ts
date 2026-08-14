@@ -8,8 +8,8 @@ const api = {
     ipcRenderer.invoke('app:loginWithToken', userId, token),
   logout: () => ipcRenderer.invoke('app:logout'),
   listSessions: (workDir?: string) => ipcRenderer.invoke('app:listSessions', workDir),
-  createSession: (workDir: string, prompt: string, extraArgs: string[] = []) =>
-    ipcRenderer.invoke('app:createSession', workDir, prompt, extraArgs),
+  createSession: (workDir: string, prompt: string, extraArgs: string[] = [], agent?: string) =>
+    ipcRenderer.invoke('app:createSession', workDir, prompt, extraArgs, agent),
   sendMessage: (id: string, prompt: string) => ipcRenderer.invoke('app:sendMessage', id, prompt),
   closeSession: (id: string) => ipcRenderer.invoke('app:closeSession', id),
   getSettings: () => ipcRenderer.invoke('app:getSettings'),
@@ -33,6 +33,8 @@ const api = {
   listBots: () => ipcRenderer.invoke('app:listBots'),
   saveBot: (bot: any) => ipcRenderer.invoke('app:saveBot', bot),
   deleteBot: (id: string) => ipcRenderer.invoke('app:deleteBot', id),
+  getBotThreshold: () => ipcRenderer.invoke('app:getBotThreshold'),
+  setBotThreshold: (value: number) => ipcRenderer.invoke('app:setBotThreshold', value),
   bindSessionBot: (sessionId: string, botId: string | null) =>
     ipcRenderer.invoke('app:bindSessionBot', sessionId, botId),
   getSessionBotBinding: (sessionId: string) =>
@@ -114,6 +116,10 @@ const api = {
   getUpdateStatus: () => ipcRenderer.invoke('app:getUpdateStatus'),
   getUpdateConfig: () => ipcRenderer.invoke('app:getUpdateConfig'),
   updateUpdateConfig: (cfg: any) => ipcRenderer.invoke('app:updateUpdateConfig', cfg),
+
+  // DeepSeek Harness（dsh）
+  dshEnsure: () => ipcRenderer.invoke('dsh:ensure'),
+  dshShutdown: () => ipcRenderer.invoke('dsh:shutdown'),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

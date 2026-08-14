@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { newSession, register, lookup, send, rebind } from '../../src/main/session.js';
+import { describe, it, expect, vi } from 'vitest';
+import { newSession, register, lookup, send, sendSafe, rebind } from '../../src/main/session.js';
 
 describe('session', () => {
   it('registers and lookups session', () => {
@@ -27,6 +27,32 @@ describe('session', () => {
       write: (d: string) => { written = d; },
     } as any;
     send('s3', 'hello\n');
+    expect(written).toBe('hello\n');
+  });
+
+  it('sendSafe writes text then delayed carriage return', () => {
+    vi.useFakeTimers();
+    const s = newSession('s4', '/wd');
+    register(s);
+    const writes: string[] = [];
+    s.process = {
+      write: (d: string) => { writes.push(d); },
+    } as any;
+    sendSafe('s4', 'hello');
+    expect(writes).toEqual(['hello']);
+    vi.advanceTimersByTime(300);
+    expect(writes).toEqual(['hello', '\r']);
+    vi.useRealTimers();
+  });
+
+  it('sendSafe keeps trailing newline as single write', () => {
+    const s = newSession('s5', '/wd');
+    register(s);
+    let written = '';
+    s.process = {
+      write: (d: string) => { written = d; },
+    } as any;
+    sendSafe('s5', 'hello\n');
     expect(written).toBe('hello\n');
   });
 });

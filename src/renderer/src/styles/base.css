@@ -1,0 +1,42 @@
+/* 材质浮层：仅用于真正浮在内容之上的元素 */
+.material {
+  background: var(--material-bg, rgba(255,255,255,0.72));
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+/* 工具提示不定义全局类（避免与各组件 scoped .tooltip 冲突）；
+   统一由 --tooltip-bg / --tooltip-color token 驱动，Task 13 逐个消费。 */
+/* 基础按钮：主/幽灵/危险 */
+.btn-primary {
+  background: var(--accent); color: var(--text-inverse);
+  border: none; border-radius: var(--radius-md);
+  padding: 7px 14px; font-size: var(--fs-body-sm); font-weight: 500;
+  transition: filter .15s, box-shadow .15s;
+}
+.btn-primary:hover:not(:disabled) { filter: brightness(1.06); }
+.btn-primary:active:not(:disabled) { transform: scale(0.97); }
+.btn-primary:disabled { opacity: .4; }
+.btn-ghost {
+  background: var(--bg-input); color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-md);
+  padding: 6px 14px; font-size: var(--fs-body-sm);
+  transition: border-color .15s, color .15s;
+}
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+.btn-danger { color: var(--status-error); }
+/* 基础输入 / 下拉 */
+.input {
+  background: var(--bg-input); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md); padding: 7px 10px;
+  color: var(--text-primary); font-size: var(--fs-body-sm);
+  font-family: inherit; outline: none; transition: border-color .15s, box-shadow .15s;
+}
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft-bg); }
+/* 分段控件 */
+.seg-group { display: inline-flex; gap: 2px; background: var(--bg-hover); border-radius: var(--radius-md); padding: 2px; }
+.seg {
+  padding: 4px 12px; border-radius: 8px; font-size: var(--fs-body-sm);
+  color: var(--text-secondary); background: transparent; border: none;
+  transition: background .15s, color .15s;
+}
+.seg.active { background: var(--bg-panel); color: var(--text-primary); box-shadow: var(--shadow-card); }

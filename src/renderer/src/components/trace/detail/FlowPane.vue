@@ -212,7 +212,7 @@ details.fold pre {
 }
 .tag.result { background: var(--status-success); color: var(--bg-primary); }
 .tag.err { background: var(--status-error); color: var(--text-inverse); }
-.tag.skill { background: #b48ead; color: var(--bg-primary); }
+.tag.skill { background: var(--accent-light); color: var(--bg-primary); }
 .tag.latest { background: var(--accent); color: var(--text-inverse); }
 .tag.id { letter-spacing: .3px; }
 

@@ -36,7 +36,7 @@ function toggle() {
   cursor: pointer;
   inset: 0;
   background: var(--switch-track, var(--border));
-  border-radius: 11px;
+  border-radius: var(--radius-pill);
   transition: 0.2s;
 }
 .slider::before {
@@ -51,6 +51,8 @@ function toggle() {
   transition: 0.2s;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
+/* hover 提亮（Apple 风格微反馈） */
+.switch-control:hover .slider { filter: brightness(1.04); }
 .switch-control input:checked + .slider {
   background: var(--accent);
 }

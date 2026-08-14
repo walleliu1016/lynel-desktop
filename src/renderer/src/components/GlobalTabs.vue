@@ -2,7 +2,7 @@
   <div class="global-tabs">
     <div class="tabs-scroll">
       <div
-        v-for="tab in tabs"
+        v-for="tab in visibleTabs"
         :key="tab.id"
         class="tab"
         :class="{ active: tab.id === activeId, awaiting: isAwaitingPermission(tab.id) }"
@@ -11,15 +11,14 @@
         @mouseenter="hoverId = tab.id"
         @mouseleave="hoverId = null"
       >
-        <span class="tab-icon">
-          <Icon v-if="tab.type === 'welcome'" name="bot" :size="12" />
+        <span v-if="tab.type !== 'session'" class="tab-icon">
+          <DeepSeekLogo v-if="tab.type === 'harness'" :size="12" />
           <Icon v-else-if="tab.type === 'settings'" name="settings" :size="12" />
           <Icon v-else-if="tab.type === 'guide'" name="help" :size="12" />
-          <Icon v-else-if="isRunning(tab.id)" name="loader" :size="12" class="spin" />
-          <Icon v-else-if="isAwaitingPermission(tab.id)" name="warning" :size="12" class="pulse-icon" />
-          <Icon v-else name="terminal" :size="12" />
         </span>
-        <span class="tab-title" :title="tooltipFor(tab)">{{ tab.title }}</span>
+        <!-- 会话 tab：左侧直接用 agent 标识（CC/CX/OC/PI）替代转圈状态图标；待审批以 tab 背景色提示 -->
+        <AgentBadge v-if="tab.type === 'session'" :agent="sessionAgent(tab.id)" size="sm" class="tab-agent" />
+        <span class="tab-title">{{ tab.title }}</span>
         <span
           v-if="showClose(tab.id)"
           class="tab-close"
@@ -29,21 +28,24 @@
         </span>
       </div>
     </div>
-    <button class="tab-new" @click="$emit('create')">
-      <Icon name="plus" :size="14" />
+    <button v-if="!hideNew" class="tab-new" @click="$emit('create')">
+      <Icon name="plus" :size="16" />
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import AgentBadge from './AgentBadge.vue'
 import Icon from './Icon.vue'
-import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
+import DeepSeekLogo from './DeepSeekLogo.vue'
+import { useSessionsStore } from '../stores/sessions'
 import type { Tab } from '../types/tab'
 
 const props = defineProps<{
   tabs: Tab[]
   activeId: string | null
+  hideNew?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -51,6 +53,9 @@ const emit = defineEmits<{
   close: [id: string]
   create: []
 }>()
+
+// 过滤掉 welcome 类型 tab，首页不再出现在顶部 tab 栏
+const visibleTabs = computed(() => props.tabs.filter((t) => t.type !== 'welcome'))
 
 const sessions = useSessionsStore()
 const hoverId = ref<string | null>(null)
@@ -60,31 +65,16 @@ function sessionIdFromTab(tabId: string): string | null {
   return tabId.slice(8)
 }
 
-function isRunning(tabId: string) {
+function sessionAgent(tabId: string): string | undefined {
   const sid = sessionIdFromTab(tabId)
-  if (!sid) return false
-  const state = sessions.state[sid]
-  return state === 'waiting' || state === 'thinking' || state === 'streaming' || state === 'running_tool'
+  if (!sid) return undefined
+  return sessions.list.find((s) => s.id === sid)?.agent
 }
 
 function isAwaitingPermission(tabId: string) {
   const sid = sessionIdFromTab(tabId)
   if (!sid) return false
   return sessions.state[sid] === 'awaiting_permission'
-}
-
-function tooltipFor(tab: Tab) {
-  if (tab.type !== 'session') return tab.title
-  const sid = sessionIdFromTab(tab.id)
-  if (!sid) return tab.title
-  const meta = sessions.list.find((s) => s.id === sid)
-  const state = sessions.state[sid] || 'idle'
-  return [
-    sessionDisplayTitle(meta ?? { id: sid }),
-    `项目：${meta?.project || meta?.workdir || '未知'}`,
-    `Session：${sid}`,
-    `状态：${state}`,
-  ].join('\n')
 }
 
 function showClose(id: string) {
@@ -102,20 +92,20 @@ function onMouseDown(e: MouseEvent, id: string) {
 <style scoped>
 .global-tabs {
   display: flex;
-  align-items: flex-end;
-  height: 36px;
-  min-height: 36px;
+  align-items: center;
+  height: 32px;
+  min-height: 32px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border-strong);
   user-select: none;
-  padding: 0 8px;
+  padding: 0 6px;
   gap: 2px;
 }
 
 .tabs-scroll {
   flex: 1;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
@@ -124,47 +114,18 @@ function onMouseDown(e: MouseEvent, id: string) {
 .tabs-scroll::-webkit-scrollbar { display: none; }
 
 .tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  max-width: 180px;
-  min-width: 80px;
-  cursor: pointer;
-  background: transparent;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
-  font-size: 12px;
-  color: var(--text-secondary);
-  position: relative;
-  transition: background 0.12s, border-color 0.12s;
+  display: flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 10px;
+  max-width: 180px; min-width: 72px;
+  cursor: pointer; -webkit-app-region: no-drag;
+  border: none; background: transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-body-sm); color: var(--text-secondary);
+  position: relative; margin: 2px 2px;
+  transition: background .15s, color .15s;
 }
-
-.tab:hover {
-  background: var(--session-item-hover-bg);
-}
-
-.tab.active {
-  background: var(--bg-terminal);
-  color: var(--text-primary);
-  border-color: var(--border-strong);
-  border-bottom: 1px solid var(--bg-terminal);
-  margin-bottom: -1px;
-  z-index: 1;
-}
-
-.tab.active::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--accent);
-  border-radius: 8px 8px 0 0;
-}
+.tab:hover { background: var(--tab-hover-bg); color: var(--text-primary); }
+.tab.active { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); font-weight: 600; }
 
 .tab-icon {
   display: flex;
@@ -184,6 +145,9 @@ function onMouseDown(e: MouseEvent, id: string) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* 覆盖 AgentBadge 自身 .sm 尺寸（特异性更高，需 !important 才能生效） */
+.tab-agent { width: 16px !important; height: 16px !important; border-radius: 4px !important; }
 
 .tab-close {
   display: flex;
@@ -215,13 +179,14 @@ function onMouseDown(e: MouseEvent, id: string) {
   justify-content: center;
   width: 28px;
   height: 28px;
-  margin-bottom: 2px;
+  margin-bottom: 0;
   border-radius: var(--radius-md);
   border: none;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   flex-shrink: 0;
+  -webkit-app-region: no-drag;
   transition: background 0.12s, color 0.12s;
 }
 
@@ -230,32 +195,7 @@ function onMouseDown(e: MouseEvent, id: string) {
   color: var(--text-primary);
 }
 
-.spin {
-  animation: spin 1.2s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.tab.awaiting .tab-icon {
-  color: var(--status-error);
-}
-
 .tab.awaiting:not(.active) {
   background: var(--status-error-soft);
-}
-
-.tab.active.awaiting::before {
-  background: var(--status-error);
-}
-
-.pulse-icon {
-  animation: pulse-opacity 1s ease-in-out infinite;
-}
-
-@keyframes pulse-opacity {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
 }
 </style>

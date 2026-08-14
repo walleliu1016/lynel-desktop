@@ -26,6 +26,7 @@ export interface SessionMeta {
   user_title?: string
   title_source?: 'user' | 'ai' | 'first_prompt'
   bot_id?: string
+  agent?: string
 }
 
 export type TitleSource = 'user' | 'ai' | 'first_prompt'

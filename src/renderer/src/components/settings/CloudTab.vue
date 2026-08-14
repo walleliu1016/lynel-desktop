@@ -19,12 +19,6 @@
         <span class="status-label">{{ statusText }}</span>
       </div>
     </div>
-
-    <div class="actions">
-      <div class="spacer" />
-      <button class="cancel" :disabled="!settings.dirty" @click="settings.load">取消</button>
-      <button class="save" :disabled="!settings.dirty" @click="onSave">保存</button>
-    </div>
   </div>
 </template>
 
@@ -63,13 +57,6 @@ onUnmounted(() => {
 })
 
 function markDirty() { settings.markDirty() }
-
-async function onSave() {
-  try { await settings.save() }
-  catch (e: any) { alert('保存失败：' + (e?.message ?? e)) }
-  // 保存后立刻刷新一次状态
-  refreshState()
-}
 
 function startPolling() {
   refreshState()
@@ -121,7 +108,7 @@ const statusText = computed(() => {
   margin-bottom: 20px; font-size: 12px;
 }
 .badge {
-  background: var(--accent); color: white;
+  background: var(--accent); color: var(--text-inverse);
   padding: 2px 8px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 600;
 }
 .row { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
@@ -129,7 +116,7 @@ const statusText = computed(() => {
 .v { flex: 1; }
 .v > input, .v > select {
   width: 100%; background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 6px 10px;
+  border-radius: var(--radius-lg); padding: 6px 10px;
   color: var(--text-primary); font-size: 12px; font-family: inherit;
 }
 .v > input:disabled, .v > select:disabled { opacity: 0.5; }
@@ -137,15 +124,9 @@ const statusText = computed(() => {
 .status-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
 .status-label { font-size: 12px; color: var(--text-tertiary); min-width: 56px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
-.dot.ok { background: #22c55e !important; box-shadow: 0 0 6px rgba(34,197,94,.4); }
-.dot.fail { background: #ef4444 !important; }
-.dot.testing { background: #f59e0b !important; animation: pulse 0.8s infinite; }
+.dot.ok { background: var(--status-success) !important; box-shadow: 0 0 6px color-mix(in srgb, var(--status-success) 40%, transparent); }
+.dot.fail { background: var(--status-error) !important; }
+.dot.testing { background: var(--status-warn) !important; animation: pulse 0.8s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 .toggle .v { display: flex; }
-.actions { display: flex; align-items: center; gap: 8px; margin-top: 24px; }
-.spacer { flex: 1; }
-.save { padding: 6px 16px; background: var(--accent); color: white; border-radius: var(--radius-md); }
-.save:hover:not(:disabled) { background: var(--accent-light); }
-.cancel { padding: 6px 16px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-md); }
-.save:disabled, .cancel:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

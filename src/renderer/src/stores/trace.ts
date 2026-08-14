@@ -24,6 +24,8 @@ export interface TraceSummary {
 }
 
 const PAGE_SIZE = 50
+// 隐藏认证失败（401）的噪音请求：API Key 无效/过期导致的探测请求不进入 trace 列表
+const HIDDEN_STATUS = 401
 
 export const useTraceStore = defineStore('trace', () => {
   const workDir = ref<string>('')
@@ -39,6 +41,10 @@ export const useTraceStore = defineStore('trace', () => {
   const loadError = ref<string | null>(null)
   const hasMore = ref<boolean>(false)
   const diffMode = ref<boolean>(false)
+  // 底层原始数据的最大 seq（含被过滤的 401），用于增量拉取避免死循环
+  const lastSeq = ref<number>(0)
+  // 底层已加载条数（含 401），用于分页 offset 保持与底层一致
+  let loadedCount = 0
 
   const filteredRequests = computed(() => {
     let list = requests.value
@@ -63,11 +69,15 @@ export const useTraceStore = defineStore('trace', () => {
     return Array.from(set).sort()
   })
 
-  // 当前最大 seq，用于增量加载
-  const maxSeq = computed(() => {
-    if (!requests.value.length) return 0
-    return Math.max(...requests.value.map((r) => r.seq))
-  })
+  // 当前最大 seq，用于增量加载（跟踪底层原始数据，含被过滤的 401）
+  const maxSeq = computed(() => lastSeq.value)
+
+  /** 插入时过滤 401：同时用原始列表更新 lastSeq（避免增量拉取死循环）。 */
+  function keepVisible(list: TraceSummary[]): TraceSummary[] {
+    if (!list.length) return list
+    lastSeq.value = Math.max(lastSeq.value, ...list.map((r) => r.seq))
+    return list.filter((r) => r.status !== HIDDEN_STATUS)
+  }
 
   function setSession(wd: string, sid: string) {
     if (workDir.value && sessionId.value) {
@@ -79,6 +89,8 @@ export const useTraceStore = defineStore('trace', () => {
     detail.value = null
     picks.value = []
     requests.value = []
+    lastSeq.value = 0
+    loadedCount = 0
     hasMore.value = false
     if (wd && sid) {
       WatchTraceSession(wd, sid).catch(() => {})
@@ -117,8 +129,16 @@ export const useTraceStore = defineStore('trace', () => {
       if (modelFilter.value !== 'all') opts.modelFilter = modelFilter.value
       if (errorsOnly.value) opts.errorsOnly = true
       const r = await ListTraceRequests(workDir.value, sessionId.value, opts)
-      requests.value = r.summaries
+      loadedCount = r.summaries.length
+      requests.value = keepVisible(r.summaries)
       hasMore.value = r.hasMore
+      // 默认选中最新一条（seq 最大，逆序显示在顶部），让详情面板自动渲染
+      if (requests.value.length) {
+        const latest = requests.value[requests.value.length - 1].seq
+        if (!selectedSeq.value || !requests.value.some((x) => x.seq === selectedSeq.value)) {
+          void select(latest).catch(() => {})
+        }
+      }
     } catch (e: any) {
       loadError.value = e?.message || '加载失败'
     } finally {
@@ -131,11 +151,12 @@ export const useTraceStore = defineStore('trace', () => {
     if (!workDir.value || !sessionId.value || loading.value || !hasMore.value) return
     loading.value = true
     try {
-      const opts: any = { limit: PAGE_SIZE, offset: requests.value.length }
+      const opts: any = { limit: PAGE_SIZE, offset: loadedCount }
       if (modelFilter.value !== 'all') opts.modelFilter = modelFilter.value
       if (errorsOnly.value) opts.errorsOnly = true
       const r = await ListTraceRequests(workDir.value, sessionId.value, opts)
-      requests.value = [...requests.value, ...r.summaries]
+      loadedCount += r.summaries.length
+      requests.value = [...requests.value, ...keepVisible(r.summaries)]
       hasMore.value = r.hasMore
     } catch (e: any) {
       loadError.value = e?.message || '加载失败'
@@ -156,7 +177,8 @@ export const useTraceStore = defineStore('trace', () => {
     try {
       const r = await ListTraceRequests(workDir.value, sessionId.value, { sinceSeq: maxSeq.value })
       if (r.summaries.length > 0) {
-        requests.value = [...requests.value, ...r.summaries]
+        loadedCount += r.summaries.length
+        requests.value = [...requests.value, ...keepVisible(r.summaries)]
       }
       loadError.value = null
     } catch (e: any) {

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import type { RecentSession } from '../types/recent'
 import type { SessionMeta } from '../types/session'
-import { ListSessions, AdoptSession } from '../composables/useElectron'
+import { ListSessions, AdoptSession, CreateSession } from '../composables/useElectron'
 
 // mock IPC 转发层，避免依赖 window.electronAPI
 vi.mock('../composables/useElectron', () => ({
@@ -61,6 +61,17 @@ describe('recentToMeta', () => {
     // 注：补充 aiTitle/firstPrompt 必填字段以满足 RecentSession 类型（brief 原用例缺失）
     const meta = recentToMeta({ sessionId: 'c', workdir: '/c', project: 'c', aiTitle: '', firstPrompt: '', lastOpenedAt: 1750000000, state: 'idle' })
     expect(meta.mtime).toBe(1750000000) // 秒级 * 1000 再 /1000 还原
+  })
+})
+
+describe('recentToMeta agent', () => {
+  it('透传 agent', () => {
+    const m = recentToMeta({ sessionId: 's', workdir: '/w', project: 'p', aiTitle: '', firstPrompt: '', lastOpenedAt: 1, state: 'idle', agent: 'omp' })
+    expect(m.agent).toBe('omp')
+  })
+  it('缺省 agent 为 undefined（前端回退 claude）', () => {
+    const m = recentToMeta({ sessionId: 's', workdir: '/w', project: 'p', aiTitle: '', firstPrompt: '', lastOpenedAt: 1, state: 'idle' })
+    expect(m.agent).toBeUndefined()
   })
 })
 
@@ -151,6 +162,16 @@ describe('store', () => {
     expect(store.list[0].mtime).toBe(2000)
     expect(store.list[0].title_source).toBe('user')
     expect(store.list[0].ai_title).toBe('T1') // 权威 ai_title 为空时保留本地已有值
+  })
+
+  it('create 透传 agent 到 CreateSession，并用返回的归一化 workdir 写入列表', async () => {
+    const store = useSessionsStore()
+    vi.mocked(CreateSession).mockResolvedValue({ id: 's-new', workdir: '/real/dir' } as any)
+    await store.create('', 'p', [], undefined, 'omp')
+    expect(CreateSession).toHaveBeenCalledWith('', 'p', [], 'omp')
+    expect(store.list[0].workdir).toBe('/real/dir')
+    expect(store.list[0].project).toBe('dir')
+    expect(store.activeId).toBe('s-new')
   })
 
   it('select 时 AdoptSession 抛错仍执行 refreshList，列表不保持陈旧', async () => {

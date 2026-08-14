@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import Icon from './Icon.vue'
+import SpringTransition from './SpringTransition.vue'
 
 const props = defineProps<{
   open: boolean
@@ -44,8 +45,9 @@ watch(() => props.open, (open) => {
 </script>
 
 <template>
-  <div v-if="open" class="overlay" @click.self="$emit('cancel')">
-    <div class="dialog" role="dialog" aria-modal="true">
+  <div class="overlay" :class="{ open }" @click.self="open && $emit('cancel')">
+    <SpringTransition>
+    <div v-if="open" class="dialog" role="dialog" aria-modal="true">
       <div class="head">
         <h2>关闭会话</h2>
         <button class="close" aria-label="关闭" title="关闭" @click="$emit('cancel')">
@@ -68,19 +70,25 @@ watch(() => props.open, (open) => {
         <button ref="confirmBtn" class="primary" @click="$emit('confirm')">确认终止</button>
       </div>
     </div>
+    </SpringTransition>
   </div>
 </template>
 
 <style scoped>
 .overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  position: fixed; inset: 0; background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s ease;
 }
+.overlay.open { opacity: 1; pointer-events: auto; }
 .dialog {
   width: 440px;
   max-width: calc(100% - 40px);
-  background: var(--bg-panel);
+  background: var(--material-bg, rgba(255,255,255,0.72));
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--border); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-window);
   display: flex; flex-direction: column;
@@ -95,7 +103,7 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
   color: var(--text-secondary); padding: 2px 6px; border-radius: var(--radius-sm);
   display: flex; align-items: center;
 }
-.close:hover { background: var(--bg-input); color: var(--text-primary); }
+.close:hover { background: var(--bg-hover); color: var(--text-primary); }
 .body { padding: 8px 20px 20px; }
 .warn-row { display: flex; gap: 12px; align-items: flex-start; }
 .warn-icon { color: var(--status-warn); flex-shrink: 0; margin-top: 1px; }
@@ -107,15 +115,18 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
   padding: 12px 20px 18px;
 }
 .cancel {
-  padding: 7px 16px; background: var(--bg-input);
-  border: 1px solid var(--border); border-radius: var(--radius-md);
-  font-size: 12px; color: var(--text-primary);
+  background: var(--bg-input); color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-md);
+  padding: 6px 14px; font-size: var(--fs-body-sm);
+  transition: border-color 0.15s, color 0.15s;
 }
-.cancel:hover { background: var(--border); }
+.cancel:hover { border-color: var(--accent); color: var(--accent); }
 .primary {
-  padding: 7px 18px; background: var(--accent); color: white;
-  border-radius: var(--radius-md); font-size: 12px; font-weight: 500;
+  padding: 7px 18px; background: var(--accent); color: var(--text-inverse);
+  border: none; border-radius: var(--radius-md); font-size: var(--fs-body-sm); font-weight: 500;
+  transition: filter 0.15s, box-shadow 0.15s;
 }
-.primary:hover { background: var(--accent-deep); }
+.primary:hover:not(:disabled) { filter: brightness(1.06); }
+.primary:active:not(:disabled) { transform: scale(0.97); }
 .primary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-glow); }
 </style>

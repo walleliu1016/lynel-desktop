@@ -6,8 +6,10 @@ import path from 'node:path';
 import { getStore } from './store.js';
 import { getBus } from './events.js';
 import { getLogger } from './log.js';
+import { dshManager } from './dsh.js';
 import * as jsonl from './jsonl.js';
 import * as session from './session.js';
+import { normalizeWorkdir } from './workdir.js';
 
 import { HookServer } from './hookserver.js';
 import { ChannelDispatcher } from './channels/registry.js';
@@ -20,6 +22,7 @@ import { OutputChannel, type HookEventLike } from './channels/channel.js';
 import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
 import { windowAttention } from './attention.js';
 import { startProxy } from './apiproxy.js';
+import { agentSpec, type AgentKind, type AgentSpec } from './agents/index.js';
 import { start as startPty, PtyMode, PtySize, preloadShellEnv } from './pty.js';
 import { registerTraceIpc } from './trace/ipc.js';
 import type { BotConfig } from './types/bot.js';
@@ -27,8 +30,17 @@ import { notifyExternal, errMessage } from './channels/notify-error.js';
 import { OutputBatcher } from './output-batcher.js';
 import { consumeInputForExitDetect, type EscapePhase } from './exit-detect.js';
 import { initUpdater } from './updater/index.js';
+import { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
+import { readCodexModelProvider, mergeOmpModelsYml, mergeCodexConfigToml, mergeOpencodeConfig, applyClaudeEnv, migrateActiveProviders, AGENT_KINDS } from './providers-apply.js';
+
+export { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
 
 const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
+
+// 系统代理拦截修复：codex（Rust reqwest）在 Windows 遵循系统代理（如 Clash 127.0.0.1:7897），
+// 连接本地代理 127.0.0.1:<port> 会被代理服务拦截导致 Trace 为空/发消息失败（已实测，加 NO_PROXY 后恢复）。
+// 对所有 agent 统一注入 NO_PROXY 排除本地地址直连；opencode（Go）/omp（Bun fetch）原生也读 NO_PROXY，无害兜底。
+const LOCAL_NO_PROXY = '127.0.0.1,localhost,::1';
 
 function resolveAnthropicBaseUrl(): string {
   const candidates = [
@@ -47,6 +59,41 @@ function resolveAnthropicBaseUrl(): string {
   }
   getLogger().warn(`[app] no ANTHROPIC_BASE_URL found in settings, using default: ${DEFAULT_ANTHROPIC_BASE_URL}`);
   return DEFAULT_ANTHROPIC_BASE_URL;
+}
+
+// 按 Agent 解析代理转发目标（upstream）：
+// - codex：优先读 ~/.codex/config.toml 的 model_providers.<name>.base_url（对齐 ccglass cli.js:242），
+//   否则回退 spec.upstream。此前用默认 api.openai.com 会导致 codex 的 deepseek 流量转发到错误上游。
+// - claude：走 Anthropic 协议，从 ~/.claude/settings.json 解析（支持供应商切换）。
+// - omp/其余：spec.upstream（omp=api.deepseek.com，opencode=env 解析）。
+function resolveUpstream(spec: AgentSpec): string {
+  if (spec.kind === 'codex') {
+    const codexConfig = readCodexModelProvider();
+    if (codexConfig?.baseUrl) {
+      getLogger().info(`[app] codex upstream from config.toml: ${codexConfig.baseUrl}`);
+      return codexConfig.baseUrl;
+    }
+    return spec.upstream || 'https://api.openai.com';
+  }
+  if (spec.envVar === 'ANTHROPIC_BASE_URL') return resolveAnthropicBaseUrl();
+  return spec.upstream || 'https://api.openai.com';
+}
+
+// 检测 codex 是否处于 ChatGPT 登录模式：auth.json 的 auth_mode === 'chatgpt'，
+// 或含 tokens 且无 OPENAI_API_KEY。ChatGPT 模式走 WebSocket（wss://）完全绕过
+// 代理（OPENAI_BASE_URL 不生效），Trace 为空，需要提示用户切换到 API-key 模式。
+function detectCodexChatGPTAuth(): boolean {
+  try {
+    const authPath = path.join(os.homedir(), '.codex', 'auth.json');
+    if (!fs.existsSync(authPath)) return false;
+    const auth = JSON.parse(fs.readFileSync(authPath, 'utf8')) as Record<string, any>;
+    if (auth?.auth_mode === 'chatgpt') return true;
+    if (auth?.tokens && !process.env.OPENAI_API_KEY) return true;
+    return false;
+  } catch (err: any) {
+    getLogger().warn(`[app] read codex auth.json failed: ${err.message}`);
+    return false;
+  }
 }
 
 function createSettingsOverrideFile(proxyUrl: string, hookUrl?: string): { args: string[]; tmpFile: string; cleanup: () => void } {
@@ -178,25 +225,6 @@ function normalizeHookActivity(name: string, evt: any): SessionActivity | null {
 function extractToolInput(input: any): string {
   if (!input || typeof input !== 'object') return '';
   return input.command || input.file_path || input.pattern || input.url || input.query || '';
-}
-
-interface RecentSessionRecord {
-  sessionId: string;
-  workdir: string;
-  project: string;
-  aiTitle: string;
-  firstPrompt: string;
-  userTitle?: string;
-  lastOpenedAt: number;
-  state: string;
-  botId?: string;
-  /** 用户在 claude 终端里主动执行了 /exit（或其他退出命令）。
-   *  claude CLI 内部会把这种 session 标记为终止，即使 jsonl 完整存在，
-   *  后续 `claude --resume <sid>` 也会被它自己拒绝。
-   *  openTerminal 检测到该标志就走 PtyMode.New + 同 sid 重新拉起，
-   *  避免触发 "No conversation found" 错误。spawn 成功后立刻清掉，
-   *  保证新 session 的下一次 reconnect 走正常的 Resume 路径。 */
-  terminated?: boolean;
 }
 
 const RECENT_SESSIONS_PATH = path.join(os.homedir(), '.lynel-desktop', 'recent-sessions.json');
@@ -474,7 +502,7 @@ export class App {
     // cloud: Mobile -> Desktop chat 路由到对应 session 的 PTY
     this.desktopSocket.onChatMessage = (sessionId, question) => {
       try {
-        session.send(sessionId, question);
+        session.sendSafe(sessionId, question);
         getLogger().info(`[app] desktop chat forwarded sid=${sessionId.slice(0, 8)} len=${question.length}`);
       } catch (err: any) {
         const sidShort = sessionId.slice(0, 8);
@@ -556,6 +584,8 @@ export class App {
     try { await this.wecomChannel.close?.(); } catch { /* ignore */ }
     try { this.localFileChannel.close?.(); } catch { /* ignore */ }
     try { this.desktopSocket.close(); } catch { /* ignore */ }
+    // 8. 关闭 DeepSeek Harness 子进程
+    try { await dshManager.shutdown(); } catch (err: any) { getLogger().error(`[app] shutdown dsh failed: ${err.message}`); }
     getLogger().info('[app] shutdown complete');
   }
 
@@ -939,7 +969,7 @@ export class App {
 
     this.hookServer.onSend(async (sid, prompt) => {
       try {
-        session.send(sid, prompt);
+        session.sendSafe(sid, prompt);
         return { ok: true };
       } catch (err: any) {
         return { ok: false, error: err.message };
@@ -985,70 +1015,196 @@ export class App {
 
   private applyActiveProvider(): boolean {
     const cfg = (this.providersStore.get('config', {}) as Record<string, any>) || {};
-    const activeId = cfg.active_provider_id as string | undefined;
-    if (!activeId) return false;
-    const providers = cfg.providers as any[] | undefined;
-    if (!Array.isArray(providers)) return false;
-    const active = providers.find((p: any) => p.id === activeId);
-    if (!active) return false;
+    const providers = (cfg.providers as any[] | undefined) || [];
+    const active = (cfg.active_providers as Record<string, string> | undefined) || {};
+    let anyApplied = false;
+    for (const kind of AGENT_KINDS) {
+      const id = active[kind];
+      if (!id) continue;
+      const p = providers.find((x: any) => x.id === id && (x.agent || 'claude') === kind);
+      if (!p) continue;
+      if (this.applyProviderFor(kind, p)) anyApplied = true;
+    }
+    return anyApplied;
+  }
 
-    const envKeys: Record<string, string> = {
-      base_url: 'ANTHROPIC_BASE_URL',
-      auth_token: 'ANTHROPIC_AUTH_TOKEN',
-      default_model: 'ANTHROPIC_MODEL',
-      default_haiku_model: 'ANTHROPIC_DEFAULT_HAIKU_MODEL',
-      default_sonnet_model: 'ANTHROPIC_DEFAULT_SONNET_MODEL',
-      default_opus_model: 'ANTHROPIC_DEFAULT_OPUS_MODEL',
-    };
-    // 推理模型使用通用模型名
-    const reasoningModel = active.reasoning_model as string | undefined;
-
-    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
-    let data: Record<string, any> = {};
+  private applyProviderFor(kind: string, p: any): boolean {
     try {
-      const raw = fs.readFileSync(settingsPath, 'utf8');
-      if (raw.trim()) data = JSON.parse(raw);
-    } catch (err: any) {
-      if (err.code !== 'ENOENT') {
-        getLogger().error(`[app] read settings.json for provider failed: ${err.message}`);
-        notifyExternal({ source: 'provider', level: 'error', message: `读取 ~/.claude/settings.json 失败，无法切换供应商: ${errMessage(err)}` });
-        return false;
+      if (kind === 'claude') {
+        const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+        let data: Record<string, any> = {};
+        try {
+          if (fs.existsSync(settingsPath)) {
+            const raw = fs.readFileSync(settingsPath, 'utf8');
+            if (raw.trim()) data = JSON.parse(raw);
+          }
+        } catch (err: any) {
+          if (err.code !== 'ENOENT') {
+            getLogger().error(`[app] read settings.json for provider failed: ${err.message}`);
+            notifyExternal({ source: 'provider', level: 'error', message: `读取 ~/.claude/settings.json 失败，无法切换供应商: ${errMessage(err)}` });
+            return false;
+          }
+        }
+        if (!data.env) data.env = {};
+        Object.assign(data.env, applyClaudeEnv(p));
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2), 'utf8');
+        getLogger().info(`[app] applied provider "${p.name}" to settings.json`);
+        return true;
       }
-    }
-
-    if (!data.env) data.env = {};
-    for (const [key, envName] of Object.entries(envKeys)) {
-      const val = active[key] as string | undefined;
-      if (val) data.env[envName] = val;
-    }
-    if (reasoningModel) {
-      data.env['ANTHROPIC_REASONING_MODEL'] = reasoningModel;
-    }
-
-    try {
-      fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-      fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2), 'utf8');
-      getLogger().info(`[app] applied provider "${active.name}" to settings.json`);
-      return true;
+      if (kind === 'codex') {
+        const cfgPath = path.join(os.homedir(), '.codex', 'config.toml');
+        const existing = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf8') : null;
+        fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
+        fs.writeFileSync(cfgPath, mergeCodexConfigToml(existing, p), 'utf8');
+        getLogger().info(`[app] applied provider "${p.name}" to codex config.toml`);
+        return true;
+      }
+      if (kind === 'opencode') {
+        const cfgPath = path.join(os.homedir(), '.config', 'opencode', 'opencode.json');
+        const existing = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf8') : null;
+        fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
+        fs.writeFileSync(cfgPath, mergeOpencodeConfig(existing, p), 'utf8');
+        getLogger().info(`[app] applied provider "${p.name}" to opencode.json`);
+        return true;
+      }
+      if (kind === 'omp') {
+        const modelsPath = path.join(os.homedir(), '.omp', 'agent', 'models.yml');
+        const existing = fs.existsSync(modelsPath) ? fs.readFileSync(modelsPath, 'utf8') : null;
+        fs.mkdirSync(path.dirname(modelsPath), { recursive: true });
+        fs.writeFileSync(modelsPath, mergeOmpModelsYml(existing, p.base_url || '', p.auth_token || undefined), 'utf8');
+        getLogger().info(`[app] applied provider "${p.name}" to omp models.yml`);
+        return true;
+      }
+      return false;
     } catch (err: any) {
-      getLogger().error(`[app] write settings.json for provider failed: ${err.message}`);
-      notifyExternal({ source: 'provider', level: 'error', message: `写入 ~/.claude/settings.json 失败，供应商切换未生效: ${errMessage(err)}` });
+      getLogger().error(`[app] apply provider "${p.name}" for ${kind} failed: ${err.message}`);
+      notifyExternal({ source: 'provider', level: 'error', message: `写入 ${kind} 配置失败，供应商切换未生效: ${errMessage(err)}` });
       return false;
     }
   }
 
-  private async createSessionInternal(workDir: string, prompt: string, extraArgs: string[] = [], autoTrust = false, botId?: string): Promise<string> {
+  /** 按 agent 生成 PTY 启动的注入参数：claude 走 --settings 文件；codex 走 -c config 覆盖 + env 兜底；
+   *  opencode 走 env；omp 写 ~/.omp/agent/models.yml override-only provider（--config overlay 不合并 providers）。
+   *  所有 agent 统一注入 NO_PROXY 绕过 Windows 系统代理。返回 { args, envOverride, cleanup, tmpFile }。 */
+  private buildAgentInjection(spec: AgentSpec, proxyUrl: string, hookUrl?: string): {
+    args: string[];
+    envOverride: Record<string, string>;
+    cleanup: () => void;
+    tmpFile: string;
+  } {
+    // 绕过 Windows 系统代理：codex/opencode/omp 连本地代理时若系统代理(Clash)开启会被拦截
+    if (spec.kind === 'claude') {
+      const { args, cleanup, tmpFile } = createSettingsOverrideFile(proxyUrl, hookUrl);
+      return { args, envOverride: { NO_PROXY: LOCAL_NO_PROXY, no_proxy: LOCAL_NO_PROXY }, cleanup, tmpFile };
+    }
+    const envOverride: Record<string, string> = { NO_PROXY: LOCAL_NO_PROXY, no_proxy: LOCAL_NO_PROXY };
+    const args: string[] = [];
+    let cleanup: () => void = () => {};
+    let tmpFile = '';
+    if (spec.envVar) envOverride[spec.envVar] = proxyUrl;
+    if (spec.kind === 'codex') {
+      const codexProvider = readCodexModelProvider();
+      if (codexProvider) {
+        const configKey = `model_providers.${codexProvider.provider}.base_url`;
+        args.unshift('-c', `${configKey}="${proxyUrl}"`);
+        getLogger().info(`[app:agentInjection] codex override ${configKey} (was ${codexProvider.baseUrl}) -> ${proxyUrl}`);
+      }
+    } else if (spec.kind === 'omp') {
+      // omp 的 deepseek provider base_url 内置在模型表；--config overlay 只合并 settings schema
+      // （providers 段被忽略，已实测 raw 验证），必须写 ~/.omp/agent/models.yml override-only provider
+      // （models.yml 支持无 models 列表、仅 baseUrl 的 override，深合并覆盖内置 deepseek）。
+      const modelsPath = path.join(os.homedir(), '.omp', 'agent', 'models.yml');
+      try {
+        const original = fs.existsSync(modelsPath) ? fs.readFileSync(modelsPath, 'utf8') : null;
+        fs.writeFileSync(modelsPath, mergeOmpModelsYml(original, proxyUrl), 'utf8');
+        getLogger().info(`[app:agentInjection] omp models.yml providers.deepseek.baseUrl -> ${proxyUrl}`);
+        // 退出时恢复：原本不存在则删除，原本存在则写回原内容
+        cleanup = () => {
+          try {
+            if (original === null) fs.unlinkSync(modelsPath);
+            else fs.writeFileSync(modelsPath, original, 'utf8');
+          } catch (err: any) {
+            getLogger().warn(`[app:agentInjection] omp models.yml restore failed: ${err.message}`);
+          }
+        };
+      } catch (err: any) {
+        getLogger().warn(`[app:agentInjection] omp models.yml override failed: ${err.message}`);
+      }
+    } else if (spec.kind === 'opencode') {
+      // opencode 的 OPENAI_BASE_URL 只对 openai provider 生效，而默认 provider 是 opencode-go
+      // （opencode.ai 官方网关）；必须写临时 OPENCODE_CONFIG 配置文件覆盖
+      // provider.opencode-go / provider.opencode 的 options.baseURL，已实测 raw 收到 POST /chat/completions。
+      const tmpDir = path.join(os.tmpdir(), 'lynel-desktop');
+      try {
+        fs.mkdirSync(tmpDir, { recursive: true });
+        const configFile = path.join(tmpDir, `opencode-config-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+        const opencodeConfig = {
+          provider: {
+            'opencode-go': { options: { baseURL: proxyUrl } },
+            opencode: { options: { baseURL: proxyUrl } },
+          },
+        };
+        fs.writeFileSync(configFile, JSON.stringify(opencodeConfig, null, 2), 'utf8');
+        envOverride.OPENCODE_CONFIG = configFile;
+        tmpFile = configFile;
+        getLogger().info(`[app:agentInjection] opencode OPENCODE_CONFIG provider.opencode-go.baseURL -> ${proxyUrl}`);
+        cleanup = () => {
+          try {
+            fs.unlinkSync(configFile);
+            getLogger().info(`[app:agentInjection] removed opencode config: ${configFile}`);
+          } catch {}
+        };
+      } catch (err: any) {
+        getLogger().warn(`[app:agentInjection] opencode OPENCODE_CONFIG override failed: ${err.message}`);
+      }
+    }
+    return { args, envOverride, cleanup, tmpFile };
+  }
+
+  private async createSessionInternal(workDir: string, prompt: string, extraArgs: string[] = [], autoTrust = false, botId?: string, agent?: AgentKind): Promise<string> {
     const realId = randomUUID();
-    const upstream = resolveAnthropicBaseUrl();
-    const proxy = await startProxy(workDir, realId, (env) => this.dispatcher.dispatch(env), undefined, upstream);
+    const spec = agentSpec(agent);
+    // upstream 按 agent 解析：codex 读 config.toml 的 base_url，claude 读 settings.json，omp/opencode 用 spec 默认。
+    const upstream = resolveUpstream(spec);
+    const proxy = await startProxy(workDir, realId, (env) => this.dispatcher.dispatch(env), spec.format, upstream, spec.kind);
     this.apiProxies.push(proxy);
     const proxyUrl = `http://127.0.0.1:${proxy.port}`;
     const hookUrl = this.hookServer ? `http://127.0.0.1:${this.hookServer.getPort()}/hook` : undefined;
-    const { args, cleanup, tmpFile } = createSettingsOverrideFile(proxyUrl, hookUrl);
+    // 按 agent 生成注入参数（逻辑集中在 buildAgentInjection）：
+    // - claude：临时 --settings 文件注入 ANTHROPIC_BASE_URL + hooks
+    // - codex：-c model_providers.<name>.base_url="<proxyUrl>" 覆盖 config.toml
+    // - opencode：写临时 OPENCODE_CONFIG 配置文件覆盖 provider.opencode-go.options.baseURL
+    // - omp：写 ~/.omp/agent/models.yml override-only provider 覆盖 providers.deepseek.baseUrl
+    // 非 claude 不传 claude 专属的 --session-id / --settings，PtyMode 走 Auto（不带 session 参数）。
+    const isClaude = spec.kind === 'claude';
+    const { args, cleanup, tmpFile, envOverride } = this.buildAgentInjection(spec, proxyUrl, hookUrl);
     const allArgs = [...args, ...extraArgs];
-    getLogger().info(`[app:createSession] proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId} extraArgs=${extraArgs.join(',')}`);
-    const claudeBin = (this.settingsStore.get('claude_path', '') as string) || 'claude';
-    const proc = startPty(workDir, realId, claudeBin, PtyMode.New, {}, { cols: 80, rows: 24 }, allArgs, { probe: true });
+    // agent 启动前检查（非 claude 专属警告，注入已由 buildAgentInjection 完成）
+    if (!isClaude && spec.kind === 'codex') {
+      // ChatGPT 登录模式走 WebSocket 完全绕过代理，Trace 为空，提示切换 API-key 模式
+      if (detectCodexChatGPTAuth()) {
+        notifyExternal({
+          source: 'session:start',
+          level: 'warn',
+          message: 'Codex 处于 ChatGPT 登录模式，WebSocket 流量无法被代理拦截，Trace 将为空；请运行 codex login --api-key 切换到 API-key 模式',
+        });
+      }
+    } else if (!isClaude && spec.kind === 'opencode') {
+      // opencode：OPENAI_BASE_URL 已由 buildAgentInjection env 注入；缺 OPENAI_API_KEY 无法发请求
+      if (!process.env.OPENAI_API_KEY) {
+        notifyExternal({ source: 'session:start', level: 'warn', message: 'OpenCode 未配置 OPENAI_API_KEY，无法发请求，请先配置' });
+      }
+    } else if (!isClaude && spec.kind === 'omp') {
+      // omp：models.yml 已注入代理 baseUrl；需在设置/配置文件配模型 provider 的 API key
+      notifyExternal({ source: 'session:start', level: 'warn', message: 'OMP 需在设置/配置文件配置模型 provider 的 API key' });
+    }
+    getLogger().info(`[app:createSession] agent=${spec.kind} proxyUrl=${proxyUrl} upstream=${upstream} workDir=${workDir} sessionId=${realId} extraArgs=${extraArgs.join(',')}`);
+    // 按 agent 类型读对应可执行路径设置（claude_path/codex_path/opencode_path/omp_path），留空用 spec.command
+    const pathKey = `${spec.kind}_path` as 'claude_path' | 'codex_path' | 'opencode_path' | 'omp_path';
+    const agentBin = (this.settingsStore.get(pathKey, '') as string) || spec.command;
+    // probe 是 claude 专属的 spawn 前 --version 探测（消除 macOS forkpty 静默失败），通用 binary 会误判
+    const proc = startPty(workDir, realId, agentBin, isClaude ? PtyMode.New : PtyMode.Auto, envOverride, { cols: 80, rows: 24 }, allArgs, { probe: spec.probe ?? false, agentLabel: spec.label });
     const s = session.newSession(realId, workDir);
     s.process = proc;
     s.state = 'running';
@@ -1060,11 +1216,11 @@ export class App {
     proc.onExit(() => cleanup());
 
     getLogger().info(`[app:createSession] session created id=${realId} workDir=${workDir}`);
-    // autoTrust：监听 PTY 输出，出现工作区信任确认时回车接受默认选项；
+    // autoTrust：工作区信任确认（claude/codex 各自文案）由 armAutoTrust 统一自动回车接受；
     // 等输入框就绪（"? for shortcuts"）再发提示词。提示词与回车分开写入，
     // 避免同一 chunk 被 ink 粘贴检测吞掉回车导致不执行。
     if (autoTrust) {
-      let trusted = false;
+      this.armAutoTrust(proc);
       let promptSent = !prompt;
       let buffer = '';
       const sendPrompt = () => {
@@ -1082,15 +1238,9 @@ export class App {
       // 兜底：15s 内没检测到就绪标志也强制发送，避免提示词丢失
       const fallback = setTimeout(sendPrompt, 15000);
       proc.onData((data) => {
-        if (trusted && promptSent) return;
+        if (promptSent) return;
         buffer = (buffer + data).slice(-4000);
-        if (!trusted && /trust the files|Do you trust/i.test(buffer)) {
-          trusted = true;
-          buffer = '';
-          try { proc.write('\r'); } catch { /* pty 已退出 */ }
-          return;
-        }
-        if (!promptSent && /\? for shortcuts/.test(buffer)) {
+        if (/\? for shortcuts/.test(buffer)) {
           clearTimeout(fallback);
           sendPrompt();
         }
@@ -1110,6 +1260,7 @@ export class App {
       lastOpenedAt: Date.now(),
       state: 'running',
       botId,
+      agent: spec.kind,
     }).catch((err) => getLogger().error(`[app] addRecentSession failed: ${err?.message ?? err}`));
     if (botId) {
       this.wecomChannel.setSessionBot(realId, botId);
@@ -1172,8 +1323,9 @@ export class App {
 
   private mergeRecentTitles(raw: jsonl.SessionMeta[]): jsonl.SessionMeta[] {
     const recents = this.withRecentLock(() => readRecentSessions());
+    const withAgent = mergeRecentAgentField(raw, recents);
     const map = new Map(recents.map((r) => [r.sessionId, r]));
-    return raw.map((s) => {
+    return withAgent.map((s) => {
       const r = map.get(s.id);
       if (!r) return s;
       if (r.userTitle) {
@@ -1275,9 +1427,14 @@ export class App {
       return jsonl.parseMessages(filePath, offset, limit);
     });
 
-    ipcMain.handle('app:createSession', async (_event, workDir: string, prompt: string, extraArgs: string[] = []) => {
+    ipcMain.handle('app:createSession', async (_event, workDir: string, prompt: string, extraArgs: string[] = [], agent?: string) => {
       try {
-        return await this.createSessionInternal(workDir, prompt, extraArgs);
+        const wd = normalizeWorkdir(workDir);
+        // autoTrust=true：监听 PTY 输出，出现工作区信任确认时自动回车接受，桌面端与云端创建会话都覆盖
+        const id = await this.createSessionInternal(wd, prompt, extraArgs, true, undefined, agent as AgentKind);
+        // 归一化后的目录（空/空白 → 默认主目录）必须回传，渲染层用它写 meta.workdir，
+        // 否则快速框未选目录时写 ''，导致 Trace 面板空 wd、重开 PTY 无效 cwd、云端同步空目录。
+        return { id, workdir: wd };
       } catch (err: any) {
         getLogger().error(`[app:createSession] failed: ${err?.message ?? err}`);
         notifyExternal({ source: 'session:start', level: 'error', message: `新建会话失败: ${errMessage(err)}` });
@@ -1320,10 +1477,16 @@ export class App {
       this.applyCloudSettings();
     });
     ipcMain.handle('app:updateSettings', (_event, cfg: any) => {
+      // 仅当 cloud 字段实际变化才重连 socket，避免任意字段自动保存都触发重连
+      const cloudChanged = !!cfg && typeof cfg === 'object' &&
+        (('cloud_service_enabled' in cfg && cfg.cloud_service_enabled !== this.settingsStore.get('cloud_service_enabled', false)) ||
+         ('cloud_service_url' in cfg && cfg.cloud_service_url !== this.settingsStore.get('cloud_service_url', '')));
       this.settingsStore.set(cfg);
       this.applyAutoSettings();
       this.applyPushSettings();
-      this.applyCloudSettings();
+      if (cloudChanged) {
+        this.applyCloudSettings();
+      }
     });
 
     ipcMain.handle('app:getWeComConfig', () => {
@@ -1540,6 +1703,14 @@ export class App {
     });
 
     // Bot 管理
+    ipcMain.handle('app:getBotThreshold', () => {
+      return this.settingsStore.get('botThreshold', 5) as number;
+    });
+    ipcMain.handle('app:setBotThreshold', (_event, value: number) => {
+      const n = Math.max(1, Math.min(50, Math.floor(Number(value) || 5)));
+      this.settingsStore.set('botThreshold', n);
+      return n;
+    });
     ipcMain.handle('app:listBots', () => {
       const bots = this.settingsStore.get('wecomBots', {}) as Record<string, BotConfig>;
       return Object.values(bots);
@@ -1641,14 +1812,14 @@ export class App {
         // 首次使用：从 ~/.claude/settings.json 读取已有 env 配置作为默认供应商
         const defaultProvider = this.readDefaultProviderFromSettings();
         const newCfg = {
-          active_provider_id: defaultProvider.id,
+          active_providers: { claude: defaultProvider.id },
           providers: [defaultProvider],
         };
         this.providersStore.set('config', newCfg);
         getLogger().info('[app] auto-created default provider from settings.json');
         return newCfg;
       }
-      return cfg;
+      return migrateActiveProviders(cfg);
     });
 
     ipcMain.handle('app:saveProvidersConfig', (_event, cfg: Record<string, any>) => {
@@ -1804,6 +1975,33 @@ export class App {
     ipcMain.on('window:setMaxSize', (_event, w: number, h: number) => this.window?.setMaximumSize(w, h));
     ipcMain.on('window:center', () => this.window?.center());
     ipcMain.on('window:quit', () => app.quit());
+
+    // DeepSeek Harness（dsh）：确保/关闭 harness 进程，返回 iframe 加载 URL
+    ipcMain.handle('dsh:ensure', async (): Promise<{ url: string; port: number }> => {
+      const handle = await dshManager.ensure();
+      return { url: handle.url, port: handle.port };
+    });
+    ipcMain.handle('dsh:shutdown', async () => {
+      await dshManager.shutdown();
+    });
+  }
+
+  /** 工作区信任确认自动接受：监听 PTY 输出，出现 claude/codex 的信任确认界面时
+   *  自动发一个回车选择默认项（claude 选 "Yes, I trust this folder"；codex 选
+   *  "Yes, continue"）。检测到一次后即不再处理，避免后续误触发。 */
+  private armAutoTrust(proc: import('./pty.js').PtyProcess): void {
+    let trusted = false;
+    let buffer = '';
+    proc.onData((data) => {
+      if (trusted) return;
+      buffer = (buffer + data).slice(-4000);
+      if (/trust the files|Do you trust|Quick safety check|I trust this folder|you trust/i.test(buffer)) {
+        trusted = true;
+        buffer = '';
+        try { proc.write('\r'); } catch { /* pty 已退出 */ }
+        getLogger().info('[app:autoTrust] workspace trust confirmation detected, accepted by enter');
+      }
+    });
   }
 
   private wirePty(id: string, proc: import('./pty.js').PtyProcess): void {
@@ -2010,8 +2208,8 @@ export class App {
         // /resume：复用目标会话现有记录，仅更新 workdir/lastOpenedAt/state 并置顶
         const existing = list.find((r) => r.sessionId === newId);
         newRec = existing
-          ? { ...existing, workdir: workDir, project: existing.project || project, lastOpenedAt: Date.now(), state: 'running' }
-          : { sessionId: newId, workdir: workDir, project, aiTitle: '', firstPrompt: '', lastOpenedAt: Date.now(), state: 'running', botId: oldRec?.botId };
+          ? { ...existing, workdir: workDir, project: existing.project || project, lastOpenedAt: Date.now(), state: 'running', agent: oldRec?.agent }
+          : { sessionId: newId, workdir: workDir, project, aiTitle: '', firstPrompt: '', lastOpenedAt: Date.now(), state: 'running', botId: oldRec?.botId, agent: oldRec?.agent };
       } else {
         // /clear：新会话不继承旧标题，/clear 后是全新对话，应显示自己的标题。
         // 之前继承 aiTitle/userTitle 会经 mergeRecentTitles/refreshAiTitles 永久锁定旧标题，
@@ -2025,6 +2223,7 @@ export class App {
           lastOpenedAt: Date.now(),
           state: 'running',
           botId: oldRec?.botId,
+          agent: oldRec?.agent,
         };
       }
       writeRecentSessions([newRec, ...filtered].slice(0, MAX_RECENT_SESSIONS));
@@ -2052,39 +2251,52 @@ export class App {
       this.syncCloudSession(id, workDir, 'open', 'opened');
       return Promise.resolve(true);
     }
-    const upstream = resolveAnthropicBaseUrl();
+    // 从 recents 查该 session 的 agent（缺省 claude），按 AgentSpec 分派恢复方式
+    const recAgent = this.withRecentLock(() => readRecentSessions().find((r) => r.sessionId === id)?.agent);
+    const spec = agentSpec(recAgent as AgentKind);
+    const isClaude = spec.kind === 'claude';
+    const upstream = resolveUpstream(spec);
     // PTY spawn 完成后立即 resolve，让前端隐藏 loading；proxy 启动失败不阻塞 PTY
     return new Promise<boolean>((resolvePty) => {
-      startProxy(workDir, id, (env) => this.dispatcher.dispatch(env), undefined, upstream).then((proxy) => {
+      startProxy(workDir, id, (env) => this.dispatcher.dispatch(env), spec.format, upstream, spec.kind).then((proxy) => {
         this.apiProxies.push(proxy);
         const proxyUrl = `http://127.0.0.1:${proxy.port}`;
         const hookUrl = this.hookServer ? `http://127.0.0.1:${this.hookServer.getPort()}/hook` : undefined;
-        const { args, cleanup, tmpFile } = createSettingsOverrideFile(proxyUrl, hookUrl);
+        const { args, cleanup, tmpFile, envOverride } = this.buildAgentInjection(spec, proxyUrl, hookUrl);
         // 历史 session 重启时 jsonl 可能还没创建（用户新建后没发 prompt 就关闭），
-        // 三种 fallback 触发 PtyMode.New：
+        // claude 三种 fallback 触发 PtyMode.New：
         // 1) 用户主动 /exit（terminated 标志）：claude 内部已拒绝 --resume
         // 2) jsonl 不存在（phantom session 重启场景）
-        // 3) 否则默认 Resume
-        const jsonlPath = jsonl.getSessionJsonlPath(id, workDir);
-        const hasJsonl = fs.existsSync(jsonlPath);
-        const isTerminated = getTerminatedFlag(id);
-        const mode = (isTerminated || !hasJsonl) ? PtyMode.New : PtyMode.Resume;
-        if (isTerminated) {
-          getLogger().info(`[app:openSessionTerminal] sid=${id.slice(0, 8)} marked terminated, force PtyMode.New`);
-          // 已用 New 模式拉起，标志就完成了使命：清掉，让后续 reconnect 走正常 Resume
-          clearTerminatedFlag(id);
-        } else if (!hasJsonl) {
-          getLogger().warn(`[app:openSessionTerminal] jsonl missing for sid=${id} at ${jsonlPath}, fallback to PtyMode.New`);
+        // 3) 否则默认 Resume；非 claude 不带 claude 专属 session 参数，走 Auto
+        let mode: PtyMode;
+        if (isClaude) {
+          const jsonlPath = jsonl.getSessionJsonlPath(id, workDir);
+          const hasJsonl = fs.existsSync(jsonlPath);
+          const isTerminated = getTerminatedFlag(id);
+          mode = (isTerminated || !hasJsonl) ? PtyMode.New : PtyMode.Resume;
+          if (isTerminated) {
+            getLogger().info(`[app:openSessionTerminal] sid=${id.slice(0, 8)} marked terminated, force PtyMode.New`);
+            // 已用 New 模式拉起，标志就完成了使命：清掉，让后续 reconnect 走正常 Resume
+            clearTerminatedFlag(id);
+          } else if (!hasJsonl) {
+            getLogger().warn(`[app:openSessionTerminal] jsonl missing for sid=${id} at ${jsonlPath}, fallback to PtyMode.New`);
+          }
+        } else {
+          mode = PtyMode.Auto;
         }
-        getLogger().info(`[app:openSessionTerminal] proxyUrl=${proxyUrl} upstream=${upstream} sid=${id} mode=${mode}`);
+        getLogger().info(`[app:openSessionTerminal] agent=${spec.kind} proxyUrl=${proxyUrl} upstream=${upstream} sid=${id} mode=${mode}`);
         try {
-          const claudeBin = (this.settingsStore.get('claude_path', '') as string) || 'claude';
-          const proc = startPty(workDir, id, claudeBin, mode, {}, size, args, { probe: true });
+          // 按 agent 类型读对应可执行路径设置（claude_path/codex_path/opencode_path/omp_path），留空用 spec.command
+          const pathKey = `${spec.kind}_path` as 'claude_path' | 'codex_path' | 'opencode_path' | 'omp_path';
+          const agentBin = (this.settingsStore.get(pathKey, '') as string) || spec.command;
+          const proc = startPty(workDir, id, agentBin, mode, envOverride, size, args, { probe: spec.probe ?? false, agentLabel: spec.label });
           session.setProcess(id, proc, size);
           const ls = session.lookup(id);
           if (ls) ls.settingsFile = tmpFile || undefined;
           proc.onExit(() => cleanup());
           this.setSessionState(id, 'running');
+          // 打开已有会话同样可能触发工作区信任确认（claude/codex），自动接受
+          this.armAutoTrust(proc);
           this.wirePty(id, proc);
           this.syncCloudSession(id, workDir, 'open', 'opened');
           // 有 bot 绑定的会话启动后推送通知
@@ -2094,7 +2306,7 @@ export class App {
         } catch (err: any) {
           getLogger().error(`[app:openSessionTerminal] startPty failed for sid=${id}: ${err.message}`);
           getBus().emit(`session:${id}`, `\r\n启动终端失败：${err.message}\r\n`);
-          notifyExternal({ source: 'session:start', level: 'error', message: `启动 Claude 终端失败 (${id.slice(0, 8)}): ${errMessage(err)}` });
+          notifyExternal({ source: 'session:start', level: 'error', message: `启动 ${spec.label} 终端失败 (${id.slice(0, 8)}): ${errMessage(err)}` });
           this.setSessionState(id, 'done');
           resolvePty(false);
         }
