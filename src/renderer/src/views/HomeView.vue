@@ -432,6 +432,8 @@ async function onCreate(workdir: string, prompt: string, extraArgs: string[] = [
     const meta = sessions.list.find((s) => s.id === id)
     if (meta) {
       tabsStore.openSession(id, meta.workdir, sessionDisplayTitle(meta) || prompt)
+      // 新建会话默认进入终端视图，避免停留在 Trace 页
+      activeSubTab.value = 'terminal'
     }
   } catch (e: any) {
     pushToast({ level: 'error', source: 'session', message: '创建失败：' + (e?.message ?? e) })
