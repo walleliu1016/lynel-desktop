@@ -203,7 +203,7 @@ export function mergeOmpModelsYml(existing: string | null, baseUrl: string, apiK
     if (block[i].trimStart().startsWith('deepseek:')) { dsIdx = i; break; }
   }
   if (dsIdx === -1) {
-    lines.splice(providersIdx + 1, 0, `${providerPad}deepseek:`, ...dsBody.map((l) => providerPad + l.trim()));
+    lines.splice(providersIdx + 1, 0, `${providerPad}deepseek:`, ...dsBody.map((l) => providerPad + '  ' + l.trim()));
     return lines.join('\n');
   }
   const absDs = providersIdx + dsIdx;

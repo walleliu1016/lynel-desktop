@@ -163,6 +163,19 @@ describe('mergeOmpModelsYml', () => {
     expect(out).toContain('- name: x');
     expect(out).not.toContain('https://old.com');
   });
+  it('providers 块存在但无 deepseek 段时，子键缩进比 deepseek 头深 2 空格且保留同级 provider', () => {
+    const existing = 'providers:\n  other:\n    baseUrl: "https://o.com"\n';
+    const out = mergeOmpModelsYml(existing, 'https://a.com', 'tk');
+    const lines = out.split('\n');
+    const dsIdx = lines.findIndex((l) => l.trim() === 'deepseek:');
+    expect(dsIdx).toBeGreaterThan(-1);
+    // deepseek: 头缩进 2 空格，其后紧跟的 baseUrl/apiKey 子键缩进应为 4 空格
+    expect(lines[dsIdx]).toBe('  deepseek:');
+    expect(lines[dsIdx + 1]).toBe('    baseUrl: "https://a.com"');
+    expect(lines[dsIdx + 2]).toBe('    apiKey: "tk"');
+    // 同级 provider（other）在 deepseek 之后仍保留
+    expect(out).toContain('  other:\n    baseUrl: "https://o.com"');
+  });
 });
 
 describe('migrateActiveProviders', () => {
