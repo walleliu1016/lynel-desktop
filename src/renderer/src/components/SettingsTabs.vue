@@ -9,7 +9,8 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: Tab): void }>()
 
-const tabs: Tab[] = ['general', 'appearance', 'buddy', 'cloud', 'provider', 'bot', 'updater']
+// buddy 菜单暂不展示（组件与类型保留，后续可恢复）
+const tabs: Tab[] = ['general', 'appearance', 'cloud', 'provider', 'bot', 'updater']
 const labels: Record<Tab, string> = {
   general: '通用',
   appearance: '外观',
