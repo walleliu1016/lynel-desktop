@@ -6,6 +6,7 @@ import path from 'node:path';
 import { getStore } from './store.js';
 import { getBus } from './events.js';
 import { getLogger } from './log.js';
+import { dshManager } from './dsh.js';
 import * as jsonl from './jsonl.js';
 import * as session from './session.js';
 import { normalizeWorkdir } from './workdir.js';
@@ -581,6 +582,8 @@ export class App {
     try { await this.wecomChannel.close?.(); } catch { /* ignore */ }
     try { this.localFileChannel.close?.(); } catch { /* ignore */ }
     try { this.desktopSocket.close(); } catch { /* ignore */ }
+    // 8. 关闭 DeepSeek Harness 子进程
+    try { await dshManager.shutdown(); } catch (err: any) { getLogger().error(`[app] shutdown dsh failed: ${err.message}`); }
     getLogger().info('[app] shutdown complete');
   }
 
@@ -1979,6 +1982,15 @@ export class App {
     ipcMain.on('window:setMaxSize', (_event, w: number, h: number) => this.window?.setMaximumSize(w, h));
     ipcMain.on('window:center', () => this.window?.center());
     ipcMain.on('window:quit', () => app.quit());
+
+    // DeepSeek Harness（dsh）：确保/关闭 harness 进程，返回 iframe 加载 URL
+    ipcMain.handle('dsh:ensure', async (): Promise<{ url: string; port: number }> => {
+      const handle = await dshManager.ensure();
+      return { url: handle.url, port: handle.port };
+    });
+    ipcMain.handle('dsh:shutdown', async () => {
+      await dshManager.shutdown();
+    });
   }
 
   /** 工作区信任确认自动接受：监听 PTY 输出，出现 claude/codex 的信任确认界面时

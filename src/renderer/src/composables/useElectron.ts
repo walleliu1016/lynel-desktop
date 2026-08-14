@@ -104,4 +104,8 @@ export const GetUpdateStatus = () => api().getUpdateStatus();
 export const GetUpdateConfig = () => api().getUpdateConfig();
 export const UpdateUpdateConfig = (cfg: any) => api().updateUpdateConfig(cfg);
 
+// DeepSeek Harness（dsh）
+export const DshEnsure = () => api().dshEnsure();
+export const DshShutdown = () => api().dshShutdown();
+
 export const isElectronDev = import.meta.env.DEV;

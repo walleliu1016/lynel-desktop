@@ -34,6 +34,7 @@
     "wait-on": "^9.0.10"
   },
   "dependencies": {
+    "@deepseek-ai/dsh": "^0.1.0-rc.6",
     "@napi-rs/canvas": "^0.1.68",
     "@wecom/aibot-node-sdk": "^1.0.7",
     "@wecom/wecom-openclaw-plugin": "^20206.7.201",
@@ -58,6 +59,12 @@
     ]
   },
   "allowScripts": {
-    "electron-winstaller@5.4.0": true
+    "electron-winstaller@5.4.0": true,
+    "@deepseek-ai/dsh-subprocess-local": true,
+    "@google/genai": true,
+    "esbuild": true,
+    "koffi": true,
+    "node-pty": true,
+    "protobufjs": true
   }
 }

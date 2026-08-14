@@ -12,7 +12,8 @@
         @mouseleave="hoverId = null"
       >
         <span v-if="tab.type !== 'session'" class="tab-icon">
-          <Icon v-if="tab.type === 'settings'" name="settings" :size="12" />
+          <DeepSeekLogo v-if="tab.type === 'harness'" :size="12" />
+          <Icon v-else-if="tab.type === 'settings'" name="settings" :size="12" />
           <Icon v-else-if="tab.type === 'guide'" name="help" :size="12" />
         </span>
         <!-- 会话 tab：左侧直接用 agent 标识（CC/CX/OC/PI）替代转圈状态图标；待审批以 tab 背景色提示 -->
@@ -37,6 +38,7 @@
 import { ref, computed } from 'vue'
 import AgentBadge from './AgentBadge.vue'
 import Icon from './Icon.vue'
+import DeepSeekLogo from './DeepSeekLogo.vue'
 import { useSessionsStore } from '../stores/sessions'
 import type { Tab } from '../types/tab'
 

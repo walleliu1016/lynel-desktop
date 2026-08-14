@@ -55,6 +55,10 @@ export const useTabsStore = defineStore('tabs', () => {
     return open({ type: 'guide', title: '使用指南' })
   }
 
+  function openHarness() {
+    return open({ type: 'harness', title: 'DeepSeek Harness' })
+  }
+
   function close(id: string) {
     const idx = tabs.value.findIndex((t) => t.id === id)
     if (idx === -1) return
@@ -106,6 +110,7 @@ export const useTabsStore = defineStore('tabs', () => {
     openSession,
     openSettings,
     openGuide,
+    openHarness,
     close,
     updateTitle,
     rebindSession,

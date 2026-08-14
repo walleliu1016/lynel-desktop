@@ -3,11 +3,15 @@
     <div class="layout">
       <aside class="left" :class="{ collapsed: sidebarCollapsed }">
         <div class="left-top" :class="{ mac: isMac, win: isWindows, collapsed: sidebarCollapsed }">
+          <button v-if="sidebarCollapsed" class="top-btn tooltip-wrap" aria-label="展开会话列表" @click="sidebarCollapsed = false">
+            <Icon name="panel-left-open" :size="16" />
+            <span class="tooltip-down">展开会话列表</span>
+          </button>
           <template v-if="!sidebarCollapsed">
             <span v-if="!isMac" class="brand-inline" aria-hidden="true">Lynel Desktop</span>
-            <button class="top-btn tooltip-wrap" :aria-label="sidebarCollapsed ? '展开会话列表' : '收起会话列表'" @click="sidebarCollapsed = !sidebarCollapsed">
-              <Icon :name="sidebarCollapsed ? 'panel-left-open' : 'panel-left-close'" :size="16" />
-              <span class="tooltip-down">{{ sidebarCollapsed ? '展开会话列表' : '收起会话列表' }}</span>
+            <button class="top-btn tooltip-wrap" aria-label="收起会话列表" @click="sidebarCollapsed = true">
+              <Icon name="panel-left-close" :size="16" />
+              <span class="tooltip-down">收起会话列表</span>
             </button>
             <div v-if="cloudEnabled" class="cloud-status" :class="cloudStatusClass" :title="cloudStatusTitle">
               <span class="dot" />
@@ -19,35 +23,46 @@
           <span class="brand-title">Lynel Desktop</span>
           <span class="brand-version">(v{{ version }})</span>
         </div>
-        <!-- 会话列表上方：首页入口（全宽） -->
-        <button v-if="!sidebarCollapsed" class="home-entry" :class="{ active: tabsStore.activeType === 'welcome' }" aria-label="首页" title="首页" @click="tabsStore.openWelcome()">
+        <!-- 会话列表上方：首页入口（全宽）；折叠态仅保留图标 -->
+        <button class="home-entry" :class="{ active: tabsStore.activeType === 'welcome' }" aria-label="首页" title="首页" @click="tabsStore.openWelcome()">
           <Icon name="home" :size="16" />
           <span>首页</span>
         </button>
-        <template v-if="!sidebarCollapsed">
-          <button v-if="!searchOpen" class="home-entry search-entry" aria-label="搜索" title="搜索" @click="openSearch">
-            <Icon name="search" :size="16" />
-            <span>搜索</span>
+        <!-- DeepSeek Harness 入口：首页下方、搜索上方 -->
+        <button class="home-entry" :class="{ active: tabsStore.activeType === 'harness' }" aria-label="DeepSeek Harness" title="DeepSeek Harness" @click="tabsStore.openHarness()">
+          <DeepSeekLogo :size="16" />
+          <span>DeepSeek Harness</span>
+        </button>
+        <button v-if="!sidebarCollapsed && !searchOpen" class="home-entry search-entry" aria-label="搜索" title="搜索" @click="openSearch">
+          <Icon name="search" :size="16" />
+          <span>搜索</span>
+        </button>
+        <div v-else-if="!sidebarCollapsed" class="search-inplace">
+          <Icon name="search" :size="13" class="search-box-icon" />
+          <input
+            ref="searchInputEl"
+            v-model="searchQuery"
+            class="search-inplace-input"
+            placeholder="搜索…"
+            @keydown.escape="closeSearch"
+            @blur="closeSearch"
+          />
+          <button v-if="searchQuery" class="search-box-clear" aria-label="清除搜索" title="清除搜索" @mousedown.prevent="searchQuery = ''">
+            <Icon name="close" :size="12" />
           </button>
-          <div v-else class="search-inplace">
-            <Icon name="search" :size="13" class="search-box-icon" />
-            <input
-              ref="searchInputEl"
-              v-model="searchQuery"
-              class="search-inplace-input"
-              placeholder="搜索…"
-              @keydown.escape="closeSearch"
-              @blur="closeSearch"
-            />
-            <button v-if="searchQuery" class="search-box-clear" aria-label="清除搜索" title="清除搜索" @mousedown.prevent="searchQuery = ''">
-              <Icon name="close" :size="12" />
-            </button>
-          </div>
-        </template>
+        </div>
+        <!-- 折叠态：搜索仅图标，点击展开侧栏并进入搜索 -->
+        <button v-if="sidebarCollapsed" class="home-entry search-entry" aria-label="搜索" title="搜索" @click="onCollapsedSearch">
+          <Icon name="search" :size="16" />
+        </button>
+        <!-- 折叠态：会话列表仅图标，点击展开侧栏 -->
+        <button v-if="sidebarCollapsed" class="home-entry session-collapsed-btn" aria-label="展开会话列表" title="展开会话列表" @click="sidebarCollapsed = false">
+          <Icon name="message-square" :size="16" />
+        </button>
         <SessionList
+          v-else
           :list="sessions.list"
           :active-id="activeSessionId"
-          :collapsed="sidebarCollapsed"
           :search="searchQuery"
           @select="onSelectSession"
         >
@@ -85,15 +100,6 @@
       </aside>
       <div class="center">
         <div class="center-top" :class="{ 'mac-left': isMac && sidebarCollapsed, win: isWindows }">
-          <button
-            v-if="sidebarCollapsed"
-            class="top-btn tooltip-wrap"
-            aria-label="展开会话列表"
-            @click="sidebarCollapsed = false"
-          >
-            <Icon name="panel-left-open" :size="16" />
-            <span class="tooltip-down">展开会话列表</span>
-          </button>
           <GlobalTabs
             class="center-tabs"
             :tabs="tabsStore.tabs"
@@ -103,6 +109,8 @@
             @close="onCloseTab"
             @create="onCreateTab"
           />
+          <!-- 展开 Workspace 按钮：暂时隐藏（Workspace 面板整体下线，后续恢复） -->
+          <!--
           <button
             v-if="workspaceCollapsed"
             class="top-btn tooltip-wrap"
@@ -112,6 +120,7 @@
             <Icon name="panel-right-open" :size="16" />
             <span class="tooltip-down">展开 Workspace</span>
           </button>
+          -->
         </div>
         <div class="content">
           <div v-show="tabsStore.activeType === 'welcome'" class="content-pane">
@@ -150,13 +159,33 @@
           <div v-show="tabsStore.activeType === 'guide'" class="content-pane">
             <GuideTab />
           </div>
+          <!-- DeepSeek Harness：普通 tab pane -->
+          <div v-show="tabsStore.activeType === 'harness'" class="content-pane">
+            <div v-if="harnessLoading" class="dsh-state">
+              <Icon name="loader" :size="18" class="dsh-spinner" />
+              <span>正在启动 DeepSeek Harness…</span>
+            </div>
+            <div v-else-if="harnessError" class="dsh-state">
+              <Icon name="alert-circle" :size="18" />
+              <span class="dsh-error-text">{{ harnessError }}</span>
+              <button class="dsh-retry" @click="loadHarness">重试</button>
+            </div>
+            <iframe
+              v-else-if="harnessUrl"
+              :src="harnessUrl"
+              class="dsh-frame"
+              allow="clipboard-read; clipboard-write"
+            />
+          </div>
         </div>
       </div>
-      <!-- 右侧 Workspace（占位，可折叠） -->
+      <!-- 右侧 Workspace 面板：暂时隐藏（含展开按钮，见上方注释；workspaceCollapsed 状态保留便于恢复） -->
+      <!--
       <WorkspacePanel
         :collapsed="workspaceCollapsed"
         @toggle-collapse="workspaceCollapsed = !workspaceCollapsed"
       />
+      -->
     </div>
     <NewSessionDialog
       :open="showNewSession"
@@ -189,6 +218,7 @@
 import { onMounted, onBeforeUnmount, ref, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import Icon from '../components/Icon.vue'
+import DeepSeekLogo from '../components/DeepSeekLogo.vue'
 import GlobalTabs from '../components/GlobalTabs.vue'
 import SessionList from '../components/SessionList.vue'
 import TracePane from '../components/trace/TracePane.vue'
@@ -204,7 +234,7 @@ import { useTabsStore } from '../stores/tabs'
 import { useTraceStore } from '../stores/trace'
 import type { RecentSession } from '../types/recent'
 import type { SessionState } from '../types/session'
-import { GetAppInfo, AdoptSession, OpenSessionTerminal, CloseSession, Logout, CloudConnectionState, GetSettings } from '../composables/useElectron'
+import { GetAppInfo, AdoptSession, OpenSessionTerminal, CloseSession, Logout, CloudConnectionState, GetSettings, DshEnsure } from '../composables/useElectron'
 import { EventsOn, GetUpdateStatus } from '../composables/useElectron'
 import { useWindowState } from '../composables/useWindowState'
 import { pushToast } from '../composables/useToast'
@@ -224,6 +254,10 @@ const username = ref('')
 const version = ref('')
 const sidebarCollapsed = ref(false)
 const workspaceCollapsed = ref(true)
+// DeepSeek Harness tab：iframe 加载 harness 完整 UI
+const harnessUrl = ref('')
+const harnessLoading = ref(false)
+const harnessError = ref('')
 // 每个会话各自的 终端/Trace 选中态（按 sessionId 记录），切回会话时保留
 const subTabBySession = ref<Record<string, 'terminal' | 'trace'>>({})
 const activeSubTab = computed<'terminal' | 'trace'>(() => {
@@ -441,6 +475,35 @@ async function onSelectSession(id: string) {
     trace.load()
   }
   // 非 wasActive 时 trace 加载由 activeSessionId watch 统一处理
+}
+
+/** 加载/启动 harness（幂等：已就绪则复用 URL，重试按钮复用）。 */
+async function loadHarness() {
+  if (harnessUrl.value) return
+  harnessLoading.value = true
+  harnessError.value = ''
+  try {
+    const res = await DshEnsure()
+    harnessUrl.value = res.url
+  } catch (e: any) {
+    harnessError.value = e?.message ?? String(e)
+  } finally {
+    harnessLoading.value = false
+  }
+}
+
+// 首次进入 harness tab 时加载 harness（不自动折叠左侧栏）
+watch(
+  () => tabsStore.activeType,
+  (type) => {
+    if (type === 'harness') void loadHarness()
+  },
+)
+
+// 折叠态点击搜索图标：先展开侧栏再进入搜索
+function onCollapsedSearch() {
+  sidebarCollapsed.value = false
+  openSearch()
 }
 
 async function onCreate(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string, agent?: string) {
@@ -896,7 +959,13 @@ watch(
   z-index: 1;
   transition: width 0.2s ease;
 }
-.left.collapsed { width: 0; overflow: visible; }
+.left.collapsed { width: 44px; overflow: visible; }
+/* 折叠态：仅保留图标列，隐藏文字、图标居中 */
+.left.collapsed .home-entry {
+  justify-content: center;
+  padding: 0;
+}
+.left.collapsed .home-entry span { display: none; }
 .center {
   flex: 1;
   display: flex;
@@ -932,4 +1001,37 @@ watch(
 .sub-tab.active { background: var(--accent-soft-bg); color: var(--accent); font-weight: 600; }
 .sub-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--status-success); }
 .sub-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* DeepSeek Harness：普通 tab pane（.content-pane 已提供 flex 布局） */
+.dsh-frame {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  border: none;
+  display: block;
+}
+.dsh-state {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: var(--fs-body-sm);
+}
+.dsh-spinner { animation: dsh-spin 1s linear infinite; }
+@keyframes dsh-spin { to { transform: rotate(360deg); } }
+.dsh-error-text { color: var(--status-error); max-width: 420px; text-align: center; line-height: 1.5; }
+.dsh-retry {
+  padding: 6px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.dsh-retry:hover { border-color: var(--accent); color: var(--accent); }
 </style>

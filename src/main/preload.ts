@@ -116,6 +116,10 @@ const api = {
   getUpdateStatus: () => ipcRenderer.invoke('app:getUpdateStatus'),
   getUpdateConfig: () => ipcRenderer.invoke('app:getUpdateConfig'),
   updateUpdateConfig: (cfg: any) => ipcRenderer.invoke('app:updateUpdateConfig', cfg),
+
+  // DeepSeek Harness（dsh）
+  dshEnsure: () => ipcRenderer.invoke('dsh:ensure'),
+  dshShutdown: () => ipcRenderer.invoke('dsh:shutdown'),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);
