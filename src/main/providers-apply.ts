@@ -51,6 +51,32 @@ export function readCodexModelProvider(): { provider: string; baseUrl: string } 
   }
 }
 
+/** 判断一行是否为 TOML 表头（如 [model_providers.x]） */
+function isTomlHeader(line: string): boolean {
+  const t = line.trim();
+  return t.startsWith('[') && t.length > 1 && t.endsWith(']');
+}
+
+/**
+ * 从 lines 中剔除根级（首个表头之前）已存在的 model / model_provider 键，
+ * 避免与稍后新增的顶层键重复（TOML 同一表内键必须唯一）。
+ * stripModel 为 false 时保留既有 model（当默认模型为空、不会新增 model 时）。
+ */
+function stripRootModelKeys(lines: string[], stripModel: boolean): string[] {
+  const out: string[] = [];
+  let inTable = false;
+  for (const raw of lines) {
+    if (isTomlHeader(raw)) inTable = true;
+    if (!inTable) {
+      const t = raw.trim();
+      if (stripModel && /^model\s*=/.test(t)) continue;
+      if (/^model_provider\s*=/.test(t)) continue;
+    }
+    out.push(raw);
+  }
+  return out;
+}
+
 /** codex 激活：文本级合并 config.toml，管理 model_providers.<name> 段与顶层 model/model_provider */
 export function mergeCodexConfigToml(existing: string | null, p: ApplyProvider): string {
   const name = p.codex_provider || 'lynel';
@@ -62,25 +88,35 @@ export function mergeCodexConfigToml(existing: string | null, p: ApplyProvider):
   if (p.auth_token) newSeg.push(`api_key = "${Buffer.from(p.auth_token).toString('base64')}"`);
 
   const out: string[] = [];
+  const modelLines: string[] = [];
+  if (p.default_model) modelLines.push(`model = "${p.default_model}"`);
+  modelLines.push(`model_provider = "${name}"`);
+
   let headerIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].trim() === header) { headerIdx = i; break; }
   }
   if (headerIdx === -1) {
-    out.push(...lines.filter((l) => l.trim()));
-    if (p.default_model) out.push(`model = "${p.default_model}"`);
-    out.push(`model_provider = "${name}"`, '');
-    out.push(...newSeg);
+    // 无既有同段：保留根级内容（剔除已存在的顶层 model/model_provider），
+    // 在首个表头之前插入新的顶层键，避免键重复或被后续表头吞并。
+    const preserved = stripRootModelKeys(lines.filter((l) => l.trim()), Boolean(p.default_model));
+    const root: string[] = [];
+    const rest: string[] = [];
+    let inTable = false;
+    for (const raw of preserved) {
+      if (isTomlHeader(raw)) inTable = true;
+      if (inTable) rest.push(raw);
+      else root.push(raw);
+    }
+    out.push(...root, ...modelLines, '', ...rest, ...newSeg);
     return out.join('\n') + '\n';
   }
   let segEnd = lines.length;
   for (let i = headerIdx + 1; i < lines.length; i++) {
-    const t = lines[i].trim();
-    if (t.startsWith('[') && t.length > 1 && t.endsWith(']')) { segEnd = i; break; }
+    if (isTomlHeader(lines[i])) { segEnd = i; break; }
   }
-  out.push(...lines.slice(0, headerIdx));
-  if (p.default_model) out.push(`model = "${p.default_model}"`);
-  out.push(`model_provider = "${name}"`, '');
+  out.push(...stripRootModelKeys(lines.slice(0, headerIdx), Boolean(p.default_model)));
+  out.push(...modelLines, '');
   out.push(...newSeg);
   out.push(...lines.slice(segEnd));
   return out.join('\n') + '\n';

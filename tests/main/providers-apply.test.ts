@@ -51,6 +51,33 @@ describe('mergeCodexConfigToml', () => {
     const out = mergeCodexConfigToml(null, { ...base, codex_provider: 'deepseek' });
     expect(out).toContain('[model_providers.deepseek]');
   });
+  it('既有顶层 model/model_provider 不产生重复键', () => {
+    const existing = 'model = "gpt-5"\nmodel_provider = "openai"\n\n[model_providers.lynel]\nname = "lynel"\nbase_url = "https://old.com"\n\n[model_providers.other]\nbase_url = "https://o.com"\n';
+    const out = mergeCodexConfigToml(existing, { ...base, default_model: 'gpt-new', base_url: 'https://new.com' });
+    const head = out.split('\n');
+    const root = head.slice(0, head.findIndex((l) => /^\s*\[/.test(l)));
+    expect(root.filter((l) => l.trim().startsWith('model ='))).toHaveLength(1);
+    expect(root.filter((l) => l.trim().startsWith('model_provider ='))).toHaveLength(1);
+    expect(root.some((l) => l.trim() === 'model = "gpt-new"')).toBe(true);
+    expect(root.some((l) => l.trim() === 'model_provider = "lynel"')).toBe(true);
+    expect(root.some((l) => l.trim() === 'model = "gpt-5"')).toBe(false);
+    expect(out).toContain('[model_providers.other]');
+    expect(out).toContain('base_url = "https://o.com"');
+  });
+  it('无既有同段时同样避免重复顶层 model/model_provider', () => {
+    const existing = 'model = "gpt-5"\nmodel_provider = "openai"\n\n[model_providers.other]\nbase_url = "https://o.com"\n';
+    const out = mergeCodexConfigToml(existing, { ...base, default_model: 'gpt-new', base_url: 'https://new.com' });
+    const head = out.split('\n');
+    const root = head.slice(0, head.findIndex((l) => /^\s*\[/.test(l)));
+    expect(root.filter((l) => l.trim().startsWith('model ='))).toHaveLength(1);
+    expect(root.filter((l) => l.trim().startsWith('model_provider ='))).toHaveLength(1);
+    expect(root.some((l) => l.trim() === 'model = "gpt-new"')).toBe(true);
+    expect(root.some((l) => l.trim() === 'model_provider = "lynel"')).toBe(true);
+    expect(root.some((l) => l.trim() === 'model = "gpt-5"')).toBe(false);
+    expect(out).toContain('[model_providers.other]');
+    expect(out).toContain('[model_providers.lynel]');
+    expect(out).toContain('base_url = "https://o.com"');
+  });
 });
 
 describe('mergeOpencodeConfig', () => {
