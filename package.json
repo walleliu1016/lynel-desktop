@@ -47,6 +47,7 @@
     "node-pty": "^1.0.0",
     "openclaw": "file:vendor/openclaw-stub",
     "socket.io-client": "^4.8.3",
+    "tree-kill": "^1.2.2",
     "undici": "^7.24.6"
   },
   "engines": {

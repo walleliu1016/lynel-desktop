@@ -10,6 +10,7 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
+import kill from 'tree-kill';
 import { app } from 'electron';
 import { getLogger } from './log.js';
 
@@ -63,7 +64,7 @@ class DshManager {
         if (settled) return;
         settled = true;
         this.reset();
-        proc.kill();
+        void this.killTree(proc);
         reject(new Error(`dsh web 启动超时（${START_TIMEOUT_MS / 1000}s 未收到就绪信号）`));
       }, START_TIMEOUT_MS);
 
@@ -120,11 +121,31 @@ class DshManager {
   async shutdown(): Promise<void> {
     const proc = this.proc;
     this.reset();
-    if (proc && !proc.killed) {
+    if (proc && proc.pid) {
       getLogger().info('[dsh] shutting down harness');
-      // Windows 下子进程可能还有孙子进程，kill 主进程即可；harness 自身监听信号清理
-      proc.kill();
+      // 必须 await 进程树杀净后再返回：tree-kill 内部是异步 taskkill，
+      // 若不等完成就 app.exit(0)，taskkill 会被中断导致 npx/dsh 子进程残留成孤儿。
+      await this.killTree(proc);
     }
+  }
+
+  /**
+   * 杀整个进程树（跨平台）。Windows 上 spawn 带 shell:true 时 proc 是 cmd.exe 包装进程，
+   * 只 proc.kill() 会让 npx / node(dsh) 子进程残留成孤儿。
+   * tree-kill：Windows 用 taskkill /T，macOS/Linux 用 ps 递归杀子进程后杀根。
+   */
+  private killTree(proc: ChildProcess): Promise<void> {
+    const pid = proc.pid;
+    if (!pid) return Promise.resolve();
+    getLogger().info(`[dsh] kill process tree pid=${pid}`);
+    return new Promise((resolve) => {
+      try {
+        kill(pid, 'SIGTERM', () => resolve());
+      } catch {
+        try { proc.kill(); } catch { /* ignore */ }
+        resolve();
+      }
+    });
   }
 
   private reset(): void {
