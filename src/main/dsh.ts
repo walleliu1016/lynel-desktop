@@ -158,27 +158,19 @@ class DshManager {
     // 本地回环流量绕过系统代理，避免 iframe 加载 localhost 被代理拦截
     const env = { NO_PROXY: 'localhost,127.0.0.1', no_proxy: 'localhost,127.0.0.1' };
     const dshArgs = ['web', '--port', '0'];
-    if (app.isPackaged) {
-      // 生产：应用内置的 dsh（@deepseek-ai/dsh 随 dependencies 打包，node_modules 经
-      // asarUnpack 解出到 app.asar.unpacked），用 Electron 自带 node 执行（RUN_AS_NODE）。
-      const dshBin = path.join(
-        process.resourcesPath,
-        'app.asar.unpacked',
-        'node_modules',
-        '@deepseek-ai',
-        'dsh',
-        'lib',
-        'bin.js',
-      );
-      return {
-        cmd: process.execPath,
-        args: [dshBin, ...dshArgs],
-        env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
-      };
-    }
-    // dev：npx（已缓存 @deepseek-ai/dsh）；Windows 经 shell 解析 npx.cmd
-    const cmd = 'npx';
-    return { cmd, args: ['--yes', '@deepseek-ai/dsh', ...dshArgs], env };
+    // 统一使用应用内置 dsh（node_modules/@deepseek-ai/dsh），dev/生产一致，
+    // 避免 npx 首次拉包慢/失败导致 120s 超时。
+    // 生产：依赖经 asarUnpack 解出到 app.asar.unpacked；dev：走源码 node_modules。
+    // 均用 Electron 自带 node 执行（RUN_AS_NODE）。
+    const dshBin = app.isPackaged
+      ? path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+      : path.join(app.getAppPath(), 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
+    return {
+      cmd: process.execPath,
+      // cordis-plugin-hmr 需要 --expose-internals 才能启动 HMR service
+      args: ['--expose-internals', dshBin, ...dshArgs],
+      env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
+    };
   }
 }
 
