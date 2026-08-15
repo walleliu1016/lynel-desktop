@@ -26,6 +26,24 @@ export interface Proxy {
   close(): Promise<void>;
 }
 
+/**
+ * 单个 HTTP roundtrip 的独立上下文。
+ * 并发请求共享 SessionState 会让 startedAt/rawChunks/sseCarry 等被后续请求覆盖，
+ * 导致落盘 ts/raw 串扰（如 #1 的时间被标成后续请求的），因此每个请求必须持有自己的可变状态。
+ */
+interface RoundtripCtx {
+  seq: number;
+  isHealthCheck: boolean;
+  startedAt: number;
+  firstByteAt: number | null;
+  rawChunks: Buffer[];
+  sseCarry: string;
+  reqBody: Buffer;
+  reqHeaders: Record<string, string>;
+  resStatus: number;
+  resHeaders: Record<string, string | string[] | undefined>;
+}
+
 // 旧 ProxyStageEvent 已被 LynelEnvelope 替代
 
 interface SessionState {
@@ -160,13 +178,24 @@ export function startProxy(
           res.end('apiproxy no session');
           return;
         }
-        s.reqBody = bodyBuf;
-        s.reqHeaders = req.headers as Record<string, string>;
-        s.startedAt = Date.now();
-        s.firstByteAt = null;
-        s.rawChunks = [];
-        s.sseCarry = '';
-        s.roundtripSeq += 1;
+        // 健康检查（HEAD 连通性探测，如 PTY 启动时的 `/anthropic/` 探测）不入盘、不占用 seq：
+        // 仅转发以保持探测有效。用 method 判定而非 status，避免误伤正常请求的失败（如 POST 401）。
+        const isHealthCheck = req.method === 'HEAD';
+        if (!isHealthCheck) s.roundtripSeq += 1;
+        // 每个请求持有独立上下文：并发请求共享 s 会让 startedAt/rawChunks 被后续请求覆盖，
+        // 导致落盘 ts/raw 串扰。per-request 状态才能保证 seq/ts/raw 各自准确。
+        const reqCtx: RoundtripCtx = {
+          seq: s.roundtripSeq,
+          isHealthCheck,
+          startedAt: Date.now(),
+          firstByteAt: null,
+          rawChunks: [],
+          sseCarry: '',
+          reqBody: bodyBuf,
+          reqHeaders: req.headers as Record<string, string>,
+          resStatus: 0,
+          resHeaders: {},
+        };
 
         // handleRequest
         try {
@@ -182,6 +211,7 @@ export function startProxy(
 
         let upstreamRetries = 0;
         function doUpstream() {
+        // adapter/format 是 session 级只读实例（并发共享安全），仅用于解析；per-request 状态走 reqCtx。
         const s = sessionStates.get(token)!;
         const proxyReq = upstreamClient.request({
           protocol: up.protocol,
@@ -192,22 +222,22 @@ export function startProxy(
           headers: forwardHeaders,
           agent: up.protocol === 'https:' ? noKeepAliveAgent : undefined,
         }, (proxyRes) => {
-          s.resStatus = proxyRes.statusCode || 0;
-          s.resHeaders = proxyRes.headers as Record<string, string | string[] | undefined>;
+          reqCtx.resStatus = proxyRes.statusCode || 0;
+          reqCtx.resHeaders = proxyRes.headers as Record<string, string | string[] | undefined>;
           const contentType = (proxyRes.headers['content-type'] || '').toString();
           const isStream = contentType.includes('text/event-stream');
-          getLogger().info(`[apiproxy:diag] UPSTREAM status=${s.resStatus} contentType=${contentType} stream=${isStream} path=${forwardPath}`);
+          getLogger().info(`[apiproxy:diag] UPSTREAM status=${reqCtx.resStatus} contentType=${contentType} stream=${isStream} path=${forwardPath}`);
 
-          res.writeHead(s.resStatus, proxyRes.headers);
+          res.writeHead(reqCtx.resStatus, proxyRes.headers);
 
           if (isStream) {
             proxyRes.on('data', (chunk: Buffer) => {
-              if (s.firstByteAt == null) s.firstByteAt = Date.now();
-              s.rawChunks.push(chunk);
+              if (reqCtx.firstByteAt == null) reqCtx.firstByteAt = Date.now();
+              reqCtx.rawChunks.push(chunk);
               res.write(chunk);
-              const combined = s.sseCarry + chunk.toString('utf8');
+              const combined = reqCtx.sseCarry + chunk.toString('utf8');
               const { events, leftover } = parseSseChunk(combined);
-              s.sseCarry = leftover;
+              reqCtx.sseCarry = leftover;
               const allEnvs: LynelEnvelope[] = [];
               for (const ev of events) {
                 allEnvs.push(...s.adapter.handleSseEvent(ev));
@@ -216,18 +246,18 @@ export function startProxy(
             });
           } else {
             proxyRes.on('data', (chunk: Buffer) => {
-              if (s.firstByteAt == null) s.firstByteAt = Date.now();
-              s.rawChunks.push(chunk);
+              if (reqCtx.firstByteAt == null) reqCtx.firstByteAt = Date.now();
+              reqCtx.rawChunks.push(chunk);
               res.write(chunk);
             });
           }
 
           proxyRes.on('end', () => {
-            getLogger().info(`[apiproxy:diag] UPSTREAM_END status=${s.resStatus} rawLen=${Buffer.concat(s.rawChunks).length} path=${forwardPath}`);
+            getLogger().info(`[apiproxy:diag] UPSTREAM_END status=${reqCtx.resStatus} rawLen=${Buffer.concat(reqCtx.rawChunks).length} path=${forwardPath}`);
             res.end();
             // 处理 SSE 流末尾未完成行
-            if (isStream && s.sseCarry.trim()) {
-              const trimmed = s.sseCarry.trim();
+            if (isStream && reqCtx.sseCarry.trim()) {
+              const trimmed = reqCtx.sseCarry.trim();
               if (trimmed.startsWith('data:')) {
                 try {
                   const ev = JSON.parse(trimmed.slice(5).trim()) as SseEvent;
@@ -235,22 +265,22 @@ export function startProxy(
                   dispatchEnvelopes(token, envs, emit);
                 } catch { /* ignore */ }
               }
-              s.sseCarry = '';
+              reqCtx.sseCarry = '';
             }
             // HTTP 错误状态码（4xx/5xx）：生成 error envelope 推送到 channel
-            if (s.resStatus >= 400) {
+            if (reqCtx.resStatus >= 400) {
               // 跳过非 JSON 请求体导致的错误（如 GET 连接检查），仅记录日志
-              const hadJsonBody = s.reqBody && s.reqBody.length > 0;
+              const hadJsonBody = reqCtx.reqBody && reqCtx.reqBody.length > 0;
               if (!hadJsonBody) {
-                console.log(`[apiproxy] skipped 4xx for non-JSON request: ${req.method} ${forwardPath} status=${s.resStatus}`);
+                console.log(`[apiproxy] skipped 4xx for non-JSON request: ${req.method} ${forwardPath} status=${reqCtx.resStatus}`);
               } else {
-                const rawErr = Buffer.concat(s.rawChunks).toString('utf8');
-                const errMsg = s.format.parseHttpError(s.resStatus, rawErr);
+                const rawErr = Buffer.concat(reqCtx.rawChunks).toString('utf8');
+                const errMsg = s.format.parseHttpError(reqCtx.resStatus, rawErr);
                 const errEnvs = s.adapter.handleHttpError(errMsg);
                 dispatchEnvelopes(token, errEnvs, emit);
               }
             }
-            finalizeExchange(token, isStream);
+            finalizeExchange(token, isStream, false, reqCtx);
           });
 
           proxyRes.on('error', (err: any) => {
@@ -260,7 +290,7 @@ export function startProxy(
             res.end('apiproxy upstream error');
             const errEnvs = s.adapter.handleNetworkError(err.message);
             dispatchEnvelopes(token, errEnvs, emit);
-            finalizeExchange(token, isStream, true);
+            finalizeExchange(token, isStream, true, reqCtx);
           });
         });
 
@@ -277,7 +307,7 @@ export function startProxy(
           res.end('apiproxy upstream error');
           const errEnvs = s.adapter.handleNetworkError(err.message);
           dispatchEnvelopes(token, errEnvs, emit);
-          finalizeExchange(token, false, true);
+          finalizeExchange(token, false, true, reqCtx);
         });
 
         proxyReq.end(bodyBuf);
@@ -341,16 +371,18 @@ export function startProxy(
   });
 }
 
-function finalizeExchange(token: string, isStream: boolean, networkError = false): void {
+function finalizeExchange(token: string, isStream: boolean, networkError = false, reqCtx: RoundtripCtx): void {
   const s = sessionStates.get(token);
   if (!s) {
     getLogger().error(`[apiproxy:diag] FINALIZE_NO_SESSION token=${token.slice(0, 8)}`);
     return;
   }
-  getLogger().info(`[apiproxy:diag] FINALIZE status=${s.resStatus} rawLen=${Buffer.concat(s.rawChunks).length} networkError=${networkError}`);
+  // 健康检查（HEAD 探测）不入盘：无业务含义，也不占 trace 序号。
+  if (reqCtx.isHealthCheck) return;
+  getLogger().info(`[apiproxy:diag] FINALIZE status=${reqCtx.resStatus} rawLen=${Buffer.concat(reqCtx.rawChunks).length} networkError=${networkError}`);
   const finishedAt = Date.now();
-  const raw = Buffer.concat(s.rawChunks).toString('utf8');
-  const errorFlag = networkError || s.resStatus >= 400;
+  const raw = Buffer.concat(reqCtx.rawChunks).toString('utf8');
+  const errorFlag = networkError || reqCtx.resStatus >= 400;
 
   let reassembled: RawExchangeInput['reassembled'] = null;
   let model: string | null = null;
@@ -372,9 +404,9 @@ function finalizeExchange(token: string, isStream: boolean, networkError = false
     }
   }
 
-  if (!model && s.reqBody) {
+  if (!model && reqCtx.reqBody) {
     try {
-      const body = JSON.parse(s.reqBody.toString('utf8'));
+      const body = JSON.parse(reqCtx.reqBody.toString('utf8'));
       model = recordModel(body, null);
     } catch { /* ignore */ }
   }
@@ -384,15 +416,15 @@ function finalizeExchange(token: string, isStream: boolean, networkError = false
   }
 
   const trace = requestTiming({
-    startedAt: s.startedAt,
-    firstByteAt: s.firstByteAt,
+    startedAt: reqCtx.startedAt,
+    firstByteAt: reqCtx.firstByteAt,
     finishedAt,
     ...usage,
   }) ?? { totalMs: 0, ttftMs: 0, genMs: 0, inTps: null, outTps: null };
 
   let parsedBody: unknown = null;
   try {
-    parsedBody = s.reqBody ? JSON.parse(s.reqBody.toString('utf8')) : null;
+    parsedBody = reqCtx.reqBody ? JSON.parse(reqCtx.reqBody.toString('utf8')) : null;
   } catch { /* ignore */ }
 
   // 统计本次轮询实际调用的工具数量。
@@ -409,22 +441,22 @@ function finalizeExchange(token: string, isStream: boolean, networkError = false
   void writeRawExchange({
     sessionId: token,
     sessionDir: s.sessionDir,
-    seq: s.roundtripSeq,
-    ts: s.startedAt,
-    startedAt: s.startedAt,
-    firstByteAt: s.firstByteAt,
+    seq: reqCtx.seq,
+    ts: reqCtx.startedAt,
+    startedAt: reqCtx.startedAt,
+    firstByteAt: reqCtx.firstByteAt,
     finishedAt,
     model,
     format: s.format.name,
     request: {
       method: 'POST',
       url: '/v1/messages',
-      headers: s.reqHeaders,
+      headers: reqCtx.reqHeaders,
       body: parsedBody,
     },
     response: {
-      status: s.resStatus,
-      headers: s.resHeaders,
+      status: reqCtx.resStatus,
+      headers: reqCtx.resHeaders,
       raw,
     },
     trace,
@@ -432,21 +464,21 @@ function finalizeExchange(token: string, isStream: boolean, networkError = false
     cost,
     error: errorFlag,
   }).catch((err) => {
-    getLogger().error(`[apiproxy] writeRawExchange failed sid=${token} seq=${s.roundtripSeq}: ${err?.message || err}`);
+    getLogger().error(`[apiproxy] writeRawExchange failed sid=${token} seq=${reqCtx.seq}: ${err?.message || err}`);
   });
 
   // 追加摘要索引（fire-and-forget，失败只打日志）
   void appendSummary(s.sessionDir, {
-    seq: s.roundtripSeq,
+    seq: reqCtx.seq,
     model,
-    status: s.resStatus,
+    status: reqCtx.resStatus,
     latencyMs: trace.totalMs || null,
     error: errorFlag,
     cost: { usd: cost.usd, input: cost.input, output: cost.output },
     trace,
-    ts: s.startedAt,
+    ts: reqCtx.startedAt,
     toolCount,
   }).catch((err) => {
-    getLogger().error(`[apiproxy] appendSummary failed sid=${token} seq=${s.roundtripSeq}: ${err?.message || err}`);
+    getLogger().error(`[apiproxy] appendSummary failed sid=${token} seq=${reqCtx.seq}: ${err?.message || err}`);
   });
 }
