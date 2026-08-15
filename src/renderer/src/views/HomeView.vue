@@ -5,9 +5,9 @@
         <div class="left-top" :class="{ mac: isMac, win: isWindows, collapsed: sidebarCollapsed }">
           <template v-if="!sidebarCollapsed">
             <span v-if="!isMac" class="brand-inline" aria-hidden="true">Lynel Desktop</span>
-            <button class="top-btn tooltip-wrap" aria-label="收起会话列表" @click="sidebarCollapsed = true">
+            <button class="top-btn tooltip-wrap" aria-label="收起侧边栏" @click="sidebarCollapsed = true">
               <Icon name="panel-left-close" :size="16" />
-              <span class="tooltip-down">收起会话列表</span>
+              <span class="tooltip-down">收起侧边栏</span>
             </button>
             <div v-if="cloudEnabled" class="cloud-status" :class="cloudStatusClass" :title="cloudStatusTitle">
               <span class="dot" />
@@ -55,7 +55,7 @@
           <span class="tooltip">搜索</span>
         </button>
         <!-- 折叠态：会话列表仅图标，点击展开侧栏 -->
-        <button v-if="sidebarCollapsed" class="home-entry session-collapsed-btn tooltip-wrap" aria-label="展开会话列表" @click="sidebarCollapsed = false">
+        <button v-if="sidebarCollapsed" class="home-entry session-collapsed-btn tooltip-wrap" aria-label="会话列表" @click="sidebarCollapsed = false">
           <Icon name="message-square" :size="16" />
           <span class="tooltip">会话列表</span>
         </button>
@@ -980,6 +980,12 @@ watch(
 }
 .tooltip-wrap:hover .tooltip-down {
   opacity: 1;
+}
+/* left-top 右侧按钮（收起侧边栏）的 tooltip：右对齐向左展开，避免超出左面板被 overflow:hidden 裁剪 */
+.left-top .tooltip-down {
+  left: auto;
+  right: 0;
+  transform: none;
 }
 
 .layout { flex: 1; display: flex; min-height: 0; gap: 0; background: transparent; }
