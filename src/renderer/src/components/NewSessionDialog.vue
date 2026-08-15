@@ -119,7 +119,7 @@ import { useBotsStore } from '../stores/bots'
 import { useSessionsStore } from '../stores/sessions'
 import type { RecentSession } from '../types/recent'
 import { agentMeta, type AgentKind } from '../types/agents'
-import { PickDirectory } from '../composables/useElectron'
+import { GetAppInfo, PickDirectory } from '../composables/useElectron'
 import { useRecentSessionSearch } from '../composables/useRecentSessionSearch'
 
 const props = defineProps<{ open: boolean; loading?: boolean }>()
@@ -170,7 +170,7 @@ const flagOptions = [
   { value: '--debug', label: '--debug', desc: '启用调试模式' },
 ]
 
-watch(() => props.open, (isOpen) => {
+watch(() => props.open, async (isOpen) => {
   if (isOpen) {
     void recent.loadRecentSessions()
     void botsStore.load()
@@ -183,6 +183,11 @@ watch(() => props.open, (isOpen) => {
     flagsOpen.value = false
     historySearch.value = ''
     tab.value = recent.recentSessions.length ? 'history' : 'new'
+    // 工作目录默认 home：不手动选择则直接使用，避免必须点「选择…」
+    try {
+      const info = await GetAppInfo()
+      if (info?.homeDir) workdir.value = info.homeDir
+    } catch { /* ignore */ }
   }
 })
 

@@ -1372,11 +1372,12 @@ export class App {
     // 登录：调 cloud /api/auth/login 校验密码，成功即进主页
     // 密码 + token 纯内存保存，进程重启需重新登录
     ipcMain.handle('app:loginWithToken', async (_event, userId: string, password: string) => {
-      if (!userId || !password) return { ok: false, error: '请填写用户名和密码' };
+      if (!userId) return { ok: false, error: '请填写用户名' };
       if (!this.isCloudEnabled()) {
-        // cloud 未启用：直接放行
+        // cloud 未启用：不需要密码，直接放行
         return { ok: true };
       }
+      if (!password) return { ok: false, error: '请填写密码' };
       // 保存 user_id（用于 socket 认证 + 机器人默认 ChatId）
       try { this.setCurrentUserAccount(userId); } catch { /* ignore */ }
       // 调 cloud /api/auth/login 校验密码
@@ -1467,6 +1468,7 @@ export class App {
     ipcMain.handle('app:getAppInfo', () => ({
       version: app.getVersion(),
       username: os.userInfo().username,
+      homeDir: os.homedir(),
     }));
 
     ipcMain.handle('app:getSettings', () => this.settingsStore.store);
