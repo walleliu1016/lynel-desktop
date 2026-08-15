@@ -57,6 +57,8 @@ onMounted(async () => {
   background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
+  /* 覆盖 TitleBar 的 drag 区域，否则右上角 close 按钮点击会被窗口拖拽拦截 */
+  -webkit-app-region: no-drag;
 }
 .dialog {
   width: 700px; height: 520px;
