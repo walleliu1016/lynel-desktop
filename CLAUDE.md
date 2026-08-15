@@ -311,6 +311,19 @@ npm run dist:linux
 - `CloudChannel`（`src/main/channels/cloud-channel.ts`）：HTTP 上行通道，作为 Socket.IO 的 fallback。
 - 会话同步支持 `mode: 'snapshot' | 'event'`，`event` 模式在 `SyncSession.event` 字段标注触发类型（`created`/`opened`/`closed`/`title_updated`）。
 
+### 15. DeepSeek Harness（dsh）
+
+- 进程管理：`src/main/dsh.ts` 的 `DshManager` 单例，`dsh:ensure` / `dsh:shutdown` IPC（`app.ts`）。
+- 加载策略：**统一使用应用内置 dsh bin**（不再用 npx），均以 `ELECTRON_RUN_AS_NODE=1` + Electron 自带 Node 执行：
+  - dev：`<app>/node_modules/@deepseek-ai/dsh/lib/bin.js`（`app.getAppPath()`）。
+  - 生产：`<resources>/app.asar.unpacked/node_modules/@deepseek-ai/dsh/lib/bin.js`。
+  - **必须传 `--expose-internals`**：`cordis-plugin-hmr` 需要它启动 HMR service，否则 dsh 启动后立即崩溃。
+- 就绪信号：解析 stdout 的 `dsh web: http://127.0.0.1:<port>`（`--port 0` 让 OS 分配随机端口），120s 超时 kill 进程树。
+- **更新 dsh**：`@deepseek-ai/dsh` 是根 `package.json` 依赖，升级需**同时更新两个 lock**（否则 dev 与产线版本不一致）：
+  - 本地 dev（pnpm）：`pnpm add @deepseek-ai/dsh@latest`
+  - CI 打包（npm）：`npm install --package-lock-only`
+  - 本地 `npm run dev` 验证 dsh 就绪后走发布流程；electron-builder 会把新 dsh 解入 `app.asar.unpacked`。
+
 ---
 
 ## 提交规范
