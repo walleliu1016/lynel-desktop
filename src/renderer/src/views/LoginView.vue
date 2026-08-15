@@ -11,7 +11,7 @@
 
       <div class="login-card">
         <form @submit.prevent="onSubmit" class="form">
-          <div class="form-group">
+          <div class="form-group row">
             <label class="form-label">用户名</label>
             <input
               class="form-input"
@@ -25,14 +25,14 @@
             </div>
           </div>
 
-          <div class="form-group">
+          <div class="form-group row" v-if="cloudEnabled">
             <label class="form-label">密码</label>
             <input
               class="form-input"
               :class="{ error: errorField === 'token' }"
               v-model="token"
               type="password"
-              :placeholder="cloudEnabled ? 'PIN+Token' : '密码任意'"
+              placeholder="PIN+Token"
               autocomplete="off"
             />
             <div class="form-hint">
@@ -101,7 +101,8 @@ const cloudUrl = ref('')
 const loading = ref(false)
 
 const canSubmit = computed(() => {
-  if (!username.value.trim() || !token.value) return false
+  if (!username.value.trim()) return false
+  if (cloudEnabled.value && !token.value) return false
   if (cloudEnabled.value && !cloudUrl.value.trim()) return false
   return true
 })
@@ -110,8 +111,8 @@ const onCloudToggle = () => {
   resizeWindowForCloud(cloudEnabled.value)
 }
 
-const BASE_HEIGHT = 510
-const CLOUD_EXTRA_HEIGHT = 60
+const BASE_HEIGHT = 430
+const CLOUD_EXTRA_HEIGHT = 110
 function resizeWindowForCloud(enabled: boolean) {
   const h = enabled ? BASE_HEIGHT + CLOUD_EXTRA_HEIGHT : BASE_HEIGHT
   try {
@@ -148,7 +149,7 @@ async function onSubmit() {
     errorField.value = 'username'
     return
   }
-  if (!token.value) {
+  if (cloudEnabled.value && !token.value) {
     error.value = '请输入 Token'
     errorField.value = 'token'
     return
@@ -203,11 +204,11 @@ async function closeSettings() {
   background: var(--bg-primary);
   padding: 18px 10px 14px;
   display: flex; flex-direction: column;
-  justify-content: flex-start;
+  justify-content: center;
   align-items: center;
   overflow-y: auto;
 }
-.login-head { display: flex; flex-direction: column; align-items: center; margin-bottom: 10px; margin-top: auto; }
+.login-head { display: flex; flex-direction: column; align-items: center; margin-bottom: 10px; }
 .brand-row { display: flex; align-items: center; gap: 6px; font-size: var(--fs-hero); font-weight: 700; letter-spacing: -0.02em; }
 .brand-lynel { color: var(--accent); }
 .brand-desktop { color: var(--status-error); font-weight: 500; }
@@ -216,7 +217,6 @@ async function closeSettings() {
   width: min(300px, 100%);
   box-sizing: border-box;
   padding: 18px 22px;
-  margin-bottom: auto;
   background: var(--material-bg);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -226,6 +226,28 @@ async function closeSettings() {
 }
 .form { width: 100%; display: flex; flex-direction: column; }
 .form-group { margin-bottom: 6px; }
+/* 用户名/密码：label 与输入框同一行 */
+.form-group.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.form-group.row .form-label {
+  flex: 0 0 52px;
+  margin-bottom: 0;
+  text-align: left;
+}
+.form-group.row .form-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.form-group.row .form-hint {
+  flex-basis: 100%;
+  margin-left: 60px;
+  margin-top: 2px;
+}
 .form-label {
   display: block; font-size: 11px; color: var(--text-secondary);
   text-transform: uppercase; letter-spacing: 0.6px;

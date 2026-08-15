@@ -13,7 +13,7 @@ import {
 } from './useElectron'
 
 const HOME = { width: 1280, height: 800, minWidth: 1024, minHeight: 680 }
-const LOGIN = { width: 320, height: 510, minWidth: 320, minHeight: 510 }
+const LOGIN = { width: 320, height: 430, minWidth: 320, minHeight: 430 }
 const SETTINGS = { width: 700, height: 520, minWidth: 700, minHeight: 520 }
 
 let initialized = false
