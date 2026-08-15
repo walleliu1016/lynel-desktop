@@ -323,6 +323,11 @@ npm run dist:linux
   - 本地 dev（pnpm）：`pnpm add @deepseek-ai/dsh@latest`
   - CI 打包（npm）：`npm install --package-lock-only`
   - 本地 `npm run dev` 验证 dsh 就绪后走发布流程；electron-builder 会把新 dsh 解入 `app.asar.unpacked`。
+- **⚠️ electron-builder 只收集根 `dependencies` 树，dsh 生态大量 peerDependencies 会被遗漏**，导致生产安装包 dsh 启动报 `ERR_MODULE_NOT_FOUND`（逐个爆缺包，如 `cordis-plugin-group`、`dsh-scope`、`dsh-fs`）。升级 dsh 后必须检查并补全：
+  ```bash
+  node -e 'const l=require("./package-lock.json");const p=Object.keys(l.packages).filter(k=>l.packages[k]["peer"]&&k.includes("@deepseek-ai"));console.log(p.map(k=>k.replace("node_modules/","")).sort().join("\n"));'
+  ```
+  输出的 peer-only 包（不含已补的 `cordis-plugin-group` 等）需全部显式加入根 `package.json` 的 `dependencies`（版本统一 `^0.1.0-rc.6`），再 `npm install --package-lock-only` 同步 lock，否则生产包启动缺包。
 
 ---
 
