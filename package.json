@@ -34,6 +34,7 @@
     "wait-on": "^9.0.10"
   },
   "dependencies": {
+    "@deepseek-ai/cordis-plugin-group": "^1.0.1",
     "@deepseek-ai/dsh": "^0.1.0-rc.6",
     "@napi-rs/canvas": "^0.1.68",
     "@wecom/aibot-node-sdk": "^1.0.7",
