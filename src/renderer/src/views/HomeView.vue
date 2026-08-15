@@ -1,12 +1,8 @@
 <template>
-  <div class="home">
+  <div class="home" :class="{ 'is-mac': isMac }">
     <div class="layout">
       <aside class="left" :class="{ collapsed: sidebarCollapsed }">
         <div class="left-top" :class="{ mac: isMac, win: isWindows, collapsed: sidebarCollapsed }">
-          <button v-if="sidebarCollapsed" class="top-btn tooltip-wrap" aria-label="展开会话列表" @click="sidebarCollapsed = false">
-            <Icon name="panel-left-open" :size="16" />
-            <span class="tooltip-down">展开会话列表</span>
-          </button>
           <template v-if="!sidebarCollapsed">
             <span v-if="!isMac" class="brand-inline" aria-hidden="true">Lynel Desktop</span>
             <button class="top-btn tooltip-wrap" aria-label="收起会话列表" @click="sidebarCollapsed = true">
@@ -24,14 +20,16 @@
           <span class="brand-version">(v{{ version }})</span>
         </div>
         <!-- 会话列表上方：首页入口（全宽）；折叠态仅保留图标 -->
-        <button class="home-entry" :class="{ active: tabsStore.activeType === 'welcome' }" aria-label="首页" title="首页" @click="tabsStore.openWelcome()">
+        <button class="home-entry tooltip-wrap" :class="{ active: tabsStore.activeType === 'welcome' }" aria-label="首页" @click="onCollapsedEntry(tabsStore.openWelcome)">
           <Icon name="home" :size="16" />
-          <span>首页</span>
+          <span class="entry-label">首页</span>
+          <span class="tooltip">首页</span>
         </button>
         <!-- DeepSeek Harness 入口：首页下方、搜索上方 -->
-        <button class="home-entry" :class="{ active: tabsStore.activeType === 'harness' }" aria-label="DeepSeek Harness" title="DeepSeek Harness" @click="tabsStore.openHarness()">
+        <button class="home-entry tooltip-wrap" :class="{ active: tabsStore.activeType === 'harness' }" aria-label="DeepSeek Harness" @click="onOpenHarness">
           <DeepSeekLogo :size="16" />
-          <span>DeepSeek Harness</span>
+          <span class="entry-label">DeepSeek Harness</span>
+          <span class="tooltip">DeepSeek Harness</span>
         </button>
         <button v-if="!sidebarCollapsed && !searchOpen" class="home-entry search-entry" aria-label="搜索" title="搜索" @click="openSearch">
           <Icon name="search" :size="16" />
@@ -52,12 +50,14 @@
           </button>
         </div>
         <!-- 折叠态：搜索仅图标，点击展开侧栏并进入搜索 -->
-        <button v-if="sidebarCollapsed" class="home-entry search-entry" aria-label="搜索" title="搜索" @click="onCollapsedSearch">
+        <button v-if="sidebarCollapsed" class="home-entry search-entry tooltip-wrap" aria-label="搜索" @click="onCollapsedSearch">
           <Icon name="search" :size="16" />
+          <span class="tooltip">搜索</span>
         </button>
         <!-- 折叠态：会话列表仅图标，点击展开侧栏 -->
-        <button v-if="sidebarCollapsed" class="home-entry session-collapsed-btn" aria-label="展开会话列表" title="展开会话列表" @click="sidebarCollapsed = false">
+        <button v-if="sidebarCollapsed" class="home-entry session-collapsed-btn tooltip-wrap" aria-label="展开会话列表" @click="sidebarCollapsed = false">
           <Icon name="message-square" :size="16" />
+          <span class="tooltip">会话列表</span>
         </button>
         <SessionList
           v-else
@@ -73,8 +73,8 @@
             </button>
           </template>
         </SessionList>
-        <div v-if="!sidebarCollapsed" class="left-bottom">
-          <div class="bottom-actions">
+        <div class="left-bottom" :class="{ collapsed: sidebarCollapsed }">
+          <div v-if="!sidebarCollapsed" class="bottom-actions">
             <div v-if="username" class="account">
               <span class="avatar" aria-hidden="true">{{ avatar }}</span>
               <div class="info">
@@ -95,6 +95,16 @@
                 <span class="tooltip">设置</span>
               </button>
             </div>
+          </div>
+          <div v-else class="bottom-collapsed">
+            <button class="top-btn tooltip-wrap" aria-label="使用指南" @click="openGuideTab">
+              <Icon name="help" :size="16" />
+              <span class="tooltip">使用指南</span>
+            </button>
+            <button class="top-btn tooltip-wrap" aria-label="设置" @click="openSettingsTab()">
+              <Icon name="settings" :size="16" />
+              <span class="tooltip">设置</span>
+            </button>
           </div>
         </div>
       </aside>
@@ -508,6 +518,18 @@ function onCollapsedSearch() {
   openSearch()
 }
 
+/** 收起态点击左侧导航图标（首页）：先展开侧栏再执行导航 */
+function onCollapsedEntry(fn: () => void) {
+  if (sidebarCollapsed.value) sidebarCollapsed.value = false
+  fn()
+}
+
+/** 打开 Harness（全屏 Web）：自动折叠左侧栏，让出空间 */
+function onOpenHarness() {
+  tabsStore.openHarness()
+  sidebarCollapsed.value = true
+}
+
 async function onCreate(workdir: string, prompt: string, extraArgs: string[] = [], botId?: string, agent?: string) {
   try {
     const id = await sessions.create(workdir, prompt, extraArgs, botId, agent)
@@ -701,17 +723,6 @@ watch(
 .left-top.collapsed .cloud-status {
   display: none;
 }
-/* macOS：红绿灯悬浮左上角，折叠后展开按钮绝对定位到红绿灯右侧 */
-.left-top.mac.collapsed {
-  justify-content: center;
-  padding-left: 0;
-}
-.left-top.mac.collapsed .top-btn {
-  position: absolute;
-  left: 78px;
-  top: 50%;
-  transform: translateY(-50%);
-}
 /* 搜索按钮原位变为输入框 */
 .search-inplace {
   display: flex; align-items: center; gap: 6px;
@@ -775,9 +786,9 @@ watch(
 .center-top :deep(.global-tabs) {
   height: 100%;
 }
-/* macOS 折叠会话列表时，红绿灯悬浮左侧（0-78px），内容区从 44px 开始，让内容从红绿灯右侧起排 */
+/* macOS 折叠会话列表时，红绿灯悬浮左侧（0-72px），内容区从红绿灯右侧起排 */
 .center-top.mac-left {
-  padding-left: 92px;
+  padding-left: 72px;
 }
 /* Windows 无边框窗口右上角有自绘窗口控制按钮（约 82px）：
    1. center-top 右侧预留 96px 避让区，GlobalTabs 与"展开 Trace"按钮都在其内自然排列；
@@ -890,6 +901,18 @@ watch(
   background: var(--bg-panel);
   -webkit-app-region: no-drag;
 }
+/* 收起态：底部只保留居中设置按钮 */
+.left-bottom.collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0;
+}
+.bottom-collapsed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .bottom-actions {
   display: flex;
   align-items: center;
@@ -930,6 +953,14 @@ watch(
 .tooltip-wrap:hover .tooltip {
   opacity: 1;
 }
+/* 收起态（窄侧栏）：tooltip 靠右弹出且置顶，避免上方放不下/被裁剪 */
+.left.collapsed .tooltip {
+  top: 50%;
+  left: calc(100% + 8px);
+  bottom: auto;
+  transform: translateY(-50%);
+  z-index: 100;
+}
 .tooltip-down {
   position: absolute;
   top: calc(100% + 6px);
@@ -960,14 +991,30 @@ watch(
   min-height: 0; overflow: hidden;
   z-index: 1;
   transition: width 0.2s ease;
+  position: relative;
 }
 .left.collapsed { width: 44px; overflow: visible; }
-/* 折叠态：仅保留图标列，隐藏文字、图标居中 */
+/* macOS 折叠态：红绿灯悬浮左上角，去掉贯穿顶部的 border/shadow，竖线从红绿灯下方（left-top 40px）开始 */
+.home.is-mac .left.collapsed {
+  border-right: none !important;
+  box-shadow: none !important;
+}
+.home.is-mac .left.collapsed::after {
+  content: '';
+  position: absolute;
+  top: 40px;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  pointer-events: none;
+}
+/* 折叠态：仅保留图标列，隐藏文字标签（保留 hover tooltip）、图标居中 */
 .left.collapsed .home-entry {
   justify-content: center;
   padding: 0;
 }
-.left.collapsed .home-entry span { display: none; }
+.left.collapsed .home-entry .entry-label { display: none; }
 .center {
   flex: 1;
   display: flex;
