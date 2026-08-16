@@ -1,0 +1,22 @@
+--- a/node_modules/@deepseek-ai/dsh-client-ui-workspace/lib/client.js
++++ b/node_modules/@deepseek-ai/dsh-client-ui-workspace/lib/client.js
+@@ -711,6 +711,11 @@
+ 					id: "archive",
+ 					label: t("menu.archiveSession"),
+ 					icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconArchiveOutline20, { size: 16 })
++				},
++				{
++					id: "lynel-bind",
++					label: "绑定 Bot",
++					icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconLinkOutline16, {})
+ 				}
+ 			];
+ 			return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.HoverCard, {
+@@ -765,6 +770,7 @@
+ 									if (id === "rename") onRename(node.id, row.title);
+ 									if (id === "fork") onFork(node.id);
+ 									if (id === "archive") onArchive(node.id);
++									if (id === "lynel-bind") window.dispatchEvent(new CustomEvent("lynel:bind-bot", { detail: { sessionId: node.id } }));
+ 								},
+ 								portal: true,
+ 								closeOnPointerLeave: true,
