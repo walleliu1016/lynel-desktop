@@ -1,4 +1,4 @@
-# lynel-plugin
+# dsh-lynel-plugin
 
 DeepSeek Harness 插件：把 DSH Web 前端和 Lynel Desktop 后端桥接起来。
 
@@ -40,7 +40,7 @@ DSH Web 前端（127.0.0.1:随机端口 iframe）
 ### 1. 构建
 
 ```bash
-cd lynel-plugin
+cd dsh-lynel-plugin
 pnpm install
 pnpm build          # 产出 lib/index.js（宿主）+ lib/client.js（浏览器）
 ```
@@ -50,15 +50,15 @@ pnpm build          # 产出 lib/index.js（宿主）+ lib/client.js（浏览器
 `dsh web`（以及 lynel-desktop 内嵌的 dsh）都使用 `~/.dsh/profiles/web`。插件声明了 `dsh.bundle.patch`，`dsh plugin` 会自动把它追加进 `dsh.profile.bundles`：
 
 ```bash
-dsh plugin --profile web add file:/absolute/path/to/lynel-plugin
+dsh plugin --profile web add file:/absolute/path/to/dsh-lynel-plugin
 ```
 
 或手动（等价）：
 
 ```bash
 cd ~/.dsh/profiles/web
-pnpm add file:/absolute/path/to/lynel-plugin
-# 然后把 "lynel-plugin" 追加到 package.json 的 dsh.profile.bundles 数组
+pnpm add file:/absolute/path/to/dsh-lynel-plugin
+# 然后把 "dsh-lynel-plugin" 追加到 package.json 的 dsh.profile.bundles 数组
 ```
 
 ### 3. 重启
@@ -204,7 +204,7 @@ pnpm patch-commit <临时目录路径>
 
 ```bash
 # 1. 起 mock lynel 后端（写入 ~/.lynel-desktop/mock-envelopes.jsonl）
-node lynel-plugin/mock/lynel-server.mjs
+node dsh-lynel-plugin/mock/lynel-server.mjs
 
 # 2. 起 dsh web（或 lynel-desktop）
 dsh web

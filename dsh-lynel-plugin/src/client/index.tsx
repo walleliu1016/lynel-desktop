@@ -1,5 +1,5 @@
 /**
- * lynel-plugin — browser half entry.
+ * dsh-lynel-plugin — browser half entry.
  *
  * Registers three contributions into existing DSH slots (zero patching):
  *
@@ -32,7 +32,7 @@ export function apply(ctx: DshCtx): void {
   // 1. trajectory → LynelEnvelope forwarder
   ctx.effect(
     () => startEnvelopeForwarder(ctx),
-    'lynel-plugin: envelope forwarder',
+    'dsh-lynel-plugin: envelope forwarder',
   );
 
   // 1b. prime the shared bot-document cache (header badge / settings page)
@@ -114,5 +114,5 @@ export function apply(ctx: DshCtx): void {
     return () => {
       for (const dispose of disposers) dispose();
     };
-  }, 'lynel-plugin: bind-bot UI');
+  }, 'dsh-lynel-plugin: bind-bot UI');
 }

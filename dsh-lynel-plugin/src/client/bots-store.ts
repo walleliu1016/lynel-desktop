@@ -1,5 +1,5 @@
 /**
- * lynel-plugin — shared bot-document cache.
+ * dsh-lynel-plugin — shared bot-document cache.
  *
  * The bind modal, the settings page, and the session-header badge all read
  * `~/.lynel-desktop/bot.json`. This module keeps one in-memory copy with a

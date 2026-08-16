@@ -1,5 +1,5 @@
 /**
- * lynel-plugin — LynelEnvelope mapping + forwarding.
+ * dsh-lynel-plugin — LynelEnvelope mapping + forwarding.
  *
  * Maps the DSH session log (`SessionEvent` stream) onto the LynelEnvelope
  * event vocabulary (docs/envelope-format.md) and pushes every envelope to the
@@ -253,7 +253,7 @@ async function postEnvelope(env: LynelEnvelope): Promise<void> {
   droppedEnvelopes += 1;
   if (!warnedOnce) {
     warnedOnce = true;
-    console.warn(`[lynel-plugin] envelope endpoint unreachable; ${droppedEnvelopes} envelope(s) dropped so far`);
+    console.warn(`[dsh-lynel-plugin] envelope endpoint unreachable; ${droppedEnvelopes} envelope(s) dropped so far`);
   }
 }
 

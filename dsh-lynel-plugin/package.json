@@ -1,5 +1,5 @@
 {
-  "name": "lynel-plugin",
+  "name": "dsh-lynel-plugin",
   "version": "0.1.0",
   "description": "Lynel Desktop ↔ DeepSeek Harness bridge: bot binding, AskUserQuestion HTTP hook, and LynelEnvelope trajectory forwarding",
   "type": "module",

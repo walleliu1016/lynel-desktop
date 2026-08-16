@@ -1,5 +1,5 @@
 /**
- * lynel-plugin — Bot 设置 settings section.
+ * dsh-lynel-plugin — Bot 设置 settings section.
  *
  * Registers into `settings.section` (the settings-page nav list). The page
  * lists the bots in `~/.lynel-desktop/bot.json`, adds new ones, and deletes

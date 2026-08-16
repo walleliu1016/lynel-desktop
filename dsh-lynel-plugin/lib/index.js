@@ -1,10 +1,10 @@
-/* lynel-plugin — built artifact, do not edit. */
+/* dsh-lynel-plugin — built artifact, do not edit. */
 
 // src/index.ts
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-var name = "lynel-plugin";
+var name = "dsh-lynel-plugin";
 var inject = ["webServer"];
 var DEFAULTS = {
   botFile: join(homedir(), ".lynel-desktop", "bot.json"),
@@ -252,7 +252,7 @@ function apply(ctx, rawConfig = {}) {
     return () => {
       for (const dispose of disposers) dispose();
     };
-  }, "lynel-plugin: web routes");
+  }, "dsh-lynel-plugin: web routes");
 }
 export {
   apply,

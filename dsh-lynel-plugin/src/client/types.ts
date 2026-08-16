@@ -1,5 +1,5 @@
 /**
- * lynel-plugin — client half, structural DSH contract types.
+ * dsh-lynel-plugin — client half, structural DSH contract types.
  *
  * The client bundle only ever `require()`s `react` / `react/jsx-runtime` at
  * runtime; every DSH surface below is described structurally so the plugin

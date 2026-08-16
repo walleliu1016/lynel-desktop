@@ -1,5 +1,5 @@
 /**
- * lynel-plugin build script (esbuild).
+ * dsh-lynel-plugin build script (esbuild).
  *
  * Produces:
  *   lib/index.js   — host half (ESM, zero runtime deps; cordis/node types only)
@@ -16,13 +16,13 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const watch = process.argv.includes('--watch');
-const banner = `/* lynel-plugin — built artifact, do not edit. */`;
+const banner = `/* dsh-lynel-plugin — built artifact, do not edit. */`;
 
 function wrapClient() {
   const body = readFileSync(join(root, 'lib/_client-body.js'), 'utf8');
   const wrapped = `${banner}
 window.__ModuleLoader__.load({
-\tid: "lynel-plugin",
+\tid: "dsh-lynel-plugin",
 \tfactory: (require) => {
 \t\tvar module = { exports: {} };
 \t\tvar exports = module.exports;

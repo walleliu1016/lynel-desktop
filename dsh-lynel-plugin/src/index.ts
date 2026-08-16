@@ -1,5 +1,5 @@
 /**
- * lynel-plugin — host half (Node / cordis plugin).
+ * dsh-lynel-plugin — host half (Node / cordis plugin).
  *
  * Bridges the DSH web frontend and the Lynel Desktop backend:
  *
@@ -24,7 +24,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 
 /** Stable cordis plugin name. */
-export const name = 'lynel-plugin';
+export const name = 'dsh-lynel-plugin';
 
 /** Host services required before this plugin mounts. */
 export const inject = ['webServer'];
@@ -349,5 +349,5 @@ export function apply(ctx: Context, rawConfig: Partial<Config> = {}): void {
     return () => {
       for (const dispose of disposers) dispose();
     };
-  }, 'lynel-plugin: web routes');
+  }, 'dsh-lynel-plugin: web routes');
 }

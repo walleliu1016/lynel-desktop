@@ -1,5 +1,5 @@
 /**
- * lynel-plugin — mock Lynel backend for local end-to-end testing.
+ * dsh-lynel-plugin — mock Lynel backend for local end-to-end testing.
  *
  * Implements the two hook endpoints plus a browser envelope viewer:
  *

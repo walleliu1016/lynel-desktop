@@ -1,6 +1,6 @@
-# lynel-plugin bundle patch: activates the plugin in a DSH profile.
+# dsh-lynel-plugin bundle patch: activates the plugin in a DSH profile.
 #
-# When installed via `dsh plugin --profile <name> add lynel-plugin` (or pnpm
+# When installed via `dsh plugin --profile <name> add dsh-lynel-plugin` (or pnpm
 # add into the profile), the `dsh.bundle.patch` manifest field makes the
 # loader append this package to `dsh.profile.bundles`, and this patch inserts
 # the host row below. The browser half is discovered automatically by the
@@ -13,5 +13,5 @@
 #     envelopeEndpoint: 'http://localhost:17527/deepseek-harness/envelope'
 #     askEndpoint: 'http://localhost:17527/deepseek-harness/ask'
 - insert:
-    - id: lynel-plugin
-      name: 'lynel-plugin'
+    - id: dsh-lynel-plugin
+      name: 'dsh-lynel-plugin'

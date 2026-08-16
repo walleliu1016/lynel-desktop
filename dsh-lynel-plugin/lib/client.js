@@ -1,6 +1,6 @@
-/* lynel-plugin — built artifact, do not edit. */
+/* dsh-lynel-plugin — built artifact, do not edit. */
 window.__ModuleLoader__.load({
-	id: "lynel-plugin",
+	id: "dsh-lynel-plugin",
 	factory: (require) => {
 		var module = { exports: {} };
 		var exports = module.exports;
@@ -175,7 +175,7 @@ async function postEnvelope(env) {
   droppedEnvelopes += 1;
   if (!warnedOnce) {
     warnedOnce = true;
-    console.warn(`[lynel-plugin] envelope endpoint unreachable; ${droppedEnvelopes} envelope(s) dropped so far`);
+    console.warn(`[dsh-lynel-plugin] envelope endpoint unreachable; ${droppedEnvelopes} envelope(s) dropped so far`);
   }
 }
 function startEnvelopeForwarder(ctx, options = {}) {
@@ -595,7 +595,7 @@ function BindModal({ useSessions }) {
     ] }),
     busy && !doc2 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { opacity: 0.7 }, children: "\u52A0\u8F7D bot \u5217\u8868\u2026" }) : error && doc2 === null ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { color: "var(--dsw-alias-state-error-primary, #f85149)" }, children: error }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginTop: 6, opacity: 0.8 }, children: config ? `\u672A\u627E\u5230 ${config.botFile}` : "\u8BF7\u786E\u8BA4 lynel-plugin \u5BBF\u4E3B\u7AEF\u5DF2\u52A0\u8F7D\uFF08/lynel/bot.json \u4E0D\u53EF\u7528\uFF09" })
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginTop: 6, opacity: 0.8 }, children: config ? `\u672A\u627E\u5230 ${config.botFile}` : "\u8BF7\u786E\u8BA4 dsh-lynel-plugin \u5BBF\u4E3B\u7AEF\u5DF2\u52A0\u8F7D\uFF08/lynel/bot.json \u4E0D\u53EF\u7528\uFF09" })
     ] }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
       boundBotId !== void 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { marginBottom: 10 }, children: [
         "\u5F53\u524D\u7ED1\u5B9A\uFF1A",
@@ -681,7 +681,7 @@ function BindHeaderButton({ sessionId }) {
         if (!res.ok) throw new Error(`unbind failed: HTTP ${res.status}`);
         await refreshBotDoc();
       } catch (cause) {
-        console.error("[lynel-plugin] unbind failed:", cause);
+        console.error("[dsh-lynel-plugin] unbind failed:", cause);
         setFailed(true);
       } finally {
         setBusy(false);
@@ -1030,7 +1030,7 @@ var inject = ["connection", "slots"];
 function apply(ctx) {
   ctx.effect(
     () => startEnvelopeForwarder(ctx),
-    "lynel-plugin: envelope forwarder"
+    "dsh-lynel-plugin: envelope forwarder"
   );
   void refreshBotDoc();
   ctx.effect(() => {
@@ -1105,7 +1105,7 @@ function apply(ctx) {
     return () => {
       for (const dispose of disposers) dispose();
     };
-  }, "lynel-plugin: bind-bot UI");
+  }, "dsh-lynel-plugin: bind-bot UI");
 }
 
 		return module.exports;

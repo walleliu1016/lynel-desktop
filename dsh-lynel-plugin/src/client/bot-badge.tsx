@@ -1,5 +1,5 @@
 /**
- * lynel-plugin — session-header bot badge.
+ * dsh-lynel-plugin — session-header bot badge.
  *
  * Session-scope entry in `conversation.session.header.actions`: when the
  * current session has a bound bot, render a small badge with the bot's name;

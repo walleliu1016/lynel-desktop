@@ -1,5 +1,5 @@
 /**
- * lynel-plugin — bind-bot UI.
+ * dsh-lynel-plugin — bind-bot UI.
  *
  * Two pure-plugin surfaces plus one patched entry point:
  *
@@ -217,7 +217,7 @@ export function BindModal({ useSessions }: BindModalProps): JSX.Element | null {
           <div>
             <div style={{ color: 'var(--dsw-alias-state-error-primary, #f85149)' }}>{error}</div>
             <div style={{ marginTop: 6, opacity: 0.8 }}>
-              {config ? `未找到 ${config.botFile}` : '请确认 lynel-plugin 宿主端已加载（/lynel/bot.json 不可用）'}
+              {config ? `未找到 ${config.botFile}` : '请确认 dsh-lynel-plugin 宿主端已加载（/lynel/bot.json 不可用）'}
             </div>
           </div>
         ) : (
@@ -335,7 +335,7 @@ export function BindHeaderButton({ sessionId }: HeaderActionProps): JSX.Element 
         if (!res.ok) throw new Error(`unbind failed: HTTP ${res.status}`);
         await refreshBotDoc();
       } catch (cause) {
-        console.error('[lynel-plugin] unbind failed:', cause);
+        console.error('[dsh-lynel-plugin] unbind failed:', cause);
         setFailed(true);
       } finally {
         setBusy(false);

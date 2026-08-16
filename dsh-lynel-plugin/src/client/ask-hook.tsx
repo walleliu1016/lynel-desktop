@@ -1,5 +1,5 @@
 /**
- * lynel-plugin — AskUserQuestion HTTP hook.
+ * dsh-lynel-plugin — AskUserQuestion HTTP hook.
  *
  * Registers a `conversation.composer` chain entry with a negative priority so
  * it is tried BEFORE the shipped question UI. Its selector claims every
