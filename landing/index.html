@@ -177,6 +177,14 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 .guide-step h3 { font-size: 16px; margin-bottom: 8px; }
 .guide-step p { font-size: 14px; margin: 0; color: var(--muted); }
 @media (max-width: 900px) { .guide-grid { grid-template-columns: 1fr; } }
+
+/* ===== 名字由来 ===== */
+.lore { padding: clamp(8px, 2vw, 24px) 0 clamp(56px, 8vw, 96px); text-align: center; }
+.lore-label { margin: 0 0 14px; font-size: 12px; font-weight: 800; letter-spacing: .22em; color: var(--muted); text-transform: uppercase; }
+.lore-quote { max-width: 720px; margin: 0 auto; font-size: 16px; line-height: 2; color: var(--body); }
+.lore-quote::before { content: "“"; display: block; font-size: 44px; line-height: 1; color: var(--brand-blue); opacity: .28; margin-bottom: 6px; }
+.lore-quote p { margin: 0; }
+@media (max-width: 640px) { .lore-quote { font-size: 14px; line-height: 1.9; } }
 </style>
 <script>document.documentElement.classList.add('js');</script>
 </head>
@@ -184,7 +192,7 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 <noscript><style>.reveal, html.js .reveal { opacity: 1; transform: none; }</style></noscript>
 <header class="site-nav" id="top">
   <div class="container nav-in">
-    <a class="brand" href="#top"><span class="brand-mark"></span>Lynel&nbsp;Desktop</a>
+    <a class="brand" href="#top"><span class="brand-mark"></span>Lynel</a>
     <nav class="nav-links">
       <a href="#features">功能</a>
       <a href="#showcase">界面</a>
@@ -213,6 +221,14 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
         <img src="" alt="Lynel Desktop 主窗口截图（三段式布局）" loading="eager">
         <div class="shot-fallback">主窗口截图 · 左会话列表 | 中终端 | 右 Trace</div>
       </div>
+    </div>
+  </section>
+  <section class="lore" id="lore">
+    <div class="container">
+      <p class="lore-label">名字由来</p>
+      <blockquote class="lore-quote reveal">
+        <p>「Lynel」之名取自《塞尔达传说：旷野之息》中立于顶点的半人马战士——智慧、韧性与力量兼备，能远距离发现并追踪目标。Lynel 亦然：让多个强大的 AI 助手并肩作战，无论身在何处，始终尽在掌控。</p>
+      </blockquote>
     </div>
   </section>
   <section class="painpoints" id="painpoints">
