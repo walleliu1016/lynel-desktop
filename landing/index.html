@@ -162,6 +162,7 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 .faq-item { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 0 22px; }
 .faq-item summary { cursor: pointer; padding: 16px 0; font-weight: 700; color: var(--ink); font-size: 15px; }
 .faq-item p { margin: 0 0 16px; font-size: 14px; }
+.faq-item code { font-family: var(--mono); font-size: .9em; background: var(--brand-blue-soft); color: var(--brand-blue-dark); padding: 1px 6px; border-radius: 5px; }
 .site-foot { border-top: 1px solid var(--line); padding: 32px 0; }
 .foot-in { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
 .foot-links { display: flex; gap: 20px; }
@@ -526,6 +527,9 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
         <details class="faq-item reveal"><summary>支持哪些 Agent？</summary><p>Claude Code、Codex、OpenCode、OMP，以及内嵌的 DeepSeek Harness Web 界面。</p></details>
         <details class="faq-item reveal"><summary>我的本地会话会被上传吗？</summary><p>会话数据默认本地存储；仅在你配置并开启云服务时，才按需上行同步。</p></details>
         <details class="faq-item reveal"><summary>如何远程控制？</summary><p>绑定企业微信 Bot 后，可在手机端收发消息、审批权限、查看进度。</p></details>
+        <details class="faq-item reveal"><summary>macOS 提示「无法验证开发者」怎么办？</summary><p>首次运行需在终端执行 <code>xattr -cr /Applications/Lynel.app</code> 移除隔离属性（路径按实际应用名调整），详见使用指南的安装章节。</p></details>
+        <details class="faq-item reveal"><summary>应用启动后黑屏怎么办？</summary><p>尝试打开开发者工具查看控制台错误信息；开发模式推荐使用 <code>npm run dev</code> 启动排查。</p></details>
+        <details class="faq-item reveal"><summary>终端一直 loading 没有内容？</summary><p>切换会话或调整窗口尺寸时会重新加载，等待几秒即可；长时间无响应请查看主进程日志定位原因。</p></details>
       </div>
     </div>
   </section>
