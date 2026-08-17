@@ -71,17 +71,14 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 
 /* Hero */
 .hero { position: relative; overflow: hidden; padding: clamp(96px, 13vw, 150px) 0 clamp(40px, 6vw, 72px); text-align: center; }
-.hero-glow { position: absolute; inset: 0; z-index: -1; background: radial-gradient(520px 320px at 20% 18%, rgba(30,90,245,.12), transparent 70%), radial-gradient(520px 320px at 80% 28%, rgba(230,57,70,.10), transparent 70%); animation: breathe 12s ease-in-out infinite; }
-@keyframes breathe { 0%,100% { opacity:.6; transform: scale(1); } 50% { opacity:1; transform: scale(1.06); } }
-.hero h1 { font-size: clamp(40px, 6.2vw, 68px); margin-bottom: 24px; letter-spacing: -0.03em; line-height: 1.15; }
-.hl { font-weight: inherit; }
-.hl-blue { color: var(--brand-blue); }
-.hl-red { color: var(--brand-red); }
-.hero-sub { font-size: clamp(16px, 2.2vw, 20px); color: var(--muted); max-width: 640px; margin: 0 auto 38px; line-height: 1.8; }
+.hero h1 { font-size: clamp(38px, 5.8vw, 64px); margin-bottom: 26px; letter-spacing: -0.03em; line-height: 1.15; }
+.hero-sub { font-size: clamp(15px, 2vw, 18px); color: var(--muted); max-width: 680px; margin: 0 auto 8px; line-height: 1.7; }
+.hero-sub2 { font-size: clamp(15px, 2vw, 18px); color: var(--body); font-weight: 600; max-width: 680px; margin: 0 auto 38px; line-height: 1.7; }
 .dl-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 .dl-cta .btn { padding: 16px 32px; font-size: 16px; border-radius: 12px; }
-.hero-supports { margin: 22px 0 0; font-size: 13px; color: var(--muted); letter-spacing: .02em; }
-.hero-supports strong { color: var(--body); font-weight: 600; }
+.agent-logos { display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; margin-top: 34px; }
+.agent-logo { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; font-weight: 600; }
+.agent-logo svg { flex-shrink: 0; }
 .hero-shot { margin: 60px auto 0; max-width: 1020px; }
 .hero-shot .shot { border-radius: 20px; box-shadow: 0 30px 80px rgba(13, 24, 41, 0.16); }
 
@@ -90,7 +87,6 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 .shot:hover { transform: scale(1.02); box-shadow: var(--shadow-lg); }
 .shot img { width: 100%; height: auto; }
 .shot-fallback { display: flex; align-items: center; justify-content: center; min-height: 320px; color: var(--muted); font-size: 14px; background: linear-gradient(135deg, #fafbfc, #f2f4f7); }
-@media (prefers-reduced-motion: reduce) { .hero-glow { animation: none; } }
 
 /* ===== 痛点 / 功能 / 展示卡片 ===== */
 .sec-head { text-align: center; margin-bottom: 52px; }
@@ -182,13 +178,6 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 .guide-step p { font-size: 14px; margin: 0; color: var(--muted); }
 @media (max-width: 900px) { .guide-grid { grid-template-columns: 1fr; } }
 
-/* ===== 名字由来 ===== */
-.lore { padding: clamp(8px, 2vw, 24px) 0 clamp(56px, 8vw, 96px); text-align: center; }
-.lore-label { margin: 0 0 14px; font-size: 12px; font-weight: 800; letter-spacing: .22em; color: var(--muted); text-transform: uppercase; }
-.lore-quote { max-width: 720px; margin: 0 auto; font-size: 16px; line-height: 2; color: var(--body); }
-.lore-quote::before { content: "“"; display: block; font-size: 44px; line-height: 1; color: var(--brand-blue); opacity: .28; margin-bottom: 6px; }
-.lore-quote p { margin: 0; }
-@media (max-width: 640px) { .lore-quote { font-size: 14px; line-height: 1.9; } }
 </style>
 <script>document.documentElement.classList.add('js');</script>
 </head>
@@ -209,27 +198,24 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 </header>
 <main>
   <section class="hero" id="hero">
-    <div class="hero-glow" aria-hidden="true"></div>
     <div class="container hero-in">
-      <h1>把 <span class="hl hl-blue">Claude Code</span> / <span class="hl hl-red">Codex</span> 等 AI 助手<br>装进一个本地窗口</h1>
-      <p class="hero-sub">多会话 · 统一权限 · 实时追踪 · 远程控制</p>
+      <h1>把 Claude Code / Codex 等 AI 助手<br>装进一个本地窗口</h1>
+      <p class="hero-sub">名字取自《塞尔达传说：旷野之息》——智慧、韧性与力量，远距亦能追踪。</p>
+      <p class="hero-sub2">多会话 · 统一权限 · 实时追踪 · 远程控制</p>
       <div class="dl-cta">
         <a class="btn btn-primary" id="btn-dl-primary" href="/api/update/download?platform=win&arch=x64">检测下载平台…</a>
         <a class="btn btn-ghost" id="btn-dl-all" href="#download">所有下载选项</a>
       </div>
-      <p class="hero-supports">支持 <strong>macOS</strong> · <strong>Windows</strong> · <strong>Linux</strong></p>
+      <div class="agent-logos" aria-label="支持的 Agent">
+        <span class="agent-logo"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#d97757" d="M12 2l1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9z"/></svg>Claude Code</span>
+        <span class="agent-logo"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><polygon points="12,1.5 21,6.75 21,17.25 12,22.5 3,17.25 3,6.75" fill="#10a37f"/></svg>Codex</span>
+        <span class="agent-logo"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l-7 7 7 7M15 5l7 7-7 7" stroke="#1e5af5" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>OpenCode</span>
+        <span class="agent-logo"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" fill="none" stroke="#e63946" stroke-width="2.4"/><path d="M12 8v8M8 12h8" stroke="#e63946" stroke-width="2.4" stroke-linecap="round"/></svg>OMP</span>
+      </div>
       <div class="hero-shot shot" data-name="hero">
         <img src="" alt="Lynel Desktop 主窗口截图（三段式布局）" loading="eager">
         <div class="shot-fallback">主窗口截图 · 左会话列表 | 中终端 | 右 Trace</div>
       </div>
-    </div>
-  </section>
-  <section class="lore" id="lore">
-    <div class="container">
-      <p class="lore-label">名字由来</p>
-      <blockquote class="lore-quote reveal">
-        <p>「Lynel」之名取自《塞尔达传说：旷野之息》中立于顶点的半人马战士——智慧、韧性与力量兼备，能远距离发现并追踪目标。Lynel 亦然：让多个强大的 AI 助手并肩作战，无论身在何处，始终尽在掌控。</p>
-      </blockquote>
     </div>
   </section>
   <section class="painpoints" id="painpoints">
