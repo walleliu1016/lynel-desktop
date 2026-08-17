@@ -159,6 +159,15 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
   .dl-panel { padding: 22px 16px; }
   .btn-lg { min-width: 100%; }
 }
+
+/* ===== 使用指南 ===== */
+.guide-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 980px; margin: 0 auto; }
+.guide-step { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 24px; position: relative; transition: transform .25s ease, box-shadow .25s ease; }
+.guide-step:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+.guide-num { position: absolute; top: 18px; right: 20px; width: 30px; height: 30px; border-radius: 50%; background: var(--brand-blue-soft); color: var(--brand-blue); font-weight: 800; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+.guide-step h3 { font-size: 16px; margin-bottom: 8px; }
+.guide-step p { font-size: 14px; margin: 0; color: var(--muted); }
+@media (max-width: 900px) { .guide-grid { grid-template-columns: 1fr; } }
 </style>
 <script>document.documentElement.classList.add('js');</script>
 </head>
@@ -171,6 +180,7 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
       <a href="#features">功能</a>
       <a href="#showcase">界面</a>
       <a href="#download">下载</a>
+      <a href="#guide">使用指南</a>
       <a href="#changelog">更新日志</a>
     </nav>
     <a class="btn btn-primary btn-sm" href="#download" id="nav-download">下载</a>
@@ -207,13 +217,13 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
         </article>
         <article class="card reveal">
           <h3>权限弹窗打断</h3>
-          <p>PermissionRequest 弹在终端里，要切回窗口手动确认，节奏全断。</p>
+          <p>权限请求弹在终端里，要切回窗口手动确认，节奏全断。</p>
           <div class="card-fix">权限仲裁器统一审批，主窗口 / 企业微信多通道处理。</div>
         </article>
         <article class="card reveal">
-          <h3>Hooks 配置繁琐</h3>
-          <p>改 settings.json 要开编辑器、背 schema，每台机器都要配。</p>
-          <div class="card-fix">临时 settings 注入，零配置即用。</div>
+          <h3>配置繁琐</h3>
+          <p>改配置文件要开编辑器、背格式，每台机器都要配。</p>
+          <div class="card-fix">零配置即用，无需手动改配置。</div>
         </article>
       </div>
     </div>
@@ -228,7 +238,7 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
         <article class="card reveal"><h3>企业微信通道</h3><p>远程收发消息、审批权限、AskUserQuestion 模板卡片。</p></article>
         <article class="card reveal"><h3>云端上行</h3><p>阶段事件批量推送，会话元数据同步至云服务。</p></article>
         <article class="card reveal"><h3>历史会话自动扫描</h3><p>读取本地项目目录与 recent-sessions，文件变化即时刷新。</p></article>
-        <article class="card reveal"><h3>DeepSeek Harness 界面</h3><p>内嵌 DSH Web 前端，支持 Bot 绑定、提问接管、轨迹实时转发。</p></article>
+        <article class="card reveal"><h3>DeepSeek Harness 界面</h3><p>内嵌 DeepSeek Harness 网页前端，支持 Bot 绑定、提问接管、轨迹实时转发。</p></article>
       </div>
     </div>
   </section>
@@ -237,14 +247,14 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
       <h2 class="sec-title reveal">界面一览</h2>
       <div class="showcase-grid">
         <figure class="shot reveal" data-name="showcase-terminal">
-          <img src="" alt="xterm 终端里 agent 流式运行" loading="lazy">
-          <figcaption class="shot-caption">xterm 原生终端 · PTY 驱动交互式 agent</figcaption>
+          <img src="" alt="终端里 Agent 流式运行" loading="lazy">
+          <figcaption class="shot-caption">原生终端 · 交互式 Agent</figcaption>
           <div class="shot-fallback">终端运行示意图</div>
         </figure>
         <figure class="shot reveal" data-name="showcase-dsh">
           <img src="" alt="DeepSeek Harness Web 界面" loading="lazy">
           <figcaption class="shot-caption">DeepSeek Harness Web 界面 · 支持绑定 Bot</figcaption>
-          <div class="shot-fallback">DSH 界面示意图</div>
+          <div class="shot-fallback">DeepSeek Harness 界面示意图</div>
         </figure>
         <figure class="shot reveal" data-name="showcase-wecom">
           <img src="" alt="企业微信审批卡片" loading="lazy">
@@ -297,6 +307,43 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
           <!-- TestFlight 占位链接，发布后替换为真实 TestFlight 地址 -->
           <a class="btn btn-ghost btn-sm" href="https://testflight.apple.com/join/xxxxxxxx">iOS · TestFlight</a>
         </div>
+      </div>
+    </div>
+  </section>
+  <section class="guide" id="guide">
+    <div class="container">
+      <h2 class="sec-title reveal">使用指南</h2>
+      <div class="guide-grid">
+        <article class="guide-step reveal">
+          <span class="guide-num">1</span>
+          <h3>下载安装</h3>
+          <p>macOS 将 App 拖入「应用程序」，首次运行需执行 xattr -cr 移除隔离属性；Windows 双击安装；Linux 赋予可执行权限后运行。</p>
+        </article>
+        <article class="guide-step reveal">
+          <span class="guide-num">2</span>
+          <h3>首次使用</h3>
+          <p>启动后设置本地账户密码并登录，应用自动加载所有历史会话。</p>
+        </article>
+        <article class="guide-step reveal">
+          <span class="guide-num">3</span>
+          <h3>新建会话</h3>
+          <p>选择项目目录，挑选 Agent：Claude Code / Codex / OpenCode / OMP / DeepSeek Harness，即可开始。</p>
+        </article>
+        <article class="guide-step reveal">
+          <span class="guide-num">4</span>
+          <h3>开始对话</h3>
+          <p>在终端输入消息回车即可。实时查看会话状态与请求追踪（Trace），随时切换历史会话。</p>
+        </article>
+        <article class="guide-step reveal">
+          <span class="guide-num">5</span>
+          <h3>远程控制</h3>
+          <p>绑定企业微信 Bot 或使用手机 App，离开工位也能收发消息、审批权限、查看进度。</p>
+        </article>
+        <article class="guide-step reveal">
+          <span class="guide-num">6</span>
+          <h3>控制指令</h3>
+          <p>远程发送 /interrupt 或 /ctrl-c 可中断当前生成，/screenshot 可截取终端画面。</p>
+        </article>
       </div>
     </div>
   </section>
