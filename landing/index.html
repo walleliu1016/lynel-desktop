@@ -109,18 +109,14 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 .card p { font-size: 14px; margin: 0 0 12px; color: var(--muted); }
 .card-fix { font-size: 14px; font-weight: 600; color: var(--brand-blue); border-left: 3px solid var(--brand-blue-soft); padding-left: 10px; }
 .feature-grid { grid-template-columns: repeat(3, 1fr); }
-/* 界面画廊 */
-.gallery-main { max-width: 980px; margin: 0 auto; position: relative; }
-.gallery-main .shot { margin: 0; }
-.gallery-main .shot:hover { transform: none; }
-.gallery-item { display: none; }
-.gallery-item.is-active { display: block; animation: galFade .4s ease; }
+.feature-card { cursor: pointer; }
+.feature-card .feature-body { display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); grid-template-columns: 1fr 1fr; gap: 24px; align-items: center; }
+.feature-card.open { grid-column: 1 / -1; }
+.feature-card.open .feature-body { display: grid; }
+.feature-card .feature-copy p { font-size: 14px; color: var(--body); margin: 0; }
+.feature-shot { margin: 0; }
+@media (max-width: 700px) { .feature-card.open .feature-body { grid-template-columns: 1fr; } }
 @keyframes galFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-.gallery-thumbs { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
-.g-thumb { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--body); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
-.g-thumb:hover { border-color: #c9d4e6; }
-.g-thumb.is-active { background: var(--brand-blue); color: #fff; border-color: var(--brand-blue); }
-.shot-caption { padding: 14px 16px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); }
 @media (max-width: 900px) { .cols-3, .feature-grid { grid-template-columns: 1fr; } }
 
 /* ===== 手机 App 区块 ===== */
@@ -194,7 +190,6 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
     <a class="brand" href="#top"><span class="brand-mark"></span>Lynel</a>
     <nav class="nav-links">
       <a href="#features">功能</a>
-      <a href="#showcase">界面</a>
       <a href="#download">下载</a>
       <a href="#guide">使用指南</a>
       <a href="#changelog">更新日志</a>
@@ -286,53 +281,110 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
         <p class="sec-desc">从多 Agent 托管到远程控制，一站集成。</p>
       </div>
       <div class="card-grid cols-3 feature-grid">
-        <article class="card reveal"><h3>多 Agent 托管</h3><p>Claude Code / Codex / OpenCode / OMP 统一托管，按类型恢复会话。</p></article>
-        <article class="card reveal"><h3>权限仲裁器</h3><p>所有权限请求集中审批，先到先生效，多通道解决。</p></article>
-        <article class="card reveal"><h3>Trace 面板</h3><p>实时 API 请求列表：状态、模型、延迟、费用一屏看清。</p></article>
-        <article class="card reveal"><h3>企业微信通道</h3><p>远程收发消息、审批权限、AskUserQuestion 模板卡片。</p></article>
-        <article class="card reveal"><h3>云端上行</h3><p>阶段事件批量推送，会话元数据同步至云服务。</p></article>
-        <article class="card reveal"><h3>历史会话自动扫描</h3><p>读取本地项目目录与 recent-sessions，文件变化即时刷新。</p></article>
-        <article class="card reveal"><h3>DeepSeek Harness 支持</h3><p>内嵌 DeepSeek Harness，免去自行安装启动的复杂流程，开箱即用。</p></article>
-        <article class="card reveal"><h3>VS Code 扩展</h3><p>在 VS Code 内嵌交互式终端，写代码时无需切换窗口。</p></article>
-      </div>
-    </div>
-  </section>
-  <section class="showcase" id="showcase">
-    <div class="container">
-      <div class="sec-head reveal">
-        <span class="sec-eyebrow">界面</span>
-        <h2 class="sec-title">界面一览</h2>
-        <p class="sec-desc">终端、网页与远程，一套会话多种形态。</p>
-      </div>
-      <div class="gallery reveal">
-        <div class="gallery-main">
-          <figure class="shot gallery-item is-active" data-name="showcase-terminal">
-            <img src="" alt="终端里 Agent 流式运行" loading="lazy">
-            <figcaption class="shot-caption">原生终端 · 交互式 Agent</figcaption>
-            <div class="shot-fallback">终端运行示意图</div>
-          </figure>
-          <figure class="shot gallery-item" data-name="showcase-dsh">
-            <img src="" alt="DeepSeek Harness Web 界面" loading="lazy">
-            <figcaption class="shot-caption">DeepSeek Harness Web 界面</figcaption>
-            <div class="shot-fallback">DeepSeek Harness 界面示意图</div>
-          </figure>
-          <figure class="shot gallery-item" data-name="showcase-wecom">
-            <img src="" alt="企业微信审批卡片" loading="lazy">
-            <figcaption class="shot-caption">企业微信远程 · 审批卡片与进度</figcaption>
-            <div class="shot-fallback">企业微信审批示意</div>
-          </figure>
-          <figure class="shot gallery-item" data-name="showcase-vscode">
-            <img src="" alt="VS Code 内嵌交互式终端" loading="lazy">
-            <figcaption class="shot-caption">VS Code 扩展 · 内嵌交互式终端</figcaption>
-            <div class="shot-fallback">VS Code 扩展界面示意图</div>
-          </figure>
-        </div>
-        <div class="gallery-thumbs" role="tablist" aria-label="界面图切换">
-          <button class="g-thumb is-active" data-gallery="showcase-terminal" aria-selected="true">终端会话</button>
-          <button class="g-thumb" data-gallery="showcase-dsh" aria-selected="false">DeepSeek Harness</button>
-          <button class="g-thumb" data-gallery="showcase-wecom" aria-selected="false">企业微信</button>
-          <button class="g-thumb" data-gallery="showcase-vscode" aria-selected="false">VS Code</button>
-        </div>
+        <article class="card reveal feature-card" data-feature="agents">
+          <h3>多 Agent 托管</h3>
+          <p>Claude Code / Codex / OpenCode / OMP 统一托管，按类型恢复会话。</p>
+          <div class="feature-body">
+            <div class="feature-copy">
+              <p>一个窗口托管多种终端 AI，无需在多个终端间来回切换。每个 Agent 独立会话与状态，按类型自动恢复历史会话，切换不丢上下文。</p>
+            </div>
+            <figure class="shot feature-shot">
+              <img src="" alt="多 Agent 托管" loading="lazy">
+              <div class="shot-fallback">多 Agent 托管示意图</div>
+            </figure>
+          </div>
+        </article>
+        <article class="card reveal feature-card" data-feature="permission">
+          <h3>权限仲裁器</h3>
+          <p>所有权限请求集中审批，先到先生效，多通道解决。</p>
+          <div class="feature-body">
+            <div class="feature-copy">
+              <p>所有工具调用的权限请求集中到一个仲裁器统一处理，先到先生效，杜绝冲突。主窗口、企业微信多通道均可审批，终端自行解决时自动同步清理。</p>
+            </div>
+            <figure class="shot feature-shot">
+              <img src="" alt="权限审批" loading="lazy">
+              <div class="shot-fallback">权限审批示意图</div>
+            </figure>
+          </div>
+        </article>
+        <article class="card reveal feature-card" data-feature="trace">
+          <h3>Trace 面板</h3>
+          <p>实时 API 请求列表：状态、模型、延迟、费用一屏看清。</p>
+          <div class="feature-body">
+            <div class="feature-copy">
+              <p>实时记录每一次 API 请求：状态、模型、输入输出 token、延迟、费用一屏看清。请求详情按需加载，支持按模型与错误过滤，调用链路一目了然。</p>
+            </div>
+            <figure class="shot feature-shot">
+              <img src="" alt="Trace 面板" loading="lazy">
+              <div class="shot-fallback">Trace 面板示意图</div>
+            </figure>
+          </div>
+        </article>
+        <article class="card reveal feature-card" data-feature="wecom">
+          <h3>企业微信通道</h3>
+          <p>远程收发消息、审批权限、AskUserQuestion 模板卡片。</p>
+          <div class="feature-body">
+            <div class="feature-copy">
+              <p>把会话接进企业微信：远程收发消息、审批权限、回答模板卡片问题。支持控制指令（中断、截图等），用手机也能随时接管 Agent。</p>
+            </div>
+            <figure class="shot feature-shot">
+              <img src="" alt="企业微信远程" loading="lazy">
+              <div class="shot-fallback">企业微信远程示意图</div>
+            </figure>
+          </div>
+        </article>
+        <article class="card reveal feature-card" data-feature="cloud">
+          <h3>云端上行</h3>
+          <p>阶段事件批量推送，会话元数据同步至云服务。</p>
+          <div class="feature-body">
+            <div class="feature-copy">
+              <p>阶段事件与会话元数据可批量上行到你的云服务，实现多端同步与会话管理。提供实时通道与 HTTP 兜底，断线自动补偿。</p>
+            </div>
+            <figure class="shot feature-shot">
+              <img src="" alt="云端同步" loading="lazy">
+              <div class="shot-fallback">云端同步示意图</div>
+            </figure>
+          </div>
+        </article>
+        <article class="card reveal feature-card" data-feature="history">
+          <h3>历史会话自动扫描</h3>
+          <p>读取本地项目目录与 recent-sessions，文件变化即时刷新。</p>
+          <div class="feature-body">
+            <div class="feature-copy">
+              <p>自动读取本地项目目录与历史会话记录，文件变化即时刷新。历史会话可一键恢复，无需手动整理记录。</p>
+            </div>
+            <figure class="shot feature-shot">
+              <img src="" alt="历史会话列表" loading="lazy">
+              <div class="shot-fallback">历史会话列表示意图</div>
+            </figure>
+          </div>
+        </article>
+        <article class="card reveal feature-card" data-feature="dsh">
+          <h3>DeepSeek Harness 支持</h3>
+          <p>内嵌 DeepSeek Harness，免去自行安装启动的复杂流程，开箱即用。</p>
+          <div class="feature-body">
+            <div class="feature-copy">
+              <p>内嵌 DeepSeek Harness，免去自行安装启动的复杂流程，开箱即用，随时启用。</p>
+            </div>
+            <figure class="shot feature-shot">
+              <img src="" alt="DeepSeek Harness" loading="lazy">
+              <div class="shot-fallback">DeepSeek Harness 示意图</div>
+            </figure>
+          </div>
+        </article>
+        <article class="card reveal feature-card" data-feature="vscode">
+          <h3>VS Code 扩展</h3>
+          <p>在 VS Code 内嵌交互式终端，写代码时无需切换窗口。</p>
+          <div class="feature-body">
+            <div class="feature-copy">
+              <p>在 VS Code 里直接打开 Lynel 交互式终端，写代码时无需切换窗口。支持新建终端、绑定企业微信、管理机器人等命令。</p>
+            </div>
+            <figure class="shot feature-shot">
+              <img src="" alt="VS Code 终端" loading="lazy">
+              <div class="shot-fallback">VS Code 终端示意图</div>
+            </figure>
+          </div>
+        </article>
       </div>
     </div>
   </section>
@@ -654,18 +706,6 @@ if (!matchMedia('(prefers-reduced-motion: reduce)').matches && window.Intersecti
   document.querySelectorAll('.reveal').forEach((el) => el.classList.add('in'));
 }
 
-// 界面一览画廊切换
-document.querySelectorAll('.g-thumb').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.g-thumb').forEach((b) => { b.classList.remove('is-active'); b.setAttribute('aria-selected', 'false'); });
-    document.querySelectorAll('.gallery-item').forEach((f) => f.classList.remove('is-active'));
-    btn.classList.add('is-active');
-    btn.setAttribute('aria-selected', 'true');
-    const item = document.querySelector('.gallery-item[data-name="' + btn.dataset.gallery + '"]');
-    if (item) item.classList.add('is-active');
-  });
-});
-
 // Hero Agent 切换
 document.querySelectorAll('.agent-tab').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -675,6 +715,14 @@ document.querySelectorAll('.agent-tab').forEach((btn) => {
     btn.setAttribute('aria-selected', 'true');
     const fig = document.querySelector('.agent-shot[data-agent="' + btn.dataset.agent + '"]');
     if (fig) fig.classList.add('is-active');
+  });
+});
+
+// 功能卡点击展开
+document.querySelectorAll('.feature-card').forEach((card) => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('.feature-card.open').forEach((c) => { if (c !== card) c.classList.remove('open'); });
+    card.classList.toggle('open');
   });
 });
 </script>
