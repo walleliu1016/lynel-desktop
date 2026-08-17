@@ -248,6 +248,7 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
         <article class="card reveal"><h3>云端上行</h3><p>阶段事件批量推送，会话元数据同步至云服务。</p></article>
         <article class="card reveal"><h3>历史会话自动扫描</h3><p>读取本地项目目录与 recent-sessions，文件变化即时刷新。</p></article>
         <article class="card reveal"><h3>DeepSeek Harness 界面</h3><p>支持 DeepSeek Harness，以网页会话界面使用，与终端两种形态并行。</p></article>
+        <article class="card reveal"><h3>VS Code 扩展</h3><p>在 VS Code 内嵌交互式终端，写代码时无需切换窗口。</p></article>
       </div>
     </div>
   </section>
@@ -318,10 +319,11 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
         <a class="btn btn-primary btn-lg" id="btn-dl-current" href="/api/update/download?platform=win&arch=x64">准备下载…</a>
         <p class="dl-hint" id="dl-hint"></p>
         <div class="dl-mobile">
-          <span class="dl-mobile-label">手机端</span>
+          <span class="dl-mobile-label">更多下载</span>
           <a class="btn btn-ghost btn-sm" href="/api/update/download?platform=android">Android · APK</a>
           <!-- TestFlight 占位链接，发布后替换为真实 TestFlight 地址 -->
           <a class="btn btn-ghost btn-sm" href="https://testflight.apple.com/join/xxxxxxxx">iOS · TestFlight</a>
+          <a class="btn btn-ghost btn-sm" href="/api/update/download?platform=vscode">VS Code · VSIX</a>
         </div>
       </div>
     </div>
