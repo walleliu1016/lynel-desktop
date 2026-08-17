@@ -40,7 +40,7 @@ section { padding: var(--space) 0; scroll-margin-top: 72px; }
 
 /* ===== 通用动效基元 ===== */
 .reveal { opacity: 0; transform: translateY(24px); transition: opacity .5s ease, transform .5s ease; }
-.reveal.in { opacity: 1; transform: none; }
+.reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, transform .5s ease; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .reveal { opacity: 1; transform: none; transition: none; }
@@ -132,6 +132,21 @@ section { padding: var(--space) 0; scroll-margin-top: 72px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .dl-mobile { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 26px; padding-top: 20px; border-top: 1px dashed var(--line); }
 .dl-mobile-label { align-self: center; font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--muted); margin-right: 4px; }
+
+/* ===== 更新日志 / FAQ / 页脚 ===== */
+.log-list { max-width: 720px; margin: 0 auto; }
+.log-item { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 18px 22px; margin-bottom: 12px; }
+.log-item h3 { font-size: 15px; display: flex; align-items: baseline; gap: 12px; }
+.log-item .ver { font-family: var(--mono); color: var(--brand-blue); }
+.log-item .date { font-size: 12px; color: var(--muted); font-weight: 400; }
+.log-item pre, .log-item p { font-size: 13px; color: var(--body); white-space: pre-wrap; margin: 8px 0 0; }
+.faq-grid { max-width: 720px; margin: 0 auto; display: grid; gap: 12px; }
+.faq-item { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 0 22px; }
+.faq-item summary { cursor: pointer; padding: 16px 0; font-weight: 700; color: var(--ink); font-size: 15px; }
+.faq-item p { margin: 0 0 16px; font-size: 14px; }
+.site-foot { border-top: 1px solid var(--line); padding: 32px 0; }
+.foot-in { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
+.foot-links { display: flex; gap: 20px; }
 </style>
 </head>
 <body>
@@ -271,10 +286,29 @@ section { padding: var(--space) 0; scroll-margin-top: 72px; }
       </div>
     </div>
   </section>
-  <section class="changelog" id="changelog"></section>
-  <section class="faq" id="faq"></section>
+  <section class="changelog" id="changelog">
+    <div class="container">
+      <h2 class="sec-title reveal">更新日志</h2>
+      <div class="log-list reveal" id="log-list">加载中…</div>
+    </div>
+  </section>
+  <section class="faq" id="faq">
+    <div class="container">
+      <h2 class="sec-title reveal">常见问题</h2>
+      <div class="faq-grid">
+        <details class="faq-item reveal"><summary>支持哪些 Agent？</summary><p>Claude Code、Codex、OpenCode、OMP，以及内嵌的 DeepSeek Harness Web 界面。</p></details>
+        <details class="faq-item reveal"><summary>我的本地会话会被上传吗？</summary><p>会话数据默认本地存储；仅在你配置并开启云服务时，才按需上行同步。</p></details>
+        <details class="faq-item reveal"><summary>如何远程控制？</summary><p>绑定企业微信 Bot 后，可在手机端收发消息、审批权限、查看进度。</p></details>
+      </div>
+    </div>
+  </section>
 </main>
-<footer class="site-foot"></footer>
+<footer class="site-foot">
+  <div class="container foot-in">
+    <span>© 2026 Lynel Desktop · MIT License</span>
+    <span class="foot-links"><a href="https://github.com/walleliu1016/lynel-desktop" target="_blank" rel="noopener">GitHub</a><a href="/docs/usage.md">使用文档</a></span>
+  </div>
+</footer>
 <script>
 "use strict";
 
@@ -374,6 +408,42 @@ document.querySelectorAll('.tab').forEach((tab) => {
 document.querySelectorAll('.tab').forEach((t) => {
   if (t.dataset.plat === current.platform && t.dataset.arch === current.arch) t.classList.add('active');
 });
+
+// ===== 更新日志 =====
+async function fetchList() {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10000);
+  try {
+    const resp = await fetch(ORIGIN + '/api/update/list', { signal: ctrl.signal });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch { return null; } finally { clearTimeout(timer); }
+}
+function renderChangelog(versions) {
+  const box = $('#log-list');
+  if (!versions || !versions.length) {
+    box.innerHTML = '<div class="log-item"><h3><span class="ver">' + (current.info && current.info.version ? 'v' + current.info.version : '最新版') + '</span></h3><p>' + esc((current.info && current.info.releaseNotes) || '暂无更新日志。') + '</p></div>';
+    return;
+  }
+  box.innerHTML = versions.slice(0, 5).map((v) =>
+    '<div class="log-item"><h3><span class="ver">v' + esc(v.version) + '</span><span class="date">' + esc((v.releaseDate || '').slice(0, 10)) + '</span></h3><p>' + esc(v.releaseNotes || '') + '</p></div>'
+  ).join('');
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+fetchList().then((data) => renderChangelog(data && data.versions));
+
+// ===== 全局滚动动效 =====
+if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach((el, i) => {
+    el.style.transitionDelay = (i % 3) * 60 + 'ms';
+    io.observe(el);
+  });
+} else {
+  document.querySelectorAll('.reveal').forEach((el) => el.classList.add('in'));
+}
 </script>
 </body>
 </html>
