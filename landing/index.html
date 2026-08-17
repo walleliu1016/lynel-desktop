@@ -289,7 +289,12 @@ function detectPlatform() {
   let arch = 'x64';
   const ua = navigator.userAgent;
   const uad = navigator.userAgentData;
-  if (uad && uad.platform) platform = uad.platform.toLowerCase();
+  if (uad && uad.platform) {
+    platform = uad.platform.toLowerCase();
+    if (platform.startsWith('win')) platform = 'win';
+    else if (platform.startsWith('mac')) platform = 'mac';
+    else if (platform.startsWith('linux')) platform = 'linux';
+  }
   else if (/win/i.test(ua)) platform = 'win';
   else if (/mac/i.test(ua) || /darwin/i.test(ua)) platform = 'mac';
   else if (/linux/i.test(ua)) platform = 'linux';
@@ -334,6 +339,7 @@ async function loadInfo(platform, arch, btn) {
   const info = await fetchCheck(platform, arch);
   btn.classList.remove('loading');
   if (info && info.downloadUrl) {
+    $('#dl-hint').textContent = '';
     applyButton(btn, platform, arch, info);
     return info;
   }
@@ -349,6 +355,7 @@ loadInfo(current.platform, current.arch, btnPrimary).then((info) => { current.in
 
 // 下载区当前按钮 + tabs
 const btnCurrent = $('#btn-dl-current');
+loadInfo(current.platform, current.arch, btnCurrent).then((info) => renderMeta(info));
 let active = { ...current };
 function renderMeta(info) {
   const ver = $('#dl-version'), size = $('#dl-size');
@@ -360,9 +367,7 @@ document.querySelectorAll('.tab').forEach((tab) => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
     tab.classList.add('active');
     active = { platform: tab.dataset.plat, arch: tab.dataset.arch };
-    const info = loadInfo(active.platform, active.arch, btnCurrent);
-    btnCurrent.classList.add('loading');
-    Promise.resolve(info).then((r) => { btnCurrent.classList.remove('loading'); renderMeta(r); });
+    loadInfo(active.platform, active.arch, btnCurrent).then((r) => renderMeta(r));
   });
 });
 // 初始选中当前平台 tab
