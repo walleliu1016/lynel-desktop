@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lynel Desktop · 把 Claude Code / Codex 等 CLI 装进一个本地窗口</title>
+<meta name="description" content="跨平台多 Agent 会话管理桌面 App：多会话、统一权限审批、实时 Trace、企业微信远程。支持 Claude Code / Codex / OpenCode / OMP 与 DeepSeek Harness 界面。">
+<meta property="og:title" content="Lynel Desktop">
+<meta property="og:description" content="把 Claude Code / Codex 等 CLI 装进一个本地窗口。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='14' height='14' fill='%231e5af5' rx='4'/%3E%3Crect x='18' width='14' height='14' fill='%23e63946' rx='4'/%3E%3Crect y='18' width='14' height='14' fill='%23e63946' rx='4' opacity='.6'/%3E%3Crect x='18' y='18' width='14' height='14' fill='%231e5af5' opacity='.6'/%3E%3C/svg%3E">
+<style>
+/* ===== 根变量 ===== */
+:root {
+  --bg: #f7f8fa; --surface: #ffffff; --line: #eef1f5;
+  --brand-blue: #1e5af5; --brand-blue-dark: #1749cc; --brand-blue-soft: #e8f0fe;
+  --brand-red: #e63946; --brand-red-dark: #c92a37; --brand-red-soft: #fff0f0;
+  --ink: #0d1321; --body: #3f4756; --muted: #8a93a6;
+  --success: #10b981;
+  --radius-btn: 8px; --radius-card: 14px; --radius-frame: 16px;
+  --shadow: 0 8px 30px rgba(13, 24, 41, 0.08);
+  --shadow-lg: 0 18px 50px rgba(13, 24, 41, 0.14);
+  --font: "PingFang SC", "Microsoft YaHei", Inter, -apple-system, Arial, sans-serif;
+  --mono: "Source Code Pro", ui-monospace, SFMono-Regular, monospace;
+  --container: 1120px;
+  --space: clamp(64px, 10vw, 120px);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--body);
+  font-family: var(--font); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, h4 { margin: 0; color: var(--ink); line-height: 1.25; font-weight: 800; letter-spacing: -0.02em; }
+a { color: var(--brand-blue); text-decoration: none; }
+a:hover { color: var(--brand-blue-dark); }
+img { max-width: 100%; display: block; }
+.container { max-width: var(--container); margin: 0 auto; padding: 0 24px; }
+section { padding: var(--space) 0; scroll-margin-top: 72px; }
+
+/* ===== 通用动效基元 ===== */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity .5s ease, transform .5s ease; }
+.reveal.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .reveal { opacity: 1; transform: none; transition: none; }
+}
+</style>
+</head>
+<body>
+<header class="site-nav" id="top"></header>
+<main>
+  <section class="hero" id="hero"></section>
+  <section class="painpoints" id="painpoints"></section>
+  <section class="features" id="features"></section>
+  <section class="showcase" id="showcase"></section>
+  <section class="mobile" id="mobile"></section>
+  <section class="download" id="download"></section>
+  <section class="changelog" id="changelog"></section>
+  <section class="faq" id="faq"></section>
+</main>
+<footer class="site-foot"></footer>
+<script>
+"use strict";
+</script>
+</body>
+</html>
