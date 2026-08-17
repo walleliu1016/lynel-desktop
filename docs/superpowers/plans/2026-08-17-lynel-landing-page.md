@@ -14,6 +14,7 @@
 - 配色必须取自 spec 视觉系统：品牌蓝 `#1e5af5`、品牌红 `#e63946`、背景 `#f7f8fa`/`#ffffff`、标题 `#0d1321`、正文 `#3f4756`、弱化 `#8a93a6`。
 - 下载 base URL 一律用 `window.location.origin`，不得硬编码域名。
 - 页面不得写死版本号（`0.0.21` 等）；最新版/下载链接/更新日志全走接口。
+- Android 下载一律 `/api/update/download?platform=android`（不带 `arch`/`version`）；iOS 用真实 TestFlight 链接（固定 URL，随发版手动更新）。
 - 降级链保证页面永不空白：接口失败 → 静态相对链接；无 JS → `<a href>` 仍可下载。
 - 动效尊重 `prefers-reduced-motion`（关闭时降级为纯淡入）。
 - 文件放在仓库根 `landing/index.html`；不污染 electron-builder 打包。
@@ -89,6 +90,7 @@ section { padding: var(--space) 0; scroll-margin-top: 72px; }
   <section class="painpoints" id="painpoints"></section>
   <section class="features" id="features"></section>
   <section class="showcase" id="showcase"></section>
+  <section class="mobile" id="mobile"></section>
   <section class="download" id="download"></section>
   <section class="changelog" id="changelog"></section>
   <section class="faq" id="faq"></section>
@@ -106,7 +108,7 @@ section { padding: var(--space) 0; scroll-margin-top: 72px; }
 Run:
 ```bash
 node -e 'const s=require("fs").readFileSync("landing/index.html","utf8");
-const want=["hero","painpoints","features","showcase","download","changelog","faq"];
+const want=["hero","painpoints","features","showcase","mobile","download","changelog","faq"];
 const got=[...s.matchAll(/<section class="([a-z]+)"/g)].map(m=>m[1]);
 const miss=want.filter(w=>!got.includes(w));
 if(miss.length){console.error("缺区块:",miss);process.exit(1);}
@@ -375,7 +377,69 @@ git commit -m "feat(landing): 痛点、功能亮点与界面展示区"
 
 ---
 
-### Task 4: 下载交互逻辑（JS 核心）
+### Task 4: 手机 App 区块
+
+**Files:**
+- Modify: `landing/index.html`（`#mobile` 区 + CSS）
+
+**Interfaces:**
+- Consumes: Task 3 的 `.shot` / `.reveal` 基元。
+- Produces: `.mobile-in` 结构（左手机截图位⑧ `.shot[data-name="mobile"]` + 右说明与双端下载按钮）；`#btn-android`（href `/api/update/download?platform=android`，不带 arch/version）、`#btn-ios`（href 为真实 TestFlight 链接）。**实施前向用户索取真实 TestFlight 链接，替换 `IOS_TESTFLIGHT_URL`。**
+
+- [ ] **Step 1: 写手机 App 区块**
+
+在 `<section class="showcase">` 之后、`<section class="download">` 之前，填入：
+
+```html
+<section class="mobile" id="mobile">
+  <div class="container">
+    <h2 class="sec-title reveal">手机 App</h2>
+    <div class="mobile-in reveal">
+      <div class="mobile-shot shot" data-name="mobile">
+        <img src="" alt="Lynel 手机 App 界面：远程进度与审批" loading="lazy">
+        <div class="shot-fallback">手机 App 界面示意</div>
+      </div>
+      <div class="mobile-info">
+        <p class="mobile-desc">离开工位也能掌控全局。手机 App 与桌面端实时同步：查看 agent 进度、审批权限、收发消息。</p>
+        <p class="mobile-note">企业微信通道同样保留——App 与企业微信是两种并列的远程方式，任选其一。</p>
+        <div class="mobile-dl">
+          <a class="btn btn-primary" id="btn-android" href="/api/update/download?platform=android">Android · APK</a>
+          <a class="btn btn-ghost" id="btn-ios" href="IOS_TESTFLIGHT_URL">iOS · TestFlight</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+```
+
+> `IOS_TESTFLIGHT_URL` 为真实 TestFlight 链接（`https://testflight.apple.com/join/<id>`），实现时向用户索取后替换。
+
+- [ ] **Step 2: CSS**
+
+```css
+.mobile-in { display: grid; grid-template-columns: 320px 1fr; gap: 40px; align-items: center; max-width: 880px; margin: 0 auto; }
+.mobile-shot { max-width: 320px; margin: 0; }
+.mobile-info .mobile-desc { font-size: 16px; margin: 0 0 10px; }
+.mobile-note { font-size: 13px; color: var(--muted); margin: 0; }
+.mobile-dl { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+@media (max-width: 760px) { .mobile-in { grid-template-columns: 1fr; text-align: center; } .mobile-shot { margin: 0 auto; } .mobile-dl { justify-content: center; } }
+```
+
+- [ ] **Step 3: 校验 + 预览**
+
+Run: Task 1 结构校验（期望 `mobile` 出现在 sections 里）+ `node --check` + 浏览器预览。
+Expected: 手机 App 区块在界面展示区下方、下载区上方；Android / iOS 两个按钮可点击。
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add landing/index.html
+git commit -m "feat(landing): 手机 App 介绍区块与双端下载入口"
+```
+
+---
+
+### Task 5: 下载交互逻辑（JS 核心）
 
 **Files:**
 - Modify: `landing/index.html`（`#download` 区结构 + CSS + `<script>` 中平台检测 / fetch / 渲染）
@@ -391,6 +455,7 @@ git commit -m "feat(landing): 痛点、功能亮点与界面展示区"
   <div class="container">
     <h2 class="sec-title reveal">下载 Lynel Desktop</h2>
     <div class="dl-panel reveal">
+      <p class="dl-group-label">桌面端</p>
       <div class="plat-tabs" role="tablist" aria-label="选择平台">
         <button class="tab" data-plat="win" data-arch="x64">Windows</button>
         <button class="tab" data-plat="mac" data-arch="x64">macOS · Intel</button>
@@ -403,6 +468,11 @@ git commit -m "feat(landing): 痛点、功能亮点与界面展示区"
       </div>
       <a class="btn btn-primary btn-lg" id="btn-dl-current" href="/api/update/download?platform=win&arch=x64">准备下载…</a>
       <p class="dl-hint" id="dl-hint"></p>
+      <div class="dl-mobile">
+        <span class="dl-mobile-label">手机端</span>
+        <a class="btn btn-ghost btn-sm" href="/api/update/download?platform=android">Android · APK</a>
+        <a class="btn btn-ghost btn-sm" href="IOS_TESTFLIGHT_URL">iOS · TestFlight</a>
+      </div>
     </div>
   </div>
 </section>
@@ -411,6 +481,7 @@ git commit -m "feat(landing): 痛点、功能亮点与界面展示区"
 CSS 追加：
 
 ```css
+.dl-group-label { margin: 0 0 12px; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
 .dl-panel { max-width: 640px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-frame); padding: 32px; text-align: center; box-shadow: var(--shadow); }
 .plat-tabs { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 22px; }
 .tab { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--body); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
@@ -424,6 +495,8 @@ CSS 追加：
 .btn.loading { opacity: .7; pointer-events: none; }
 .btn.loading::after { content:""; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.dl-mobile { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 26px; padding-top: 20px; border-top: 1px dashed var(--line); }
+.dl-mobile-label { align-self: center; font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--muted); margin-right: 4px; }
 ```
 
 - [ ] **Step 2: 平台检测纯函数 + fetch 封装**
@@ -541,13 +614,13 @@ git commit -m "feat(landing): 下载交互逻辑（平台检测/接口/降级）
 
 ---
 
-### Task 5: 更新日志 + FAQ + 页脚 + 滚动动效
+### Task 6: 更新日志 + FAQ + 页脚 + 滚动动效
 
 **Files:**
 - Modify: `landing/index.html`（`#changelog` / `#faq` / `<footer>` 区；`<script>` 追加 list 接口渲染与 IntersectionObserver）
 
 **Interfaces:**
-- Consumes: Task 4 的 `fetchCheck`、`current`、`fmtSize`。
+- Consumes: Task 5 的 `fetchCheck`、`current`、`fmtSize`。
 - Produces: `.log-list`（版本条目）、`renderChangelog(list)` 降级路径；`IntersectionObserver` 全局 `.reveal` 触发；页脚结构。
 
 - [ ] **Step 1: 更新日志 + FAQ + 页脚结构**
@@ -655,7 +728,7 @@ git commit -m "feat(landing): 更新日志、FAQ、页脚与滚动动效"
 
 ---
 
-### Task 6: 无障碍 + 性能收尾 + 全量验证
+### Task 7: 无障碍 + 性能收尾 + 全量验证
 
 **Files:**
 - Modify: `landing/index.html`（补 focus 样式、`aria` 细节、移动端微调；无需新增结构）
@@ -688,7 +761,7 @@ Run 以下全部并逐项确认：
 ```bash
 # 1. 结构：8 个 section + 页脚 + script 语法
 node -e 'const s=require("fs").readFileSync("landing/index.html","utf8");
-const want=["hero","painpoints","features","showcase","download","changelog","faq"];
+const want=["hero","painpoints","features","showcase","mobile","download","changelog","faq"];
 const got=[...s.matchAll(/<section class="([a-z]+)"/g)].map(m=>m[1]);
 if(want.some(w=>!got.includes(w))){console.error("缺 section");process.exit(1);}
 const shots=[...s.matchAll(/class="[^"]*\bshot\b[^"]*"/g)].length;
@@ -725,16 +798,17 @@ git commit -m "feat(landing): 无障碍、性能与全量验证收尾"
 
 **Spec 覆盖：**
 - 视觉系统（配色/字体/圆角/阴影）→ Task 1
-- 7 区块 + 导航 + 页脚 → Task 2/3/5
-- 截图位①-⑦ 与 `.shot` 兜底 → Task 2/3
-- 下载交互（平台检测/check 接口/tabs/降级链）→ Task 4
-- 更新日志（list 接口 + 降级）→ Task 5
-- 动效清单（scroll reveal/光斑/卡片 hover/tab 淡入/spinner/吸顶）→ Task 2/3/4/5
-- 降级链（无 JS 静态链接、接口失败回退）→ Task 4/6
-- 无障碍（aria/focus/reduced-motion/对比度）→ Task 5/6
-- 性能（零外链、lazy）→ Task 3（`loading="lazy"`）/6
-- 测试（本地 serve + 手动清单）→ Task 1 起每步 + Task 6 全量
+- 8 区块 + 导航 + 页脚 → Task 2/3/4/6
+- 截图位①-⑧ 与 `.shot` 兜底 → Task 2/3/4
+- 手机 App（定位/截图位⑧/Android APK + iOS TestFlight）→ Task 4
+- 下载交互（平台检测/check 接口/tabs/手机端分组/降级链）→ Task 5
+- 更新日志（list 接口 + 降级）→ Task 6
+- 动效清单（scroll reveal/光斑/卡片 hover/tab 淡入/spinner/吸顶）→ Task 2/3/5/6
+- 降级链（无 JS 静态链接、接口失败回退）→ Task 5/7
+- 无障碍（aria/focus/reduced-motion/对比度）→ Task 6/7
+- 性能（零外链、lazy）→ Task 3（`loading="lazy"`）/4/7
+- 测试（本地 serve + 手动清单）→ Task 1 起每步 + Task 7 全量
 
-**占位符扫描：** 无 TBD/TODO；每个代码步骤含完整实现。
+**占位符扫描：** 无 TBD/TODO；每个代码步骤含完整实现（唯一参数占位为 `IOS_TESTFLIGHT_URL`，Task 4 注明实现时向用户索取真实链接）。
 
 **类型一致性：** `detectPlatform()` 返回 `{platform, arch}`；`fetchCheck(platform,arch)` 返回 `CheckResult|null`；`dlUrl(platform,arch,version?)`；`fmtSize(n)`；`renderChangelog(versions)`；`esc(s)` 在各 task 使用处签名一致。

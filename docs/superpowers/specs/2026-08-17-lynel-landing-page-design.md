@@ -94,20 +94,30 @@ Lynel Desktop 是跨平台多 Agent 会话管理桌面 App（托管 Claude Code 
 
 - 图 A：xterm 终端里 agent 流式运行
 - 图 B：DSH Web 界面（deepseek 会话界面，含绑定 Bot 按钮）
-- 图 C：企业微信里收到的审批卡片 / 进度（体现远程控制）
+- 图 C：企业微信里收到的审批卡片 / 进度（体现远程控制，与企业微信通道对应）
 
-### 6. 下载区（核心交互区，见第四节）
+### 6. 手机 App（独立配套 App 区块）
 
-- 平台 tabs（Windows / macOS·Intel / macOS·Apple Silicon / Linux）
+- 定位：远程查看进度 / 审批权限 / 收发消息，与桌面端实时同步
+- **截图位⑧（可选）**：手机 App 界面（竖屏 9:16）
+- 双端下载按钮：
+  - Android：APK 直链，走云服务 `/api/update/download?platform=android`（**不带 arch**，通用包）
+  - iOS：TestFlight 固定链接
+- 说明：企业微信是企业微信通道，手机 App 是独立配套 App，二者并列展示
+
+### 7. 下载区（核心交互区，见第四节）
+
+- **桌面端**：平台 tabs（Windows / macOS·Intel / macOS·Apple Silicon / Linux）
+- **手机端**：Android APK 入口 + iOS TestFlight 入口，与桌面端分组并列
 - 版本号 + 文件大小 + SHA-512 校验展示
 - 主下载按钮 + 「所有下载选项」展开
 
-### 7. 更新日志
+### 8. 更新日志
 
 - 优先版本列表接口，渲染最近 5 个版本（日期 + 说明）
 - 接口缺失/失败时降级为单条最新版本
 
-### 8. 页脚
+### 9. 页脚
 
 - MIT License · GitHub 链接 · 使用文档 · 技术栈一行
 
@@ -124,6 +134,12 @@ Lynel Desktop 是跨平台多 Agent 会话管理桌面 App（托管 Claude Code 
   - 响应：`{ hasUpdate, version, releaseDate, releaseNotes, downloadUrl, sha512, size }`
 - 主下载按钮：页面加载时按检测出的平台 + arch 调一次，拿到直链后按钮生效并显示「下载 Windows x64 版 · v0.0.21 · 89 MB」
 - 「所有下载选项」：展开平台 tabs，点击某 tab 才懒加载对应 `check` 请求拿该平台直链（最多 4 个按需请求）
+
+### 手机端下载
+
+- **Android**：`/api/update/download?platform=android`（不带 `arch`，服务端返回通用 APK）；同样不传 `version` 时返回最新版
+- **iOS**：TestFlight 固定链接（写死 URL，不调接口），点击跳转 TestFlight 页面
+- 手机端按钮不做平台检测（访客可能在任意端浏览），两个入口并排显示
 
 ### 更新日志接口（可选增强）
 
@@ -175,7 +191,8 @@ landing/index.html
 │   ├─ <section class="painpoints"> 痛点→解决 3 卡
 │   ├─ <section class="features">   7 功能卡
 │   ├─ <section class="showcase">   3 大图（截图位⑤⑥⑦）
-│   ├─ <section class="download">   平台 tabs + 版本/大小/校验
+│   ├─ <section class="mobile">     手机 App（截图位⑧ + 双端下载）
+│   ├─ <section class="download">   桌面端 tabs + 手机端入口 + 版本/大小/校验
 │   ├─ <section class="changelog">  更新日志
 │   └─ <section class="faq">        短 FAQ
 ├─ <footer>  MIT · GitHub · 文档
@@ -184,7 +201,7 @@ landing/index.html
 
 ### 截图位约定
 
-每个截图位是 `<div class="shot" data-name="<hero|features|showcase>">` 包一个 `<img>` + 无图时的 CSS 兜底示意；替换时只需填 `<img src>`，注释内含尺寸建议。
+每个截图位是 `<div class="shot" data-name="<hero|features|showcase|mobile>">` 包一个 `<img>` + 无图时的 CSS 兜底示意；替换时只需填 `<img src>`，注释内含尺寸建议。
 
 | 截图位 | 内容 | 优先级 | 建议 |
 |--------|------|--------|------|
@@ -195,6 +212,7 @@ landing/index.html
 | ⑤ showcase | xterm 终端流式运行 | 可选 | 16:10 |
 | ⑥ showcase | DSH Web 界面（含绑定 Bot） | 可选 | 16:10 |
 | ⑦ showcase | 企业微信审批卡片/进度 | 可选 | 9:16（竖屏） |
+| ⑧ mobile | 手机 App 界面（远程进度/审批） | 可选 | 9:16（竖屏） |
 
 ## 七、错误处理与边界
 
@@ -227,9 +245,10 @@ landing/index.html
 
 **升级流程 = 云服务侧发新包，HTML 零改动：**
 
-1. 云服务上传新版安装包，更新 `/api/update/list`（新增一条）
+1. 云服务上传新版安装包（桌面端各平台 + Android APK），更新 `/api/update/list`（新增一条）
 2. 页面自动展示最新版本号 + 更新日志 + 对应平台下载直链
 3. 降级链（接口挂/无 JS）走 `/api/update/download`，不传 `version` 时云服务返回最新版
+4. iOS 走 TestFlight 固定链接，不依赖版本接口
 
 **唯一的硬前提（需要云服务端配合）：**
 
@@ -239,4 +258,6 @@ landing/index.html
 ## 十一、待确认 / 后续
 
 - `/api/update/list` 接口为可选增强；若云服务暂未提供，页面降级为单条最新版本，不影响主流程
+- 云服务端需支持 `platform=android` 的 `/api/update/download`（返回通用 APK，不带 arch）
+- iOS TestFlight 链接为写死的固定 URL，发版时由用户手动更新一次
 - `/api/update/download` 无 version 返回最新版的行为需在云服务端确认
