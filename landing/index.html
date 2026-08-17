@@ -76,11 +76,16 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 .hero-sub2 { font-size: clamp(15px, 2vw, 18px); color: var(--body); font-weight: 600; max-width: 680px; margin: 0 auto 38px; line-height: 1.7; }
 .dl-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 .dl-cta .btn { padding: 16px 32px; font-size: 16px; border-radius: 12px; }
-.agent-logos { display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; margin-top: 34px; }
-.agent-logo { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; font-weight: 600; }
-.agent-logo svg { flex-shrink: 0; }
-.hero-shot { margin: 40px auto 0; max-width: 1020px; }
-.hero-shot .shot { border-radius: 20px; box-shadow: 0 30px 80px rgba(13, 24, 41, 0.16); }
+.agent-logos { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 34px; }
+.agent-tab { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--body); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
+.agent-tab:hover { border-color: #c9d4e6; }
+.agent-tab.is-active { background: var(--brand-blue); color: #fff; border-color: var(--brand-blue); }
+.agent-tab svg { flex-shrink: 0; }
+.agent-stage { margin: 28px auto 0; max-width: 1020px; }
+.agent-stage .shot { margin: 0; border-radius: 20px; box-shadow: 0 30px 80px rgba(13, 24, 41, 0.16); }
+.agent-stage .shot:hover { transform: none; }
+.agent-shot { display: none; }
+.agent-shot.is-active { display: block; animation: galFade .4s ease; }
 
 /* 截图位通用 */
 .shot { position: relative; border-radius: var(--radius-frame); border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-lg); overflow: hidden; transition: transform .3s ease, box-shadow .3s ease; }
@@ -161,7 +166,7 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 /* ===== 无障碍 & 移动端收尾 ===== */
 :focus-visible { outline: 2px solid var(--brand-blue); outline-offset: 2px; }
 .tab:focus-visible, .btn:focus-visible, .nav-links a:focus-visible { outline: 2px solid var(--brand-blue); outline-offset: 2px; }
-.hero-shot .shot-fallback { min-height: 420px; }
+.agent-stage .shot-fallback { min-height: 420px; }
 @media (max-width: 640px) {
   .nav-links { display: none; }
   .hero h1 br { display: none; }
@@ -206,15 +211,34 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
         <a class="btn btn-primary" id="btn-dl-primary" href="/api/update/download?platform=win&arch=x64">检测下载平台…</a>
         <a class="btn btn-ghost" id="btn-dl-all" href="#download">所有下载选项</a>
       </div>
-      <div class="agent-logos" aria-label="支持的 Agent">
-        <span class="agent-logo"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#d97757" d="M12 2l1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9z"/></svg>Claude Code</span>
-        <span class="agent-logo"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><polygon points="12,1.5 21,6.75 21,17.25 12,22.5 3,17.25 3,6.75" fill="#10a37f"/></svg>Codex</span>
-        <span class="agent-logo"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l-7 7 7 7M15 5l7 7-7 7" stroke="#1e5af5" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>OpenCode</span>
-        <span class="agent-logo"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" fill="none" stroke="#e63946" stroke-width="2.4"/><path d="M12 8v8M8 12h8" stroke="#e63946" stroke-width="2.4" stroke-linecap="round"/></svg>OMP</span>
+      <div class="agent-logos" role="tablist" aria-label="选择 Agent">
+        <button class="agent-tab is-active" data-agent="claude" aria-selected="true"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#d97757" d="M12 2l1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9z"/></svg>Claude Code</button>
+        <button class="agent-tab" data-agent="codex" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><polygon points="12,1.5 21,6.75 21,17.25 12,22.5 3,17.25 3,6.75" fill="#10a37f"/></svg>Codex</button>
+        <button class="agent-tab" data-agent="opencode" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l-7 7 7 7M15 5l7 7-7 7" stroke="#1e5af5" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>OpenCode</button>
+        <button class="agent-tab" data-agent="omp" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" fill="none" stroke="#e63946" stroke-width="2.4"/><path d="M12 8v8M8 12h8" stroke="#e63946" stroke-width="2.4" stroke-linecap="round"/></svg>OMP</button>
+        <button class="agent-tab" data-agent="dsh" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="#4d6bfe" stroke-width="2.4" stroke-linecap="round" d="M3 8c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 4-2M3 15c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 4-2"/></svg>DeepSeek Harness</button>
       </div>
-      <div class="hero-shot shot" data-name="hero">
-        <img src="" alt="Lynel Desktop 主窗口截图（三段式布局）" loading="eager">
-        <div class="shot-fallback">主窗口截图 · 左会话列表 | 中终端 | 右 Trace</div>
+      <div class="agent-stage">
+        <figure class="shot agent-shot is-active" data-agent="claude">
+          <img src="" alt="Claude Code 界面" loading="eager">
+          <div class="shot-fallback">Claude Code 界面示意图</div>
+        </figure>
+        <figure class="shot agent-shot" data-agent="codex">
+          <img src="" alt="Codex 界面" loading="lazy">
+          <div class="shot-fallback">Codex 界面示意图</div>
+        </figure>
+        <figure class="shot agent-shot" data-agent="opencode">
+          <img src="" alt="OpenCode 界面" loading="lazy">
+          <div class="shot-fallback">OpenCode 界面示意图</div>
+        </figure>
+        <figure class="shot agent-shot" data-agent="omp">
+          <img src="" alt="OMP 界面" loading="lazy">
+          <div class="shot-fallback">OMP 界面示意图</div>
+        </figure>
+        <figure class="shot agent-shot" data-agent="dsh">
+          <img src="" alt="DeepSeek Harness 界面" loading="lazy">
+          <div class="shot-fallback">DeepSeek Harness 界面示意图</div>
+        </figure>
       </div>
     </div>
   </section>
@@ -629,6 +653,18 @@ document.querySelectorAll('.g-thumb').forEach((btn) => {
     btn.setAttribute('aria-selected', 'true');
     const item = document.querySelector('.gallery-item[data-name="' + btn.dataset.gallery + '"]');
     if (item) item.classList.add('is-active');
+  });
+});
+
+// Hero Agent 切换
+document.querySelectorAll('.agent-tab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.agent-tab').forEach((b) => { b.classList.remove('is-active'); b.setAttribute('aria-selected', 'false'); });
+    document.querySelectorAll('.agent-shot').forEach((f) => f.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    btn.setAttribute('aria-selected', 'true');
+    const fig = document.querySelector('.agent-shot[data-agent="' + btn.dataset.agent + '"]');
+    if (fig) fig.classList.add('is-active');
   });
 });
 </script>
