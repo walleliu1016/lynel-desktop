@@ -103,10 +103,19 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 .card p { font-size: 14px; margin: 0 0 12px; color: var(--muted); }
 .card-fix { font-size: 14px; font-weight: 600; color: var(--brand-blue); border-left: 3px solid var(--brand-blue-soft); padding-left: 10px; }
 .feature-grid { grid-template-columns: repeat(3, 1fr); }
-.showcase-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
-.showcase-grid .shot { margin: 0; }
+/* 界面画廊 */
+.gallery-main { max-width: 980px; margin: 0 auto; position: relative; }
+.gallery-main .shot { margin: 0; }
+.gallery-main .shot:hover { transform: none; }
+.gallery-item { display: none; }
+.gallery-item.is-active { display: block; animation: galFade .4s ease; }
+@keyframes galFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.gallery-thumbs { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
+.g-thumb { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--body); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
+.g-thumb:hover { border-color: #c9d4e6; }
+.g-thumb.is-active { background: var(--brand-blue); color: #fff; border-color: var(--brand-blue); }
 .shot-caption { padding: 14px 16px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); }
-@media (max-width: 900px) { .cols-3, .feature-grid, .showcase-grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .cols-3, .feature-grid { grid-template-columns: 1fr; } }
 
 /* ===== 手机 App 区块 ===== */
 .mobile-in { display: grid; grid-template-columns: 320px 1fr; gap: 40px; align-items: center; max-width: 880px; margin: 0 auto; }
@@ -245,22 +254,29 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
   <section class="showcase" id="showcase">
     <div class="container">
       <h2 class="sec-title reveal">界面一览</h2>
-      <div class="showcase-grid">
-        <figure class="shot reveal" data-name="showcase-terminal">
-          <img src="" alt="终端里 Agent 流式运行" loading="lazy">
-          <figcaption class="shot-caption">原生终端 · 交互式 Agent</figcaption>
-          <div class="shot-fallback">终端运行示意图</div>
-        </figure>
-        <figure class="shot reveal" data-name="showcase-dsh">
-          <img src="" alt="DeepSeek Harness Web 界面" loading="lazy">
-          <figcaption class="shot-caption">DeepSeek Harness Web 界面 · 支持绑定 Bot</figcaption>
-          <div class="shot-fallback">DeepSeek Harness 界面示意图</div>
-        </figure>
-        <figure class="shot reveal" data-name="showcase-wecom">
-          <img src="" alt="企业微信审批卡片" loading="lazy">
-          <figcaption class="shot-caption">企业微信远程 · 审批卡片与进度</figcaption>
-          <div class="shot-fallback">企业微信审批示意</div>
-        </figure>
+      <div class="gallery reveal">
+        <div class="gallery-main">
+          <figure class="shot gallery-item is-active" data-name="showcase-terminal">
+            <img src="" alt="终端里 Agent 流式运行" loading="lazy">
+            <figcaption class="shot-caption">原生终端 · 交互式 Agent</figcaption>
+            <div class="shot-fallback">终端运行示意图</div>
+          </figure>
+          <figure class="shot gallery-item" data-name="showcase-dsh">
+            <img src="" alt="DeepSeek Harness Web 界面" loading="lazy">
+            <figcaption class="shot-caption">DeepSeek Harness Web 界面 · 支持绑定 Bot</figcaption>
+            <div class="shot-fallback">DeepSeek Harness 界面示意图</div>
+          </figure>
+          <figure class="shot gallery-item" data-name="showcase-wecom">
+            <img src="" alt="企业微信审批卡片" loading="lazy">
+            <figcaption class="shot-caption">企业微信远程 · 审批卡片与进度</figcaption>
+            <div class="shot-fallback">企业微信审批示意</div>
+          </figure>
+        </div>
+        <div class="gallery-thumbs" role="tablist" aria-label="界面图切换">
+          <button class="g-thumb is-active" data-gallery="showcase-terminal" aria-selected="true">终端会话</button>
+          <button class="g-thumb" data-gallery="showcase-dsh" aria-selected="false">DeepSeek Harness</button>
+          <button class="g-thumb" data-gallery="showcase-wecom" aria-selected="false">企业微信</button>
+        </div>
       </div>
     </div>
   </section>
@@ -562,6 +578,18 @@ if (!matchMedia('(prefers-reduced-motion: reduce)').matches && window.Intersecti
   // 关闭动效、或浏览器无 IntersectionObserver 时：直接全部显示，内容不空白
   document.querySelectorAll('.reveal').forEach((el) => el.classList.add('in'));
 }
+
+// 界面一览画廊切换
+document.querySelectorAll('.g-thumb').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.g-thumb').forEach((b) => { b.classList.remove('is-active'); b.setAttribute('aria-selected', 'false'); });
+    document.querySelectorAll('.gallery-item').forEach((f) => f.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    btn.setAttribute('aria-selected', 'true');
+    const item = document.querySelector('.gallery-item[data-name="' + btn.dataset.gallery + '"]');
+    if (item) item.classList.add('is-active');
+  });
+});
 </script>
 </body>
 </html>
