@@ -39,11 +39,12 @@ img { max-width: 100%; display: block; }
 section { padding: var(--space) 0; scroll-margin-top: 72px; }
 
 /* ===== 通用动效基元 ===== */
-.reveal { opacity: 0; transform: translateY(24px); transition: opacity .5s ease, transform .5s ease; }
-.reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, transform .5s ease; }
+/* 仅当 JS 可用（<html class="js">）时才默认隐藏；禁用 JS 时内容直接可见，页面永不空白 */
+html.js .reveal { opacity: 0; transform: translateY(24px); transition: opacity .5s ease, transform .5s ease; }
+html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, transform .5s ease; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .reveal { opacity: 1; transform: none; transition: none; }
+  .reveal, html.js .reveal { opacity: 1; transform: none; transition: none; }
 }
 
 /* 导航 */
@@ -159,8 +160,10 @@ section { padding: var(--space) 0; scroll-margin-top: 72px; }
   .btn-lg { min-width: 100%; }
 }
 </style>
+<script>document.documentElement.classList.add('js');</script>
 </head>
 <body>
+<noscript><style>.reveal, html.js .reveal { opacity: 1; transform: none; }</style></noscript>
 <header class="site-nav" id="top">
   <div class="container nav-in">
     <a class="brand" href="#top"><span class="brand-mark"></span>Lynel&nbsp;Desktop</a>
@@ -339,7 +342,11 @@ function detectPlatform() {
     if (platform.startsWith('win')) platform = 'win';
     else if (platform.startsWith('mac')) platform = 'mac';
     else if (platform.startsWith('linux')) platform = 'linux';
+    else if (platform.includes('android')) platform = 'android';
+    else platform = 'win'; // 未知平台兜底到可读标签，绝不渲染 undefined
   }
+  else if (/iphone|ipad|ipod/i.test(ua)) platform = 'mobile'; // iOS 先于 /mac/i 判定，避免被误判为 macOS
+  else if (/android/i.test(ua)) platform = 'android';
   else if (/win/i.test(ua)) platform = 'win';
   else if (/mac/i.test(ua) || /darwin/i.test(ua)) platform = 'mac';
   else if (/linux/i.test(ua)) platform = 'linux';
@@ -348,11 +355,13 @@ function detectPlatform() {
   if (platform === 'win') {
     if (/\bx64\b|WOW64/i.test(ua) || /win64/i.test(ua)) arch = 'x64';
   }
-  return { platform: platform === 'win' ? 'win' : platform, arch };
+  return { platform, arch };
 }
 
 function dlUrl(platform, arch, version) {
-  const base = ORIGIN + '/api/update/download?platform=' + platform + '&arch=' + arch;
+  let base = ORIGIN + '/api/update/download?platform=' + platform;
+  // Android / mobile 不带 arch（spec：Android 无 arch/version）
+  if (platform !== 'android' && platform !== 'mobile') base += '&arch=' + arch;
   return version ? base + '&version=' + encodeURIComponent(version) : base;
 }
 
@@ -369,55 +378,105 @@ async function fetchCheck(platform, arch) {
 
 const $ = (s) => document.querySelector(s);
 const current = { ...detectPlatform(), info: null };
-const PLAT_LABEL = { win: 'Windows', mac: 'macOS', linux: 'Linux' };
+const PLAT_LABEL = { win: 'Windows', mac: 'macOS', linux: 'Linux', android: 'Android', mobile: '手机' };
 
 function applyButton(btn, platform, arch, info) {
   const ver = info && info.version ? 'v' + info.version : '';
   const size = info && info.size ? ' · ' + fmtSize(info.size) : '';
-  btn.textContent = (info ? '下载 ' + PLAT_LABEL[platform] + ' ' + arch + ' 版 ' + ver + size : '准备下载…');
+  btn.textContent = (info ? '下载 ' + (PLAT_LABEL[platform] || platform) + ' ' + arch + ' 版 ' + ver + size : '准备下载…');
   btn.href = info && info.downloadUrl ? info.downloadUrl : dlUrl(platform, arch);
 }
 function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(0) + ' MB' : (n / 1024).toFixed(0) + ' KB'; }
 
-async function loadInfo(platform, arch, btn) {
-  btn.classList.add('loading');
+// Apple Silicon 精化：getHighEntropyValues 不可用/抛错时保持 x64，优雅降级
+async function refineMacArch(platform, arch) {
+  if (platform !== 'mac' || arch !== 'x64') return arch;
+  try {
+    if (navigator.userAgentData && typeof navigator.userAgentData.getHighEntropyValues === 'function') {
+      const high = await navigator.userAgentData.getHighEntropyValues(['architecture']);
+      if (high && high.architecture && String(high.architecture).toLowerCase() === 'arm') return 'arm64';
+    }
+  } catch { /* 忽略，保持 x64 */ }
+  return arch;
+}
+
+// 请求序号：tab 快速切换时丢弃乱序返回的过期结果
+let reqSeq = 0;
+// refine 仅用于自动检测的初始请求；用户显式点击的 tab（如 macOS Intel）不覆盖其选择
+async function loadInfo(platform, arch, refine) {
+  const mySeq = ++reqSeq;
+  if (refine) arch = await refineMacArch(platform, arch);
+  if (mySeq !== reqSeq) return null; // 已有更新的请求，丢弃过期结果
   const info = await fetchCheck(platform, arch);
-  btn.classList.remove('loading');
+  if (mySeq !== reqSeq) return null;
+  return { platform, arch, info };
+}
+
+// 按钮渲染：成功用接口 downloadUrl，失败回退为云服务直链（最新版）
+function renderButton(btn, platform, arch, info) {
   if (info && info.downloadUrl) {
     $('#dl-hint').textContent = '';
     applyButton(btn, platform, arch, info);
-    return info;
+    return;
   }
-  btn.textContent = '下载 ' + PLAT_LABEL[platform] + ' ' + arch + ' 版';
+  btn.textContent = '下载 ' + (PLAT_LABEL[platform] || platform) + ' ' + arch + ' 版';
   btn.href = dlUrl(platform, arch);
   $('#dl-hint').textContent = '自动检测失败，已回退为云服务直链（最新版）。';
-  return null;
 }
 
-// 主按钮
+// 主按钮 + 下载区当前按钮
 const btnPrimary = $('#btn-dl-primary');
-loadInfo(current.platform, current.arch, btnPrimary).then((info) => { current.info = info; renderMeta(info); });
-
-// 下载区当前按钮 + tabs
 const btnCurrent = $('#btn-dl-current');
-loadInfo(current.platform, current.arch, btnCurrent).then((info) => renderMeta(info));
-let active = { ...current };
+function setLoading(loading) {
+  btnPrimary.classList.toggle('loading', loading);
+  btnCurrent.classList.toggle('loading', loading);
+}
 function renderMeta(info) {
   const ver = $('#dl-version'), size = $('#dl-size');
   ver.textContent = info && info.version ? 'v' + info.version : '最新版';
   size.textContent = info && info.size ? fmtSize(info.size) : '';
 }
+
+// 手机平台：主按钮与当前按钮统一指向手机 App 区块，不请求桌面 check
+const isPhone = current.platform === 'android' || current.platform === 'mobile';
+if (isPhone) {
+  btnPrimary.textContent = '下载手机版';
+  btnPrimary.href = '#mobile';
+  btnCurrent.textContent = '下载手机版';
+  btnCurrent.href = '#mobile';
+  renderMeta(null);
+} else {
+  // 两个按钮同平台同参数：合并为单一共享请求
+  setLoading(true);
+  const infoPromise = loadInfo(current.platform, current.arch, true);
+  infoPromise.then((r) => {
+    setLoading(false);
+    if (!r) return; // 被更新的请求覆盖（用户已切 tab），丢弃
+    const { platform, arch, info } = r;
+    current.info = info;
+    renderButton(btnPrimary, platform, arch, info);
+    renderButton(btnCurrent, platform, arch, info);
+    renderMeta(info);
+    // 高亮与实际架构一致的 tab（Apple Silicon 精化后 arch 可能从 x64 变为 arm64）
+    document.querySelectorAll('.tab').forEach((t) => {
+      if (t.dataset.plat === platform && t.dataset.arch === arch) t.classList.add('active');
+    });
+  });
+}
+
+// 下载区 tabs
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
     tab.classList.add('active');
-    active = { platform: tab.dataset.plat, arch: tab.dataset.arch };
-    loadInfo(active.platform, active.arch, btnCurrent).then((r) => renderMeta(r));
+    btnCurrent.classList.add('loading');
+    loadInfo(tab.dataset.plat, tab.dataset.arch, false).then((r) => {
+      btnCurrent.classList.remove('loading');
+      if (!r) return; // 过期结果，丢弃
+      renderButton(btnCurrent, r.platform, r.arch, r.info);
+      renderMeta(r.info);
+    });
   });
-});
-// 初始选中当前平台 tab
-document.querySelectorAll('.tab').forEach((t) => {
-  if (t.dataset.plat === current.platform && t.dataset.arch === current.arch) t.classList.add('active');
 });
 
 // ===== 更新日志 =====
@@ -433,7 +492,7 @@ async function fetchList() {
 function renderChangelog(versions) {
   const box = $('#log-list');
   if (!versions || !versions.length) {
-    box.innerHTML = '<div class="log-item"><h3><span class="ver">' + (current.info && current.info.version ? 'v' + current.info.version : '最新版') + '</span></h3><p>' + esc((current.info && current.info.releaseNotes) || '暂无更新日志。') + '</p></div>';
+    box.innerHTML = '<div class="log-item"><h3><span class="ver">' + (current.info && current.info.version ? 'v' + esc(current.info.version) : '最新版') + '</span></h3><p>' + esc((current.info && current.info.releaseNotes) || '暂无更新日志。') + '</p></div>';
     return;
   }
   box.innerHTML = versions.slice(0, 5).map((v) =>
@@ -444,7 +503,7 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
 fetchList().then((data) => renderChangelog(data && data.versions));
 
 // ===== 全局滚动动效 =====
-if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+if (!matchMedia('(prefers-reduced-motion: reduce)').matches && window.IntersectionObserver) {
   const io = new IntersectionObserver((entries) => {
     entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
   }, { threshold: 0.12 });
@@ -453,6 +512,7 @@ if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
     io.observe(el);
   });
 } else {
+  // 关闭动效、或浏览器无 IntersectionObserver 时：直接全部显示，内容不空白
   document.querySelectorAll('.reveal').forEach((el) => el.classList.add('in'));
 }
 </script>
