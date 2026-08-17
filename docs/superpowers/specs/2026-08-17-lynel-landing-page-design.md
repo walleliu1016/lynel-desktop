@@ -137,10 +137,12 @@ Lynel Desktop 是跨平台多 Agent 会话管理桌面 App（托管 Claude Code 
   ```
 - 接口 404 / 失败 → 降级为单条：用 check 返回的 `version` + `releaseNotes`
 
-### 降级链（保证页面永不空白）
+### 降级链（保证页面永不空白，且不写死版本号）
 
-1. 接口超时（10s，AbortController）或非 2xx → 按钮回退为写死的相对模板链接 `/api/update/download?platform=win&arch=x64`（版本号写死 0.0.21），并提示「自动检测失败，可手动选平台」
-2. 完全无 JS → 页面静态可读，下载按钮直接用 `<a href>` 相对模板链接
+1. 接口超时（10s，AbortController）或非 2xx → 按钮回退为相对模板链接 `/api/update/download?platform=win&arch=x64`（**不传 version**），并提示「自动检测失败，可手动选平台」
+2. 完全无 JS → 页面静态可读，下载按钮直接用 `<a href>` 相对模板链接（同样不传 version）
+
+> **关键约定**：`/api/update/download` 不传 `version` 参数时，云服务端返回**最新版**安装包。这是"落地页零写死版本"的前提，见第十节。
 
 ## 五、动效清单
 
@@ -219,7 +221,22 @@ landing/index.html
   - 移动端单列布局
   - `prefers-reduced-motion` 关闭动效
 
-## 十、待用户确认 / 后续
+## 十、版本升级流程（落地页零写死版本）
+
+落地页不写死任何版本号：最新版本、版本号、更新日志、下载链接全部来自云服务接口。
+
+**升级流程 = 云服务侧发新包，HTML 零改动：**
+
+1. 云服务上传新版安装包，更新 `/api/update/list`（新增一条）
+2. 页面自动展示最新版本号 + 更新日志 + 对应平台下载直链
+3. 降级链（接口挂/无 JS）走 `/api/update/download`，不传 `version` 时云服务返回最新版
+
+**唯一的硬前提（需要云服务端配合）：**
+
+- `/api/update/download` 不传 `version` 时必须返回最新版安装包
+- 若云服务端无法做到，则需在 HTML 内维护一个 `DEFAULT_VERSION` 常量并随发版更新（作为备选，不推荐）
+
+## 十一、待确认 / 后续
 
 - `/api/update/list` 接口为可选增强；若云服务暂未提供，页面降级为单条最新版本，不影响主流程
-- 发布时版本号写死在降级链接里的 `0.0.21` 需随发版同步更新
+- `/api/update/download` 无 version 返回最新版的行为需在云服务端确认
