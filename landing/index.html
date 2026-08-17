@@ -114,6 +114,24 @@ section { padding: var(--space) 0; scroll-margin-top: 72px; }
 .mobile-note { font-size: 13px; color: var(--muted); margin: 0; }
 .mobile-dl { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
 @media (max-width: 760px) { .mobile-in { grid-template-columns: 1fr; text-align: center; } .mobile-shot { margin: 0 auto; } .mobile-dl { justify-content: center; } }
+
+/* ===== 下载区 ===== */
+.dl-group-label { margin: 0 0 12px; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
+.dl-panel { max-width: 640px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-frame); padding: 32px; text-align: center; box-shadow: var(--shadow); }
+.plat-tabs { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 22px; }
+.tab { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--body); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
+.tab:hover { border-color: #c9d4e6; }
+.tab.active { background: var(--brand-blue); color: #fff; border-color: var(--brand-blue); }
+.dl-meta { display: flex; gap: 14px; justify-content: center; align-items: baseline; margin-bottom: 20px; }
+.dl-version { font-family: var(--mono); font-weight: 700; color: var(--ink); font-size: 18px; }
+.dl-size { color: var(--muted); font-size: 13px; }
+.btn-lg { padding: 15px 34px; font-size: 16px; min-width: 260px; }
+.dl-hint { margin: 16px 0 0; font-size: 13px; color: var(--muted); }
+.btn.loading { opacity: .7; pointer-events: none; }
+.btn.loading::after { content:""; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.dl-mobile { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 26px; padding-top: 20px; border-top: 1px dashed var(--line); }
+.dl-mobile-label { align-self: center; font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--muted); margin-right: 4px; }
 </style>
 </head>
 <body>
@@ -227,7 +245,32 @@ section { padding: var(--space) 0; scroll-margin-top: 72px; }
       </div>
     </div>
   </section>
-  <section class="download" id="download"></section>
+  <section class="download" id="download">
+    <div class="container">
+      <h2 class="sec-title reveal">下载 Lynel Desktop</h2>
+      <div class="dl-panel reveal">
+        <p class="dl-group-label">桌面端</p>
+        <div class="plat-tabs" role="tablist" aria-label="选择平台">
+          <button class="tab" data-plat="win" data-arch="x64">Windows</button>
+          <button class="tab" data-plat="mac" data-arch="x64">macOS · Intel</button>
+          <button class="tab" data-plat="mac" data-arch="arm64">macOS · Apple Silicon</button>
+          <button class="tab" data-plat="linux" data-arch="x64">Linux</button>
+        </div>
+        <div class="dl-meta">
+          <span class="dl-version" id="dl-version">版本检测中…</span>
+          <span class="dl-size" id="dl-size"></span>
+        </div>
+        <a class="btn btn-primary btn-lg" id="btn-dl-current" href="/api/update/download?platform=win&arch=x64">准备下载…</a>
+        <p class="dl-hint" id="dl-hint"></p>
+        <div class="dl-mobile">
+          <span class="dl-mobile-label">手机端</span>
+          <a class="btn btn-ghost btn-sm" href="/api/update/download?platform=android">Android · APK</a>
+          <!-- TestFlight 占位链接，发布后替换为真实 TestFlight 地址 -->
+          <a class="btn btn-ghost btn-sm" href="https://testflight.apple.com/join/xxxxxxxx">iOS · TestFlight</a>
+        </div>
+      </div>
+    </div>
+  </section>
   <section class="changelog" id="changelog"></section>
   <section class="faq" id="faq"></section>
 </main>
@@ -237,6 +280,95 @@ section { padding: var(--space) 0; scroll-margin-top: 72px; }
 
 const nav = document.querySelector('.site-nav');
 addEventListener('scroll', () => nav.classList.toggle('scrolled', scrollY > 40), { passive: true });
+
+// ===== 下载交互 =====
+const ORIGIN = window.location.origin;
+
+function detectPlatform() {
+  let platform = '';
+  let arch = 'x64';
+  const ua = navigator.userAgent;
+  const uad = navigator.userAgentData;
+  if (uad && uad.platform) platform = uad.platform.toLowerCase();
+  else if (/win/i.test(ua)) platform = 'win';
+  else if (/mac/i.test(ua) || /darwin/i.test(ua)) platform = 'mac';
+  else if (/linux/i.test(ua)) platform = 'linux';
+  else platform = 'win';
+  if (/arm64|aarch64/i.test(ua)) arch = 'arm64';
+  if (platform === 'win') {
+    if (/\bx64\b|WOW64/i.test(ua) || /win64/i.test(ua)) arch = 'x64';
+  }
+  return { platform: platform === 'win' ? 'win' : platform, arch };
+}
+
+function dlUrl(platform, arch, version) {
+  const base = ORIGIN + '/api/update/download?platform=' + platform + '&arch=' + arch;
+  return version ? base + '&version=' + encodeURIComponent(version) : base;
+}
+
+async function fetchCheck(platform, arch) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10000);
+  try {
+    const url = ORIGIN + '/api/update/check?platform=' + platform + '&arch=' + arch + '&version=0&channel=stable';
+    const resp = await fetch(url, { signal: ctrl.signal });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch { return null; } finally { clearTimeout(timer); }
+}
+
+const $ = (s) => document.querySelector(s);
+const current = { ...detectPlatform(), info: null };
+const PLAT_LABEL = { win: 'Windows', mac: 'macOS', linux: 'Linux' };
+
+function applyButton(btn, platform, arch, info) {
+  const ver = info && info.version ? 'v' + info.version : '';
+  const size = info && info.size ? ' · ' + fmtSize(info.size) : '';
+  btn.textContent = (info ? '下载 ' + PLAT_LABEL[platform] + ' ' + arch + ' 版 ' + ver + size : '准备下载…');
+  btn.href = info && info.downloadUrl ? info.downloadUrl : dlUrl(platform, arch);
+}
+function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(0) + ' MB' : (n / 1024).toFixed(0) + ' KB'; }
+
+async function loadInfo(platform, arch, btn) {
+  btn.classList.add('loading');
+  const info = await fetchCheck(platform, arch);
+  btn.classList.remove('loading');
+  if (info && info.downloadUrl) {
+    applyButton(btn, platform, arch, info);
+    return info;
+  }
+  btn.textContent = '下载 ' + PLAT_LABEL[platform] + ' ' + arch + ' 版';
+  btn.href = dlUrl(platform, arch);
+  $('#dl-hint').textContent = '自动检测失败，已回退为云服务直链（最新版）。';
+  return null;
+}
+
+// 主按钮
+const btnPrimary = $('#btn-dl-primary');
+loadInfo(current.platform, current.arch, btnPrimary).then((info) => { current.info = info; renderMeta(info); });
+
+// 下载区当前按钮 + tabs
+const btnCurrent = $('#btn-dl-current');
+let active = { ...current };
+function renderMeta(info) {
+  const ver = $('#dl-version'), size = $('#dl-size');
+  ver.textContent = info && info.version ? 'v' + info.version : '最新版';
+  size.textContent = info && info.size ? fmtSize(info.size) : '';
+}
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+    tab.classList.add('active');
+    active = { platform: tab.dataset.plat, arch: tab.dataset.arch };
+    const info = loadInfo(active.platform, active.arch, btnCurrent);
+    btnCurrent.classList.add('loading');
+    Promise.resolve(info).then((r) => { btnCurrent.classList.remove('loading'); renderMeta(r); });
+  });
+});
+// 初始选中当前平台 tab
+document.querySelectorAll('.tab').forEach((t) => {
+  if (t.dataset.plat === current.platform && t.dataset.arch === current.arch) t.classList.add('active');
+});
 </script>
 </body>
 </html>
