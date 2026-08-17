@@ -47,13 +47,16 @@ class DshManager {
 
   private async start(): Promise<DshHandle> {
     const { cmd, args, env } = this.buildCommand();
-    // Windows 上 Electron 主进程直接 spawn `.cmd` 会抛 EINVAL（CreateProcess 无法执行 .cmd），
-    // 必须走 shell（cmd.exe /c）解析；非 Windows 无此问题。
+    // 不传 shell（shell:false）：这里 cmd 恒为 process.execPath（真实 .exe），
+    // CreateProcess 可直接执行，无需 cmd.exe 解析。Windows 下若加 shell:true，
+    // Node 只做字符串拼接不转义，安装路径含空格（如
+    // C:\Users\<user>\AppData\Local\Programs\Lynel）会被 cmd.exe 拆散，
+    // 报"不是内部或外部命令"，dsh 提前退出。shell:false 时 Node 按
+    // CommandLineToArgvW 规则自动给含空格的 argv 加引号。
     const proc = spawn(cmd, args, {
       env: { ...process.env, ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
-      shell: process.platform === 'win32',
     });
     this.proc = proc;
     getLogger().info(`[dsh] spawning ${cmd} ${args.join(' ')}`);
