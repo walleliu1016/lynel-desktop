@@ -73,16 +73,15 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 .hero { position: relative; overflow: hidden; padding: clamp(96px, 13vw, 150px) 0 clamp(40px, 6vw, 72px); text-align: center; }
 .hero-glow { position: absolute; inset: 0; z-index: -1; background: radial-gradient(520px 320px at 20% 18%, rgba(30,90,245,.12), transparent 70%), radial-gradient(520px 320px at 80% 28%, rgba(230,57,70,.10), transparent 70%); animation: breathe 12s ease-in-out infinite; }
 @keyframes breathe { 0%,100% { opacity:.6; transform: scale(1); } 50% { opacity:1; transform: scale(1.06); } }
-.hero-eyebrow { display: inline-block; font-size: 13px; font-weight: 700; letter-spacing: .08em; color: var(--brand-blue); background: var(--brand-blue-soft); border: 1px solid #d7e3ff; padding: 7px 16px; border-radius: 999px; margin-bottom: 24px; }
-.hero h1 { font-size: clamp(40px, 6.2vw, 68px); margin-bottom: 22px; letter-spacing: -0.03em; line-height: 1.15; }
+.hero h1 { font-size: clamp(40px, 6.2vw, 68px); margin-bottom: 24px; letter-spacing: -0.03em; line-height: 1.15; }
 .hl { font-weight: inherit; }
 .hl-blue { color: var(--brand-blue); }
 .hl-red { color: var(--brand-red); }
-.hero-sub { font-size: clamp(16px, 2.2vw, 20px); color: var(--muted); max-width: 640px; margin: 0 auto 36px; line-height: 1.8; }
+.hero-sub { font-size: clamp(16px, 2.2vw, 20px); color: var(--muted); max-width: 640px; margin: 0 auto 38px; line-height: 1.8; }
 .dl-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 .dl-cta .btn { padding: 16px 32px; font-size: 16px; border-radius: 12px; }
-.platform-pills { display: flex; gap: 10px; justify-content: center; margin-top: 22px; }
-.platform-pills span { font-size: 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); padding: 4px 12px; border-radius: 999px; }
+.hero-supports { margin: 22px 0 0; font-size: 13px; color: var(--muted); letter-spacing: .02em; }
+.hero-supports strong { color: var(--body); font-weight: 600; }
 .hero-shot { margin: 60px auto 0; max-width: 1020px; }
 .hero-shot .shot { border-radius: 20px; box-shadow: 0 30px 80px rgba(13, 24, 41, 0.16); }
 
@@ -212,16 +211,13 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
   <section class="hero" id="hero">
     <div class="hero-glow" aria-hidden="true"></div>
     <div class="container hero-in">
-      <p class="hero-eyebrow">跨平台 · 多 Agent · 开源</p>
-      <h1>把 <span class="hl hl-blue">Claude Code</span> / <span class="hl hl-red">Codex</span> / <span class="hl hl-blue">OpenCode</span> / <span class="hl hl-red">OMP</span><br>装进一个本地窗口</h1>
-      <p class="hero-sub">多会话管理 · 统一权限审批 · 实时 Trace · 企业微信远程<br>托管多个终端 CLI，一套会话，两种界面。</p>
+      <h1>把 <span class="hl hl-blue">Claude Code</span> / <span class="hl hl-red">Codex</span> 等 AI 助手<br>装进一个本地窗口</h1>
+      <p class="hero-sub">多会话 · 统一权限 · 实时追踪 · 远程控制</p>
       <div class="dl-cta">
         <a class="btn btn-primary" id="btn-dl-primary" href="/api/update/download?platform=win&arch=x64">检测下载平台…</a>
         <a class="btn btn-ghost" id="btn-dl-all" href="#download">所有下载选项</a>
       </div>
-      <div class="platform-pills">
-        <span>macOS</span><span>Windows</span><span>Linux</span>
-      </div>
+      <p class="hero-supports">支持 <strong>macOS</strong> · <strong>Windows</strong> · <strong>Linux</strong></p>
       <div class="hero-shot shot" data-name="hero">
         <img src="" alt="Lynel Desktop 主窗口截图（三段式布局）" loading="eager">
         <div class="shot-fallback">主窗口截图 · 左会话列表 | 中终端 | 右 Trace</div>
