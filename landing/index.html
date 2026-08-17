@@ -45,12 +45,85 @@ section { padding: var(--space) 0; scroll-margin-top: 72px; }
   html { scroll-behavior: auto; }
   .reveal { opacity: 1; transform: none; transition: none; }
 }
+
+/* 导航 */
+.site-nav { position: sticky; top: 0; z-index: 50; background: rgba(247,248,250,.85); backdrop-filter: blur(12px); border-bottom: 1px solid transparent; transition: border-color .3s ease, box-shadow .3s ease; }
+.site-nav.scrolled { border-color: var(--line); box-shadow: 0 4px 20px rgba(13,24,41,.05); }
+.nav-in { height: 60px; display: flex; align-items: center; gap: 32px; }
+.brand { display: flex; align-items: center; gap: 8px; color: var(--ink); font-weight: 800; font-size: 17px; }
+.brand-mark { width: 18px; height: 18px; display: inline-grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.brand-mark::before, .brand-mark::after { content:""; border-radius: 3px; }
+.brand-mark::before { background: var(--brand-blue); }
+.brand-mark::after { background: var(--brand-red); }
+.nav-links { display: flex; gap: 24px; margin-left: auto; }
+.nav-links a { color: var(--body); font-size: 14px; font-weight: 600; }
+.nav-links a:hover { color: var(--brand-blue); }
+
+/* 按钮 */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: var(--radius-btn); padding: 12px 22px; font-weight: 700; font-size: 15px; transition: transform .15s ease, background .15s ease, box-shadow .15s ease; }
+.btn:active { transform: scale(.98); }
+.btn-primary { background: var(--brand-blue); color: #fff; box-shadow: 0 6px 18px rgba(30,90,245,.3); }
+.btn-primary:hover { background: var(--brand-blue-dark); color: #fff; transform: translateY(-1px) scale(1.02); }
+.btn-ghost { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+.btn-ghost:hover { border-color: #d4dbe6; transform: translateY(-1px); }
+.btn-sm { padding: 8px 16px; font-size: 14px; }
+
+/* Hero */
+.hero { position: relative; overflow: hidden; padding-top: clamp(56px, 9vw, 104px); text-align: center; }
+.hero-glow { position: absolute; inset: 0; z-index: -1; background: radial-gradient(480px 300px at 20% 20%, rgba(30,90,245,.12), transparent 70%), radial-gradient(480px 300px at 80% 30%, rgba(230,57,70,.10), transparent 70%); animation: breathe 12s ease-in-out infinite; }
+@keyframes breathe { 0%,100% { opacity:.6; transform: scale(1); } 50% { opacity:1; transform: scale(1.06); } }
+.hero-eyebrow { display: inline-block; font-size: 13px; font-weight: 700; letter-spacing: .06em; color: var(--brand-blue); background: var(--brand-blue-soft); border: 1px solid #d7e3ff; padding: 6px 14px; border-radius: 999px; margin-bottom: 20px; }
+.hero h1 { font-size: clamp(32px, 5.4vw, 56px); margin-bottom: 18px; }
+.hl { font-weight: inherit; }
+.hl-blue { color: var(--brand-blue); }
+.hl-red { color: var(--brand-red); }
+.hero-sub { font-size: clamp(15px, 2vw, 18px); color: var(--muted); margin: 0 0 28px; }
+.dl-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.platform-pills { display: flex; gap: 10px; justify-content: center; margin-top: 18px; }
+.platform-pills span { font-size: 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); padding: 3px 10px; border-radius: 999px; }
+.hero-shot { margin: 44px auto 0; max-width: 980px; }
+
+/* 截图位通用 */
+.shot { position: relative; border-radius: var(--radius-frame); border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-lg); overflow: hidden; transition: transform .3s ease, box-shadow .3s ease; }
+.shot:hover { transform: scale(1.02); box-shadow: var(--shadow-lg); }
+.shot img { width: 100%; height: auto; }
+.shot-fallback { display: flex; align-items: center; justify-content: center; min-height: 320px; color: var(--muted); font-size: 14px; background: linear-gradient(135deg, #fafbfc, #f2f4f7); }
+@media (prefers-reduced-motion: reduce) { .hero-glow { animation: none; } }
 </style>
 </head>
 <body>
-<header class="site-nav" id="top"></header>
+<header class="site-nav" id="top">
+  <div class="container nav-in">
+    <a class="brand" href="#top"><span class="brand-mark"></span>Lynel&nbsp;Desktop</a>
+    <nav class="nav-links">
+      <a href="#features">功能</a>
+      <a href="#showcase">界面</a>
+      <a href="#download">下载</a>
+      <a href="#changelog">更新日志</a>
+    </nav>
+    <a class="btn btn-primary btn-sm" href="#download" id="nav-download">下载</a>
+  </div>
+</header>
 <main>
-  <section class="hero" id="hero"></section>
+  <section class="hero" id="hero">
+    <div class="hero-glow" aria-hidden="true"></div>
+    <div class="container hero-in">
+      <p class="hero-eyebrow">跨平台 · 多 Agent · 开源</p>
+      <h1>把 <span class="hl hl-blue">Claude Code</span> / <span class="hl hl-red">Codex</span> / <span class="hl hl-blue">OpenCode</span> / <span class="hl hl-red">OMP</span><br>装进一个本地窗口</h1>
+      <p class="hero-sub">多会话管理 · 统一权限审批 · 实时 Trace · 企业微信远程<br>托管多个终端 CLI，一套会话，两种界面。</p>
+      <div class="dl-cta">
+        <a class="btn btn-primary" id="btn-dl-primary" href="/api/update/download?platform=win&arch=x64">检测下载平台…</a>
+        <a class="btn btn-ghost" id="btn-dl-all" href="#download">所有下载选项</a>
+      </div>
+      <div class="platform-pills">
+        <span>macOS</span><span>Windows</span><span>Linux</span>
+      </div>
+      <div class="hero-shot shot" data-name="hero">
+        <img src="" alt="Lynel Desktop 主窗口截图（三段式布局）" loading="eager">
+        <div class="shot-fallback">主窗口截图 · 左会话列表 | 中终端 | 右 Trace</div>
+      </div>
+    </div>
+  </section>
   <section class="painpoints" id="painpoints"></section>
   <section class="features" id="features"></section>
   <section class="showcase" id="showcase"></section>
@@ -62,6 +135,9 @@ section { padding: var(--space) 0; scroll-margin-top: 72px; }
 <footer class="site-foot"></footer>
 <script>
 "use strict";
+
+const nav = document.querySelector('.site-nav');
+addEventListener('scroll', () => nav.classList.toggle('scrolled', scrollY > 40), { passive: true });
 </script>
 </body>
 </html>
