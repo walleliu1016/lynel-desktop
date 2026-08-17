@@ -89,6 +89,23 @@ section { padding: var(--space) 0; scroll-margin-top: 72px; }
 .shot img { width: 100%; height: auto; }
 .shot-fallback { display: flex; align-items: center; justify-content: center; min-height: 320px; color: var(--muted); font-size: 14px; background: linear-gradient(135deg, #fafbfc, #f2f4f7); }
 @media (prefers-reduced-motion: reduce) { .hero-glow { animation: none; } }
+
+/* ===== 痛点 / 功能 / 展示卡片 ===== */
+.sec-title { font-size: clamp(24px, 3.4vw, 34px); text-align: center; margin-bottom: 40px; }
+.card-grid { display: grid; gap: 20px; }
+.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 26px; position: relative; overflow: hidden; transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+.card::before { content:""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, var(--brand-blue), var(--brand-red)); transform: scaleX(0); transform-origin: left; transition: transform .3s ease; }
+.card:hover { transform: translateY(-4px); box-shadow: var(--shadow); border-color: #dde4ee; }
+.card:hover::before { transform: scaleX(1); }
+.card h3 { font-size: 17px; margin-bottom: 8px; }
+.card p { font-size: 14px; margin: 0 0 12px; color: var(--muted); }
+.card-fix { font-size: 14px; font-weight: 600; color: var(--brand-blue); border-left: 3px solid var(--brand-blue-soft); padding-left: 10px; }
+.feature-grid { grid-template-columns: repeat(3, 1fr); }
+.showcase-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
+.showcase-grid .shot { margin: 0; }
+.shot-caption { padding: 14px 16px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); }
+@media (max-width: 900px) { .cols-3, .feature-grid, .showcase-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -124,9 +141,64 @@ section { padding: var(--space) 0; scroll-margin-top: 72px; }
       </div>
     </div>
   </section>
-  <section class="painpoints" id="painpoints"></section>
-  <section class="features" id="features"></section>
-  <section class="showcase" id="showcase"></section>
+  <section class="painpoints" id="painpoints">
+    <div class="container">
+      <h2 class="sec-title reveal">为什么需要 Lynel Desktop</h2>
+      <div class="card-grid cols-3">
+        <article class="card reveal">
+          <h3>多会话难管理</h3>
+          <p>多个 Claude / Codex 会话散在各终端，看不出谁在跑、跑到了哪。</p>
+          <div class="card-fix">会话列表一眼看清状态，随时切换。</div>
+        </article>
+        <article class="card reveal">
+          <h3>权限弹窗打断</h3>
+          <p>PermissionRequest 弹在终端里，要切回窗口手动确认，节奏全断。</p>
+          <div class="card-fix">权限仲裁器统一审批，主窗口 / 企业微信多通道处理。</div>
+        </article>
+        <article class="card reveal">
+          <h3>Hooks 配置繁琐</h3>
+          <p>改 settings.json 要开编辑器、背 schema，每台机器都要配。</p>
+          <div class="card-fix">临时 settings 注入，零配置即用。</div>
+        </article>
+      </div>
+    </div>
+  </section>
+  <section class="features" id="features">
+    <div class="container">
+      <h2 class="sec-title reveal">能力一览</h2>
+      <div class="card-grid cols-3 feature-grid">
+        <article class="card reveal"><h3>多 Agent 托管</h3><p>Claude Code / Codex / OpenCode / OMP 统一托管，按类型恢复会话。</p></article>
+        <article class="card reveal"><h3>权限仲裁器</h3><p>所有权限请求集中审批，先到先生效，多通道解决。</p></article>
+        <article class="card reveal"><h3>Trace 面板</h3><p>实时 API 请求列表：状态、模型、延迟、费用一屏看清。</p></article>
+        <article class="card reveal"><h3>企业微信通道</h3><p>远程收发消息、审批权限、AskUserQuestion 模板卡片。</p></article>
+        <article class="card reveal"><h3>云端上行</h3><p>阶段事件批量推送，会话元数据同步至云服务。</p></article>
+        <article class="card reveal"><h3>历史会话自动扫描</h3><p>读取本地项目目录与 recent-sessions，文件变化即时刷新。</p></article>
+        <article class="card reveal"><h3>DeepSeek Harness 界面</h3><p>内嵌 DSH Web 前端，支持 Bot 绑定、提问接管、轨迹实时转发。</p></article>
+      </div>
+    </div>
+  </section>
+  <section class="showcase" id="showcase">
+    <div class="container">
+      <h2 class="sec-title reveal">界面一览</h2>
+      <div class="showcase-grid">
+        <figure class="shot reveal" data-name="showcase-terminal">
+          <img src="" alt="xterm 终端里 agent 流式运行" loading="lazy">
+          <figcaption class="shot-caption">xterm 原生终端 · PTY 驱动交互式 agent</figcaption>
+          <div class="shot-fallback">终端运行示意图</div>
+        </figure>
+        <figure class="shot reveal" data-name="showcase-dsh">
+          <img src="" alt="DeepSeek Harness Web 界面" loading="lazy">
+          <figcaption class="shot-caption">DeepSeek Harness Web 界面 · 支持绑定 Bot</figcaption>
+          <div class="shot-fallback">DSH 界面示意图</div>
+        </figure>
+        <figure class="shot reveal" data-name="showcase-wecom">
+          <img src="" alt="企业微信审批卡片" loading="lazy">
+          <figcaption class="shot-caption">企业微信远程 · 审批卡片与进度</figcaption>
+          <div class="shot-fallback">企业微信审批示意</div>
+        </figure>
+      </div>
+    </div>
+  </section>
   <section class="mobile" id="mobile"></section>
   <section class="download" id="download"></section>
   <section class="changelog" id="changelog"></section>
