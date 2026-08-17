@@ -172,7 +172,16 @@ class DshManager {
       cmd: process.execPath,
       // cordis-plugin-hmr 需要 --expose-internals 才能启动 HMR service
       args: ['--expose-internals', dshBin, ...dshArgs],
-      env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
+      env: {
+        ...env,
+        ELECTRON_RUN_AS_NODE: '1',
+        // dsh 的 directory-picker-auto 在 win32 下默认选 native 后端（koffi + win32
+        // dialog worker，存在 IPC 竞态/预编译损坏问题，报 "worker exited before
+        // reporting a result"）。注入 SSH_TTY 让其判定"操作者不在屏幕前"，强制走内建
+        // browse 后端（纯 Node 目录浏览，不依赖 koffi/原生对话框）。仅 win32 设置，
+        // macOS 保留原生 osascript 选择器。
+        ...(process.platform === 'win32' ? { SSH_TTY: '1' } : {}),
+      },
     };
   }
 }
