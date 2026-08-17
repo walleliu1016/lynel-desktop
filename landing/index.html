@@ -108,16 +108,22 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 .card h3 { font-size: 17px; margin-bottom: 8px; }
 .card p { font-size: 14px; margin: 0 0 12px; color: var(--muted); }
 .card-fix { font-size: 14px; font-weight: 600; color: var(--brand-blue); border-left: 3px solid var(--brand-blue-soft); padding-left: 10px; }
-.feature-grid { grid-template-columns: repeat(3, 1fr); }
-.feature-card { cursor: pointer; }
-.feature-card .feature-body { display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); grid-template-columns: 1fr 1fr; gap: 24px; align-items: center; }
-.feature-card.open { grid-column: 1 / -1; }
-.feature-card.open .feature-body { display: grid; }
-.feature-card .feature-copy p { font-size: 14px; color: var(--body); margin: 0; }
+.feature-list { max-width: 860px; margin: 0 auto; }
+.feature-item { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); margin-bottom: 12px; overflow: hidden; transition: box-shadow .2s ease; }
+.feature-item:hover { box-shadow: var(--shadow); }
+.feature-head { width: 100%; display: flex; align-items: center; gap: 14px; padding: 20px 22px; background: none; border: none; cursor: pointer; text-align: left; font: inherit; }
+.feature-icon { flex-shrink: 0; width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; background: var(--brand-blue-soft); color: var(--brand-blue); }
+.feature-title { font-size: 16px; font-weight: 700; color: var(--ink); white-space: nowrap; }
+.feature-brief { flex: 1; font-size: 14px; color: var(--muted); }
+.feature-chev { flex-shrink: 0; color: var(--muted); transition: transform .25s ease; }
+.feature-item.open .feature-chev { transform: rotate(180deg); }
+.feature-body { display: none; padding: 0 22px 24px; grid-template-columns: 1fr 1fr; gap: 24px; align-items: center; }
+.feature-item.open .feature-body { display: grid; }
+.feature-copy p { font-size: 14px; color: var(--body); margin: 0; }
 .feature-shot { margin: 0; }
-@media (max-width: 700px) { .feature-card.open .feature-body { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .feature-body { grid-template-columns: 1fr; } .feature-brief { display: none; } }
 @keyframes galFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-@media (max-width: 900px) { .cols-3, .feature-grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .cols-3 { grid-template-columns: 1fr; } }
 
 /* ===== 手机 App 区块 ===== */
 .mobile-in { display: grid; grid-template-columns: 320px 1fr; gap: 40px; align-items: center; max-width: 880px; margin: 0 auto; }
@@ -280,10 +286,14 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
         <h2 class="sec-title">能力一览</h2>
         <p class="sec-desc">从多 Agent 托管到远程控制，一站集成。</p>
       </div>
-      <div class="card-grid cols-3 feature-grid">
-        <article class="card reveal feature-card" data-feature="agents">
-          <h3>多 Agent 托管</h3>
-          <p>Claude Code / Codex / OpenCode / OMP 统一托管，按类型恢复会话。</p>
+      <div class="feature-list">
+        <div class="feature-item reveal">
+          <button class="feature-head" type="button" aria-expanded="false">
+            <span class="feature-icon"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2" fill="currentColor"/><rect x="14" y="3" width="7" height="7" rx="2" fill="currentColor" opacity=".55"/><rect x="3" y="14" width="7" height="7" rx="2" fill="currentColor" opacity=".55"/><rect x="14" y="14" width="7" height="7" rx="2" fill="currentColor" opacity=".3"/></svg></span>
+            <span class="feature-title">多 Agent 托管</span>
+            <span class="feature-brief">Claude Code / Codex / OpenCode / OMP 统一托管，按类型恢复会话。</span>
+            <svg class="feature-chev" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <div class="feature-body">
             <div class="feature-copy">
               <p>一个窗口托管多种终端 AI，无需在多个终端间来回切换。每个 Agent 独立会话与状态，按类型自动恢复历史会话，切换不丢上下文。</p>
@@ -293,10 +303,14 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
               <div class="shot-fallback">多 Agent 托管示意图</div>
             </figure>
           </div>
-        </article>
-        <article class="card reveal feature-card" data-feature="permission">
-          <h3>权限仲裁器</h3>
-          <p>所有权限请求集中审批，先到先生效，多通道解决。</p>
+        </div>
+        <div class="feature-item reveal">
+          <button class="feature-head" type="button" aria-expanded="false">
+            <span class="feature-icon"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z" fill="currentColor"/></svg></span>
+            <span class="feature-title">权限仲裁器</span>
+            <span class="feature-brief">所有权限请求集中审批，先到先生效，多通道解决。</span>
+            <svg class="feature-chev" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <div class="feature-body">
             <div class="feature-copy">
               <p>所有工具调用的权限请求集中到一个仲裁器统一处理，先到先生效，杜绝冲突。主窗口、企业微信多通道均可审批，终端自行解决时自动同步清理。</p>
@@ -306,10 +320,14 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
               <div class="shot-fallback">权限审批示意图</div>
             </figure>
           </div>
-        </article>
-        <article class="card reveal feature-card" data-feature="trace">
-          <h3>Trace 面板</h3>
-          <p>实时 API 请求列表：状态、模型、延迟、费用一屏看清。</p>
+        </div>
+        <div class="feature-item reveal">
+          <button class="feature-head" type="button" aria-expanded="false">
+            <span class="feature-icon"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></svg></span>
+            <span class="feature-title">Trace 面板</span>
+            <span class="feature-brief">实时 API 请求列表：状态、模型、延迟、费用一屏看清。</span>
+            <svg class="feature-chev" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <div class="feature-body">
             <div class="feature-copy">
               <p>实时记录每一次 API 请求：状态、模型、输入输出 token、延迟、费用一屏看清。请求详情按需加载，支持按模型与错误过滤，调用链路一目了然。</p>
@@ -319,10 +337,14 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
               <div class="shot-fallback">Trace 面板示意图</div>
             </figure>
           </div>
-        </article>
-        <article class="card reveal feature-card" data-feature="wecom">
-          <h3>企业微信通道</h3>
-          <p>远程收发消息、审批权限、AskUserQuestion 模板卡片。</p>
+        </div>
+        <div class="feature-item reveal">
+          <button class="feature-head" type="button" aria-expanded="false">
+            <span class="feature-icon"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4V6a1 1 0 0 1 1-1z" fill="currentColor"/></svg></span>
+            <span class="feature-title">企业微信通道</span>
+            <span class="feature-brief">远程收发消息、审批权限、AskUserQuestion 模板卡片。</span>
+            <svg class="feature-chev" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <div class="feature-body">
             <div class="feature-copy">
               <p>把会话接进企业微信：远程收发消息、审批权限、回答模板卡片问题。支持控制指令（中断、截图等），用手机也能随时接管 Agent。</p>
@@ -332,10 +354,14 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
               <div class="shot-fallback">企业微信远程示意图</div>
             </figure>
           </div>
-        </article>
-        <article class="card reveal feature-card" data-feature="cloud">
-          <h3>云端上行</h3>
-          <p>阶段事件批量推送，会话元数据同步至云服务。</p>
+        </div>
+        <div class="feature-item reveal">
+          <button class="feature-head" type="button" aria-expanded="false">
+            <span class="feature-icon"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 16 8.5 4.5 4.5 0 0 1 17.5 18H6z" fill="currentColor"/></svg></span>
+            <span class="feature-title">云端上行</span>
+            <span class="feature-brief">阶段事件批量推送，会话元数据同步至云服务。</span>
+            <svg class="feature-chev" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <div class="feature-body">
             <div class="feature-copy">
               <p>阶段事件与会话元数据可批量上行到你的云服务，实现多端同步与会话管理。提供实时通道与 HTTP 兜底，断线自动补偿。</p>
@@ -345,10 +371,14 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
               <div class="shot-fallback">云端同步示意图</div>
             </figure>
           </div>
-        </article>
-        <article class="card reveal feature-card" data-feature="history">
-          <h3>历史会话自动扫描</h3>
-          <p>读取本地项目目录与 recent-sessions，文件变化即时刷新。</p>
+        </div>
+        <div class="feature-item reveal">
+          <button class="feature-head" type="button" aria-expanded="false">
+            <span class="feature-icon"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 10.4 3 3-1.4 1.4-3.6-3.6V7h2v5.4z" fill="currentColor"/></svg></span>
+            <span class="feature-title">历史会话自动扫描</span>
+            <span class="feature-brief">读取本地项目目录与 recent-sessions，文件变化即时刷新。</span>
+            <svg class="feature-chev" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <div class="feature-body">
             <div class="feature-copy">
               <p>自动读取本地项目目录与历史会话记录，文件变化即时刷新。历史会话可一键恢复，无需手动整理记录。</p>
@@ -358,10 +388,14 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
               <div class="shot-fallback">历史会话列表示意图</div>
             </figure>
           </div>
-        </article>
-        <article class="card reveal feature-card" data-feature="dsh">
-          <h3>DeepSeek Harness 支持</h3>
-          <p>内嵌 DeepSeek Harness，免去自行安装启动的复杂流程，开箱即用。</p>
+        </div>
+        <div class="feature-item reveal">
+          <button class="feature-head" type="button" aria-expanded="false">
+            <span class="feature-icon"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M3 8c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 4-2M3 15c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 4-2"/></svg></span>
+            <span class="feature-title">DeepSeek Harness 支持</span>
+            <span class="feature-brief">内嵌 DeepSeek Harness，免去自行安装启动的复杂流程，开箱即用。</span>
+            <svg class="feature-chev" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <div class="feature-body">
             <div class="feature-copy">
               <p>内嵌 DeepSeek Harness，免去自行安装启动的复杂流程，开箱即用，随时启用。</p>
@@ -371,10 +405,14 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
               <div class="shot-fallback">DeepSeek Harness 示意图</div>
             </figure>
           </div>
-        </article>
-        <article class="card reveal feature-card" data-feature="vscode">
-          <h3>VS Code 扩展</h3>
-          <p>在 VS Code 内嵌交互式终端，写代码时无需切换窗口。</p>
+        </div>
+        <div class="feature-item reveal">
+          <button class="feature-head" type="button" aria-expanded="false">
+            <span class="feature-icon"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.3 8.6c-.5-.4-.5-1.1 0-1.5l1.5-1.5c.4-.4 1-.4 1.4 0l5.4 4.6 6.6-4.3c.6-.4 1.5-.2 1.8.4l2.1 3.8c.3.6.1 1.4-.5 1.7l-3.4 1.9-3.4 1.9c.6.3.8 1.1.5 1.7l-2.1 3.8c-.3.6-1.2.8-1.8.4l-6.6-4.3-5.4 4.6c-.4.4-1 .4-1.4 0L2.3 18c-.5-.4-.5-1.1 0-1.5l4.2-4.5L2.3 8.6z" fill="currentColor"/></svg></span>
+            <span class="feature-title">VS Code 扩展</span>
+            <span class="feature-brief">在 VS Code 内嵌交互式终端，写代码时无需切换窗口。</span>
+            <svg class="feature-chev" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <div class="feature-body">
             <div class="feature-copy">
               <p>在 VS Code 里直接打开 Lynel 交互式终端，写代码时无需切换窗口。支持新建终端、绑定企业微信、管理机器人等命令。</p>
@@ -384,7 +422,7 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
               <div class="shot-fallback">VS Code 终端示意图</div>
             </figure>
           </div>
-        </article>
+        </div>
       </div>
     </div>
   </section>
@@ -718,11 +756,13 @@ document.querySelectorAll('.agent-tab').forEach((btn) => {
   });
 });
 
-// 功能卡点击展开
-document.querySelectorAll('.feature-card').forEach((card) => {
-  card.addEventListener('click', () => {
-    document.querySelectorAll('.feature-card.open').forEach((c) => { if (c !== card) c.classList.remove('open'); });
-    card.classList.toggle('open');
+// 功能列表展开
+document.querySelectorAll('.feature-head').forEach((head) => {
+  head.addEventListener('click', () => {
+    const item = head.parentElement;
+    document.querySelectorAll('.feature-item.open').forEach((c) => { if (c !== item) c.classList.remove('open'); });
+    item.classList.toggle('open');
+    head.setAttribute('aria-expanded', item.classList.contains('open'));
   });
 });
 </script>
