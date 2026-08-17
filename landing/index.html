@@ -16,13 +16,13 @@
   --brand-red: #e63946; --brand-red-dark: #c92a37; --brand-red-soft: #fff0f0;
   --ink: #0d1321; --body: #3f4756; --muted: #8a93a6;
   --success: #10b981;
-  --radius-btn: 8px; --radius-card: 14px; --radius-frame: 16px;
-  --shadow: 0 8px 30px rgba(13, 24, 41, 0.08);
-  --shadow-lg: 0 18px 50px rgba(13, 24, 41, 0.14);
+  --radius-btn: 10px; --radius-card: 18px; --radius-frame: 20px;
+  --shadow: 0 10px 34px rgba(13, 24, 41, 0.07);
+  --shadow-lg: 0 22px 60px rgba(13, 24, 41, 0.12);
   --font: "PingFang SC", "Microsoft YaHei", Inter, -apple-system, Arial, sans-serif;
   --mono: "Source Code Pro", ui-monospace, SFMono-Regular, monospace;
-  --container: 1120px;
-  --space: clamp(64px, 10vw, 120px);
+  --container: 1160px;
+  --space: clamp(88px, 12vw, 160px);
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -70,19 +70,21 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 .btn-sm { padding: 8px 16px; font-size: 14px; }
 
 /* Hero */
-.hero { position: relative; overflow: hidden; padding-top: clamp(56px, 9vw, 104px); text-align: center; }
-.hero-glow { position: absolute; inset: 0; z-index: -1; background: radial-gradient(480px 300px at 20% 20%, rgba(30,90,245,.12), transparent 70%), radial-gradient(480px 300px at 80% 30%, rgba(230,57,70,.10), transparent 70%); animation: breathe 12s ease-in-out infinite; }
+.hero { position: relative; overflow: hidden; padding: clamp(96px, 13vw, 150px) 0 clamp(40px, 6vw, 72px); text-align: center; }
+.hero-glow { position: absolute; inset: 0; z-index: -1; background: radial-gradient(520px 320px at 20% 18%, rgba(30,90,245,.12), transparent 70%), radial-gradient(520px 320px at 80% 28%, rgba(230,57,70,.10), transparent 70%); animation: breathe 12s ease-in-out infinite; }
 @keyframes breathe { 0%,100% { opacity:.6; transform: scale(1); } 50% { opacity:1; transform: scale(1.06); } }
-.hero-eyebrow { display: inline-block; font-size: 13px; font-weight: 700; letter-spacing: .06em; color: var(--brand-blue); background: var(--brand-blue-soft); border: 1px solid #d7e3ff; padding: 6px 14px; border-radius: 999px; margin-bottom: 20px; }
-.hero h1 { font-size: clamp(32px, 5.4vw, 56px); margin-bottom: 18px; }
+.hero-eyebrow { display: inline-block; font-size: 13px; font-weight: 700; letter-spacing: .08em; color: var(--brand-blue); background: var(--brand-blue-soft); border: 1px solid #d7e3ff; padding: 7px 16px; border-radius: 999px; margin-bottom: 24px; }
+.hero h1 { font-size: clamp(40px, 6.2vw, 68px); margin-bottom: 22px; letter-spacing: -0.03em; line-height: 1.15; }
 .hl { font-weight: inherit; }
 .hl-blue { color: var(--brand-blue); }
 .hl-red { color: var(--brand-red); }
-.hero-sub { font-size: clamp(15px, 2vw, 18px); color: var(--muted); margin: 0 0 28px; }
+.hero-sub { font-size: clamp(16px, 2.2vw, 20px); color: var(--muted); max-width: 640px; margin: 0 auto 36px; line-height: 1.8; }
 .dl-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-.platform-pills { display: flex; gap: 10px; justify-content: center; margin-top: 18px; }
-.platform-pills span { font-size: 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); padding: 3px 10px; border-radius: 999px; }
-.hero-shot { margin: 44px auto 0; max-width: 980px; }
+.dl-cta .btn { padding: 16px 32px; font-size: 16px; border-radius: 12px; }
+.platform-pills { display: flex; gap: 10px; justify-content: center; margin-top: 22px; }
+.platform-pills span { font-size: 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); padding: 4px 12px; border-radius: 999px; }
+.hero-shot { margin: 60px auto 0; max-width: 1020px; }
+.hero-shot .shot { border-radius: 20px; box-shadow: 0 30px 80px rgba(13, 24, 41, 0.16); }
 
 /* 截图位通用 */
 .shot { position: relative; border-radius: var(--radius-frame); border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-lg); overflow: hidden; transition: transform .3s ease, box-shadow .3s ease; }
@@ -92,10 +94,13 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 @media (prefers-reduced-motion: reduce) { .hero-glow { animation: none; } }
 
 /* ===== 痛点 / 功能 / 展示卡片 ===== */
-.sec-title { font-size: clamp(24px, 3.4vw, 34px); text-align: center; margin-bottom: 40px; }
+.sec-head { text-align: center; margin-bottom: 52px; }
+.sec-eyebrow { display: inline-block; margin-bottom: 14px; font-size: 12px; font-weight: 800; letter-spacing: .24em; color: var(--brand-blue); text-transform: uppercase; }
+.sec-title { font-size: clamp(28px, 4vw, 44px); margin: 0; letter-spacing: -0.02em; }
+.sec-desc { max-width: 560px; margin: 16px auto 0; font-size: 16px; line-height: 1.8; color: var(--muted); }
 .card-grid { display: grid; gap: 20px; }
 .cols-3 { grid-template-columns: repeat(3, 1fr); }
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 26px; position: relative; overflow: hidden; transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 32px; position: relative; overflow: hidden; transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
 .card::before { content:""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, var(--brand-blue), var(--brand-red)); transform: scaleX(0); transform-origin: left; transition: transform .3s ease; }
 .card:hover { transform: translateY(-4px); box-shadow: var(--shadow); border-color: #dde4ee; }
 .card:hover::before { transform: scaleX(1); }
@@ -127,7 +132,7 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 
 /* ===== 下载区 ===== */
 .dl-group-label { margin: 0 0 12px; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
-.dl-panel { max-width: 640px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-frame); padding: 32px; text-align: center; box-shadow: var(--shadow); }
+.dl-panel { max-width: 660px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-frame); padding: 44px 40px; text-align: center; box-shadow: var(--shadow); }
 .plat-tabs { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 22px; }
 .tab { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--body); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
 .tab:hover { border-color: #c9d4e6; }
@@ -171,7 +176,7 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 
 /* ===== 使用指南 ===== */
 .guide-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 980px; margin: 0 auto; }
-.guide-step { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 24px; position: relative; transition: transform .25s ease, box-shadow .25s ease; }
+.guide-step { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 30px; position: relative; transition: transform .25s ease, box-shadow .25s ease; }
 .guide-step:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
 .guide-num { position: absolute; top: 18px; right: 20px; width: 30px; height: 30px; border-radius: 50%; background: var(--brand-blue-soft); color: var(--brand-blue); font-weight: 800; font-size: 14px; display: flex; align-items: center; justify-content: center; }
 .guide-step h3 { font-size: 16px; margin-bottom: 8px; }
@@ -233,7 +238,11 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
   </section>
   <section class="painpoints" id="painpoints">
     <div class="container">
-      <h2 class="sec-title reveal">为什么需要 Lynel Desktop</h2>
+      <div class="sec-head reveal">
+        <span class="sec-eyebrow">Why Lynel</span>
+        <h2 class="sec-title">为什么需要 Lynel Desktop</h2>
+        <p class="sec-desc">三个终端日常痛点，用一个本地窗口解决。</p>
+      </div>
       <div class="card-grid cols-3">
         <article class="card reveal">
           <h3>多会话难管理</h3>
@@ -255,7 +264,11 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
   </section>
   <section class="features" id="features">
     <div class="container">
-      <h2 class="sec-title reveal">能力一览</h2>
+      <div class="sec-head reveal">
+        <span class="sec-eyebrow">能力</span>
+        <h2 class="sec-title">能力一览</h2>
+        <p class="sec-desc">从多 Agent 托管到远程控制，一站集成。</p>
+      </div>
       <div class="card-grid cols-3 feature-grid">
         <article class="card reveal"><h3>多 Agent 托管</h3><p>Claude Code / Codex / OpenCode / OMP 统一托管，按类型恢复会话。</p></article>
         <article class="card reveal"><h3>权限仲裁器</h3><p>所有权限请求集中审批，先到先生效，多通道解决。</p></article>
@@ -270,7 +283,11 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
   </section>
   <section class="showcase" id="showcase">
     <div class="container">
-      <h2 class="sec-title reveal">界面一览</h2>
+      <div class="sec-head reveal">
+        <span class="sec-eyebrow">界面</span>
+        <h2 class="sec-title">界面一览</h2>
+        <p class="sec-desc">终端、网页与远程，一套会话多种形态。</p>
+      </div>
       <div class="gallery reveal">
         <div class="gallery-main">
           <figure class="shot gallery-item is-active" data-name="showcase-terminal">
@@ -305,7 +322,11 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
   </section>
   <section class="mobile" id="mobile">
     <div class="container">
-      <h2 class="sec-title reveal">手机 App</h2>
+      <div class="sec-head reveal">
+        <span class="sec-eyebrow">手机 App</span>
+        <h2 class="sec-title">离开工位也能掌控</h2>
+        <p class="sec-desc">与桌面端实时同步，进度、审批、消息一手掌握。</p>
+      </div>
       <div class="mobile-in reveal">
         <div class="mobile-shot shot" data-name="mobile">
           <img src="" alt="Lynel 手机 App 界面：远程进度与审批" loading="lazy">
@@ -325,7 +346,11 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
   </section>
   <section class="download" id="download">
     <div class="container">
-      <h2 class="sec-title reveal">下载 Lynel Desktop</h2>
+      <div class="sec-head reveal">
+        <span class="sec-eyebrow">下载</span>
+        <h2 class="sec-title">下载 Lynel Desktop</h2>
+        <p class="sec-desc">桌面 / 手机 / VS Code 多端可选。</p>
+      </div>
       <div class="dl-panel reveal">
         <p class="dl-group-label">桌面端</p>
         <div class="plat-tabs" role="tablist" aria-label="选择平台">
@@ -352,7 +377,11 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
   </section>
   <section class="guide" id="guide">
     <div class="container">
-      <h2 class="sec-title reveal">使用指南</h2>
+      <div class="sec-head reveal">
+        <span class="sec-eyebrow">使用指南</span>
+        <h2 class="sec-title">几分钟即可上手</h2>
+        <p class="sec-desc">从安装到远程控制，六步走完。</p>
+      </div>
       <div class="guide-grid">
         <article class="guide-step reveal">
           <span class="guide-num">1</span>
@@ -389,13 +418,19 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
   </section>
   <section class="changelog" id="changelog">
     <div class="container">
-      <h2 class="sec-title reveal">更新日志</h2>
+      <div class="sec-head reveal">
+        <span class="sec-eyebrow">更新</span>
+        <h2 class="sec-title">更新日志</h2>
+      </div>
       <div class="log-list reveal" id="log-list">加载中…</div>
     </div>
   </section>
   <section class="faq" id="faq">
     <div class="container">
-      <h2 class="sec-title reveal">常见问题</h2>
+      <div class="sec-head reveal">
+        <span class="sec-eyebrow">FAQ</span>
+        <h2 class="sec-title">常见问题</h2>
+      </div>
       <div class="faq-grid">
         <details class="faq-item reveal"><summary>支持哪些 Agent？</summary><p>Claude Code、Codex、OpenCode、OMP，以及内嵌的 DeepSeek Harness Web 界面。</p></details>
         <details class="faq-item reveal"><summary>我的本地会话会被上传吗？</summary><p>会话数据默认本地存储；仅在你配置并开启云服务时，才按需上行同步。</p></details>
