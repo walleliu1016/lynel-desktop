@@ -77,8 +77,6 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
 .dl-cta { display: flex; gap: 14px; justify-content: center; align-items: center; flex-wrap: wrap; }
 .dl-cta .btn { padding: 16px 32px; font-size: 16px; border-radius: 12px; }
 .dl-icons { display: flex; gap: 8px; align-items: center; }
-.dl-icon { width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; transition: transform .15s ease, border-color .15s ease; }
-.dl-icon:hover { border-color: #c9d4e6; transform: translateY(-1px); }
 .agent-logos { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 34px; }
 .agent-tab { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--body); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
 .agent-tab:hover { border-color: #c9d4e6; }
@@ -212,10 +210,10 @@ html.js .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease, 
       <p class="hero-sub2">多会话 · 统一权限 · 实时追踪 · 远程控制</p>
       <div class="dl-cta">
         <a class="btn btn-primary" id="btn-dl-primary" href="/api/update/download?platform=win&arch=x64">检测下载平台…</a>
-        <a class="btn btn-ghost" id="btn-dl-all" href="#download">更多下载方式</a>
+        <a class="btn btn-ghost" id="btn-dl-all" href="#download">更多平台下载</a>
         <div class="dl-icons">
-          <a class="dl-icon" href="/api/update/download?platform=android" title="Android APK" aria-label="Android APK"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#3ddc84" d="M17.6 9.48 19.4 6.9c.2-.28.1-.66-.18-.86a.62.62 0 0 0-.86.18l-1.92 2.76A8.1 8.1 0 0 0 12 7.6c-1.6 0-3.1.47-4.44 1.38L5.64 6.22a.62.62 0 0 0-.86-.18.62.62 0 0 0-.18.86l1.8 2.58A8.34 8.34 0 0 0 3.6 15.2h16.8a8.34 8.34 0 0 0-2.8-5.72zM7.4 14.4a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm9.2 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM12 4.8a2.2 2.2 0 0 0 2.2-2.2A2.2 2.2 0 0 0 12 .4a2.2 2.2 0 0 0-2.2 2.2A2.2 2.2 0 0 0 12 4.8z"/></svg></a>
-          <a class="dl-icon" href="#download" title="iOS TestFlight" aria-label="iOS TestFlight"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#a2aaad" d="M16.36 12.58c0-2.36 1.93-3.5 2.02-3.55-1.1-1.61-2.81-1.83-3.42-1.85-1.46-.15-2.85.86-3.59.86-.74 0-1.88-.84-3.09-.82-1.59.02-3.06.92-3.88 2.34-1.65 2.87-.42 7.12 1.19 9.45.79 1.14 1.72 2.42 2.95 2.37 1.18-.05 1.63-.76 3.06-.76s1.83.76 3.08.74c1.27-.02 2.08-1.16 2.86-2.31.9-1.32 1.27-2.6 1.29-2.67-.03-.01-2.47-.95-2.47-3.8zM13.94 5.6c.65-.79 1.09-1.89.97-2.98-.94.04-2.08.63-2.75 1.42-.6.7-1.13 1.82-.99 2.89 1.05.08 2.12-.53 2.77-1.33z"/></svg></a>
+          <a class="btn btn-ghost btn-sm" href="/api/update/download?platform=android" title="Android APK"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="#3ddc84" d="M17.6 9.5 19.4 7c.2-.3.1-.7-.2-.9-.3-.2-.7-.1-.9.2l-1.9 2.6A8.2 8.2 0 0 0 12 7.2c-1.6 0-3.1.5-4.4 1.4L5.7 6.3c-.2-.3-.6-.4-.9-.2-.3.2-.4.6-.2.9L6.4 9.5A8.4 8.4 0 0 0 3.4 15.4h17.2a8.4 8.4 0 0 0-3-5.9zM7.4 14.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm9.2 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM12 5a2.2 2.2 0 0 0 2.2-2.2A2.2 2.2 0 0 0 12 .6a2.2 2.2 0 0 0-2.2 2.2A2.2 2.2 0 0 0 12 5z"/></svg>Android</a>
+          <a class="btn btn-ghost btn-sm" href="#download" title="iOS TestFlight"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="#a2aaad" d="M16.4 12.6c0-2.4 1.9-3.5 2-3.6-1.1-1.6-2.8-1.8-3.4-1.9-1.5-.2-2.9.9-3.6.9-.7 0-1.9-.8-3.1-.8-1.6 0-3.1.9-3.9 2.4-1.7 2.9-.4 7.1 1.2 9.4.8 1.1 1.7 2.4 3 2.4 1.2 0 1.6-.8 3.1-.8s1.8.8 3.1.8c1.3 0 2.1-1.2 2.9-2.3.9-1.3 1.3-2.6 1.3-2.7 0 0-2.5-1-2.5-3.8zM14 5.6c.7-.8 1.1-1.9 1-3-1 .1-2.1.6-2.8 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.8-1.3z"/></svg>iOS</a>
         </div>
       </div>
       <div class="agent-logos" role="tablist" aria-label="选择 Agent">
