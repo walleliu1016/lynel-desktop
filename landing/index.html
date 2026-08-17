@@ -147,6 +147,17 @@ section { padding: var(--space) 0; scroll-margin-top: 72px; }
 .site-foot { border-top: 1px solid var(--line); padding: 32px 0; }
 .foot-in { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
 .foot-links { display: flex; gap: 20px; }
+
+/* ===== 无障碍 & 移动端收尾 ===== */
+:focus-visible { outline: 2px solid var(--brand-blue); outline-offset: 2px; }
+.tab:focus-visible, .btn:focus-visible, .nav-links a:focus-visible { outline: 2px solid var(--brand-blue); outline-offset: 2px; }
+.hero-shot .shot-fallback { min-height: 420px; }
+@media (max-width: 640px) {
+  .nav-links { display: none; }
+  .hero h1 br { display: none; }
+  .dl-panel { padding: 22px 16px; }
+  .btn-lg { min-width: 100%; }
+}
 </style>
 </head>
 <body>
