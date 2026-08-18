@@ -30,6 +30,7 @@ export interface UpdateState {
     percent?: number;
     speed?: number;
     error?: string;
+    filePath?: string;
     source?: 'startup' | 'scheduled' | 'manual';
   };
 }

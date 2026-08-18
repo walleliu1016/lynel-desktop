@@ -100,6 +100,7 @@ export const UnwatchTraceSession = (workDir: string, sessionId: string) =>
 export const CheckUpdate = () => api().checkUpdate();
 export const DownloadUpdate = (info: any) => api().downloadUpdate(info);
 export const QuitAndInstall = () => api().quitAndInstall();
+export const OpenUpdateFolder = () => api().openUpdateFolder();
 export const GetUpdateStatus = () => api().getUpdateStatus();
 export const GetUpdateConfig = () => api().getUpdateConfig();
 export const UpdateUpdateConfig = (cfg: any) => api().updateUpdateConfig(cfg);

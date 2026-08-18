@@ -14,8 +14,13 @@ import { spawn } from 'node:child_process';
 //   - 其 resolveFiles 硬性要求 sha512，而 GitHub release 未上传 latest.yml 时 sha512 恒为空。
 const logger = getLogger();
 
-// 已下载的安装包绝对路径，供 quitAndInstall 安装使用
+// 已下载的安装包绝对路径，供 quitAndInstall / 打开所在文件夹使用
 let downloadedFilePath: string | null = null;
+
+/** 已下载安装包绝对路径（供"打开所在文件夹"等 UI 使用） */
+export function getDownloadedFilePath(): string | null {
+  return downloadedFilePath;
+}
 
 function downloadTargetPath(version?: string): string {
   const ext =
@@ -23,7 +28,15 @@ function downloadTargetPath(version?: string): string {
     : process.platform === 'darwin' ? '.dmg'
     : '.AppImage';
   const name = version ? `lynel-desktop-${version}` : 'lynel-desktop-update';
-  return path.join(os.tmpdir(), `${name}${ext}`);
+  // 保存到用户 Downloads 目录（而非系统 tmp），便于用户找到安装包自行安装
+  const dir = path.join(os.homedir(), 'Downloads');
+  try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+  // 重名时追加序号 (1)/(2)...，不覆盖已有文件
+  let target = path.join(dir, `${name}${ext}`);
+  for (let i = 1; fs.existsSync(target); i++) {
+    target = path.join(dir, `${name} (${i})${ext}`);
+  }
+  return target;
 }
 
 export function downloadUpdate(
@@ -48,9 +61,8 @@ export function downloadUpdate(
       return;
     }
 
+    // downloadTargetPath 保证文件名唯一（重名自动加序号），无需预先清理
     const target = downloadTargetPath(info.version);
-    // 覆盖上次同版本的残留文件
-    try { fs.rmSync(target, { force: true }); } catch {}
     const fileStream = fs.createWriteStream(target);
     const transport = parsed.protocol === 'https:' ? https : http;
 
@@ -72,6 +84,8 @@ export function downloadUpdate(
 
       res.on('data', (chunk) => {
         received += chunk.length;
+        // 写入文件（此前漏写导致下载文件恒为空）
+        fileStream.write(chunk);
         // 限制 onProgress 频率，避免高频 IPC
         if (received - lastReport < 256 * 1024) return;
         lastReport = received;
@@ -86,10 +100,13 @@ export function downloadUpdate(
       });
 
       res.on('end', () => {
-        downloadedFilePath = target;
-        logger.info(`[downloader] 下载完成: ${info.version} -> ${target}`);
-        onProgress({ status: 'downloaded', data: { version: info.version } });
-        resolve();
+        // 等所有 chunk 落盘并关闭句柄后再标记完成，否则文件恒为空、句柄泄漏导致下次 EPERM
+        fileStream.end(() => {
+          downloadedFilePath = target;
+          logger.info(`[downloader] 下载完成: ${info.version} -> ${target}`);
+          onProgress({ status: 'downloaded', data: { version: info.version, filePath: target } });
+          resolve();
+        });
       });
 
       res.on('error', (err) => {

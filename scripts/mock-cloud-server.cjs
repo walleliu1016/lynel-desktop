@@ -16,6 +16,7 @@
 //   5. 终端输入 allow / deny 处理最新的 PermissionRequest
 
 const http = require('node:http');
+const fs = require('node:fs');
 const { Server } = require('socket.io');
 
 const PORT = 3099;
@@ -94,6 +95,51 @@ const httpServer = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, token: jwt }));
     });
+    return;
+  }
+
+  // GET /api/update/check?platform=..&arch=..&version=..&channel=..  模拟云服务更新检查
+  if (req.method === 'GET' && req.url.startsWith('/api/update/check')) {
+    const q = new URL(req.url, 'http://localhost').searchParams;
+    const platform = q.get('platform') || '?';
+    const arch = q.get('arch') || '?';
+    const version = q.get('version') || '?';
+    const channel = q.get('channel') || '?';
+    console.log(`[update/check] platform=${platform} arch=${arch} currentVersion=${version} channel=${channel}`);
+    // mock：始终返回比当前版本新的 0.0.23（有更新）。想测"已是最新"改 hasUpdate=false / version=当前
+    const body = {
+      hasUpdate: true,
+      version: '0.0.23',
+      releaseDate: new Date().toISOString(),
+      releaseNotes: 'mock 更新：dsh 全局化与 updater store 修复',
+      forceUpdate: false,
+      downloadUrl: 'http://127.0.0.1:3099/download/lynel-desktop-0.0.23.exe',
+      sha512: 'mock-sha512-0.0.23',
+      size: 1024,
+    };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(body));
+    return;
+  }
+
+  // GET /download/<file> 模拟安装包下载（返回真实安装包，便于测试安装流程）
+  if (req.method === 'GET' && req.url.startsWith('/download/')) {
+    const name = req.url.slice('/download/'.length);
+    console.log(`[download] ${name}`);
+    const REAL_INSTALLER = 'C:\\Users\\bruceliu\\Downloads\\lynel-desktop-0.0.22-x64.exe';
+    try {
+      const stat = fs.statSync(REAL_INSTALLER);
+      res.writeHead(200, {
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': String(stat.size),
+        'Content-Disposition': `attachment; filename="${name}"`,
+      });
+      fs.createReadStream(REAL_INSTALLER).pipe(res);
+    } catch (err) {
+      console.log(`[download] 真实安装包不可用: ${err.message}`);
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'installer not found' }));
+    }
     return;
   }
 
@@ -344,6 +390,8 @@ rl.on('line', (line) => {
 httpServer.listen(PORT, () => {
   console.log(`mock cloud server listening on http://localhost:${PORT}`);
   console.log(`  POST /api/auth/login`);
+  console.log(`  GET  /api/update/check`);
+  console.log(`  GET  /download/<file>`);
   console.log(`  socket.io events:`);
   console.log(`    desktop:auth / desktop:session:sync / desktop:envelope:push`);
   console.log(`    desktop:hook:batch / desktop:hook:permission / desktop:hook:abort`);

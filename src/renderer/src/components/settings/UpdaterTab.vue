@@ -34,8 +34,9 @@
         </div>
       </div>
       <div v-if="state.status === 'downloaded'" class="install-hint">
-        下载完成，重启应用以安装新版本。
-        <button class="btn-restart" @click="onRestart">立即重启</button>
+        <p>下载完成。由于系统签名限制无法自动安装，安装包已保存到：</p>
+        <p class="install-path">{{ state.data?.filePath }}</p>
+        <button class="btn-download" @click="onOpenFolder">打开所在文件夹</button>
         <button class="btn-later" @click="state.status = 'idle'">稍后</button>
       </div>
       <div v-if="state.status === 'error'" class="error-hint">
@@ -57,7 +58,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import {
-  CheckUpdate, DownloadUpdate, QuitAndInstall,
+  CheckUpdate, DownloadUpdate, OpenUpdateFolder,
   GetUpdateStatus, EventsOn,
 } from '../../composables/useElectron'
 import { pushToast } from '../../composables/useToast'
@@ -143,8 +144,8 @@ async function onDownload() {
   }
 }
 
-function onRestart() {
-  QuitAndInstall()
+function onOpenFolder() {
+  OpenUpdateFolder()
 }
 </script>
 
@@ -192,6 +193,7 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 .progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; }
 
 .install-hint { margin-top: 8px; font-size: 13px; color: var(--text-secondary); }
+.install-path { font-family: var(--font-mono); font-size: 12px; color: var(--text-tertiary); word-break: break-all; margin: 6px 0; }
 .error-hint { margin-top: 8px; font-size: 13px; color: var(--status-error); }
 
 .force-overlay {

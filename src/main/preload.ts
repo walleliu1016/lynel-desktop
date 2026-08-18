@@ -113,6 +113,7 @@ const api = {
   checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
   downloadUpdate: (info: any) => ipcRenderer.invoke('app:downloadUpdate', info),
   quitAndInstall: () => ipcRenderer.invoke('app:quitAndInstall'),
+  openUpdateFolder: () => ipcRenderer.invoke('app:openUpdateFolder'),
   getUpdateStatus: () => ipcRenderer.invoke('app:getUpdateStatus'),
   getUpdateConfig: () => ipcRenderer.invoke('app:getUpdateConfig'),
   updateUpdateConfig: (cfg: any) => ipcRenderer.invoke('app:updateUpdateConfig', cfg),

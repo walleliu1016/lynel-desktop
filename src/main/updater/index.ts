@@ -1,8 +1,9 @@
-import { ipcMain, BrowserWindow, app } from 'electron';
+import { ipcMain, BrowserWindow, app, shell } from 'electron';
+import fs from 'node:fs';
 import { getStore } from '../store.js';
 import { getLogger } from '../log.js';
 import { checkForUpdates } from './checker.js';
-import { downloadUpdate, quitAndInstall } from './downloader.js';
+import { downloadUpdate, quitAndInstall, getDownloadedFilePath } from './downloader.js';
 import type { UpdateConfig, UpdateState } from './types.js';
 
 const logger = getLogger();
@@ -13,7 +14,7 @@ let startupCheckDone = false;
 // 读取云服务配置作为 HTTP fallback 地址
 function cloudFallbackConfig(): { httpEnabled: boolean; httpBaseUrl: string } {
   try {
-    const store = getStore('default');
+    const store = getStore('settings');
     const enabled = store.get('cloud_service_enabled') as boolean | undefined;
     const url = store.get('cloud_service_url') as string | undefined;
     return {
@@ -96,6 +97,17 @@ export function initUpdater(getMainWindow: () => BrowserWindow): void {
 
   ipcMain.handle('app:quitAndInstall', async () => {
     quitAndInstall();
+  });
+
+  // 打开已下载安装包所在文件夹并选中文件（系统签名限制，需用户自行安装）
+  ipcMain.handle('app:openUpdateFolder', async () => {
+    const file = getDownloadedFilePath();
+    if (!file || !fs.existsSync(file)) {
+      logger.warn('[updater] 未找到已下载的安装包，无法打开目录');
+      return false;
+    }
+    shell.showItemInFolder(file);
+    return true;
   });
 
   ipcMain.handle('app:getUpdateStatus', async () => ({
