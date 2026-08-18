@@ -53,7 +53,7 @@
               <input
                 class="form-input"
                 v-model="cloudUrl"
-                placeholder="https://ease.example.com"
+                placeholder="https://weor.test.tctpwebank.com/lynel"
               />
             </div>
           </div>
@@ -100,6 +100,9 @@ const cloudEnabled = ref(false)
 const cloudUrl = ref('')
 const loading = ref(false)
 
+// 云服务默认地址（登录页可修改）
+const DEFAULT_CLOUD_URL = 'https://weor.test.tctpwebank.com/lynel'
+
 const canSubmit = computed(() => {
   if (!username.value.trim()) return false
   if (cloudEnabled.value && !token.value) return false
@@ -136,7 +139,7 @@ onMounted(async () => {
   try {
     const cfg = await GetSettings()
     cloudEnabled.value = !!cfg.cloud_service_enabled
-    cloudUrl.value = cfg.cloud_service_url || ''
+    cloudUrl.value = cfg.cloud_service_url || DEFAULT_CLOUD_URL
   } catch {}
 })
 
