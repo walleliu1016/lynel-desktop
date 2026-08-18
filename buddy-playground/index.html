@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buddy 独立测试台</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="app-head">
+      <h1>Buddy 独立测试台</h1>
+      <span class="hint">vanilla HTML · 双击 index.html 即可打开 · 逻辑与 lynel-desktop src/renderer 的 buddy 一致</span>
+    </header>
+
+    <div class="layout">
+      <!-- 左：预览 + 状态/事件 -->
+      <section class="panel">
+        <div class="preview">
+          <div class="preview-head">
+            <span class="preview-badge" id="rarityBadge"></span>
+            <span class="preview-name" id="speciesName"></span>
+            <span class="face-text">表情 <span id="faceText"></span></span>
+            <span id="shinyBadge" class="shiny-badge hidden">SHINY</span>
+          </div>
+          <div class="preview-body">
+            <div class="preview-stage" id="stage">
+              <div class="buddy" id="buddy">
+                <div class="buddy-bubble hidden" id="bubble"></div>
+                <div class="buddy-body" id="body">
+                  <pre class="buddy-pre" id="pre"></pre>
+                </div>
+              </div>
+            </div>
+            <div class="preview-stats">
+              <div class="stat-rows" id="statRows"></div>
+              <div class="stat-tip">事件驱动属性变化，30s 自动衰减回基线</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <span class="row-label">状态</span>
+          <div class="btn-group" id="stateBtns"></div>
+          <span class="row-tip">切换渲染帧（思考/庆祝/警觉/空闲）</span>
+        </div>
+        <div class="row">
+          <span class="row-label">事件</span>
+          <div class="btn-group" id="eventBtns"></div>
+        </div>
+      </section>
+
+      <!-- 右：外观/属性控制 -->
+      <section class="panel controls">
+        <div class="fields">
+          <div class="field">
+            <span class="flabel">Shiny</span>
+            <label class="switch"><input type="checkbox" id="shiny"><span class="slider"></span></label>
+          </div>
+
+          <div class="field">
+            <span class="flabel">物种</span>
+            <select id="species" class="ctrl-select"></select>
+          </div>
+
+          <div class="field">
+            <span class="flabel">帽子</span>
+            <select id="hat" class="ctrl-select"></select>
+          </div>
+
+          <div class="field">
+            <span class="flabel">眼睛</span>
+            <div class="eye-row" id="eyeRow"></div>
+          </div>
+
+          <div class="field">
+            <span class="flabel">稀有度</span>
+            <select id="rarity" class="ctrl-select"></select>
+          </div>
+
+          <div class="field">
+            <span class="flabel">3D 旋转</span>
+            <div class="range-ctrl">
+              <input type="range" id="tilt" min="0" max="20" step="1" value="8">
+              <span class="form-value" id="tiltVal">8°</span>
+            </div>
+          </div>
+
+          <div class="field">
+            <span class="flabel">浮动</span>
+            <div class="range-ctrl">
+              <input type="range" id="float" min="0" max="10" step="1" value="3">
+              <span class="form-value" id="floatVal">3px</span>
+            </div>
+          </div>
+
+          <div class="field wide">
+            <span class="flabel">自定义</span>
+            <textarea id="ascii" rows="3" class="buddy-textarea"
+              placeholder="粘贴自定义 ASCII，最多 40 行 × 80 列（合法时完全覆盖基座渲染，不做眼睛/帽子替换）"></textarea>
+            <span id="asciiError" class="ascii-error"></span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="buddy-data.js"></script>
+  <script src="buddy.js"></script>
+</body>
+</html>

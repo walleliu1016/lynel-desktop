@@ -1,0 +1,435 @@
+/* ============================================================
+ * style.css — Buddy 独立测试台样式。
+ * 移植 lynel-desktop 的 BuddyTab.vue / BuddyPet.vue scoped 样式，
+ * 补齐 app 主题 token（默认暗色）。
+ * ============================================================ */
+
+:root {
+  --bg: #16161b;
+  --bg-panel: #212127;
+  --bg-input: #2a2a31;
+  --bg-hover: #33333c;
+  --border: #3a3a44;
+  --text-primary: #e6e6ea;
+  --text-secondary: #a0a0ab;
+  --text-tertiary: #6f6f7a;
+  --accent: #4f9cff;
+  --accent-light: #9dc4ff;
+  --accent-soft-bg: rgba(79, 156, 255, 0.14);
+  --status-error: #ff6b6b;
+  --status-ok: #4ec98b;
+  --shadow-panel: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --radius-md: 8px;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 13px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---- 布局 ---- */
+.app {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 20px 24px 40px;
+}
+
+.app-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.app-head h1 {
+  margin: 0;
+  font-size: 20px;
+}
+.app-head .hint {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+  gap: 16px;
+  align-items: start;
+}
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+
+/* ---- 预览卡（移植 BuddyTab .preview） ---- */
+.preview {
+  margin-bottom: 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+
+.preview-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.preview-badge {
+  font-size: 13px;
+  font-weight: 600;
+}
+.preview-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.face-text {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.shiny-badge {
+  color: #e3b341;
+  font-size: 10px;
+  margin-left: auto;
+}
+
+.preview-body {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.preview-stage {
+  flex: 1 1 auto;
+  min-height: 148px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  transition: border-color 0.2s;
+  overflow: hidden;
+}
+
+.preview-stats {
+  flex: 0 0 210px;
+  min-width: 0;
+}
+
+/* ---- Buddy 本体（移植 BuddyPet scoped） ---- */
+.buddy {
+  position: relative;
+  display: inline-block;
+  user-select: none;
+  transform-origin: center;
+}
+/* 不设 transition: transform —— rAF 每帧已写终值，transition 会让动画叠出拖影 */
+.buddy-body {
+  cursor: pointer;
+  transform-style: preserve-3d;
+}
+.buddy-pre {
+  font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace);
+  font-size: 18px;
+  line-height: 1.1;
+  margin: 0;
+  color: var(--text-primary);
+  white-space: pre;
+}
+/* Shiny：金色 + 金色光晕 */
+.buddy.shiny .buddy-pre {
+  color: #e3b341;
+}
+.buddy.shiny .buddy-body {
+  text-shadow: 0 0 6px #d2992288;
+}
+
+/* ---- 气泡（移植 BuddyPet .buddy-bubble + pop） ---- */
+.buddy-bubble {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 200px;
+  padding: 6px 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--text-primary);
+  box-shadow: var(--shadow-panel);
+  white-space: normal;
+  z-index: 10;
+}
+.buddy-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--bg-panel);
+}
+.buddy-bubble.pop {
+  animation: buddy-pop 0.15s ease;
+}
+@keyframes buddy-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+/* ---- 属性条（移植 BuddyTab .preview-stats） ---- */
+.stat-rows {
+  margin-bottom: 6px;
+}
+.stat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+.stat-label {
+  min-width: 58px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.stat-bar {
+  flex: 1;
+  height: 7px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.stat-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.2s;
+}
+.stat-val {
+  min-width: 22px;
+  text-align: right;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+.stat-tip {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* ---- 状态 / 事件行 ---- */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.row:last-child {
+  margin-bottom: 0;
+}
+.row-label {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.row-tip {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+.btn-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ctrl-btn {
+  padding: 5px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ctrl-btn:hover {
+  background: var(--bg-hover);
+}
+.ctrl-btn.active {
+  background: var(--accent-soft-bg);
+  border-color: var(--accent);
+  color: var(--accent-light);
+}
+
+/* ---- 表单（移植 BuddyTab .fields） ---- */
+.fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.field.wide {
+  flex-direction: column;
+  align-items: stretch;
+}
+.flabel {
+  flex: 0 0 auto;
+  width: 60px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ctrl-select {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+.ctrl-select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.eye-row {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+.eye-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.eye-btn:hover {
+  background: var(--bg-hover);
+}
+.eye-btn.active {
+  background: var(--accent-soft-bg);
+  border-color: var(--accent);
+  color: var(--accent-light);
+}
+
+.range-ctrl {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.range-ctrl input {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+.form-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+/* Shiny 开关（移植 app Switch） */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.switch .slider {
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+.switch .slider::before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 3px;
+  top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.switch input:checked + .slider {
+  background: var(--accent);
+}
+.switch input:checked + .slider::before {
+  transform: translateX(14px);
+}
+
+.buddy-textarea {
+  width: 100%;
+  min-height: 56px;
+  padding: 6px 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.3;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.buddy-textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.ascii-error {
+  font-size: 11px;
+  min-height: 14px;
+}
