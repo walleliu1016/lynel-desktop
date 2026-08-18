@@ -1,23 +1,24 @@
 /**
  * DeepSeek Harness（dsh）进程管理单例。
  *
- * 路线 A（WebView 内嵌）：由 lynel 主进程 spawn `dsh web`（`--port 0` 让 OS
- * 分配随机端口），解析 harness stdout 的 URL 就绪信号（`dsh web: http://127.0.0.1:<port>`，
- * harness 官方注释明确该行即 readiness signal），把实际 URL 交给渲染进程 iframe 加载。
+ * 由 lynel 主进程 spawn `dsh web`（`--port 0` 让 OS 分配随机端口），解析 harness
+ * stdout 的 URL 就绪信号（`dsh web: http://127.0.0.1:<port>`，harness 官方注释明确
+ * 该行即 readiness signal），把实际 URL 交给渲染进程 iframe 加载。
  *
- * dev 用 `npx @deepseek-ai/dsh`（npx 缓存已就绪）；生产用应用内置的 dsh bin
- * （`ELECTRON_RUN_AS_NODE=1` + 应用自带 node，避免依赖系统 node）。
+ * dsh 与 claude 一致：用户通过 `npm install -g @deepseek-ai/dsh` 全局安装，版本由
+ * 用户用 npm 管理（升级 `npm i -g dsh@latest`），命令行可直接管理插件
+ * （`dsh plugin --profile web add <pkg>`）。Windows 上 dsh 是 `.cmd` shim，
+ * 经 `cmd.exe /c` 执行；其他平台直接执行 `dsh`。启动前探测 `dsh --version`，
+ * 未安装时给出安装指引。
  */
-import { spawn, type ChildProcess } from 'node:child_process';
-import path from 'node:path';
+import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import kill from 'tree-kill';
-import { app } from 'electron';
 import { getLogger } from './log.js';
 
 /** harness 就绪信号：`dsh web: http://127.0.0.1:<port>` */
 const URL_LINE_RE = /dsh web: http:\/\/127\.0\.0\.1:(\d+)/;
 
-/** harness 启动超时（npx 首次拉包可能较慢） */
+/** harness 启动超时（全局 dsh 首次安装或更新时可能较慢） */
 const START_TIMEOUT_MS = 120_000;
 
 export interface DshHandle {
@@ -46,13 +47,19 @@ class DshManager {
   }
 
   private async start(): Promise<DshHandle> {
-    const { cmd, args, env } = this.buildCommand();
-    // 不传 shell（shell:false）：这里 cmd 恒为 process.execPath（真实 .exe），
-    // CreateProcess 可直接执行，无需 cmd.exe 解析。Windows 下若加 shell:true，
-    // Node 只做字符串拼接不转义，安装路径含空格（如
-    // C:\Users\<user>\AppData\Local\Programs\Lynel）会被 cmd.exe 拆散，
-    // 报"不是内部或外部命令"，dsh 提前退出。shell:false 时 Node 按
-    // CommandLineToArgvW 规则自动给含空格的 argv 加引号。
+    let cmd: string;
+    let args: string[];
+    let env: Record<string, string>;
+    try {
+      ({ cmd, args, env } = this.buildCommand());
+    } catch (err) {
+      // buildCommand 抛错（如 dsh 未安装）时重置单例，避免 rejected starting 被复用
+      this.reset();
+      throw err;
+    }
+    // 不传 shell（shell:false）：Windows 下 cmd 为 cmd.exe（真实 .exe），
+    // CreateProcess 可直接执行；且 Node 按 CommandLineToArgvW 规则自动给含空格的
+    // argv 加引号，避免安装路径含空格被 cmd.exe 拆散。其他平台直接执行 dsh。
     const proc = spawn(cmd, args, {
       env: { ...process.env, ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -127,7 +134,7 @@ class DshManager {
     if (proc && proc.pid) {
       getLogger().info('[dsh] shutting down harness');
       // 必须 await 进程树杀净后再返回：tree-kill 内部是异步 taskkill，
-      // 若不等完成就 app.exit(0)，taskkill 会被中断导致 npx/dsh 子进程残留成孤儿。
+      // 若不等完成就 app.exit(0)，taskkill 会被中断导致 cmd.exe/dsh 子进程残留成孤儿。
       await this.killTree(proc);
     }
   }
@@ -159,30 +166,33 @@ class DshManager {
 
   private buildCommand(): { cmd: string; args: string[]; env: Record<string, string> } {
     // 本地回环流量绕过系统代理，避免 iframe 加载 localhost 被代理拦截
-    const env = { NO_PROXY: 'localhost,127.0.0.1', no_proxy: 'localhost,127.0.0.1' };
-    const dshArgs = ['web', '--port', '0'];
-    // 统一使用应用内置 dsh（node_modules/@deepseek-ai/dsh），dev/生产一致，
-    // 避免 npx 首次拉包慢/失败导致 120s 超时。
-    // 生产：依赖经 asarUnpack 解出到 app.asar.unpacked；dev：走源码 node_modules。
-    // 均用 Electron 自带 node 执行（RUN_AS_NODE）。
-    const dshBin = app.isPackaged
-      ? path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
-      : path.join(app.getAppPath(), 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
-    return {
-      cmd: process.execPath,
-      // cordis-plugin-hmr 需要 --expose-internals 才能启动 HMR service
-      args: ['--expose-internals', dshBin, ...dshArgs],
-      env: {
-        ...env,
-        ELECTRON_RUN_AS_NODE: '1',
-        // dsh 的 directory-picker-auto 在 win32 下默认选 native 后端（koffi + win32
-        // dialog worker，存在 IPC 竞态/预编译损坏问题，报 "worker exited before
-        // reporting a result"）。注入 SSH_TTY 让其判定"操作者不在屏幕前"，强制走内建
-        // browse 后端（纯 Node 目录浏览，不依赖 koffi/原生对话框）。仅 win32 设置，
-        // macOS 保留原生 osascript 选择器。
-        ...(process.platform === 'win32' ? { SSH_TTY: '1' } : {}),
-      },
+    const env: Record<string, string> = {
+      NO_PROXY: 'localhost,127.0.0.1',
+      no_proxy: 'localhost,127.0.0.1',
     };
+    const dshArgs = ['web', '--port', '0'];
+    // 与 claude 一致：使用用户全局安装的 dsh（npm install -g @deepseek-ai/dsh），
+    // 版本由用户用 npm 管理（升级 npm i -g dsh@latest），命令行可直接管理插件
+    // （dsh plugin add）。启动前探测 --version，未安装时给出安装指引。
+    this.ensureDshInstalled(env);
+    if (process.platform === 'win32') {
+      return { cmd: 'cmd.exe', args: ['/c', 'dsh', ...dshArgs], env };
+    }
+    return { cmd: 'dsh', args: dshArgs, env };
+  }
+
+  /** 探测 dsh 是否已全局安装；未安装抛出带安装指引的错误。 */
+  private ensureDshInstalled(env: Record<string, string>): void {
+    const spawnEnv = { ...process.env, ...env };
+    try {
+      if (process.platform === 'win32') {
+        execFileSync('cmd.exe', ['/d', '/c', 'dsh', '--version'], { env: spawnEnv, stdio: 'pipe' });
+      } else {
+        execFileSync('dsh', ['--version'], { env: spawnEnv, stdio: 'pipe' });
+      }
+    } catch {
+      throw new Error('未找到 dsh 命令，请先执行: npm install -g @deepseek-ai/dsh');
+    }
   }
 }
 

@@ -314,20 +314,13 @@ npm run dist:linux
 ### 15. DeepSeek Harness（dsh）
 
 - 进程管理：`src/main/dsh.ts` 的 `DshManager` 单例，`dsh:ensure` / `dsh:shutdown` IPC（`app.ts`）。
-- 加载策略：**统一使用应用内置 dsh bin**（不再用 npx），均以 `ELECTRON_RUN_AS_NODE=1` + Electron 自带 Node 执行：
-  - dev：`<app>/node_modules/@deepseek-ai/dsh/lib/bin.js`（`app.getAppPath()`）。
-  - 生产：`<resources>/app.asar.unpacked/node_modules/@deepseek-ai/dsh/lib/bin.js`。
-  - **必须传 `--expose-internals`**：`cordis-plugin-hmr` 需要它启动 HMR service，否则 dsh 启动后立即崩溃。
+- 加载策略：**与 claude 一致，使用用户全局安装的 dsh**（`npm install -g @deepseek-ai/dsh`），Lynel **不内置** dsh 依赖。版本由用户用 npm 管理，命令行可直接管理插件（`dsh plugin`）。
+  - 启动：`buildCommand()` 先探测 `dsh --version`（未安装则报错提示 `npm i -g @deepseek-ai/dsh`），Windows 用 `cmd.exe /c dsh web --port 0`（`.cmd` shim），其他平台直接 `dsh web --port 0`。
+  - **不要**让 Lynel 依赖 `@deepseek-ai/dsh`：`node_modules/.bin/dsh` 会抢占 PATH，导致 `cmd.exe /c dsh` 解析到内置 bin 而非全局（claude 无此问题，因为 Lynel 不依赖 claude）。
+  - win32 目录选择走 dsh 原生对话框，**不要**注入 `SSH_TTY=1`（那会强制页面内 browse、绕开本地弹窗）。此前注入过是为绕开 dsh win32 对话框 worker 竞态（"worker exited before reporting a result"），已实测全局 rc.7 的 koffi 3.1.5 可正常加载，故移除。
 - 就绪信号：解析 stdout 的 `dsh web: http://127.0.0.1:<port>`（`--port 0` 让 OS 分配随机端口），120s 超时 kill 进程树。
-- **更新 dsh**：`@deepseek-ai/dsh` 是根 `package.json` 依赖，升级需**同时更新两个 lock**（否则 dev 与产线版本不一致）：
-  - 本地 dev（pnpm）：`pnpm add @deepseek-ai/dsh@latest`
-  - CI 打包（npm）：`npm install --package-lock-only`
-  - 本地 `npm run dev` 验证 dsh 就绪后走发布流程；electron-builder 会把新 dsh 解入 `app.asar.unpacked`。
-- **⚠️ electron-builder 只收集根 `dependencies` 树，dsh 生态大量 peerDependencies 会被遗漏**，导致生产安装包 dsh 启动报 `ERR_MODULE_NOT_FOUND`（逐个爆缺包，如 `cordis-plugin-group`、`dsh-scope`、`dsh-fs`）。升级 dsh 后必须检查并补全：
-  ```bash
-  node -e 'const l=require("./package-lock.json");const p=Object.keys(l.packages).filter(k=>l.packages[k]["peer"]&&k.includes("@deepseek-ai"));console.log(p.map(k=>k.replace("node_modules/","")).sort().join("\n"));'
-  ```
-  输出的 peer-only 包（不含已补的 `cordis-plugin-group` 等）需全部显式加入根 `package.json` 的 `dependencies`（版本统一 `^0.1.0-rc.6`），再 `npm install --package-lock-only` 同步 lock，否则生产包启动缺包。
+- **更新 dsh**：用户 `npm i -g @deepseek-ai/dsh@latest`，不随 Lynel 发版。
+- **插件管理**：共享 `~/.dsh`（默认 `DSH_HOME`）profile。命令行 `dsh plugin --profile web add <pkg>` 加插件（内部转 pnpm，需系统 pnpm），装进 `~/.dsh/profiles/web/`（`dsh.profile.bundles` + `cordis.patch.yml`）。Lynel harness 用 web profile；dsh 单例常驻不热加载，改 profile 后需重启 dsh/harness（重启应用或杀 dsh 进程）。
 
 ---
 
