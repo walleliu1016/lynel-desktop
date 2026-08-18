@@ -43,7 +43,7 @@
           <div class="cloud-section">
             <div class="cloud-toggle-row">
               <Switch v-model="cloudEnabled" @change="onCloudToggle" />
-              <span class="cloud-toggle-label">启用云服务<span class="cloud-beta-text">（测试阶段）</span></span>
+              <span class="cloud-toggle-label">启用云服务</span>
               <span class="cloud-info-icon" data-tooltip="开启后，会话消息与权限请求将实时推送到移动 App，便于远程审批与查看进度">
                 <Icon name="alert-circle" :size="14" />
               </span>
@@ -277,10 +277,6 @@ async function closeSettings() {
 }
 .cloud-toggle-label {
   font-size: 12px; color: var(--text-primary); font-weight: 500;
-}
-.cloud-beta-text {
-  font-size: 10px; font-weight: 400;
-  color: var(--text-secondary);
 }
 .cloud-info-icon {
   display: inline-flex; align-items: center;
