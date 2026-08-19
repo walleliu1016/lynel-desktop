@@ -98,3 +98,9 @@ export function agentSpec(kind: AgentKind | undefined | null): AgentSpec {
   if (kind && AGENTS[kind]) return AGENTS[kind];
   return AGENTS.claude;
 }
+
+/** 按 settings 判断某 agent 是否启用：claude 恒启用，codex/opencode/omp 读 `<kind>_enabled` 开关（缺省关闭） */
+export function isAgentEnabledBySettings(settings: { get(key: string, defaultValue?: unknown): unknown }, kind: AgentKind): boolean {
+  if (kind === 'claude') return true;
+  return !!settings.get(`${kind}_enabled`, false);
+}
