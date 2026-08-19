@@ -8,16 +8,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import Select, { type SelectOption } from './Select.vue'
-import { AGENT_KINDS, agentMeta, type AgentKind } from '../types/agents'
+import { agentMeta, type AgentKind } from '../types/agents'
 import { AGENT_LOGOS } from '../agentLogos'
+import { useSettingsStore } from '../stores/settings'
 
 const props = defineProps<{ modelValue: AgentKind }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: AgentKind): void }>()
+const settings = useSettingsStore()
 
 const options = computed<SelectOption[]>(() =>
-  AGENT_KINDS.map((k) => {
+  settings.enabledAgentKinds.map((k) => {
     const m = agentMeta(k)
     const logo = AGENT_LOGOS[k]
     return {
@@ -34,6 +36,12 @@ const options = computed<SelectOption[]>(() =>
     }
   }),
 )
+
+// 当前选中 agent 被开关禁用时，回退 claude（保证下拉里永远有选中项）。
+// Pinia 会把 setup store 返回的 computed 解包成数组，需用 getter 形式监视。
+watch(() => settings.enabledAgentKinds, (kinds) => {
+  if (!kinds.includes(props.modelValue)) emit('update:modelValue', 'claude')
+})
 
 function onChange(v: string) {
   emit('update:modelValue', v as AgentKind)
