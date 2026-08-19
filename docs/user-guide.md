@@ -424,7 +424,50 @@ Agent 执行敏感操作（运行命令、写文件等）前会请求授权。Ly
 
 ---
 
-## 十四、常见问题（FAQ）
+## 十四、VS Code 扩展
+
+除了桌面 App，Lynel 还提供一个 **VS Code 扩展**（Lynel - Claude AI Terminal），让你在 VS Code 里直接运行 Claude Code 交互式终端，并接入与桌面 App **同一套企业微信机器人系统**（共享 `~/.lynel-desktop` 数据目录，两边添加的机器人互通）。
+
+### 安装
+
+1. 从 **GitHub Releases** 下载 `lynel-vscode-<版本>.vsix`。
+2. 在 VS Code 中打开命令面板（`Ctrl+Shift+P`），执行 **Extensions: Install from VSIX...**，选择该文件安装。
+3. 安装后左侧活动栏出现 **Lynel** 图标，点击打开 **Sessions** 会话视图。
+
+### 常用命令
+
+在命令面板输入 `Lynel:` 即可看到全部命令：
+
+| 命令 | 作用 |
+|------|------|
+| Lynel: New Claude Terminal | 在当前工作区新建 Claude 终端 |
+| Lynel: Focus / Focus or Resume Terminal | 聚焦 / 恢复某个终端会话 |
+| Lynel: Close Terminal / Close All Terminals | 关闭单个 / 全部终端 |
+| Lynel: Bind WeCom Bot / Bind Bot to Session / Switch Bot Binding | 绑定 / 切换企业微信机器人 |
+| Lynel: Unbind Bot from Session | 解除机器人绑定 |
+| Lynel: Manage WeCom Bots | 机器人管理（添加 / 重命名 / 删除） |
+| Lynel: Open Settings | 打开扩展设置 |
+
+### Sessions 视图
+
+在 Sessions 视图里可以查看已运行的 Claude 终端会话；每个会话支持打开 / 恢复、绑定 / 解绑企业微信机器人、关闭等操作（通过行内按钮或右键菜单）。
+
+### 扩展设置
+
+| 配置项 | 说明 |
+|--------|------|
+| `lynel.claudeBin` | Claude CLI 路径（默认 `claude`） |
+| `lynel.dataDir` | Lynel 数据目录（默认 `~/.lynel-desktop`），与桌面 App 共享 |
+
+### 说明
+
+- 扩展**独立于桌面 App 运行**：它在 VS Code 内自己启动 hook 服务，拦截 Claude 的权限请求。
+- 权限请求与桌面 App 一样，会推送到绑定的企业微信机器人，可用手机审批。
+- 与桌面 App 共享 `~/.lynel-desktop` 下的机器人配置与最近会话数据。
+
+---
+
+## 十五、常见问题（FAQ）
 
 **如何开启日志或调整企业微信推送内容？**
 在「设置 → 通用」里：打开「启用日志」；用「推送思考过程 / 推送工具调用」控制企业微信推送是否包含思考与工具详情。
