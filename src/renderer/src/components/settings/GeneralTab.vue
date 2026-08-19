@@ -22,20 +22,13 @@
 
     <div class="form-group">
       <label class="form-label">Agent 可执行文件路径</label>
-      <div class="agent-path-tabs">
-        <button
-          v-for="k in settings.enabledAgentKinds"
-          :key="k"
-          class="agent-path-tab"
-          :class="['a-' + k, { active: selectedAgent === k }]"
-          @click="selectedAgent = k"
-        >
-          <svg class="agent-path-logo" :viewBox="AGENT_LOGOS[k].viewBox" v-html="AGENT_LOGOS[k].inner" />
-          <span>{{ agentMeta(k).short }}</span>
-        </button>
+      <div class="agent-path-rows">
+        <div v-for="k in settings.enabledAgentKinds" :key="k" class="agent-path-row">
+          <span class="agent-path-name" :class="'a-' + k">{{ agentMeta(k).short }}</span>
+          <input class="form-input" :value="pathOf(k)" @input="onPathInput(k, $event)" :placeholder="`留空使用 PATH 中的 ${k}`" />
+        </div>
       </div>
-      <input class="form-input" v-model="selectedPath" @change="markDirty" :placeholder="`留空使用 PATH 中的 ${selectedAgent}`" />
-      <p class="form-hint">自定义 {{ agentMeta(selectedAgent).label }} 可执行文件路径。留空则自动查找 PATH。</p>
+      <p class="form-hint">自定义各 agent 可执行文件路径。留空则自动查找 PATH。</p>
     </div>
 
     <div class="form-group">
@@ -83,11 +76,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed, ref, watch } from 'vue'
+import { onMounted, computed } from 'vue'
 import Switch from '../../components/Switch.vue'
 import { useSettingsStore } from '../../stores/settings'
 import { agentMeta, type AgentKind } from '../../types/agents'
-import { AGENT_LOGOS } from '../../agentLogos'
 
 const settings = useSettingsStore()
 const cfg = computed(() => settings.cfg ?? (settings.cfg = {
@@ -110,20 +102,17 @@ const cfg = computed(() => settings.cfg ?? (settings.cfg = {
   prevent_sleep: false,
 } as any))
 
-// Agent 路径 tab 切换：一次只显示当前 agent 的路径输入框
-const selectedAgent = ref<AgentKind>('claude')
-const selectedPath = computed({
-  get: () => (cfg.value as any)[`${selectedAgent.value}_path`] ?? '',
-  set: (v: string) => { (cfg.value as any)[`${selectedAgent.value}_path`] = v },
-})
+// 每个启用的 agent 一行：标签 + 路径输入，独立读写各自 <kind>_path
+function pathOf(k: AgentKind): string {
+  return (cfg.value as any)[`${k}_path`] ?? ''
+}
+function onPathInput(k: AgentKind, e: Event) {
+  ;(cfg.value as any)[`${k}_path`] = (e.target as HTMLInputElement).value
+  markDirty()
+}
 
 onMounted(() => settings.load())
 function markDirty() { settings.markDirty() }
-
-// 选中的 agent 被禁用时回退 claude（getter 形式 watch，避免 watch 数组值在 Pinia setup store 上失效）
-watch(() => settings.enabledAgentKinds, (kinds) => {
-  if (!kinds.includes(selectedAgent.value)) selectedAgent.value = 'claude'
-})
 </script>
 
 <style scoped>
@@ -141,21 +130,14 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 .form-input::placeholder { color: var(--text-tertiary); }
 .form-hint { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
 
-.agent-path-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
-.agent-path-tab {
-  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 8px 0; font-size: 12px; font-weight: 600;
-  border: 1px solid var(--border); border-radius: var(--radius-md);
-  background: var(--bg-input); color: var(--text-tertiary); cursor: pointer;
-  font-family: inherit;
-}
-.agent-path-tab:hover { border-color: var(--border-strong); color: var(--text-primary); }
-.agent-path-tab.active { border-color: transparent; }
-.agent-path-logo { width: 16px; height: 16px; flex-shrink: 0; }
-.agent-path-tab.a-claude.active { background: var(--agent-claude-bg); color: var(--agent-claude-fg); }
-.agent-path-tab.a-codex.active { background: var(--agent-codex-bg); color: var(--agent-codex-fg); }
-.agent-path-tab.a-opencode.active { background: var(--agent-opencode-bg); color: var(--agent-opencode-fg); }
-.agent-path-tab.a-omp.active { background: var(--agent-omp-bg); color: var(--agent-omp-fg); }
+.agent-path-rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.agent-path-row { display: flex; align-items: center; gap: 10px; }
+.agent-path-row .form-input { flex: 1; min-width: 0; }
+.agent-path-name { width: 84px; flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.agent-path-name.a-claude { color: var(--agent-claude-fg); }
+.agent-path-name.a-codex { color: var(--agent-codex-fg); }
+.agent-path-name.a-opencode { color: var(--agent-opencode-fg); }
+.agent-path-name.a-omp { color: var(--agent-omp-fg); }
 
 .switch-list { display: flex; flex-direction: column; gap: 2px; }
 .switch-row {

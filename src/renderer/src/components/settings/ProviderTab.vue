@@ -1,41 +1,43 @@
 <template>
   <div class="provider-tab">
-    <div class="header">
-      <div class="agent-switch">
+    <div class="provider-body">
+      <nav class="agent-menu">
         <button
           v-for="k in settings.enabledAgentKinds"
           :key="k"
-          class="agent-btn"
+          class="agent-menu-item"
           :class="['a-' + k, { active: selectedAgent === k }]"
           @click="selectedAgent = k"
         >
           <AgentBadge :agent="k" size="sm" />
           <span>{{ agentMeta(k).short }}</span>
         </button>
-      </div>
-    </div>
+      </nav>
 
-    <div v-if="providers.length > 0" class="card-grid">
-      <ProviderCard
-        v-for="p in providers"
-        :key="p.id"
-        :provider="p"
-        :is-active="p.id === activeId"
-        @edit="openEdit(p)"
-        @copy="onCopy(p)"
-        @set-active="onSetActive(p.id)"
-        @remove="onDelete(p)"
-      />
-      <button class="add-card" @click="onAdd">
-        <Icon name="plus" :size="20" />
-      </button>
-    </div>
-    <div v-else class="empty-state">
-      <div class="empty-text">暂无供应商，点击上方「新增供应商」</div>
-      <button class="add-card-empty" @click="onAdd">
-        <Icon name="plus" :size="14" />
-        <span>新增供应商</span>
-      </button>
+      <div class="provider-main">
+        <div v-if="providers.length > 0" class="card-grid">
+          <ProviderCard
+            v-for="p in providers"
+            :key="p.id"
+            :provider="p"
+            :is-active="p.id === activeId"
+            @edit="openEdit(p)"
+            @copy="onCopy(p)"
+            @set-active="onSetActive(p.id)"
+            @remove="onDelete(p)"
+          />
+          <button class="add-card" @click="onAdd">
+            <Icon name="plus" :size="20" />
+          </button>
+        </div>
+        <div v-else class="empty-state">
+          <div class="empty-text">暂无供应商</div>
+          <button class="add-card-empty" @click="onAdd">
+            <Icon name="plus" :size="14" />
+            <span>新增供应商</span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <ProviderDialog
@@ -160,24 +162,25 @@ watch(() => settings.enabledAgentKinds, (kinds) => {
 
 <style scoped>
 .provider-tab { display: flex; flex-direction: column; height: 100%; }
-.header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; border-bottom: 1px solid var(--border);
+.provider-body { flex: 1; min-height: 0; display: flex; }
+.agent-menu {
+  width: 148px; flex-shrink: 0; border-right: 1px solid var(--border);
+  padding: 12px 10px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto;
 }
-.agent-switch { display: flex; gap: 6px; flex: 1; }
-.agent-btn {
-  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 8px 0; font-size: 12px; font-weight: 600;
-  border: 1px solid var(--border); border-radius: var(--radius-md);
-  background: var(--bg-input); color: var(--text-tertiary); cursor: pointer;
-  font-family: inherit;
+.agent-menu-item {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 8px 10px; font-size: 12px; font-weight: 600;
+  border: 1px solid transparent; border-radius: var(--radius-md);
+  background: transparent; color: var(--text-secondary); cursor: pointer;
+  font-family: inherit; text-align: left;
 }
-.agent-btn:hover { border-color: var(--border-strong); color: var(--text-primary); }
-.agent-btn.active { border-color: transparent; }
-.agent-btn.a-claude.active { background: var(--agent-claude-bg); color: var(--agent-claude-fg); }
-.agent-btn.a-codex.active { background: var(--agent-codex-bg); color: var(--agent-codex-fg); }
-.agent-btn.a-opencode.active { background: var(--agent-opencode-bg); color: var(--agent-opencode-fg); }
-.agent-btn.a-omp.active { background: var(--agent-omp-bg); color: var(--agent-omp-fg); }
+.agent-menu-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.agent-menu-item.active { border-color: transparent; }
+.agent-menu-item.a-claude.active { background: var(--agent-claude-bg); color: var(--agent-claude-fg); }
+.agent-menu-item.a-codex.active { background: var(--agent-codex-bg); color: var(--agent-codex-fg); }
+.agent-menu-item.a-opencode.active { background: var(--agent-opencode-bg); color: var(--agent-opencode-fg); }
+.agent-menu-item.a-omp.active { background: var(--agent-omp-bg); color: var(--agent-omp-fg); }
+.provider-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .card-grid {
   flex: 1; overflow-y: auto; padding: 16px;
   display: grid;
