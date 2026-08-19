@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { defaultTerminalConfig, type Settings, type TerminalTheme } from '../types/settings'
 import { GetSettings, UpdateSettings } from '../composables/useElectron'
+import type { AgentKind } from '../types/agents'
 import { setThemeMode, themeMode, type ThemeMode } from '../composables/useTheme'
 
 /** 终端主题跟随 UI 主题：浅色 UI 用暖色亮，深色 UI 用默认暗色 */
@@ -16,6 +17,9 @@ function defaultSettings(): Settings {
     codex_path: '',
     opencode_path: '',
     omp_path: '',
+    codex_enabled: false,
+    opencode_enabled: false,
+    omp_enabled: false,
     log_enabled: false,
     auto_lock_minutes: 5,
     auto_start: false,
@@ -97,5 +101,24 @@ export const useSettingsStore = defineStore('settings', () => {
     }, 500)
   }
 
-  return { cfg, dirty, load, save, markDirty }
+  /** 可用 agent 列表：claude 恒在 + 开关开启者；cfg 未加载时仅 ['claude'] */
+  const enabledAgentKinds = computed<AgentKind[]>(() => {
+    const out: AgentKind[] = ['claude']
+    const c = cfg.value
+    if (!c) return out
+    if (c.codex_enabled) out.push('codex')
+    if (c.opencode_enabled) out.push('opencode')
+    if (c.omp_enabled) out.push('omp')
+    return out
+  })
+
+  /** 某 agent 是否启用：claude 恒 true；cfg 未加载时 false */
+  function isAgentEnabled(kind: AgentKind): boolean {
+    if (kind === 'claude') return true
+    const c = cfg.value
+    if (!c) return false
+    return !!c[`${kind}_enabled` as 'codex_enabled' | 'opencode_enabled' | 'omp_enabled']
+  }
+
+  return { cfg, dirty, load, save, markDirty, enabledAgentKinds, isAgentEnabled }
 })

@@ -42,6 +42,9 @@ export interface Settings {
   codex_path: string
   opencode_path: string
   omp_path: string
+  codex_enabled: boolean
+  opencode_enabled: boolean
+  omp_enabled: boolean
   log_enabled: boolean
   auto_lock_minutes: number
   auto_start: boolean
