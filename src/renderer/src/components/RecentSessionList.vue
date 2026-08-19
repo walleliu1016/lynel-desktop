@@ -12,11 +12,11 @@
       <span class="meta">{{ item.project }} · {{ duration(item.lastOpenedAt) }}</span>
     </div>
     <button
-      v-if="list.length > limit"
+      v-if="enabledList.length > limit"
       class="toggle-more"
       @click.stop="expanded = !expanded"
     >
-      {{ expanded ? '收起' : `另外 ${list.length - limit} 个会话` }}
+      {{ expanded ? '收起' : `另外 ${enabledList.length - limit} 个会话` }}
     </button>
   </div>
 </template>
@@ -26,6 +26,8 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import AgentBadge from './AgentBadge.vue'
 import { sessionDisplayTitle } from '../stores/sessions'
 import type { RecentSession } from '../types/recent'
+import { agentMeta } from '../types/agents'
+import { useSettingsStore } from '../stores/settings'
 
 const props = withDefaults(defineProps<{ list: RecentSession[]; limit?: number }>(), {
   limit: 5,
@@ -35,6 +37,13 @@ defineEmits<{ (e: 'select', item: RecentSession): void }>()
 
 const expanded = ref(false)
 
+const settings = useSettingsStore()
+
+// 按 agent 启用开关过滤：关闭的 agent 历史会话不显示（老会话无 agent 回退 claude，恒显示）
+const enabledList = computed(() =>
+  props.list.filter((item) => settings.isAgentEnabled(agentMeta(item.agent).kind)),
+)
+
 // 每分钟更新一次，驱动 duration 重新计算
 const tick = ref(0)
 let timer: ReturnType<typeof setInterval> | null = null
@@ -42,8 +51,8 @@ onMounted(() => { timer = setInterval(() => { tick.value++ }, 60000) })
 onUnmounted(() => { if (timer) clearInterval(timer) })
 
 const visibleList = computed(() => {
-  if (expanded.value) return props.list
-  return props.list.slice(0, props.limit)
+  if (expanded.value) return enabledList.value
+  return enabledList.value.slice(0, props.limit)
 })
 
 function displayTitle(item: RecentSession) {
