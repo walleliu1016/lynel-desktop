@@ -3,10 +3,28 @@
     <h2>通用设置</h2>
 
     <div class="form-group">
+      <label class="form-label">Agent 启用</label>
+      <div class="switch-list">
+        <label class="switch-row">
+          <span class="switch-label">启用 Codex</span>
+          <Switch v-model="cfg.codex_enabled" @change="markDirty" />
+        </label>
+        <label class="switch-row">
+          <span class="switch-label">启用 OpenCode</span>
+          <Switch v-model="cfg.opencode_enabled" @change="markDirty" />
+        </label>
+        <label class="switch-row">
+          <span class="switch-label">启用 OMP</span>
+          <Switch v-model="cfg.omp_enabled" @change="markDirty" />
+        </label>
+      </div>
+    </div>
+
+    <div class="form-group">
       <label class="form-label">Agent 可执行文件路径</label>
       <div class="agent-path-tabs">
         <button
-          v-for="k in AGENT_KINDS"
+          v-for="k in settings.enabledAgentKinds"
           :key="k"
           class="agent-path-tab"
           :class="['a-' + k, { active: selectedAgent === k }]"
@@ -65,10 +83,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed, ref } from 'vue'
+import { onMounted, computed, ref, watch } from 'vue'
 import Switch from '../../components/Switch.vue'
 import { useSettingsStore } from '../../stores/settings'
-import { AGENT_KINDS, agentMeta, type AgentKind } from '../../types/agents'
+import { agentMeta, type AgentKind } from '../../types/agents'
 import { AGENT_LOGOS } from '../../agentLogos'
 
 const settings = useSettingsStore()
@@ -78,6 +96,9 @@ const cfg = computed(() => settings.cfg ?? (settings.cfg = {
   codex_path: '',
   opencode_path: '',
   omp_path: '',
+  codex_enabled: false,
+  opencode_enabled: false,
+  omp_enabled: false,
   log_enabled: false,
   auto_lock_minutes: 5,
   auto_start: false,
@@ -98,6 +119,11 @@ const selectedPath = computed({
 
 onMounted(() => settings.load())
 function markDirty() { settings.markDirty() }
+
+// 选中的 agent 被禁用时回退 claude（getter 形式 watch，避免 watch 数组值在 Pinia setup store 上失效）
+watch(() => settings.enabledAgentKinds, (kinds) => {
+  if (!kinds.includes(selectedAgent.value)) selectedAgent.value = 'claude'
+})
 </script>
 
 <style scoped>
