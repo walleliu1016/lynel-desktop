@@ -24,7 +24,10 @@
       <label class="form-label">Agent 可执行文件路径</label>
       <div class="agent-path-rows">
         <div v-for="k in settings.enabledAgentKinds" :key="k" class="agent-path-row">
-          <span class="agent-path-name" :class="'a-' + k">{{ agentMeta(k).short }}</span>
+          <span class="agent-path-name" :class="'a-' + k">
+            <AgentBadge :agent="k" size="sm" />
+            <span>{{ agentMeta(k).short }}</span>
+          </span>
           <input class="form-input" :value="pathOf(k)" @input="onPathInput(k, $event)" :placeholder="`留空使用 PATH 中的 ${k}`" />
         </div>
       </div>
@@ -78,6 +81,7 @@
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
 import Switch from '../../components/Switch.vue'
+import AgentBadge from '../../components/AgentBadge.vue'
 import { useSettingsStore } from '../../stores/settings'
 import { agentMeta, type AgentKind } from '../../types/agents'
 
@@ -133,7 +137,7 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 .agent-path-rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
 .agent-path-row { display: flex; align-items: center; gap: 10px; }
 .agent-path-row .form-input { flex: 1; min-width: 0; }
-.agent-path-name { width: 84px; flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.agent-path-name { width: 108px; flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .agent-path-name.a-claude { color: var(--agent-claude-fg); }
 .agent-path-name.a-codex { color: var(--agent-codex-fg); }
 .agent-path-name.a-opencode { color: var(--agent-opencode-fg); }
