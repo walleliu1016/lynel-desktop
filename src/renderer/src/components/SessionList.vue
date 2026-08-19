@@ -43,6 +43,8 @@ import SessionItem from './SessionItem.vue'
 import Icon from './Icon.vue'
 import { useSessionsStore } from '../stores/sessions'
 import type { SessionMeta } from '../types/session'
+import { agentMeta } from '../types/agents'
+import { useSettingsStore } from '../stores/settings'
 
 const props = defineProps<{ list: SessionMeta[]; activeId: string | null; collapsed?: boolean; search?: string }>()
 defineEmits<{
@@ -50,13 +52,15 @@ defineEmits<{
 }>()
 
 const sessions = useSessionsStore()
+const settings = useSettingsStore()
 // 会话列表内部展开/收起（区别于侧边栏折叠）
 const expanded = ref(true)
 
 const filteredList = computed(() => {
+  const arr = props.list.filter((s) => settings.isAgentEnabled(agentMeta(s.agent).kind))
   const q = (props.search || '').trim().toLowerCase()
-  if (!q) return props.list
-  return props.list.filter((s) => {
+  if (!q) return arr
+  return arr.filter((s) => {
     const pn = s.project.toLowerCase()
     const wd = s.workdir.toLowerCase()
     const title = (s.user_title || s.first_prompt || s.ai_title || '').toLowerCase()
