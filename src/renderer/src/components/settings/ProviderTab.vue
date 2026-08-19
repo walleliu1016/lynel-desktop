@@ -3,7 +3,7 @@
     <div class="header">
       <div class="agent-switch">
         <button
-          v-for="k in AGENT_KINDS"
+          v-for="k in settings.enabledAgentKinds"
           :key="k"
           class="agent-btn"
           :class="['a-' + k, { active: selectedAgent === k }]"
@@ -58,19 +58,21 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import Icon from '../../components/Icon.vue'
 import AgentBadge from '../../components/AgentBadge.vue'
 import ProviderCard from './ProviderCard.vue'
 import ProviderDialog from './ProviderDialog.vue'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import { useProvidersStore } from '../../stores/providers'
+import { useSettingsStore } from '../../stores/settings'
 import { pushToast } from '../../composables/useToast'
-import { AGENT_KINDS, agentMeta } from '../../types/agents'
+import { agentMeta, type AgentKind } from '../../types/agents'
 import type { Provider } from '../../types/providers'
 
 const store = useProvidersStore()
-const selectedAgent = ref('claude')
+const settings = useSettingsStore()
+const selectedAgent = ref<AgentKind>('claude')
 const dialogOpen = ref(false)
 const editingProvider = ref<Provider | null>(null)
 const showDeleteDialog = ref(false)
@@ -149,6 +151,11 @@ async function confirmDelete() {
     pushToast({ level: 'error', source: 'provider', message: '删除失败：' + (e?.message ?? e) })
   }
 }
+
+// 选中的 agent 被开关隐藏时回退 claude
+watch(() => settings.enabledAgentKinds, (kinds) => {
+  if (!kinds.includes(selectedAgent.value)) selectedAgent.value = 'claude'
+})
 </script>
 
 <style scoped>
