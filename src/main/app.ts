@@ -110,7 +110,7 @@ function createSettingsOverrideFile(proxyUrl: string, hookUrl?: string): { args:
     // hooks 直接注入临时文件，不修改全局 ~/.claude/settings.json
     if (hookUrl) {
       const hookTypes: Record<string, number> = {
-        PermissionRequest: 7200,
+        PermissionRequest: 14400, // 4 小时，覆盖长时间挂起的权限审批
         PreToolUse: 5,
         PostToolUse: 5,
         PostToolUseFailure: 5,

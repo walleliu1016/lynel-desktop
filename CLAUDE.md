@@ -134,7 +134,7 @@ npm run dist:linux
 ### 5. Hooks
 - **配置方式**：不再修改全局 `~/.claude/settings.json`。`app.ts` 的 `createSettingsOverrideFile()` 在 `os.tmpdir()/lynel-desktop/` 下创建临时 settings 文件，通过 `--settings <tmpFile>` 传递给 Claude。文件包含：
   - `env.ANTHROPIC_BASE_URL`：指向本地代理。
-  - `hooks`：4 类 hook（`PermissionRequest` 7200s、`PreToolUse` 5s、`PostToolUse` 5s、`PostToolUseFailure` 5s）。
+  - `hooks`：4 类 hook（`PermissionRequest` 14400s、`PreToolUse` 5s、`PostToolUse` 5s、`PostToolUseFailure` 5s）。
   - `permissions.defaultMode: "bypassPermissions"`：绕过 Claude 内置权限检查，统一走 Lynel 的 `PermissionBroker`。
 - `hookserver.ts` 内置 HTTP server，监听 `127.0.0.1:<port>`，仅暴露 3 个端点：`/hook`、`/api/send`、`/api/sessions/:id/calls/stream`。
 - `PermissionRequest` hook 被 hookserver 单独拦截，走审批专用通道（`desktop:hook:permission` 上行到云服务）。

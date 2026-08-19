@@ -24,7 +24,7 @@ export function createSettingsOverrideFile(hookPort: number, proxyUrl: string): 
 
   // 注入 4 种 hook 类型
   const hookTypes: Record<string, number> = {
-    PermissionRequest: 7200,
+    PermissionRequest: 14400, // 4 小时，覆盖长时间挂起的权限审批
     PreToolUse: 5,
     PostToolUse: 5,
     PostToolUseFailure: 5,
