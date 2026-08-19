@@ -2085,7 +2085,9 @@ export class App {
   }
 
   /** 轮询：/clear 后 claude 会新建 jsonl，目录里出现不在快照中的 id 即新会话。
-   *  最多 12 次 × 500ms ≈ 6s，超时放弃（用户 /clear 后可能没发消息，jsonl 延迟创建）。 */
+   *  最多 60 次 × 500ms ≈ 30s，超时放弃。此前 6s 超时过短：实测 Claude /clear 后
+   *  可能要 20s+ 才写入新 jsonl（SessionStart:clear + file-history-snapshot），
+   *  轮询提前放弃导致 rebind 不执行、左侧列表不刷新。与 pollResumeRebind 的 30s 对齐。 */
   private pollClearRebind(): void {
     const pc = this.pendingClear;
     if (!pc) return;
@@ -2109,7 +2111,7 @@ export class App {
       return;
     }
     pc.attempts += 1;
-    if (pc.attempts > 12) {
+    if (pc.attempts > 60) {
       this.pendingClear = null;
       getLogger().warn(`[app:clear] no new session jsonl within timeout sid=${pc.oldId.slice(0, 8)}`);
       return;
