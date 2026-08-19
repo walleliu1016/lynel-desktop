@@ -1,7 +1,7 @@
 {
   "name": "lynel-desktop",
   "productName": "Lynel Desktop",
-  "version": "0.0.23",
+  "version": "0.0.24",
   "private": true,
   "main": "dist-electron/src/main/index.js",
   "type": "module",
