@@ -22,7 +22,7 @@ import { OutputChannel, type HookEventLike } from './channels/channel.js';
 import { permissionBroker, PermissionRequest as BrokerPermissionRequest } from './permission-broker.js';
 import { windowAttention } from './attention.js';
 import { startProxy } from './apiproxy.js';
-import { agentSpec, type AgentKind, type AgentSpec } from './agents/index.js';
+import { agentSpec, isAgentEnabledBySettings, type AgentKind, type AgentSpec } from './agents/index.js';
 import { start as startPty, PtyMode, PtySize, preloadShellEnv } from './pty.js';
 import { registerTraceIpc } from './trace/ipc.js';
 import type { BotConfig } from './types/bot.js';
@@ -1165,6 +1165,9 @@ export class App {
   private async createSessionInternal(workDir: string, prompt: string, extraArgs: string[] = [], autoTrust = false, botId?: string, agent?: AgentKind): Promise<string> {
     const realId = randomUUID();
     const spec = agentSpec(agent);
+    if (!isAgentEnabledBySettings(this.settingsStore, spec.kind)) {
+      throw new Error(`${spec.label} 已在设置中禁用，请在通用设置中开启后重试`);
+    }
     // upstream 按 agent 解析：codex 读 config.toml 的 base_url，claude 读 settings.json，omp/opencode 用 spec 默认。
     const upstream = resolveUpstream(spec);
     const proxy = await startProxy(workDir, realId, (env) => this.dispatcher.dispatch(env), spec.format, upstream, spec.kind);
