@@ -80,8 +80,18 @@
             <Icon name="link-2-off" :size="13" />
           </button>
         </div>
+        <div class="menu-divider" />
+        <button class="menu-item add-bot-item" @click="openBotAdd">
+          <Icon name="plus" :size="13" />
+          去添加
+        </button>
       </div>
     </div>
+    <BotAddDialog
+      v-if="showBotAddDialog"
+      @saved="onBotAdded"
+      @close="showBotAddDialog = false"
+    />
     <SessionTooltip
       v-if="showTip"
       :meta="meta"
@@ -96,6 +106,7 @@
 import { computed, ref, nextTick, onMounted, onUnmounted } from 'vue'
 import AgentBadge from './AgentBadge.vue'
 import SessionTooltip from './SessionTooltip.vue'
+import BotAddDialog from './BotAddDialog.vue'
 import Icon from './Icon.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useBotsStore } from '../stores/bots'
@@ -113,6 +124,7 @@ const showTip = ref(false)
 const itemEl = ref<HTMLElement | null>(null)
 const tipAnchor = ref({ x: 0, y: 0 })
 const showBotPicker = ref(false)
+const showBotAddDialog = ref(false)
 let showTimer: ReturnType<typeof setTimeout> | null = null
 let hideTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -306,6 +318,23 @@ async function unbindBot() {
     pushToast({ level: 'error', source: 'session', message: '解除绑定失败：' + (e?.message ?? e) })
   }
 }
+
+// 「去添加」：关闭浮层并弹出添加机器人弹窗，保存后默认绑定当前会话
+function openBotAdd() {
+  menuOpen.value = false
+  showBotPicker.value = false
+  showBotAddDialog.value = true
+}
+
+async function onBotAdded(botId: string) {
+  showBotAddDialog.value = false
+  try {
+    await sessions.bindBot(props.meta.id, botId)
+    pushToast({ level: 'info', source: 'session', message: '已绑定 Bot' })
+  } catch (e: any) {
+    pushToast({ level: 'error', source: 'session', message: '绑定失败：' + (e?.message ?? e) })
+  }
+}
 </script>
 
 <style scoped>
@@ -454,6 +483,8 @@ async function unbindBot() {
   font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
 }
 .menu-item.selected { color: var(--accent); font-weight: 600; }
+.add-bot-item { color: var(--accent); font-weight: 500; }
+.add-bot-item:hover { color: var(--accent); }
 
 .bot-row {
   display: flex;
