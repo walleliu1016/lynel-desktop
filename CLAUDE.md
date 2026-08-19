@@ -246,10 +246,16 @@ npm run dist:linux
 | `/escape` `/esc` | `\x1b` | Esc |
 | `/ctrl-d` | `\x04` | Ctrl+D / EOF |
 | `/ctrl-z` | `\x1a` | Ctrl+Z / SIGTSTP |
-| `/screenshot` | — | 截取当前终端画面（xterm.js canvas → PNG） |
+| `/screenshot` | `__screenshot__`（哨兵） | 截取当前终端画面（`renderBufferToPng` 渲染 PTY buffer → PNG 发送） |
+| `/help` | `__help__`（哨兵） | 发送 markdown 帮助 |
 
-- 实现：`wecom-channel.ts` → `CONTROL_COMMANDS` 映射 → `handleControlCommand()` → `session.writeInput()`（原始字节，不追加 `\r`）
-- 会话路由逻辑与普通消息一致（引用路由 → bot 绑定 → 默认映射）
+**处理流程：**
+
+1. **入口拦截**（入站消息）：`extractInboundText()` 提取文本（text / mixed）→ 剥离 `@botname` 前缀 → 去末尾换行 → `CONTROL_COMMANDS[text]` 命中则进 `handleControlCommand()` 并 `return`（不命中才走普通文本转发）。指令要求整条消息精确匹配，带多余字符不触发。
+2. **分发**：`handleControlCommand()` → `__screenshot__` → `handleScreenshot`；`__help__` → `handleHelp`；其余 → 解析目标会话 → `session.writeInput(sessionId, controlChar)`（原始字节，**不追加 `\r`**）→ 回执「已发送 xxx」。
+3. **目标会话解析**（与普通消息一致的三级路由）：引用消息头部（`**project** · 会话#N · xxxxxxxx` / `会话#N`，经 `resolveSessionArg` 依次 序号 → 精确 ID → 前缀唯一匹配）→ bot 绑定反查（`currentBotId` → `sessionBotMap`）→ 兜底（`getMapping` / `chatIdToSession` / `lastActiveSession`）。无目标 → 回「当前没有绑定会话，无法发送控制指令。」
+4. **截图特例**：`session.getBuffer()` 取终端原始缓冲 → `renderBufferToPng` → 走 bot 的 `wsClient.uploadMedia` + `sendMediaMessage` 发 PNG。
+5. **帮助特例**：`resolveBotForChat` 找 bot → 发 markdown 指令表。
 
 ### 11. 两栏布局与每会话子页（Two-Panel Layout）
 
