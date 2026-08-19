@@ -175,11 +175,10 @@ watch(() => settings.enabledAgentKinds, (kinds) => {
   font-family: inherit; text-align: left;
 }
 .agent-menu-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-.agent-menu-item.active { border-color: transparent; }
-.agent-menu-item.a-claude.active { background: var(--agent-claude-bg); color: var(--agent-claude-fg); }
-.agent-menu-item.a-codex.active { background: var(--agent-codex-bg); color: var(--agent-codex-fg); }
-.agent-menu-item.a-opencode.active { background: var(--agent-opencode-bg); color: var(--agent-opencode-fg); }
-.agent-menu-item.a-omp.active { background: var(--agent-omp-bg); color: var(--agent-omp-fg); }
+.agent-menu-item.a-claude.active { color: var(--agent-claude-fg); }
+.agent-menu-item.a-codex.active { color: var(--agent-codex-fg); }
+.agent-menu-item.a-opencode.active { color: var(--agent-opencode-fg); }
+.agent-menu-item.a-omp.active { color: var(--agent-omp-fg); }
 .provider-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .card-grid {
   flex: 1; overflow-y: auto; padding: 16px;
