@@ -33,18 +33,25 @@
         <Icon v-else name="send" :size="14" />
       </button>
     </div>
+    <BotAddDialog
+      v-if="showBotAddDialog"
+      @saved="onBotAdded"
+      @close="showBotAddDialog = false"
+    />
   </form>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import Icon from './Icon.vue'
 import AgentSelect from './AgentSelect.vue'
 import Select, { type SelectOption } from './Select.vue'
+import BotAddDialog from './BotAddDialog.vue'
 import { agentMeta, type AgentKind } from '../types/agents'
 import { PickDirectory } from '../composables/useElectron'
 import { useBotsStore } from '../stores/bots'
 import { useSessionsStore } from '../stores/sessions'
+import { pushToast } from '../composables/useToast'
 
 const props = defineProps<{ loading?: boolean }>()
 const emit = defineEmits<{
@@ -55,6 +62,7 @@ const workdir = ref('')
 const prompt = ref('')
 const agent = ref<AgentKind>('claude')
 const selectedBot = ref('')
+const showBotAddDialog = ref(false)
 
 const botsStore = useBotsStore()
 const sessions = useSessionsStore()
@@ -83,7 +91,22 @@ const botSelectOptions = computed<SelectOption[]>(() => [
     label: getBotBoundSessionName(b.id) ? `${b.name}（已绑定 ${getBotBoundSessionName(b.id)}）` : b.name,
     disabled: !isBotAvailable(b.id),
   })),
+  { value: '__add__', label: '＋ 去添加' },
 ])
+
+// 选中「去添加」特殊项：重置为不绑定并弹出添加机器人弹窗
+watch(selectedBot, (v) => {
+  if (v === '__add__') {
+    selectedBot.value = ''
+    showBotAddDialog.value = true
+  }
+})
+
+function onBotAdded(botId: string) {
+  showBotAddDialog.value = false
+  selectedBot.value = botId
+  pushToast({ level: 'info', source: 'bot', message: '已添加机器人，将绑定到新会话' })
+}
 
 function onEnter(e: KeyboardEvent) {
   if (e.isComposing) return
