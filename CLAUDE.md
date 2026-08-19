@@ -173,7 +173,7 @@ npm run dist:linux
   - `sse-channel.ts`：向订阅了 session 的 Express Response 写 `text/event-stream`。
   - `wecom-channel.ts`：动态加载 `@wecom/wecom-openclaw-plugin`，将阶段数据发送到企业微信；处理 PermissionRequest 模板卡片推送与 `#allow/#deny` 命令；支持控制指令（`/interrupt`、`/ctrl-c`、`/escape`、`/ctrl-d`、`/ctrl-z`、`/screenshot`）。
   - `localfile-channel.ts`：将阶段事件写入本地 JSONL/JSON 文件，过滤流式 text/thinking 碎片。
-  - `state-channel.ts`：把 `LynelEnvelope` + `HookEventLike` 映射为 session 状态（idle/running/awaiting_permission/done）和活动（thinking/working/streaming/idle/awaiting_permission），通过回调驱动前端 UI 更新。替代了旧版灵动岛悬浮窗。
+  - `state-channel.ts`：把 `LynelEnvelope` + `HookEventLike` 映射为 session 状态（idle/running/awaiting_permission/done）和活动（thinking/working/streaming/idle/awaiting_permission），通过回调驱动前端 UI 更新（会话状态展示与状态点）。
   - `desktop-socket.ts`：Socket.IO 云端上行通道，支持 `desktop:auth`、`desktop:session:sync`、`desktop:envelope:push`、`desktop:hook:batch`、`desktop:hook:permission`、`desktop:hook:abort` 事件。
   - `cloud-channel.ts`：HTTP 云端上行通道（POST `/api/envelope/push`、`/api/sessions/sync`、`/api/hook`），作为 Socket.IO 的 fallback。
   - `notify-error.ts`：外部错误通知辅助函数（`notifyExternal`、`errMessage`）。
@@ -251,30 +251,27 @@ npm run dist:linux
 - 实现：`wecom-channel.ts` → `CONTROL_COMMANDS` 映射 → `handleControlCommand()` → `session.writeInput()`（原始字节，不追加 `\r`）
 - 会话路由逻辑与普通消息一致（引用路由 → bot 绑定 → 默认映射）
 
-### 11. 三段式布局（Three-Panel Layout）
+### 11. 两栏布局与每会话子页（Two-Panel Layout）
 
-- 布局结构：左侧 SessionList（280px，可折叠为 44px） | 中间 GlobalTabs + .content（flex:1） | 右侧 TraceSidebar（200px）
-- TraceSidebar：`src/renderer/src/components/trace/TraceSidebar.vue`，右侧固定 200px 面板
-  - StatsBar：请求数、总费用、刷新按钮
-  - 请求缩略列表（v2 分页 + 摘要索引）：
-    - Row 1：状态点 · #seq · model · 时间
-    - Row 2：↓输入tokens ↑输出tokens 🔧工具调用次数 ⏱延迟 $费用
+- 布局结构：左侧栏（280px，可折叠为 44px） | 中间内容区（flex:1）。**没有右侧 Trace 侧栏**。
+  - 左侧栏（`HomeView.vue`）：顶部收起按钮 + 云状态；入口按钮（首页 / DeepSeek Harness / 搜索）；中部 SessionList；底部（账户 / 使用指南 / 设置）。
+  - 中间内容区：GlobalTabs（首页 / 会话 / 设置 / 使用指南 / Harness）+ `.content`。
+  - 会话标签页内是「**终端 / Trace**」两个子页（`activeSubTab` + `subTabBySession` 按会话记忆）。Trace 不再是固定侧栏，而是每会话独立的全屏子页。
+- TracePane：`src/renderer/src/components/trace/TracePane.vue`，会话子页的全屏面板
+  - 顶部工具栏：请求数、总费用、刷新按钮、图过滤（model/errorsOnly）
+  - 左侧请求缩略列表（240px，v2 分页 + 摘要索引）：状态点 · #seq · model · tokens · 延迟
+  - 右侧 RequestDetailPane：单条请求详情（从完整 `<seq>.json` 按需加载）
   - 分页：初始加载 50 条，滚动到顶部触发 `loadMore()`
   - 状态覆盖：loading 骨架屏 / error 重试 / 空状态（"暂无 API 请求"）
-- TraceOverlay：`src/renderer/src/components/trace/TraceOverlay.vue`
-  - Teleport 到 `.center`，绝对定位覆盖层
-  - `width: clamp(360px, 35%, 45%)` 随窗口自动缩放
-  - 关闭方式：backdrop 点击 / Escape 键 / × 按钮
-  - 复用 RequestDetailPane 展示单条请求详情（从完整 `<seq>.json` 按需加载）
 - Trace store（Pinia）：`src/renderer/src/stores/trace.ts`（v2 分页）
   - 状态：workDir/sessionId/requests/detail/diffResult/loading/loadError/hasMore
   - 摘要索引：`_summaries.jsonl`（每行 ~200 字节，apiproxy 追加写入）
   - 数据来源：`_summaries.jsonl`（列表）+ `<seq>.json`（详情按需加载）
   - `load()` 首页 50 条，`loadMore()` 滚动分页，`fetchNew()` 增量加载（`sinceSeq`）
   - 图过滤（model/errorsOnly）变化时自动重新加载首页
-  - HomeView 通过 `watch(activeSessionId)` 统一监听 session 切换并自动调用 `trace.load()`
-  - 覆盖所有激活路径：SessionList 点击、GlobalTabs 切换、最近会话打开、新建会话
-- 删除组件：`TraceTab.vue`、`TraceHeader.vue`、`RequestList.vue`（死代码）
+  - 会话切换统一走 `trace.setSession(wd, id)` + `trace.load()`（HomeView `watch(activeSessionId)`），覆盖 SessionList 点击 / GlobalTabs 切换 / 最近会话打开 / 新建会话
+- DeepSeek Harness：独立 tab，iframe 面板（`.dsh-frame-wrap`），始终挂载、非激活时 opacity:0 垫底（避免冻结重载）
+- 已删除：`TraceSidebar.vue`、`TraceOverlay.vue`、`TraceTab.vue`、`TraceHeader.vue`、`RequestList.vue`、右侧 Workspace 面板
 - 关键不变量：摘要索引 `<sessionDir>/_summaries.jsonl` 与 raw exchange `<seq>.json` 同目录，前者轻量全量读取（5000 条仅 ~1MB），后者仅详情时按需读取
 
 ### 12. 在线升级（Updater）
