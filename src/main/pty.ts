@@ -119,7 +119,7 @@ function parseEnvOutput(out: string): Record<string, string> {
   return env;
 }
 
-function resolveShellEnvSync(): Record<string, string> {
+export function resolveShellEnvSync(): Record<string, string> {
   if (os.platform() !== 'darwin') return {};
   if (cachedDarwinEnv) return cachedDarwinEnv;
 

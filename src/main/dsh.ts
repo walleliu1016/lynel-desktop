@@ -14,6 +14,7 @@
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import kill from 'tree-kill';
 import { getLogger } from './log.js';
+import { resolveShellEnvSync } from './pty.js';
 
 /** harness 就绪信号：`dsh web: http://127.0.0.1:<port>` */
 const URL_LINE_RE = /dsh web: http:\/\/127\.0\.0\.1:(\d+)/;
@@ -51,7 +52,11 @@ class DshManager {
     let args: string[];
     let env: Record<string, string>;
     try {
-      ({ cmd, args, env } = this.buildCommand());
+      // macOS 打包应用从 Finder 启动时 PATH 精简（不含 nvm 目录），直接 spawn 全局
+      // dsh 会 ENOENT。复用 pty.ts 的 login-shell 解析拿到完整 PATH（与 claude 启动
+      // 一致，非 darwin 返回 {}），否则终端里 which 可见的 dsh 在应用内找不到。
+      const shellEnv = resolveShellEnvSync();
+      ({ cmd, args, env } = this.buildCommand(shellEnv));
     } catch (err) {
       // buildCommand 抛错（如 dsh 未安装）时重置单例，避免 rejected starting 被复用
       this.reset();
@@ -164,9 +169,11 @@ class DshManager {
     this.starting = null;
   }
 
-  private buildCommand(): { cmd: string; args: string[]; env: Record<string, string> } {
-    // 本地回环流量绕过系统代理，避免 iframe 加载 localhost 被代理拦截
+  private buildCommand(shellEnv: Record<string, string>): { cmd: string; args: string[]; env: Record<string, string> } {
+    // 先铺 login-shell 解析出的完整环境（darwin 下补全 nvm 等 PATH），
+    // 再叠加本地回环流量绕过系统代理，避免 iframe 加载 localhost 被代理拦截
     const env: Record<string, string> = {
+      ...shellEnv,
       NO_PROXY: 'localhost,127.0.0.1',
       no_proxy: 'localhost,127.0.0.1',
     };
