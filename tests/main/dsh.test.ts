@@ -18,6 +18,13 @@ vi.mock('node:child_process', () => ({
   execFileSync: (...args: unknown[]) => execFileSyncMock(...args),
 }));
 
+// macOS 下 resolveShellEnvSync 内部会经 execFileSync 跑 `$SHELL -ilc env`，会污染
+// dsh 探测（dsh --version）的调用计数。mock 掉 pty 的 shell-env 解析，让本测试
+// 聚焦 dsh 自身逻辑，与平台无关（CI 的 darwin runner 也能通过）。
+vi.mock('../../src/main/pty.js', () => ({
+  resolveShellEnvSync: () => ({}),
+}));
+
 // mock 必须在 import 之前声明，vitest 会 hoist；dshManager 是模块级单例
 import { dshManager } from '../../src/main/dsh.js';
 
