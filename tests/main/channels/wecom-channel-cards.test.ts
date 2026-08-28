@@ -118,4 +118,58 @@ describe('WeComChannel (LynelEnvelope API)', () => {
     expect(chatIdToSession.has('chat-2')).toBe(false);
     expect(chatIdToSession.has('chat-3')).toBe(true);
   });
+
+  // AskUserQuestion 卡片：运维端模板卡片显示不全，单/多问题都应先发文本预告，再发卡片
+  it('sendAskQuestionCard 单问题：先发文本预告，再发卡片', async () => {
+    const order: string[] = [];
+    (channel as any).sendTemplateCard = vi.fn(async () => { order.push('card'); return true; });
+    (channel as any).sendMarkdownWithRetry = vi.fn(async () => { order.push('text'); });
+
+    await (channel as any).sendAskQuestionCard({
+      kind: 'PermissionRequest',
+      sessionId: 'sid-1',
+      workDir: '/wd',
+      payload: {
+        id: 'req-1',
+        seq: 7,
+        toolName: 'AskUserQuestion',
+        toolInput: {
+          questions: [
+            { question: '选择环境？', multiSelect: false, options: [{ label: 'dev' }, { label: 'prod' }] },
+          ],
+        },
+      },
+    }, 1);
+
+    expect(order).toEqual(['text', 'card']);
+    expect((channel as any).sendMarkdownWithRetry).toHaveBeenCalledTimes(1);
+    expect((channel as any).sendTemplateCard).toHaveBeenCalledTimes(1);
+  });
+
+  it('sendAskQuestionCard 多问题：先发文本预告，再发第一张卡片并暂存剩余', async () => {
+    const order: string[] = [];
+    (channel as any).sendTemplateCard = vi.fn(async () => { order.push('card'); return true; });
+    (channel as any).sendMarkdownWithRetry = vi.fn(async () => { order.push('text'); });
+
+    await (channel as any).sendAskQuestionCard({
+      kind: 'PermissionRequest',
+      sessionId: 'sid-1',
+      workDir: '/wd',
+      payload: {
+        id: 'req-2',
+        seq: 8,
+        toolName: 'AskUserQuestion',
+        toolInput: {
+          questions: [
+            { question: 'Q1', multiSelect: false, options: [{ label: 'a' }, { label: 'b' }] },
+            { question: 'Q2', multiSelect: true, options: [{ label: 'c' }] },
+          ],
+        },
+      },
+    }, 1);
+
+    expect(order).toEqual(['text', 'card']);
+    expect((channel as any).sendTemplateCard).toHaveBeenCalledTimes(1);
+    expect((channel as any).pendingQuestionCards.has('req-2')).toBe(true);
+  });
 });

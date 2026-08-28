@@ -645,20 +645,8 @@ export class WeComChannel implements OutputChannel, HookChannel {
       return;
     }
 
-    // 单问题：直接发送卡片
-    if (cards.length === 1) {
-      const ok = await this.sendTemplateCard(cards[0], event.sessionId, reqId, seq, 0);
-      if (!ok) {
-        const content = this.formatAskUserQuestion(
-          this.formatHeader(event, msgSeq),
-          input,
-        );
-        await this.sendMarkdownWithRetry(content, event.sessionId);
-      }
-      return;
-    }
-
-    // 多问题：先发文字预告（含选项），再发第一张卡片，其余等用户作答后依次发送
+    // 运维端模板卡片显示不全，先发文本预告（含全部问题与选项）兜底完整信息，再发卡片供交互。
+    // 单/多问题统一走此流程；多问题剩余卡片暂存，待用户作答后逐张发送。
     const header = this.formatHeader(event, msgSeq);
     const questionsList = questions
       .map((q, i) => {
@@ -668,15 +656,19 @@ export class WeComChannel implements OutputChannel, HookChannel {
         return `**${i + 1}. ${q.question}**${q.multiSelect ? '（多选）' : ''}\n${opts}`;
       })
       .join('\n');
-    const intro = `${header}\n---\n\n**Agent 向你提了 ${questions.length} 个问题：**\n${questionsList}\n\n将逐一发送卡片，请依次作答。`;
+    const intro = `${header}\n---\n\n**Agent 向你提了 ${questions.length} 个问题：**\n${questionsList}\n\n${questions.length > 1 ? '将逐一发送卡片，请依次作答。' : '请在下方卡片中选择后提交。'}`;
     await this.sendMarkdownWithRetry(intro, event.sessionId);
 
-    // 暂存剩余卡片，发送第一张
-    this.pendingQuestionCards.set(reqId, { cards, sessionId: event.sessionId, seq });
-    logger.info('[wecom-channel] multi-question: stored %d pending cards for reqId=%s', cards.length, reqId);
+    // 多问题：暂存剩余卡片，仅发送第一张
+    if (cards.length > 1) {
+      this.pendingQuestionCards.set(reqId, { cards, sessionId: event.sessionId, seq });
+      logger.info('[wecom-channel] multi-question: stored %d pending cards for reqId=%s', cards.length, reqId);
+    }
+
+    // 发送第一张卡片；失败降级为完整 Markdown
     const ok = await this.sendTemplateCard(cards[0], event.sessionId, reqId, seq, 0);
     if (!ok) {
-      this.pendingQuestionCards.delete(reqId);
+      if (cards.length > 1) this.pendingQuestionCards.delete(reqId);
       const content = this.formatAskUserQuestion(
         this.formatHeader(event, msgSeq),
         input,
