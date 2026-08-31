@@ -1,7 +1,7 @@
 // DesktopSocket: Socket.IO 上行通道 -> 云服务
 // 认证流程：
 //   1. 登录页输入 user_id + token -> app:loginWithToken
-//   2. 主进程 desktopSocket.setToken(token) 内存缓存 + applyCloudSettings 触发 reconnect
+//   2. 主进程 desktopSocket.restoreToken(userId, token) 内存缓存 + applyCloudSettings 触发 reconnect
 //   3. socket 连接建立 -> ensureJwtAndAuth -> 有 token 直接 emit desktop:auth；无 token 用 password 换
 //   4. cloud 校验 token 通过 -> emit desktop:auth { user_id, token }
 //   5. cloud 返回 auth:success -> 状态 authenticated -> 进 home

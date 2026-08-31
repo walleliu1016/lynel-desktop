@@ -22,7 +22,6 @@ describe('DesktopSocket restoreToken / token-first auth', () => {
   it('有 token 时 ensureJwtAndAuth 直接 emit desktop:auth，不调 login', async () => {
     const ds = makeSocket();
     ds.restoreToken('u1', 'jwt-abc');
-    (ds as any).password = 'pw-ignored';
     const emitSpy = vi.fn();
     (ds as any).socket = { connected: true, emit: emitSpy };
     const loginSpy = vi.spyOn(ds as any, 'login').mockResolvedValue({ token: 'never' });
