@@ -30,14 +30,31 @@ function mockHttpsGet(body: string): MockRes {
   return res;
 }
 
-/** 按调用序号返回响应体（最后一个重复），setImmediate 自动 emit，用于轮询集成测试 */
-function mockHttpsSequence(bodies: string[]) {
+/** 序列响应规格：正常 2xx body（status>=400 时 httpsGet 会 reject 并带 statusCode）/ 网络瞬断 error */
+type HttpsResSpec =
+  | { body: string; status?: number }
+  | { error: Error };
+
+/** 按调用序号返回响应（最后一个重复），setImmediate 自动 emit，用于轮询集成测试 */
+function mockHttpsSequence(specs: (string | HttpsResSpec)[]) {
   let i = 0;
   httpsGetMock.mockImplementation((_url: string, cb: (r: any) => void) => {
+    const raw = specs[Math.min(i++, specs.length - 1)];
+    const spec: HttpsResSpec = typeof raw === 'string' ? { body: raw } : raw;
     const r = new EventEmitter() as any;
-    const body = bodies[Math.min(i++, bodies.length - 1)];
+    // 非 2xx 需在触发回调前设好 statusCode，httpsGet 才能据此 reject
+    if (!('error' in spec) && spec.status !== undefined) r.statusCode = spec.status;
     cb(r);
-    setImmediate(() => { r.emit('data', body); r.emit('end'); });
+    if ('error' in spec) {
+      // 网络瞬断：触发 https.get(...).on('error') 的 reject
+      return {
+        on: (evt: string, fn: (e: Error) => void) => {
+          if (evt === 'error') setImmediate(() => fn(spec.error));
+          return {} as any;
+        },
+      };
+    }
+    setImmediate(() => { r.emit('data', spec.body); r.emit('end'); });
     return { on: vi.fn() };
   });
 }
@@ -67,6 +84,11 @@ describe('fetchQRCode', () => {
   it('响应缺 scode/auth_url 时抛错', async () => {
     mockHttpsGet(JSON.stringify({ data: {} }));
     await expect(fetchQRCode('linux')).rejects.toThrow('响应格式异常');
+  });
+
+  it('malformed JSON 时 reject', async () => {
+    mockHttpsGet('not-json{{{');
+    await expect(fetchQRCode('linux')).rejects.toThrow();
   });
 });
 
@@ -148,5 +170,69 @@ describe('startScan 轮询', () => {
     });
     // 旧 scan#1 必须不推送任何 success（代际隔离，避免交付另一场扫描的凭据）
     expect(events1.some((e) => e.type === 'success')).toBe(false);
+  });
+
+  it('pollOnce 返回 malformed JSON 时当瞬断忽略，最终到 timeout', async () => {
+    mockHttpsSequence([
+      JSON.stringify({ data: { scode: 's1', auth_url: 'http://qr' } }),
+      'not-json{{{',
+    ]);
+    scanTiming.intervalMs = 2;
+    scanTiming.timeoutMs = 15;
+    const events: any[] = [];
+    await startScan((e) => events.push(e));
+    await vi.waitFor(
+      () => expect(events.some((e) => e.type === 'timeout')).toBe(true),
+      { timeout: 2000 },
+    );
+    expect(events.some((e) => e.type === 'error')).toBe(false);
+  });
+
+  it('https.get 网络瞬断时忽略，最终到 timeout', async () => {
+    mockHttpsSequence([
+      JSON.stringify({ data: { scode: 's1', auth_url: 'http://qr' } }),
+      { error: new Error('ECONNRESET') },
+    ]);
+    scanTiming.intervalMs = 2;
+    scanTiming.timeoutMs = 15;
+    const events: any[] = [];
+    await startScan((e) => events.push(e));
+    await vi.waitFor(
+      () => expect(events.some((e) => e.type === 'timeout')).toBe(true),
+      { timeout: 2000 },
+    );
+    expect(events.some((e) => e.type === 'error')).toBe(false);
+  });
+
+  it('非 2xx 响应终止轮询并推送 error，不等到 timeout', async () => {
+    mockHttpsSequence([
+      JSON.stringify({ data: { scode: 's1', auth_url: 'http://qr' } }),
+      { status: 500, body: 'server error' },
+    ]);
+    scanTiming.intervalMs = 2;
+    scanTiming.timeoutMs = 15;
+    const events: any[] = [];
+    await startScan((e) => events.push(e));
+    await vi.waitFor(
+      () => expect(events.some((e) => e.type === 'error')).toBe(true),
+      { timeout: 2000 },
+    );
+    expect(events.some((e) => e.type === 'timeout')).toBe(false);
+  });
+
+  it('扫码成功但缺 bot_info 时终止轮询并推送 error，不等到 timeout', async () => {
+    mockHttpsSequence([
+      JSON.stringify({ data: { scode: 's1', auth_url: 'http://qr' } }),
+      JSON.stringify({ data: { status: 'success', bot_info: {} } }),
+    ]);
+    scanTiming.intervalMs = 2;
+    scanTiming.timeoutMs = 15;
+    const events: any[] = [];
+    await startScan((e) => events.push(e));
+    await vi.waitFor(
+      () => expect(events.some((e) => e.type === 'error')).toBe(true),
+      { timeout: 2000 },
+    );
+    expect(events.some((e) => e.type === 'timeout')).toBe(false);
   });
 });
