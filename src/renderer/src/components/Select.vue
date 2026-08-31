@@ -31,6 +31,7 @@
             <template v-else>{{ opt.icon.text }}</template>
           </span>
           <span class="ls-option-label">{{ opt.label }}</span>
+          <span v-if="opt.hint" class="ls-option-hint">{{ opt.hint }}</span>
           <Icon v-if="opt.value === modelValue" name="check" :size="13" class="ls-check" />
         </button>
         <div v-if="!options.length" class="ls-empty">无选项</div>
@@ -49,6 +50,8 @@ export interface SelectOption {
   disabled?: boolean
   /** 选项前缀徽章（如 Agent logo）：渲染在 label 前；有 svg 渲染品牌图标，否则渲染 text 文字徽章 */
   icon?: { bg: string; fg: string; text?: string; svg?: string; viewBox?: string }
+  /** 选项后缀提示（琥珀色，如「已绑定 xxx」）：渲染在 label 后 */
+  hint?: string
 }
 
 const props = withDefaults(defineProps<{
@@ -178,8 +181,13 @@ onBeforeUnmount(close)
 }
 .ls-option:hover:not(:disabled) { background: var(--accent-soft-bg); }
 .ls-option.selected { color: var(--accent); font-weight: 600; }
-.ls-option.disabled { color: var(--text-tertiary); cursor: not-allowed; }
+.ls-option.disabled { color: var(--text-secondary); cursor: not-allowed; }
 .ls-option-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 后缀提示（如「已绑定 xxx」）：琥珀警示色，与未绑定主色明显区分 */
+.ls-option-hint {
+  flex-shrink: 0; color: var(--status-warn); font-size: 11px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px;
+}
 .ls-check { flex-shrink: 0; }
 .ls-empty { padding: 10px; text-align: center; font-size: 12px; color: var(--text-tertiary); }
 </style>

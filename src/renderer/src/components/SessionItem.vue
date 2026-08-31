@@ -442,10 +442,10 @@ async function onBotAdded(botId: string) {
 .menu-item:disabled:hover {
   background: transparent;
 }
-/* 已绑定到其他会话的内联提示：与首页 Bot 下拉保持一致（name（已绑定 xxx）） */
+/* 已绑定到其他会话的内联提示：与首页 Bot 下拉一致，琥珀警示色一眼区分 */
 .bound-inline {
   flex-shrink: 1; min-width: 0;
-  color: var(--text-tertiary); font-weight: 400;
+  color: var(--status-warn); font-weight: 400;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .menu-divider {
@@ -485,7 +485,7 @@ async function onBotAdded(botId: string) {
 }
 .bot-picker .bot-row { padding: 0; }
 .bot-row.selected .bot-select { color: var(--accent); font-weight: 600; }
-.bot-row.disabled { opacity: 0.45; cursor: not-allowed; }
+.bot-row.disabled { cursor: not-allowed; }
 .bot-picker .bot-row.disabled:hover { background: transparent; }
 .bot-select {
   flex: 1;
@@ -502,7 +502,7 @@ async function onBotAdded(botId: string) {
   font-family: inherit;
   cursor: pointer;
 }
-.bot-select:disabled { cursor: not-allowed; }
+.bot-select:disabled { cursor: not-allowed; color: var(--text-secondary); }
 .bot-name {
   flex: 1; min-width: 0;
   white-space: nowrap;

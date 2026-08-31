@@ -85,15 +85,20 @@ function getBotBoundSessionName(botId: string): string | undefined {
   return sessions.getBotBoundSessionName(botId)
 }
 
-// 「＋ 去添加」置顶（与右键绑定浮层一致），随后是不绑定与 bot 列表
+// 「＋ 去添加」置顶（与右键绑定浮层一致），随后是不绑定与 bot 列表；
+// 已绑定到其他会话的 bot 名称置灰（disabled）+ 琥珀「已绑定 xxx」提示，一眼区分
 const botSelectOptions = computed<SelectOption[]>(() => [
   { value: '__add__', label: '＋ 去添加' },
   { value: '', label: '不绑定' },
-  ...botOptions.value.map((b) => ({
-    value: b.id,
-    label: getBotBoundSessionName(b.id) ? `${b.name}（已绑定 ${getBotBoundSessionName(b.id)}）` : b.name,
-    disabled: !isBotAvailable(b.id),
-  })),
+  ...botOptions.value.map((b) => {
+    const bound = getBotBoundSessionName(b.id)
+    return {
+      value: b.id,
+      label: b.name,
+      hint: bound ? `已绑定 ${bound}` : undefined,
+      disabled: !isBotAvailable(b.id),
+    }
+  }),
 ])
 
 // 选中「去添加」特殊项：重置为不绑定并弹出添加机器人弹窗
