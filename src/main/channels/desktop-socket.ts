@@ -1,11 +1,11 @@
 // DesktopSocket: Socket.IO 上行通道 -> 云服务
-// 认证流程（token 纯内存，每次启动需重新登录）：
-//   1. 用户在登录页输入 user_id + token -> app:loginWithToken
+// 认证流程：
+//   1. 登录页输入 user_id + token -> app:loginWithToken
 //   2. 主进程 desktopSocket.setToken(token) 内存缓存 + applyCloudSettings 触发 reconnect
-//   3. socket 连接建立 -> ensureJwtAndAuth -> POST /api/auth/login { user_id, token }
+//   3. socket 连接建立 -> ensureJwtAndAuth -> 有 token 直接 emit desktop:auth；无 token 用 password 换
 //   4. cloud 校验 token 通过 -> emit desktop:auth { user_id, token }
 //   5. cloud 返回 auth:success -> 状态 authenticated -> 进 home
-//   6. token 无效 -> auth:failed -> 前端报错留在登录页
+//   6. token 无效 -> auth:failed -> 清内存 token，等用户重新登录
 //
 // 事件命名约定：所有 Desktop 上行事件统一 desktop: 前缀，与 Mobile 事件完全隔离
 //   desktop:auth            连接后认证（携带 token）
@@ -156,6 +156,17 @@ export class DesktopSocket implements OutputChannel, HookChannel {
   clearCredentials(): void {
     this.password = undefined;
     this.token = undefined;
+  }
+
+  /** 启动恢复：注入上次认证的 JWT，不触发重连；connect 后 ensureJwtAndAuth 直接 emit desktop:auth */
+  restoreToken(userId: string, jwt: string): void {
+    this.userId = userId;
+    this.token = jwt;
+  }
+
+  /** 读取当前内存 token（供 app 登录成功后持久化） */
+  getToken(): string | undefined {
+    return this.token;
   }
 
   updateConfig(cfg: DesktopSocketConfig): void {
@@ -332,13 +343,13 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     if (!this.socket?.connected) return;
     this.authenticating = true;
     try {
-      if (!this.password) {
-        getLogger().warn('[desktop-socket] no password, waiting for login');
-        return;
-      }
-      // 已有 token -> 直接 emit（重连复用，避免重复 login）
+      // 已有 token -> 直接 emit（启动恢复 / 重连复用，避免重复 login）
       if (this.token) {
         this.emit('desktop:auth', { user_id: this.userId, token: this.token, machine_name: this.machineName });
+        return;
+      }
+      if (!this.password) {
+        getLogger().warn('[desktop-socket] no password, waiting for login');
         return;
       }
       // 无 token -> 调 /api/auth/login 用密码换 token
