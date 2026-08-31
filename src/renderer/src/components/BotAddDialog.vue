@@ -29,6 +29,7 @@
         </div>
 
         <div class="dialog-foot">
+          <button class="scan" @click="showScan = true">扫码创建</button>
           <div class="spacer" />
           <button class="cancel" @click="onClose">取消</button>
           <button class="save" :disabled="!valid" @click="onSave">保存并绑定</button>
@@ -36,11 +37,14 @@
       </div>
     </div>
   </Teleport>
+
+  <QrScanDialog v-if="showScan" @success="onScanSuccess" @close="showScan = false" />
 </template>
 
 <script setup lang="ts">
-import { reactive, computed, onMounted, onUnmounted } from 'vue'
+import { reactive, computed, ref, onMounted, onUnmounted } from 'vue'
 import Icon from './Icon.vue'
+import QrScanDialog from './QrScanDialog.vue'
 import type { BotItem, BotSource } from '../types/bots'
 import { useBotsStore } from '../stores/bots'
 import { pushToast } from '../composables/useToast'
@@ -62,6 +66,8 @@ const form = reactive<{ name: string; source: BotSource; botId: string; secret: 
 const valid = computed(() =>
   form.name.trim() && form.botId.trim() && form.secret.trim()
 )
+
+const showScan = ref(false)
 
 function onClose() {
   emit('close')
@@ -94,6 +100,14 @@ async function onSave() {
   } catch (e: any) {
     pushToast({ level: 'error', source: 'bot', message: '保存失败：' + (e?.message ?? e) })
   }
+}
+
+async function onScanSuccess(scan: { name: string; botId: string; secret: string }) {
+  showScan.value = false
+  form.name = scan.name
+  form.botId = scan.botId
+  form.secret = scan.secret
+  await onSave()
 }
 </script>
 
@@ -128,6 +142,7 @@ async function onSave() {
   font-family: inherit;
 }
 .dialog-foot button.cancel:hover { background: var(--border); }
+.dialog-foot button.scan { background: var(--bg-hover); border-color: var(--accent); color: var(--accent); }
 .dialog-foot button.save { background: var(--accent); border-color: var(--accent); color: var(--text-inverse); }
 .dialog-foot button.save:hover:not(:disabled) { background: var(--accent-deep); }
 .dialog-foot button:disabled { opacity: 0.4; cursor: not-allowed; }

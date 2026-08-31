@@ -20,12 +20,14 @@
     "marked": "^18.0.7",
     "motion": "^13.1.0",
     "pinia": "^3.0.4",
+    "qrcode": "^1.5.4",
     "vue": "^3.5.39",
     "vue-router": "^5.1.0"
   },
   "devDependencies": {
     "@babel/types": "^7.18.10",
     "@playwright/test": "^1.61.1",
+    "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vitest/ui": "^4.1.9",
     "@vue/test-utils": "^2.4.11",
