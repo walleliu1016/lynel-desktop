@@ -92,7 +92,7 @@ import SettingsDialog from '../components/SettingsDialog.vue'
 import Switch from '../components/Switch.vue'
 import Icon from '../components/Icon.vue'
 import { useAuthStore } from '../stores/auth'
-import { WindowCenter, GetAppInfo, SetCurrentUser, GetSettings, UpdateCloudSettings, WindowSetSize, WindowSetMinSize, WindowSetMaxSize, CloudConnectionState, EventsOn } from '../composables/useElectron'
+import { WindowCenter, GetAppInfo, SetCurrentUser, GetSettings, UpdateCloudSettings, WindowSetSize, WindowSetMinSize, WindowSetMaxSize, CloudConnectionState, EventsOn, AuthRestoreState } from '../composables/useElectron'
 import { useWindowState } from '../composables/useWindowState'
 
 const router = useRouter()
@@ -231,16 +231,26 @@ async function runAutoLogin() {
         void enterHome()
       } else if (state === 'auth_failed') {
         cleanupAutoLogin()
+        void prefillUsername()
       }
     })
-    // 超时兜底 15s：网络异常时退出加载态，显示表单
-    autoLoginTimer = setTimeout(() => { cleanupAutoLogin() }, 15_000)
+    // 超时兜底 15s：网络异常时退出加载态，显示表单（预填记住的用户名）
+    autoLoginTimer = setTimeout(() => { cleanupAutoLogin(); void prefillUsername() }, 15_000)
   }
 }
 
 function cleanupAutoLogin() {
   if (authStateUnsub) { authStateUnsub(); authStateUnsub = null }
   if (autoLoginTimer) { clearTimeout(autoLoginTimer); autoLoginTimer = null }
+  // 退出加载态：超时/auth_failed 时显示表单
+  auth.autoLoginState = 'none'
+}
+
+async function prefillUsername() {
+  try {
+    const s = await AuthRestoreState()
+    if (s?.username) username.value = s.username
+  } catch {}
 }
 
 async function enterHome() {
