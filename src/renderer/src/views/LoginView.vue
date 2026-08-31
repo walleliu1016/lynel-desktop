@@ -10,7 +10,11 @@
       </div>
 
       <div class="login-card">
-        <form @submit.prevent="onSubmit" class="form">
+        <div v-if="!showForm" class="auto-login">
+          <Icon name="loader" :size="20" class="spin" />
+          <span>正在自动登录...</span>
+        </div>
+        <form v-else @submit.prevent="onSubmit" class="form">
           <div class="form-group row">
             <label class="form-label">用户名</label>
             <input
@@ -58,6 +62,11 @@
             </div>
           </div>
 
+          <label class="remember-row">
+            <Switch v-model="remember" />
+            <span class="remember-label">记住我（下次免登录）</span>
+          </label>
+
           <button class="login-btn" type="submit" :disabled="!canSubmit || loading">
             {{ loading ? '登录中...' : '登录' }}
           </button>
@@ -76,14 +85,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import TitleBar from '../components/TitleBar.vue'
 import SettingsDialog from '../components/SettingsDialog.vue'
 import Switch from '../components/Switch.vue'
 import Icon from '../components/Icon.vue'
 import { useAuthStore } from '../stores/auth'
-import { WindowCenter, GetAppInfo, SetCurrentUser, GetSettings, UpdateCloudSettings, WindowSetSize, WindowSetMinSize, WindowSetMaxSize } from '../composables/useElectron'
+import { WindowCenter, GetAppInfo, SetCurrentUser, GetSettings, UpdateCloudSettings, WindowSetSize, WindowSetMinSize, WindowSetMaxSize, CloudConnectionState, EventsOn } from '../composables/useElectron'
 import { useWindowState } from '../composables/useWindowState'
 
 const router = useRouter()
@@ -99,6 +108,11 @@ const showSettings = ref(false)
 const cloudEnabled = ref(false)
 const cloudUrl = ref('')
 const loading = ref(false)
+const remember = ref(true)
+let authStateUnsub: (() => void) | null = null
+let autoLoginTimer: ReturnType<typeof setTimeout> | null = null
+
+const showForm = computed(() => auth.autoLoginState !== 'pending')
 
 // 云服务默认地址（登录页可修改）
 const DEFAULT_CLOUD_URL = 'https://weor.test.tctpwebank.com/lynel'
@@ -140,7 +154,11 @@ onMounted(async () => {
     const cfg = await GetSettings()
     cloudEnabled.value = !!cfg.cloud_service_enabled
     cloudUrl.value = cfg.cloud_service_url || DEFAULT_CLOUD_URL
+    remember.value = cfg.auth_remember !== false
   } catch {}
+
+  // 启动免登录分流
+  try { await runAutoLogin() } catch {}
 })
 
 async function onSubmit() {
@@ -173,7 +191,7 @@ async function onSubmit() {
   }
 
   loading.value = true
-  const err = await auth.login(username.value.trim(), token.value)
+  const err = await auth.login(username.value.trim(), token.value, remember.value)
   loading.value = false
   if (err) {
     error.value = err
@@ -189,6 +207,49 @@ async function onSubmit() {
   try { WindowCenter() } catch {}
   router.push('/home')
 }
+
+async function runAutoLogin() {
+  const decision = await auth.tryAutoLogin()
+  if (decision === 'home') {
+    await enterHome()
+    return
+  }
+  if (decision === 'pending') {
+    // 先查当前 socket 状态，防止订阅前已认证
+    try {
+      const s = await CloudConnectionState()
+      if (s?.state === 'authenticated') {
+        auth.markAuthenticated()
+        await enterHome()
+        return
+      }
+    } catch {}
+    authStateUnsub = EventsOn('auth:state', (state: string) => {
+      if (state === 'authenticated') {
+        cleanupAutoLogin()
+        auth.markAuthenticated()
+        void enterHome()
+      } else if (state === 'auth_failed') {
+        cleanupAutoLogin()
+      }
+    })
+    // 超时兜底 15s：网络异常时退出加载态，显示表单
+    autoLoginTimer = setTimeout(() => { cleanupAutoLogin() }, 15_000)
+  }
+}
+
+function cleanupAutoLogin() {
+  if (authStateUnsub) { authStateUnsub(); authStateUnsub = null }
+  if (autoLoginTimer) { clearTimeout(autoLoginTimer); autoLoginTimer = null }
+}
+
+async function enterHome() {
+  try { await win.applyHomeLayout() } catch {}
+  try { WindowCenter() } catch {}
+  router.push('/home')
+}
+
+onBeforeUnmount(() => { cleanupAutoLogin() })
 
 async function goSettings() {
   showSettings.value = true
@@ -328,4 +389,16 @@ async function closeSettings() {
   cursor: pointer;
 }
 .footer-settings-btn:hover { color: var(--text-primary); border-color: var(--accent); }
+.remember-row {
+  display: flex; align-items: center; gap: 8px;
+  margin: 6px 0 2px;
+  color: var(--text-secondary); font-size: 12px; cursor: pointer;
+}
+.remember-label { font-size: 12px; color: var(--text-secondary); }
+.auto-login {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 26px 0; color: var(--text-secondary); font-size: 13px;
+}
+.auto-login .spin { animation: auth-spin 1s linear infinite; }
+@keyframes auth-spin { to { transform: rotate(360deg); } }
 </style>
