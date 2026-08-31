@@ -4,9 +4,10 @@ const api = {
   getAppInfo: () => ipcRenderer.invoke('app:getAppInfo'),
   clipboardWrite: (text: string) => ipcRenderer.invoke('app:clipboardWrite', text),
   openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
-  loginWithToken: (userId: string, token: string) =>
-    ipcRenderer.invoke('app:loginWithToken', userId, token),
+  loginWithToken: (userId: string, token: string, remember: boolean) =>
+    ipcRenderer.invoke('app:loginWithToken', userId, token, remember),
   logout: () => ipcRenderer.invoke('app:logout'),
+  authRestoreState: () => ipcRenderer.invoke('app:auth:restoreState'),
   listSessions: (workDir?: string) => ipcRenderer.invoke('app:listSessions', workDir),
   createSession: (workDir: string, prompt: string, extraArgs: string[] = [], agent?: string) =>
     ipcRenderer.invoke('app:createSession', workDir, prompt, extraArgs, agent),

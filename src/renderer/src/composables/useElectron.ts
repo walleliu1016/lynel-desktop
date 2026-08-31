@@ -14,8 +14,9 @@ function api(): ElectronAPI {
 export const GetAppInfo = () => api().getAppInfo();
 export const ClipboardWrite = (text: string) => api().clipboardWrite(text);
 export const OpenExternal = (url: string) => api().openExternal(url);
-export const LoginWithToken = (userId: string, token: string) =>
-  api().loginWithToken(userId, token);
+export const LoginWithToken = (userId: string, token: string, remember: boolean) =>
+  api().loginWithToken(userId, token, remember);
+export const AuthRestoreState = () => api().authRestoreState();
 export const Logout = () => api().logout();
 export const ListSessions = (workDir?: string) => api().listSessions(workDir);
 export const CreateSession = (workDir: string, prompt: string, extraArgs: string[] = [], agent?: string) => api().createSession(workDir, prompt, extraArgs, agent);

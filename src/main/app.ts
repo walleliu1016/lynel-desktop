@@ -32,6 +32,7 @@ import { consumeInputForExitDetect, type EscapePhase } from './exit-detect.js';
 import { initUpdater } from './updater/index.js';
 import { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
 import { readCodexModelProvider, mergeOmpModelsYml, mergeCodexConfigToml, mergeOpencodeConfig, applyClaudeEnv, migrateActiveProviders, AGENT_KINDS } from './providers-apply.js';
+import { loadStoredAuth, saveStoredAuth, clearStoredAuth, decideRestore } from './auth-persistence.js';
 
 export { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
 
@@ -385,7 +386,7 @@ export class App {
   private apiProxies: import('./apiproxy.js').Proxy[] = [];
   private watchCleanup: (() => void) | null = null;
   private sleepBlockerId: number | null = null;
-  // cloud 密码 + token 只存内存（desktopSocket），进程重启即失效，每次启动都需重新登录
+  // cloud 密码仍只存内存（desktopSocket），进程重启即失效；JWT 可经 auth-persistence 加密恢复实现免登录
 
   constructor() {
     this.dispatcher.register(this.sseChannel);
@@ -456,6 +457,7 @@ export class App {
     this.applyChannelConfigs();
     this.applyAutoSettings();
     this.applyPushSettings();
+    this.restoreStoredAuth();
     this.applyCloudSettings();
     // 预热 macOS shell env 缓存（异步，不阻塞 init）
     void preloadShellEnv().catch((err) => {
@@ -523,8 +525,12 @@ export class App {
         });
       }
     };
-    // cloud: 认证成功后立即上报全量快照，供 cloud 端收敛状态
+    // cloud: 认证状态推送到渲染进程（免登录分流用）；auth_failed 时清掉失效 JWT
     this.desktopSocket.onStateChange = (state) => {
+      getBus().emit('auth:state', state);
+      if (state === 'auth_failed') {
+        clearStoredAuth();
+      }
       if (state === 'authenticated') {
         this.sendCloudSessionSnapshot();
       }
@@ -676,6 +682,15 @@ export class App {
       powerSaveBlocker.stop(this.sleepBlockerId)
       this.sleepBlockerId = null
     }
+  }
+
+  /** 启动恢复：把上次记住的 JWT 注入 desktopSocket，connect 后自动走 desktop:auth（云关闭时跳过） */
+  private restoreStoredAuth(): void {
+    const stored = loadStoredAuth();
+    if (!stored) return;
+    if (!this.isCloudEnabled()) return;
+    this.desktopSocket.restoreToken(stored.userId, stored.jwt);
+    getLogger().info(`[app] restored stored auth for user=${stored.userId}`);
   }
 
   private applyCloudSettings(): void {
@@ -1373,11 +1388,13 @@ export class App {
     })
 
     // 登录：调 cloud /api/auth/login 校验密码，成功即进主页
-    // 密码 + token 纯内存保存，进程重启需重新登录
-    ipcMain.handle('app:loginWithToken', async (_event, userId: string, password: string) => {
+    // 密码 + token 纯内存；remember=true 时把 JWT 用 safeStorage 加密持久化，供下次启动免登录
+    ipcMain.handle('app:loginWithToken', async (_event, userId: string, password: string, remember: boolean) => {
       if (!userId) return { ok: false, error: '请填写用户名' };
       if (!this.isCloudEnabled()) {
-        // cloud 未启用：不需要密码，直接放行
+        // cloud 未启用：不需要密码，直接放行；清掉历史 JWT
+        this.settingsStore.set('auth_remember', !!remember);
+        clearStoredAuth();
         return { ok: true };
       }
       if (!password) return { ok: false, error: '请填写密码' };
@@ -1387,6 +1404,13 @@ export class App {
       const result = await this.desktopSocket.verifyLogin(userId, password);
       if (!result.ok) {
         return { ok: false, error: result.error };
+      }
+      this.settingsStore.set('auth_remember', !!remember);
+      if (remember) {
+        const jwt = this.desktopSocket.getToken();
+        if (jwt) saveStoredAuth(userId, jwt);
+      } else {
+        clearStoredAuth();
       }
       return { ok: true };
     });
@@ -1413,6 +1437,8 @@ export class App {
       }
       // 3. 清 cloud 凭据 + 断开 socket
       this.desktopSocket.clearCredentials();
+      // 5. 清除持久化 JWT（记住我），避免退出后再启动又自动登录
+      clearStoredAuth();
       this.desktopSocket.disconnect();
       // 4. 通知前端刷新
       getBus().emit('sessions:list:changed');
@@ -1949,6 +1975,16 @@ export class App {
     // 'disconnected' | 'connecting' | 'connected' | 'authenticated' | 'auth_failed'
     ipcMain.handle('app:cloud:connectionState', () => {
       return this.desktopSocket.getState();
+    });
+
+    // 启动免登录分流查询：渲染进程据此决定 直接进首页 / 自动登录中 / 显示表单
+    // username 读原始 currentUser 键（无则空串），避免回退 os 用户名被误判为"已记住"
+    ipcMain.handle('app:auth:restoreState', () => {
+      const cloudEnabled = this.isCloudEnabled();
+      const remembered = loadStoredAuth() !== null;
+      const username = (this.settingsStore.get('currentUser', '') as string) || '';
+      const decision = decideRestore(cloudEnabled, remembered, username);
+      return { cloudEnabled, remembered, username, decision };
     });
 
     // 权限审批
