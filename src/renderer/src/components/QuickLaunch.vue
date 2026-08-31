@@ -24,6 +24,7 @@
             size="sm"
             placeholder="不绑定"
             :disabled="loading"
+            auto-height
             class="ql-bot"
           />
         </div>
@@ -84,14 +85,15 @@ function getBotBoundSessionName(botId: string): string | undefined {
   return sessions.getBotBoundSessionName(botId)
 }
 
+// 「＋ 去添加」置顶（与右键绑定浮层一致），随后是不绑定与 bot 列表
 const botSelectOptions = computed<SelectOption[]>(() => [
+  { value: '__add__', label: '＋ 去添加' },
   { value: '', label: '不绑定' },
   ...botOptions.value.map((b) => ({
     value: b.id,
     label: getBotBoundSessionName(b.id) ? `${b.name}（已绑定 ${getBotBoundSessionName(b.id)}）` : b.name,
     disabled: !isBotAvailable(b.id),
   })),
-  { value: '__add__', label: '＋ 去添加' },
 ])
 
 // 选中「去添加」特殊项：重置为不绑定并弹出添加机器人弹窗

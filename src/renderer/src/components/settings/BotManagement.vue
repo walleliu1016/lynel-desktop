@@ -120,39 +120,11 @@
       </div>
     </div>
 
-    <!-- 添加 Bot -->
+    <!-- 添加 Bot：打开统一添加弹窗（扫码创建 / 手动填写） -->
     <button class="add-btn" @click="startAdd">
       <Icon name="plus" :size="14" />
       添加 Bot
     </button>
-
-    <!-- 新增 Bot 表单 -->
-    <div v-if="editingId === '__new__'" class="bot-item editing new-bot-form">
-      <div class="bot-edit-form">
-        <div class="form-group">
-          <label class="form-label">名称</label>
-          <input class="form-input" v-model="editForm.name" placeholder="如：我的助手" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">来源</label>
-          <select class="form-input" v-model="editForm.source">
-            <option v-for="opt in SOURCE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Bot ID</label>
-          <input class="form-input" v-model="editForm.botId" placeholder="企业微信 bot ID" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Secret</label>
-          <input class="form-input" v-model="editForm.secret" type="password" placeholder="bot secret" />
-        </div>
-        <div class="edit-actions">
-          <button class="btn-cancel" @click="cancelEdit">取消</button>
-          <button class="btn-save" :disabled="!editValid" @click="onSaveEdit">保存</button>
-        </div>
-      </div>
-    </div>
   </div>
 
   <!-- 绑定会话 hover tooltip（多行，随单元格定位且不超出窗口） -->
@@ -177,6 +149,12 @@
     </div>
   </Teleport>
 
+  <BotAddDialog
+    v-if="showBotAddDialog"
+    @saved="onBotAdded"
+    @close="showBotAddDialog = false"
+  />
+
   <ConfirmDialog
     :open="showDeleteDialog"
     title="删除机器人"
@@ -192,6 +170,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import Icon from '../Icon.vue'
 import ConfirmDialog from '../ConfirmDialog.vue'
+import BotAddDialog from '../BotAddDialog.vue'
 import type { BotItem, BotSource } from '../../types/bots'
 import { useBotsStore } from '../../stores/bots'
 import { useSessionsStore, sessionDisplayTitle } from '../../stores/sessions'
@@ -211,6 +190,7 @@ const SOURCE_LABELS: Record<BotSource, string> = {
 const editingId = ref<string | null>(null)
 const showDeleteDialog = ref(false)
 const deleteTargetId = ref<string | null>(null)
+const showBotAddDialog = ref(false)
 const editForm = reactive({
   name: '',
   source: 'wecom' as BotSource,
@@ -322,11 +302,13 @@ function cancelEdit() {
 }
 
 function startAdd() {
-  editForm.name = ''
-  editForm.source = 'wecom'
-  editForm.botId = ''
-  editForm.secret = ''
-  editingId.value = '__new__'
+  showBotAddDialog.value = true
+}
+
+/** 添加弹窗保存成功：关闭弹窗（store.save 已刷新列表） */
+function onBotAdded(_botId: string) {
+  showBotAddDialog.value = false
+  pushToast({ level: 'info', source: 'bot', message: '已添加机器人' })
 }
 
 async function onSaveEdit() {
@@ -334,7 +316,7 @@ async function onSaveEdit() {
   try {
     const now = Date.now()
     const bot: BotItem = {
-      id: editingId.value === '__new__' ? crypto.randomUUID() : editingId.value!,
+      id: editingId.value!,
       name: editForm.name.trim(),
       source: editForm.source || 'wecom',
       botId: editForm.botId.trim(),

@@ -16,7 +16,7 @@
       <Icon name="chevron-down" :size="12" class="ls-chevron" :class="{ open }" />
     </button>
     <Teleport to="body">
-      <div v-if="open" ref="panelEl" class="ls-panel" :class="{ 'is-sm': size === 'sm' }" :style="panelStyle">
+      <div v-if="open" ref="panelEl" class="ls-panel" :class="{ 'is-sm': size === 'sm', 'auto-height': autoHeight }" :style="panelStyle">
         <button
           v-for="opt in options"
           :key="opt.value"
@@ -57,10 +57,13 @@ const props = withDefaults(defineProps<{
   placeholder?: string
   disabled?: boolean
   size?: 'md' | 'sm'
+  /** 高度自适应：面板不设 max-height/滚动条，随选项数量撑开（如 Bot 选择下拉） */
+  autoHeight?: boolean
 }>(), {
   placeholder: '',
   disabled: false,
   size: 'md',
+  autoHeight: false,
 })
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
@@ -165,6 +168,7 @@ onBeforeUnmount(close)
   padding: 4px;
 }
 .ls-panel.is-sm { max-height: 240px; }
+.ls-panel.auto-height { max-height: none; overflow: visible; }
 .ls-option {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   width: 100%; padding: 7px 10px;
