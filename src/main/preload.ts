@@ -42,6 +42,8 @@ const api = {
     ipcRenderer.invoke('app:getSessionBotBinding', sessionId),
   getBotConnectionStatus: () => ipcRenderer.invoke('app:getBotConnectionStatus'),
   listBotBindings: () => ipcRenderer.invoke('app:listBotBindings'),
+  startWecomScan: () => ipcRenderer.invoke('bot:startScan'),
+  cancelWecomScan: () => ipcRenderer.invoke('bot:cancelScan'),
   setCurrentUser: (account: string) => ipcRenderer.invoke('app:setCurrentUser', account),
   getCurrentUser: () => ipcRenderer.invoke('app:getCurrentUser'),
   getSessionStates: () => ipcRenderer.invoke('app:getSessionStates'),

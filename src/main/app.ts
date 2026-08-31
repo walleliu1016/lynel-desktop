@@ -26,6 +26,7 @@ import { agentSpec, isAgentEnabledBySettings, type AgentKind, type AgentSpec } f
 import { start as startPty, PtyMode, PtySize, preloadShellEnv } from './pty.js';
 import { registerTraceIpc } from './trace/ipc.js';
 import type { BotConfig } from './types/bot.js';
+import { startScan as wecomStartScan, cancelScan } from './wecom-scan.js';
 import { notifyExternal, errMessage } from './channels/notify-error.js';
 import { OutputBatcher } from './output-batcher.js';
 import { consumeInputForExitDetect, type EscapePhase } from './exit-detect.js';
@@ -1780,6 +1781,24 @@ export class App {
         }
         writeRecentSessions(list);
       });
+      return { ok: true };
+    });
+    // 企业微信扫码创建：主进程发起 generate + 轮询，结果经 bot:scanResult 推送渲染进程
+    ipcMain.handle('bot:startScan', async () => {
+      try {
+        const { scode, authUrl } = await wecomStartScan((e) => {
+          if (this.window && !this.window.isDestroyed()) {
+            this.window.webContents.send('bot:scanResult', e);
+          }
+        });
+        return { ok: true, scode, authUrl };
+      } catch (e: any) {
+        cancelScan();
+        return { ok: false, error: e?.message ?? String(e) };
+      }
+    });
+    ipcMain.handle('bot:cancelScan', () => {
+      cancelScan();
       return { ok: true };
     });
     ipcMain.handle('app:bindSessionBot', (_event, sessionId: string, botId: string | null) => {

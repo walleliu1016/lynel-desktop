@@ -1,4 +1,5 @@
 import type { ElectronAPI } from '../../../main/preload.js';
+import type { ScanEvent } from '../../../main/wecom-scan.js';
 
 declare global {
   interface Window {
@@ -47,6 +48,9 @@ export const BindSessionBot = (sessionId: string, botId: string | null) => api()
 export const GetSessionBotBinding = (sessionId: string) => api().getSessionBotBinding(sessionId);
 export const GetBotConnectionStatus = () => api().getBotConnectionStatus();
 export const ListBotBindings = () => api().listBotBindings();
+export const StartWecomScan = () => api().startWecomScan();
+export const CancelWecomScan = () => api().cancelWecomScan();
+export const OnWecomScanResult = (cb: (e: ScanEvent) => void) => EventsOn('bot:scanResult', cb);
 export const SetCurrentUser = (account: string) => api().setCurrentUser(account);
 export const GetCurrentUser = () => api().getCurrentUser();
 export const GetSessionStates = () => api().getSessionStates();
