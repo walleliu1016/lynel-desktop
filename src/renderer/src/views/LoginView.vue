@@ -239,12 +239,11 @@ async function runAutoLogin() {
     // 订阅建立后复检一次 socket 状态（TOCTOU 兜底）：
     // auth:success 可能落在第一次预检响应与订阅建立之间；socket setState 只在状态
     // 转换时 emit、不重播，事件会被丢弃，导致已认证却等到 15s 超时出现登录表单。
-    // 复检时若已 authenticated 直接进主页；若订阅回调已同步处理过（autoLoginState
-    // 已被 markAuthenticated 置为 done），则跳过，避免重复进入主页。
+    // 复检时若已 authenticated 直接进主页；若订阅回调已在 await 期间处理过
+    // （autoLoginState 已被 markAuthenticated 置为 done），则跳过，避免重复进入主页。
     try {
-      if (auth.autoLoginState === 'done') return
       const s2 = await CloudConnectionState()
-      if (s2?.state === 'authenticated') {
+      if (s2?.state === 'authenticated' && auth.autoLoginState !== 'done') {
         cleanupAutoLogin()
         auth.markAuthenticated()
         await enterHome()
