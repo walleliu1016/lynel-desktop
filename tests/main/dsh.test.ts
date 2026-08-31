@@ -60,10 +60,10 @@ describe('dshManager', () => {
     // Windows：dsh 是 .cmd shim，经 cmd.exe /c 执行；其他平台直接执行 dsh
     if (process.platform === 'win32') {
       expect(cmd).toBe('cmd.exe');
-      expect(args).toEqual(['/c', 'dsh', 'web', '--port', '0']);
+      expect(args).toEqual(['/c', 'dsh', 'web', '--no-open', '--port', '0']);
     } else {
       expect(cmd).toBe('dsh');
-      expect(args).toEqual(['web', '--port', '0']);
+      expect(args).toEqual(['web', '--no-open', '--port', '0']);
     }
     // 启动前必须探测 dsh --version（未安装则抛出安装指引）
     expect(execFileSyncMock).toHaveBeenCalledTimes(1);

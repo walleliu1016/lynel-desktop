@@ -177,7 +177,9 @@ class DshManager {
       NO_PROXY: 'localhost,127.0.0.1',
       no_proxy: 'localhost,127.0.0.1',
     };
-    const dshArgs = ['web', '--port', '0'];
+    // --no-open：dsh web 默认打开默认浏览器；harness 在 Lynel 内嵌 iframe 展示，
+    // 若不传会额外弹出系统浏览器，重复打开两个位置
+    const dshArgs = ['web', '--no-open', '--port', '0'];
     // 与 claude 一致：使用用户全局安装的 dsh（npm install -g @deepseek-ai/dsh），
     // 版本由用户用 npm 管理（升级 npm i -g dsh@latest），命令行可直接管理插件
     // （dsh plugin add）。启动前探测 --version，未安装时给出安装指引。
