@@ -28,7 +28,13 @@ vi.mock('electron', () => ({
 vi.mock('../../src/main/store.js', () => ({ getStore: () => store }));
 
 describe('auth-persistence', () => {
-  beforeEach(() => { store._data = {}; vi.clearAllMocks(); });
+  beforeEach(() => {
+    store._data = {};
+    vi.clearAllMocks();
+    // 恢复默认 mock 实现，防止 test 2 的 mockReturnValue(false) / test 3 的 throw 泄漏到后续用例
+    vi.mocked(safeStorage.isEncryptionAvailable).mockReturnValue(true);
+    vi.mocked(safeStorage.decryptString).mockImplementation((b: Buffer) => b.toString('utf8').replace(/^enc:/, ''));
+  });
 
   it('保存后可解密取回', () => {
     expect(saveStoredAuth('u1', 'jwt-abc')).toBe(true);
