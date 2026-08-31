@@ -1,5 +1,6 @@
 <template>
-  <Teleport to="body">
+  <!-- 独立弹窗模式（默认）：带遮罩与标题/取消栏 -->
+  <Teleport v-if="!embedded" to="body">
     <div class="dialog-mask" @click.self="onCancel">
       <div class="dialog">
         <div class="dialog-head">
@@ -40,6 +41,32 @@
       </div>
     </div>
   </Teleport>
+  <!-- 内嵌模式：仅内容块，外壳（标题/底部按钮）由宿主弹窗统一管理 -->
+  <div v-else class="qr-embedded">
+    <div class="form-group">
+      <label class="form-label">名称（选填）</label>
+      <input class="v" v-model="name" placeholder="默认：企业微信机器人" />
+    </div>
+
+    <div class="qr-area">
+      <div v-if="status === 'pending'">
+        <img v-if="qrDataUrl" :src="qrDataUrl" alt="企业微信扫码" class="qr-img" />
+        <p class="qr-hint">请用手机企业微信扫描二维码，确认后自动创建并绑定</p>
+        <div class="qr-wait">
+          <Icon name="loader" :size="14" class="spin" />
+          <span>等待扫码...</span>
+        </div>
+      </div>
+      <div v-else-if="status === 'timeout'" class="qr-state">
+        <p>扫码超时，请重新生成。</p>
+        <button class="retry" @click="start">重新生成</button>
+      </div>
+      <div v-else class="qr-state">
+        <p>{{ error }}</p>
+        <button class="retry" @click="start">重试</button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -48,6 +75,8 @@ import QRCode from 'qrcode'
 import Icon from './Icon.vue'
 import { StartWecomScan, CancelWecomScan, OnWecomScanResult } from '../composables/useElectron'
 import type { ScanEvent } from '../../../main/wecom-scan.js'
+
+defineProps<{ embedded?: boolean }>()
 
 const emit = defineEmits<{
   (e: 'success', bot: { name: string; botId: string; secret: string }): void
@@ -114,6 +143,8 @@ function onCancel() {
 </script>
 
 <style scoped>
+/* 内嵌模式：内容块随宿主宽度自适应 */
+.qr-embedded .qr-img { width: 200px; height: 200px; }
 .dialog-mask {
   position: fixed; inset: 0; background: rgba(0,0,0,.4);
   display: flex; align-items: center; justify-content: center; z-index: 1100;
@@ -139,6 +170,10 @@ function onCancel() {
   display: flex; flex-direction: column; align-items: center;
   padding: 12px; background: var(--bg-hover); border: 1px solid var(--border);
   border-radius: var(--radius-md);
+}
+/* pending/error 内容块撑满并内部居中，避免二维码因外层 div 宽度被文本撑开而靠左 */
+.qr-area > div {
+  width: 100%; display: flex; flex-direction: column; align-items: center;
 }
 .qr-img {
   width: 220px; height: 220px; background: #fff; padding: 8px;

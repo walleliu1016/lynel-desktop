@@ -9,36 +9,63 @@
           </button>
         </div>
 
-        <div class="form-group">
-          <label class="form-label">名称</label>
-          <input class="v" v-model="form.name" placeholder="如：我的助手" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">来源</label>
-          <select class="v" v-model="form.source">
-            <option value="wecom">企业微信</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Bot ID</label>
-          <input class="v" v-model="form.botId" placeholder="企业微信 bot ID" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Secret</label>
-          <input class="v" v-model="form.secret" type="password" placeholder="bot secret" />
+        <!-- 添加方式二选一：扫码创建 / 手动填写 -->
+        <div class="mode-toggle">
+          <button
+            class="mode-btn"
+            :class="{ active: mode === 'scan' }"
+            @click="switchMode('scan')"
+          >扫码创建</button>
+          <button
+            class="mode-btn"
+            :class="{ active: mode === 'manual' }"
+            @click="switchMode('manual')"
+          >手动填写</button>
         </div>
 
+        <!-- 扫码模式：内嵌二维码内容块 -->
+        <QrScanDialog
+          v-if="mode === 'scan'"
+          embedded
+          @success="onScanSuccess"
+          @close="onClose"
+        />
+
+        <!-- 手动填写模式 -->
+        <template v-else>
+          <div class="form-group">
+            <label class="form-label">名称</label>
+            <input class="v" v-model="form.name" placeholder="如：我的助手" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">来源</label>
+            <select class="v" v-model="form.source">
+              <option value="wecom">企业微信</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Bot ID</label>
+            <input class="v" v-model="form.botId" placeholder="企业微信 bot ID" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Secret</label>
+            <input class="v" v-model="form.secret" type="password" placeholder="bot secret" />
+          </div>
+        </template>
+
         <div class="dialog-foot">
-          <button class="scan" @click="showScan = true">扫码创建</button>
           <div class="spacer" />
           <button class="cancel" @click="onClose">取消</button>
-          <button class="save" :disabled="!valid" @click="onSave">保存并绑定</button>
+          <button
+            v-if="mode === 'manual'"
+            class="save"
+            :disabled="!valid"
+            @click="onSave"
+          >保存并绑定</button>
         </div>
       </div>
     </div>
   </Teleport>
-
-  <QrScanDialog v-if="showScan" @success="onScanSuccess" @close="showScan = false" />
 </template>
 
 <script setup lang="ts">
@@ -67,10 +94,16 @@ const valid = computed(() =>
   form.name.trim() && form.botId.trim() && form.secret.trim()
 )
 
-const showScan = ref(false)
+/** 添加方式：scan=扫码创建（默认便捷方式），manual=手动填写 */
+const mode = ref<'scan' | 'manual'>('scan')
 
 function onClose() {
   emit('close')
+}
+
+/** 切换添加方式：离开扫码模式时 QrScanDialog 卸载会自动 CancelWecomScan */
+function switchMode(m: 'scan' | 'manual') {
+  mode.value = m
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -103,7 +136,6 @@ async function onSave() {
 }
 
 async function onScanSuccess(scan: { name: string; botId: string; secret: string }) {
-  showScan.value = false
   form.name = scan.name
   form.botId = scan.botId
   form.secret = scan.secret
@@ -125,6 +157,17 @@ async function onScanSuccess(scan: { name: string; botId: string; secret: string
 .dialog-head h3 { margin: 0; font-size: 16px; color: var(--text-primary); }
 .close { background: none; border: none; color: var(--text-tertiary); cursor: pointer; padding: 4px; }
 .close:hover { color: var(--text-primary); }
+.mode-toggle {
+  display: flex; gap: 4px; margin-bottom: 14px;
+  padding: 3px; background: var(--bg-input);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+}
+.mode-btn {
+  flex: 1; padding: 6px 0; border: none; background: transparent;
+  color: var(--text-secondary); font-size: 12px; border-radius: var(--radius-sm);
+  cursor: pointer; font-family: inherit;
+}
+.mode-btn.active { background: var(--accent); color: var(--text-inverse); }
 .form-group { margin-bottom: 12px; }
 .form-label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 500; }
 .form-group .v {
@@ -142,7 +185,6 @@ async function onScanSuccess(scan: { name: string; botId: string; secret: string
   font-family: inherit;
 }
 .dialog-foot button.cancel:hover { background: var(--border); }
-.dialog-foot button.scan { background: var(--bg-hover); border-color: var(--accent); color: var(--accent); }
 .dialog-foot button.save { background: var(--accent); border-color: var(--accent); color: var(--text-inverse); }
 .dialog-foot button.save:hover:not(:disabled) { background: var(--accent-deep); }
 .dialog-foot button:disabled { opacity: 0.4; cursor: not-allowed; }
