@@ -43,4 +43,14 @@ describe('DesktopSocket restoreToken / token-first auth', () => {
     await (ds as any).ensureJwtAndAuth();
     expect(emitSpy).toHaveBeenCalledWith('desktop:auth', expect.objectContaining({ token: 'new-token' }));
   });
+
+  it('无 token 无密码时 ensureJwtAndAuth 告警返回，不 emit 不调 login', async () => {
+    const ds = makeSocket();
+    const emitSpy = vi.fn();
+    (ds as any).socket = { connected: true, emit: emitSpy };
+    const loginSpy = vi.spyOn(ds as any, 'login').mockResolvedValue({ token: 'never' });
+    await (ds as any).ensureJwtAndAuth();
+    expect(loginSpy).not.toHaveBeenCalled();
+    expect(emitSpy).not.toHaveBeenCalled();
+  });
 });

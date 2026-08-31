@@ -22,12 +22,16 @@ export function decideRestore(
   return 'form';
 }
 
-/** 加密持久化 JWT；safeStorage 不可用时拒绝落盘（安全优先） */
+/** 加密持久化 JWT；safeStorage 不可用或加密/落盘抛错时返回 false（安全优先） */
 export function saveStoredAuth(userId: string, jwt: string): boolean {
   if (!safeStorage.isEncryptionAvailable()) return false;
-  getStore('settings').set(JWT_KEY, safeStorage.encryptString(jwt).toString('base64'));
-  getStore('settings').set('currentUser', userId);
-  return true;
+  try {
+    getStore('settings').set(JWT_KEY, safeStorage.encryptString(jwt).toString('base64'));
+    getStore('settings').set('currentUser', userId);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** 读取并解密 JWT；解密失败或 currentUser 缺失时清理并返回 null */

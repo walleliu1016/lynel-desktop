@@ -181,7 +181,7 @@ async function onSubmit() {
     return
   }
 
-  // 先保存云服务配置（URL 变更会清旧 JWT），再走 token 登录
+  // 先保存云服务配置（URL 变更会触发 socket 重连），再走 token 登录
   try {
     await UpdateCloudSettings(cloudEnabled.value, cloudUrl.value.trim())
   } catch (e: any) {
@@ -236,6 +236,20 @@ async function runAutoLogin() {
     })
     // 超时兜底 15s：网络异常时退出加载态，显示表单（预填记住的用户名）
     autoLoginTimer = setTimeout(() => { cleanupAutoLogin(); void prefillUsername() }, 15_000)
+    // 订阅建立后复检一次 socket 状态（TOCTOU 兜底）：
+    // auth:success 可能落在第一次预检响应与订阅建立之间；socket setState 只在状态
+    // 转换时 emit、不重播，事件会被丢弃，导致已认证却等到 15s 超时出现登录表单。
+    // 复检时若已 authenticated 直接进主页；若订阅回调已同步处理过（autoLoginState
+    // 已被 markAuthenticated 置为 done），则跳过，避免重复进入主页。
+    try {
+      if (auth.autoLoginState === 'done') return
+      const s2 = await CloudConnectionState()
+      if (s2?.state === 'authenticated') {
+        cleanupAutoLogin()
+        auth.markAuthenticated()
+        await enterHome()
+      }
+    } catch {}
   }
 }
 
