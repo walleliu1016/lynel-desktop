@@ -15,3 +15,4 @@ src/main/**/*.js.map
 src/renderer/src/**/*.js
 src/renderer/src/**/*.js.map
 scripts/dump-*.png
+certs/

@@ -25,6 +25,13 @@ mac:
     - target: dmg
       arch: x64
   category: public.app-category.developer-tools
+  # hardened runtime + entitlements：Apple 公证（notarization）的前提
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # 检测到 APPLE_API_KEY / APPLE_ID 凭据环境变量时自动 notarize + staple
+  notarize: true
 linux:
   target:
     - target: AppImage

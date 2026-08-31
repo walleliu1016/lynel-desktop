@@ -13,6 +13,9 @@ jobs:
     permissions:
       contents: write
     runs-on: ${{ matrix.os }}
+    # release 环境（Environment secrets）绑定 Deployment branches 保护规则：
+    # 仅 v* tag 构建能读到 CSC_LINK/APPLE_* 凭据 → 日常 push 产物不签名，发版 tag 才签名+公证
+    environment: release
     strategy:
       fail-fast: false
       matrix:
@@ -67,6 +70,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          # 签名（release 环境注入，仅 tag 构建可用）
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # 公证（notarize: true 时 electron-builder 自动使用）
+          # 方案 B：Apple ID + App 专用密码（无需 App Store Connect API Key）
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

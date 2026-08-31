@@ -1,7 +1,7 @@
 # macOS 签名与公证方案（GitHub Actions 私钥安全）
 
 - 日期：2026-08-31
-- 状态：已记录，待落地（改 `build.yml` + 配置 secrets）
+- 状态：**已落地**（`build.yml` 挂载 `release` environment 注入凭据，`electron-builder.yml` 开启 hardenedRuntime/entitlements/notarize，公证选**方案 B**）。剩余手动步骤：在 GitHub 配置 5 个 secrets，见下。
 
 ## 背景
 
@@ -33,12 +33,12 @@ macOS 产物启用 Developer ID 签名 + notarization（公证），同时保证
 
 | Secret | 内容 | 说明 |
 |---|---|---|
-| `MAC_CSC_LINK` | Developer ID Application 证书 `.p12` 的 **base64** | electron-builder 签名用 |
-| `MAC_CSC_KEY_PASSWORD` | `.p12` 导出密码 | 解开私钥 |
+| `CSC_LINK` | Developer ID Application 证书 `.p12` 的 **base64** | electron-builder 签名用 |
+| `CSC_KEY_PASSWORD` | `.p12` 导出密码 | 解开私钥 |
 
-### 公证（二选一）
+### 公证（二选一，**当前选用方案 B**）
 
-**方案 A（推荐）：App Store Connect API Key**
+**方案 A：App Store Connect API Key**（权限可收窄、可独立吊销、可审计，但要先配 API Key）
 
 | Secret | 内容 |
 |---|---|
@@ -54,27 +54,32 @@ macOS 产物启用 Developer ID 签名 + notarization（公证），同时保证
 | `APPLE_APP_SPECIFIC_PASSWORD` | appleid.apple.com 生成的「App 专用密码」 |
 | `APPLE_TEAM_ID` | 开发者团队 ID |
 
-## build.yml 改动（待落地）
+## build.yml 改动（已落地）
 
-在 `Build installer` 步骤注入 secrets（仅 mac job 实际消费，其他平台忽略）：
+`build` job 挂载 `environment: release`（Environment secrets 绑定 Deployment branches → `v*`），`Build installer` 步骤注入凭据（仅 tag 构建能读到，日常 push 不签名）：
 
 ```yaml
-- name: Build installer
-  run: npx electron-builder --${{ matrix.target }} ${{ matrix.arch }} --publish=never
-  env:
-    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    CSC_IDENTITY_AUTO_DISCOVERY: false
-    CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-    CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-    APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}            # 方案 A
-    APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-    APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-    # APPLE_ID: ${{ secrets.APPLE_ID }}                    # 方案 B
-    # APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-    # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+  build:
+    permissions:
+      contents: write
+    runs-on: ${{ matrix.os }}
+    environment: release   # 仅 v* tag 构建可访问 secrets
+    strategy:
+      ...
+
+    - name: Build installer
+      run: npx electron-builder --${{ matrix.target }} ${{ matrix.arch }} --publish=never
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        CSC_IDENTITY_AUTO_DISCOVERY: false
+        CSC_LINK: ${{ secrets.CSC_LINK }}                        # 签名
+        CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}              # 公证（方案 B）
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
 ```
 
-> electron-builder ≥ 24 检测到 `APPLE_API_*` 或 `APPLE_*` 凭据后自动执行 notarization（notarytool + staple）。`CSC_IDENTITY_AUTO_DISCOVERY: false` 保留，改为由 `CSC_LINK` 显式注入证书。
+`electron-builder.yml` mac 段：`hardenedRuntime: true` + `entitlements: build/entitlements.mac.plist`（公证前提）+ `notarize: true`。electron-builder ≥ 24 检测到 `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD`（或 `APPLE_API_*`）凭据后自动执行 notarization（notarytool + staple）。`CSC_IDENTITY_AUTO_DISCOVERY: false` 保留，改为由 `CSC_LINK` 显式注入证书。
 
 ## 手动步骤（需在 Mac + GitHub 上操作，CI 无法代劳）
 
@@ -83,7 +88,7 @@ macOS 产物启用 Developer ID 签名 + notarization（公证），同时保证
    ```bash
    base64 -i cert.p12 > cert.p12.b64
    ```
-   把 `cert.p12.b64` 内容粘入 Secret `MAC_CSC_LINK`，密码粘入 `MAC_CSC_KEY_PASSWORD`。
+   把 `cert.p12.b64` 内容粘入 Secret `CSC_LINK`，密码粘入 `CSC_KEY_PASSWORD`。
 3. **生成公证凭据**：
    - 方案 A：App Store Connect → 用户与访问 → 集成 → App Store Connect API → 生成密钥（`App 管理` 权限即可），下载 `.p8`。
    - 方案 B：appleid.apple.com → 登录与安全 → App 专用密码 → 生成，填 `APPLE_APP_SPECIFIC_PASSWORD`。
