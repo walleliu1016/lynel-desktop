@@ -52,6 +52,11 @@
     <div v-if="showBotPicker" class="context-menu-overlay picker-overlay" @click="showBotPicker = false">
       <div class="context-menu bot-picker" :style="menuStyle" @click.stop>
         <div class="picker-title">选择机器人（{{ botList.length }} 个）</div>
+        <button class="menu-item add-bot-item" @click="openBotAdd">
+          <Icon name="plus" :size="13" />
+          去添加
+        </button>
+        <div class="menu-divider" />
         <button
           class="menu-item"
           @click="onSelectBot(null)"
@@ -69,8 +74,8 @@
             @click="onSelectBot(b.id)"
           >
             <span class="bot-name">{{ b.name || b.botId }}</span>
+            <span v-if="getBotBoundSessionName(b.id)" class="bound-inline">（已绑定 {{ getBotBoundSessionName(b.id) }}）</span>
           </button>
-          <span v-if="getBotBoundSessionName(b.id)" class="bound-hint">{{ getBotBoundSessionName(b.id) }}</span>
           <button
             v-if="b.id === currentBotId"
             class="unbind-btn"
@@ -80,11 +85,6 @@
             <Icon name="link-2-off" :size="13" />
           </button>
         </div>
-        <div class="menu-divider" />
-        <button class="menu-item add-bot-item" @click="openBotAdd">
-          <Icon name="plus" :size="13" />
-          去添加
-        </button>
       </div>
     </div>
     <BotAddDialog
@@ -442,24 +442,18 @@ async function onBotAdded(botId: string) {
 .menu-item:disabled:hover {
   background: transparent;
 }
-.bound-hint {
-  flex-shrink: 0;
-  font-size: 10px;
-  color: color-mix(in srgb, var(--status-success) 40%, var(--text-primary));
-  background: var(--status-success-soft);
-  padding: 1px 6px;
-  border-radius: 4px;
-  margin-right: 8px;
-  white-space: nowrap;
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* 已绑定到其他会话的内联提示：与首页 Bot 下拉保持一致（name（已绑定 xxx）） */
+.bound-inline {
+  flex-shrink: 1; min-width: 0;
+  color: var(--text-tertiary); font-weight: 400;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .menu-divider {
   height: 1px; background: var(--border); margin: 4px 0;
 }
 .picker-overlay { z-index: 1001; }
-/* Bot 选择弹窗：与 Agent 下拉面板（Select.ls-panel）同款样式 */
+/* Bot 选择弹窗：与 Agent 下拉面板（Select.ls-panel）同款样式；
+   高度随机器人数量动态自适应，不设 max-height/滚动条 */
 .bot-picker {
   min-width: 200px;
   border-radius: var(--radius-lg);
@@ -467,8 +461,6 @@ async function onBotAdded(botId: string) {
   border: 1px solid var(--border-strong);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
-  max-height: 280px;
-  overflow-y: auto;
 }
 .bot-picker .menu-item {
   border-bottom: none;
@@ -512,6 +504,7 @@ async function onBotAdded(botId: string) {
 }
 .bot-select:disabled { cursor: not-allowed; }
 .bot-name {
+  flex: 1; min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
