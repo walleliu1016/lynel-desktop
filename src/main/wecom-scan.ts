@@ -23,6 +23,8 @@ const QR_QUERY_URL = 'https://work.weixin.qq.com/ai/qc/query_result';
 export const scanTiming = { intervalMs: 3000, timeoutMs: 300000 };
 
 let active = false;
+/** 扫描代际计数：每次 startScan / cancelScan 自增，用于隔离并发轮询循环 */
+let scanGen = 0;
 
 /** 平台码：darwin=1、win32=2、linux=3、其他=0 */
 export function getPlatCode(platform: NodeJS.Platform = os.platform()): number {
@@ -81,19 +83,21 @@ export async function pollOnce(scode: string): Promise<ScanBotInfo | null> {
 /** 发起扫码：获取二维码并启动轮询；返回 scode/authUrl 供渲染二维码 */
 export function startScan(onEvent: (e: ScanEvent) => void): Promise<ScanStartResult> {
   cancelScan();
+  const gen = ++scanGen;
   return fetchQRCode().then(({ scode, authUrl }) => {
     active = true;
     onEvent({ type: 'pending' });
-    void runPollLoop(scode, onEvent, Date.now() + scanTiming.timeoutMs);
+    void runPollLoop(scode, gen, onEvent, Date.now() + scanTiming.timeoutMs);
     return { scode, authUrl };
   });
 }
 
-async function runPollLoop(scode: string, onEvent: (e: ScanEvent) => void, deadline: number) {
+async function runPollLoop(scode: string, gen: number, onEvent: (e: ScanEvent) => void, deadline: number) {
   while (active) {
+    if (gen !== scanGen) return;
     try {
       const info = await pollOnce(scode);
-      if (!active) return;
+      if (gen !== scanGen) return;
       if (info) {
         active = false;
         onEvent({ type: 'success', botId: info.botId, secret: info.secret });
@@ -102,6 +106,7 @@ async function runPollLoop(scode: string, onEvent: (e: ScanEvent) => void, deadl
     } catch {
       // 单次请求网络抖动：忽略，继续轮询
     }
+    if (gen !== scanGen) return;
     if (Date.now() >= deadline) {
       active = false;
       onEvent({ type: 'timeout' });
@@ -113,4 +118,5 @@ async function runPollLoop(scode: string, onEvent: (e: ScanEvent) => void, deadl
 
 export function cancelScan(): void {
   active = false;
+  scanGen++;
 }

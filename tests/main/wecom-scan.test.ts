@@ -129,4 +129,24 @@ describe('startScan 轮询', () => {
       { timeout: 2000 },
     );
   });
+
+  it('连续 startScan 时旧循环被代际隔离，只推送新 scan 的凭据', async () => {
+    mockHttpsSequence([
+      JSON.stringify({ data: { scode: 's1', auth_url: 'http://qr1' } }),
+      JSON.stringify({ data: { scode: 's2', auth_url: 'http://qr2' } }),
+      JSON.stringify({ data: { status: 'success', bot_info: { botid: 'B2', secret: 'S2' } } }),
+    ]);
+    const events1: any[] = [];
+    const events2: any[] = [];
+    // 两次快速 startScan，scan#2 在 scan#1 fetchQRCode 往返期间抢占
+    const p1 = startScan((e) => events1.push(e));
+    const p2 = startScan((e) => events2.push(e));
+    await Promise.all([p1, p2]);
+    await vi.waitFor(() => {
+      const success = events2.find((e) => e.type === 'success');
+      expect(success).toEqual({ type: 'success', botId: 'B2', secret: 'S2' });
+    });
+    // 旧 scan#1 必须不推送任何 success（代际隔离，避免交付另一场扫描的凭据）
+    expect(events1.some((e) => e.type === 'success')).toBe(false);
+  });
 });
