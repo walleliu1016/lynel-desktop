@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import { defaultTerminalConfig, type Settings, type TerminalTheme } from '../types/settings'
+import { defaultTerminalConfig, defaultCodeConfig, type Settings, type TerminalTheme } from '../types/settings'
 import { GetSettings, UpdateSettings } from '../composables/useElectron'
 import type { AgentKind } from '../types/agents'
 import { setThemeMode, themeMode, type ThemeMode } from '../composables/useTheme'
@@ -30,6 +30,7 @@ function defaultSettings(): Settings {
     push_tool_calls: false,
     prevent_sleep: false,
     terminal: defaultTerminalConfig(),
+    code: defaultCodeConfig(),
     buddyEnabled: false,
     buddyRoleId: 'duck',
     buddyEye: '·',
@@ -58,6 +59,8 @@ export const useSettingsStore = defineStore('settings', () => {
     }
     terminalExplicit = !!(raw?.terminal && typeof raw.terminal === 'object')
     const merged: Settings = { ...defaultSettings(), ...(raw || {}) }
+    // 兼容旧版本：code 缺省时回退默认
+    merged.code = { ...defaultCodeConfig(), ...(raw?.code || {}) }
     if (terminalExplicit) {
       // 用户显式配置过终端配色，尊重其选择
       merged.terminal = { ...defaultTerminalConfig(), ...raw!.terminal }

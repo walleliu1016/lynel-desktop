@@ -55,6 +55,8 @@ export interface Settings {
   push_tool_calls: boolean
   prevent_sleep: boolean
   terminal: TerminalConfig
+  /** 代码编辑器配置 */
+  code: CodeConfig
   /** 是否启用 ASCII 电子宠物（buddy） */
   buddyEnabled: boolean
   /** buddy 物种 ID */
@@ -87,4 +89,13 @@ export function defaultTerminalConfig(): TerminalConfig {
     cursorBlink: true,
     scrollback: 1000,
   }
+}
+
+export interface CodeConfig {
+  /** 代码编辑器字号 px，10-20 */
+  fontSize: number
+}
+
+export function defaultCodeConfig(): CodeConfig {
+  return { fontSize: 12 }
 }
