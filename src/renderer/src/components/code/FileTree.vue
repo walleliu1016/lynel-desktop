@@ -33,6 +33,61 @@ import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, w
 import Icon from '../Icon.vue'
 import { useFilesStore, type TreeEntry } from '../../stores/files'
 
+// ---------- 文件类型图标（vscode-icons 提取的本地 SVG 资产） ----------
+// 按扩展名映射到 assets/file-icons/ 下的图标名；未匹配回退 null（用 lucide file-text）
+const ICON_ASSETS = import.meta.glob('../assets/file-icons/*.svg', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+
+const EXT_ICON: Record<string, string> = {
+  ts: 'typescript', tsx: 'typescript', mts: 'typescript', cts: 'typescript',
+  go: 'go',
+  html: 'html', htm: 'html',
+  js: 'js', jsx: 'js', mjs: 'js', cjs: 'js',
+  css: 'css',
+  scss: 'scss', sass: 'sass', less: 'less',
+  json: 'json',
+  md: 'markdown', markdown: 'markdown',
+  py: 'python', pyi: 'python', pyw: 'python',
+  rs: 'rust',
+  vue: 'vue',
+  java: 'java',
+  c: 'c', h: 'c',
+  cpp: 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', hh: 'cpp',
+  cs: 'csharp',
+  rb: 'ruby',
+  swift: 'swift',
+  kt: 'kotlin', kts: 'kotlin',
+  php: 'php',
+  sh: 'shell', bash: 'shell', zsh: 'shell',
+  sql: 'sql',
+  xml: 'xml',
+  yaml: 'yaml', yml: 'yaml',
+  toml: 'toml',
+  env: 'dotenv',
+  svelte: 'svelte',
+  astro: 'astro',
+  lua: 'lua',
+  sol: 'solidity',
+  zig: 'zig',
+  gitignore: 'git',
+  png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', svg: 'image', ico: 'image', webp: 'image',
+  pdf: 'pdf2',
+  txt: 'text',
+}
+
+/** 根据文件名返回对应语言图标的资产 URL；无匹配返回空串（回退 lucide file-text） */
+function fileIconUrl(name: string): string {
+  const idx = name.lastIndexOf('.')
+  if (idx < 0) return ''
+  const ext = name.slice(idx + 1).toLowerCase()
+  const icon = EXT_ICON[ext]
+  if (!icon) return ''
+  return ICON_ASSETS[`../assets/file-icons/${icon}.svg`] ?? ''
+}
+
 // 递归组件自引用：模板内 <TreeRow> 需解析到本组件自身（Vue 3.5 官方机制）
 defineOptions({ name: 'TreeRow' })
 
@@ -227,7 +282,14 @@ watch(
         @contextmenu.prevent.stop="openMenu($event, entry)"
       >
         <template v-if="editing && isEditingEntry(entry)">
-          <Icon :name="entry.isDir ? 'folder-open' : 'file-text'" :size="14" :class="{ 'icon-dir': entry.isDir }" />
+          <img
+            v-if="!entry.isDir && fileIconUrl(entry.name)"
+            :src="fileIconUrl(entry.name)"
+            class="row-icon"
+            alt=""
+            draggable="false"
+          />
+          <Icon v-else :name="entry.isDir ? 'folder-open' : 'file-text'" :size="14" :class="{ 'icon-dir': entry.isDir }" />
           <input
             ref="editInput"
             v-model="editing.name"
@@ -247,7 +309,14 @@ watch(
               :size="13"
             />
           </span>
-          <Icon :name="entry.isDir ? 'folder-open' : 'file-text'" :size="14" :class="{ 'icon-dir': entry.isDir }" />
+          <img
+            v-if="!entry.isDir && fileIconUrl(entry.name)"
+            :src="fileIconUrl(entry.name)"
+            class="row-icon"
+            alt=""
+            draggable="false"
+          />
+          <Icon v-else :name="entry.isDir ? 'folder-open' : 'file-text'" :size="14" :class="{ 'icon-dir': entry.isDir }" />
           <span class="name" :title="entry.name">{{ entry.name }}</span>
         </template>
       </div>
@@ -262,7 +331,14 @@ watch(
 
     <!-- 新建条目 ghost 行 -->
     <div v-if="creatingHere && editing" class="row creating" :style="{ paddingLeft: depth * 12 + 'px' }">
-      <Icon :name="editing.isDir ? 'folder-open' : 'file-text'" :size="14" :class="{ 'icon-dir': editing.isDir }" />
+      <img
+        v-if="!editing.isDir && fileIconUrl(editing.name)"
+        :src="fileIconUrl(editing.name)"
+        class="row-icon"
+        alt=""
+        draggable="false"
+      />
+      <Icon v-else :name="editing.isDir ? 'folder-open' : 'file-text'" :size="14" :class="{ 'icon-dir': editing.isDir }" />
       <input
         ref="editInput"
         v-model="editing.name"
@@ -315,6 +391,12 @@ watch(
   justify-content: center;
   width: 14px;
   flex-shrink: 0;
+}
+.row-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 .name {
   overflow: hidden;
