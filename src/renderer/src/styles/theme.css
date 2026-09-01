@@ -288,6 +288,41 @@
  * 数值取自 iTerm2 / VS Code 经典配色，已校准对比度（4.5+）。
  * ===================================================================== */
 
+/* =====================================================================
+ * 终端配色兜底默认值（= default-dark）
+ * 代码工作区（文件树 + Monaco）在没有 XtermTerminal 挂载 data-term-theme 时
+ * 需要 --term-* 有值可读；XtermTerminal 挂载后会 setAttribute data-term-theme 覆盖。
+ * 衍生色：基于 --term-fg 的半透明叠加，保持单色源。
+ * ===================================================================== */
+:root {
+  --term-bg: #1e1e1e;
+  --term-fg: #d4d4d4;
+  --term-cursor: #d4d4d4;
+  --term-cursor-accent: #1e1e1e;
+  --term-selection: #264f78;
+
+  --term-black: #000000;
+  --term-red: #cd3131;
+  --term-green: #0dbc79;
+  --term-yellow: #e5e510;
+  --term-blue: #2472c8;
+  --term-magenta: #bc3fbc;
+  --term-cyan: #11a8cd;
+  --term-white: #e5e5e5;
+
+  --term-bright-black: #666666;
+  --term-bright-red: #f14c4c;
+  --term-bright-green: #23d18b;
+  --term-bright-yellow: #f5f543;
+  --term-bright-blue: #3b8eea;
+  --term-bright-magenta: #d670d6;
+  --term-bright-cyan: #29b8db;
+  --term-bright-white: #ffffff;
+
+  --code-hover: color-mix(in srgb, var(--term-fg) 10%, transparent);
+  --code-border: color-mix(in srgb, var(--term-fg) 18%, transparent);
+}
+
 /* === default-dark：中性的深色 === */
 [data-term-theme="default-dark"] {
   --term-bg: #1e1e1e;

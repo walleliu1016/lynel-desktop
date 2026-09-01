@@ -227,7 +227,7 @@ watch(
         @contextmenu.prevent.stop="openMenu($event, entry)"
       >
         <template v-if="editing && isEditingEntry(entry)">
-          <Icon :name="entry.isDir ? 'folder-open' : 'file-text'" :size="14" />
+          <Icon :name="entry.isDir ? 'folder-open' : 'file-text'" :size="14" :class="{ 'icon-dir': entry.isDir }" />
           <input
             ref="editInput"
             v-model="editing.name"
@@ -247,7 +247,7 @@ watch(
               :size="13"
             />
           </span>
-          <Icon :name="entry.isDir ? 'folder-open' : 'file-text'" :size="14" />
+          <Icon :name="entry.isDir ? 'folder-open' : 'file-text'" :size="14" :class="{ 'icon-dir': entry.isDir }" />
           <span class="name" :title="entry.name">{{ entry.name }}</span>
         </template>
       </div>
@@ -262,7 +262,7 @@ watch(
 
     <!-- 新建条目 ghost 行 -->
     <div v-if="creatingHere && editing" class="row creating" :style="{ paddingLeft: depth * 12 + 'px' }">
-      <Icon :name="editing.isDir ? 'folder-open' : 'file-text'" :size="14" />
+      <Icon :name="editing.isDir ? 'folder-open' : 'file-text'" :size="14" :class="{ 'icon-dir': editing.isDir }" />
       <input
         ref="editInput"
         v-model="editing.name"
@@ -356,4 +356,5 @@ watch(
 .menu-item:hover { background: var(--bg-hover); color: var(--text-primary); }
 .menu-item.danger { color: var(--status-error); }
 .menu-item.danger:hover { background: var(--status-error-soft); }
+.icon-dir { color: var(--term-blue); }
 </style>

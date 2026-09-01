@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import Icon from '../Icon.vue'
 import FileTree from './FileTree.vue'
 import FileTabs from './FileTabs.vue'
@@ -7,6 +7,13 @@ import CodeEditor from './CodeEditor.vue'
 import { useFilesStore } from '../../stores/files'
 
 const store = useFilesStore()
+
+/** 项目目录 basename（title 展示完整路径） */
+const dirName = computed(() => {
+  const wd = store.workDir
+  if (!wd) return ''
+  return wd.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? wd
+})
 
 // ---------- 文件树面板宽度（localStorage 持久化，240–600px） ----------
 const WIDTH_KEY = 'lynel:code-tree-width'
@@ -89,6 +96,7 @@ function onExpand() {
         <button class="tool-btn" title="新建文件" aria-label="新建文件" @click="onNewFile">
           <Icon name="plus" :size="14" />
         </button>
+        <span class="toolbar-dir" :title="store.workDir">{{ dirName }}</span>
         <span class="toolbar-spacer" />
         <button class="tool-btn" title="折叠文件树" aria-label="折叠文件树" @click="onCollapse">
           <Icon name="panel-left-close" :size="14" />
@@ -109,6 +117,24 @@ function onExpand() {
 
 <style scoped>
 .code-view {
+  /* 代码工作区配色跟随终端主题：把 UI 变量重映射为 --term-*（html 上全局可用） */
+  --bg-panel: var(--term-bg);
+  --text-primary: var(--term-fg);
+  --text-secondary: var(--term-fg);
+  --text-tertiary: var(--term-fg);
+  --bg-hover: var(--code-hover);
+  --tab-hover-bg: var(--code-hover);
+  --accent-soft-bg: var(--term-selection);
+  --accent: var(--term-fg);
+  --border: var(--code-border);
+  --border-strong: var(--code-border);
+  --bg-input: var(--term-bg);
+  --border-focus: var(--code-border);
+  --status-warn: var(--term-yellow);
+  --status-warn-soft: var(--code-hover);
+  --status-warn-border: var(--code-border);
+  --status-error: var(--term-red);
+  --status-error-soft: var(--code-hover);
   flex: 1;
   min-height: 0;
   display: flex;
@@ -125,8 +151,8 @@ function onExpand() {
   border-right: 1px solid var(--border);
 }
 .panel-toolbar {
-  height: 40px;
-  min-height: 40px;
+  height: 32px;
+  min-height: 32px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -150,6 +176,15 @@ function onExpand() {
 }
 .tool-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
 .toolbar-spacer { flex: 1; }
+.toolbar-dir {
+  margin-left: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-caption);
+  color: var(--term-bright-black);
+}
 .resize-handle {
   position: absolute;
   top: 0;
