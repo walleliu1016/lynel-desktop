@@ -373,7 +373,7 @@ watch(activeSessionId, (newId) => {
   if (!wd) return
   trace.setSession(wd, newId)
   trace.load()
-  void files.setSession(wd)
+  void files.setSession(newId, wd)
 })
 
 onMounted(async () => {
@@ -462,6 +462,8 @@ async function closeSessionTab(id: string, sid: string) {
     delete next[sid]
     subTabBySession.value = next
   }
+  // 清理该会话的代码工作区现场
+  files.forgetSession(sid)
 }
 
 function onConfirmCloseSession() {
@@ -515,7 +517,7 @@ watch(
   () => tabsStore.activeType,
   (type) => {
     if (type === 'harness') void loadHarness()
-    if (type !== 'session') void files.setSession('')
+    if (type !== 'session') void files.setSession('', '')
   },
 )
 

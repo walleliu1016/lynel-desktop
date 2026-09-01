@@ -17,6 +17,14 @@ export interface OpenFile {
   savedVersion: number // 打开/保存时自增，用于区分本地改动与外部变更
 }
 
+/** 按会话记忆的工作区现场（tab / 草稿 / 激活文件 / 展开态） */
+export interface SessionWorkspace {
+  openFiles: OpenFile[]
+  drafts: Record<string, string>
+  activeRelPath: string | null
+  expanded: string[]
+}
+
 export const useFilesStore = defineStore('files', () => {
   const workDir = ref('')
   const tree = ref<Record<string, TreeEntry[]>>({ '': [] }) // relPath -> 单层条目
@@ -28,19 +36,63 @@ export const useFilesStore = defineStore('files', () => {
   const collapsed = ref(false) // 侧栏折叠态（HomeView 持有也可，先放这里）
   const rootCreateRequest = ref(0) // 工具条「新建文件」请求计数：+1 触发树根弹行内输入
 
-  async function setSession(wd: string) {
+  // 每个会话独立记忆的工作区现场。切换会话即时还原。
+  const sessionState = ref<Record<string, SessionWorkspace>>({})
+  // 当前已加载现场的会话 id（'' = 无）。setSession 切走时先保存现场到该槽位。
+  let lastSessionId = ''
+
+  async function setSession(id: string, wd: string) {
+    // 同一会话重复设置：现场已就绪，直接返回避免误清
+    if (lastSessionId === id && workDir.value === wd) return
+    // 1. 保存当前会话现场（仅当确实有会话在场）
+    if (lastSessionId && workDir.value) {
+      sessionState.value = {
+        ...sessionState.value,
+        [lastSessionId]: {
+          openFiles: openFiles.value.map((o) => ({ ...o })),
+          drafts: { ...drafts.value },
+          activeRelPath: activeRelPath.value,
+          expanded: [...expanded.value],
+        },
+      }
+    }
+    // 2. 切换工作目录：unwatch 旧目录
     if (workDir.value) await FileUnwatch(workDir.value).catch(() => {})
     workDir.value = wd
+    lastSessionId = id
     tree.value = { '': [] }
-    expanded.value = new Set()
-    openFiles.value = []
-    drafts.value = {} // 切会话丢弃未保存编辑（本分支 spec 首版简单化行为）
-    activeRelPath.value = null
     rootCreateRequest.value = 0
+    // 3. 恢复新会话现场；无则初始化空
+    const saved = id ? sessionState.value[id] : undefined
+    if (saved) {
+      openFiles.value = saved.openFiles.map((o) => ({ ...o }))
+      drafts.value = { ...saved.drafts }
+      activeRelPath.value = saved.activeRelPath
+      expanded.value = new Set(saved.expanded)
+    } else {
+      openFiles.value = []
+      drafts.value = {}
+      activeRelPath.value = null
+      expanded.value = new Set()
+    }
+    // 4. 挂载新目录 watcher + 拉取根目录；恢复的展开目录内容需重新惰性拉取
     if (wd) {
       await FileWatch(wd).catch(() => {})
       await loadDir('').catch(() => {})
+      if (saved) {
+        for (const dir of saved.expanded) {
+          await loadDir(dir).catch(() => {})
+        }
+      }
     }
+  }
+
+  /** 会话删除时清理其现场快照，避免泄漏 */
+  function forgetSession(sid: string) {
+    if (!(sid in sessionState.value)) return
+    const next = { ...sessionState.value }
+    delete next[sid]
+    sessionState.value = next
   }
 
   /** 拉取单层目录（已展开时刷新用）。返回条目列表，不抛错时更新 tree。 */
@@ -203,7 +255,7 @@ export const useFilesStore = defineStore('files', () => {
 
   return {
     workDir, tree, expanded, openFiles, drafts, activeRelPath, collapsed, rootCreateRequest,
-    setSession, loadDir, toggleExpand, openFile, closeFile, saveFile, reloadFile,
+    setSession, forgetSession, loadDir, toggleExpand, openFile, closeFile, saveFile, reloadFile,
     setDraft, clearDraft,
     createEntry, renameEntry, deleteEntry,
     cleanupWatcher: () => { fileChangedCleanup?.(); fileChangedCleanup = null },
