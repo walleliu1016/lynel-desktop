@@ -24,6 +24,7 @@ export const useFilesStore = defineStore('files', () => {
   const openFiles = ref<OpenFile[]>([])
   const activeRelPath = ref<string | null>(null)
   const collapsed = ref(false) // 侧栏折叠态（HomeView 持有也可，先放这里）
+  const rootCreateRequest = ref(0) // 工具条「新建文件」请求计数：+1 触发树根弹行内输入
 
   async function setSession(wd: string) {
     if (workDir.value) await FileUnwatch(workDir.value).catch(() => {})
@@ -32,6 +33,7 @@ export const useFilesStore = defineStore('files', () => {
     expanded.value = new Set()
     openFiles.value = []
     activeRelPath.value = null
+    rootCreateRequest.value = 0
     if (wd) {
       await FileWatch(wd).catch(() => {})
       await loadDir('').catch(() => {})
@@ -175,7 +177,7 @@ export const useFilesStore = defineStore('files', () => {
   initWatcher()
 
   return {
-    workDir, tree, expanded, openFiles, activeRelPath, collapsed,
+    workDir, tree, expanded, openFiles, activeRelPath, collapsed, rootCreateRequest,
     setSession, loadDir, toggleExpand, openFile, closeFile, saveFile, reloadFile,
     createEntry, renameEntry, deleteEntry,
     cleanupWatcher: () => { fileChangedCleanup?.(); fileChangedCleanup = null },

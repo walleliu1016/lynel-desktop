@@ -191,13 +191,8 @@
           </div>
         </div>
       </div>
-      <!-- 右侧 Workspace 面板：暂时隐藏（含展开按钮，见上方注释；workspaceCollapsed 状态保留便于恢复） -->
-      <!--
-      <WorkspacePanel
-        :collapsed="workspaceCollapsed"
-        @toggle-collapse="workspaceCollapsed = !workspaceCollapsed"
-      />
-      -->
+      <!-- 右侧代码编辑器侧栏：仅会话页且有 workdir 时渲染（见上方注释的 WorkspacePanel 已下线） -->
+      <CodeSidebar v-if="tabsStore.activeType === 'session' && activeSessionWorkdir" />
     </div>
     <NewSessionDialog
       :open="showNewSession"
@@ -235,6 +230,7 @@ import GlobalTabs from '../components/GlobalTabs.vue'
 import SessionList from '../components/SessionList.vue'
 import TracePane from '../components/trace/TracePane.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
+import CodeSidebar from '../components/code/CodeSidebar.vue'
 import WelcomeTab from '../components/WelcomeTab.vue'
 import SessionTabContent from '../components/SessionTabContent.vue'
 import SettingsTab from '../components/SettingsTab.vue'
@@ -244,6 +240,7 @@ import CloseSessionDialog from '../components/CloseSessionDialog.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useTabsStore } from '../stores/tabs'
 import { useTraceStore } from '../stores/trace'
+import { useFilesStore } from '../stores/files'
 import type { RecentSession } from '../types/recent'
 import type { SessionState } from '../types/session'
 import { GetAppInfo, AdoptSession, OpenSessionTerminal, CloseSession, Logout, CloudConnectionState, GetSettings, DshEnsure } from '../composables/useElectron'
@@ -259,6 +256,7 @@ const auth = useAuthStore()
 const sessions = useSessionsStore()
 const tabsStore = useTabsStore()
 const trace = useTraceStore()
+const files = useFilesStore()
 useEventStream()
 
 const showNewSession = ref(false)
@@ -369,6 +367,7 @@ watch(activeSessionId, (newId) => {
   if (!wd) return
   trace.setSession(wd, newId)
   trace.load()
+  void files.setSession(wd)
 })
 
 onMounted(async () => {
@@ -505,10 +504,12 @@ async function loadHarness() {
 }
 
 // 首次进入 harness tab 时加载 harness（不自动折叠左侧栏）
+// 离开会话页时清理 files store（停止 watcher + 清空状态），避免残留影响终端性能
 watch(
   () => tabsStore.activeType,
   (type) => {
     if (type === 'harness') void loadHarness()
+    if (type !== 'session') void files.setSession('')
   },
 )
 

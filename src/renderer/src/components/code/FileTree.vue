@@ -165,6 +165,15 @@ watch(editing, async () => {
 onMounted(() => {
   if (creatingHere.value) editInput.value?.focus()
 })
+
+// 工具条「新建文件」按钮联动：+1 时在树根（relPath==='' 的递归实例）弹行内输入。
+// 根实例 relPath 为 undefined（只渲染容器），不响应；仅 v > old 防止 setSession 清零造成误触发。
+watch(
+  () => store.rootCreateRequest,
+  (v, old) => {
+    if (v > old && props.relPath === '') startCreate('', false)
+  },
+)
 </script>
 
 <template>
