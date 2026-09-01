@@ -49,13 +49,26 @@ export function resolveEntry(workDir: string, relPath: string): string {
 export async function readFileEntry(filePath: string): Promise<{ content: string; size: number; binary: boolean; truncated: boolean }> {
   const stat = await fs.promises.stat(filePath);
   const size = stat.size;
-  const buf = await fs.promises.readFile(filePath);
-  const binary = detectBinary(buf);
+  // 只读前 readLen 字节：size > 1MB 时避免整读入内存（>1MB 只读截断）
+  const readLen = Math.min(size, MAX_TEXT_SIZE + 1);
+  let data = Buffer.alloc(0);
+  if (readLen > 0) {
+    const buf = Buffer.allocUnsafe(readLen);
+    const fh = await fs.promises.open(filePath, 'r');
+    let bytesRead = 0;
+    try {
+      bytesRead = (await fh.read(buf, 0, readLen, 0)).bytesRead;
+    } finally {
+      await fh.close();
+    }
+    data = bytesRead === readLen ? buf : buf.subarray(0, bytesRead);
+  }
+  const binary = detectBinary(data);
   if (binary) return { content: '', size, binary: true, truncated: false };
   if (size > MAX_TEXT_SIZE) {
-    return { content: buf.subarray(0, MAX_TEXT_SIZE).toString('utf8'), size, binary: false, truncated: true };
+    return { content: data.subarray(0, MAX_TEXT_SIZE).toString('utf8'), size, binary: false, truncated: true };
   }
-  return { content: buf.toString('utf8'), size, binary: false, truncated: false };
+  return { content: data.toString('utf8'), size, binary: false, truncated: false };
 }
 
 /** 以 utf8 写入文本内容 */
@@ -138,6 +151,8 @@ export function startWatch(workDir: string): void {
       getBus().emit('file:changed', { workDir, relPath: rel });
     }, 150));
   });
+  // 监听 chokidar 异步错误（EMFILE/ENOSPC/权限等），避免走向主进程未捕获异常路径
+  w.on('error', (err) => console.error('[files:watch]', err));
   watchers.set(workDir, w);
 }
 

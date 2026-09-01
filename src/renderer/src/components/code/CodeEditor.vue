@@ -27,9 +27,8 @@ let editorHost: HTMLElement | null = null // 编辑器绑定到的宿主元素�
 let model: ITextModel | null = null
 let activeModelRelPath: string | null = null
 
-// relPath -> 编辑器草稿。store.content 是「上次保存/加载」的基准内容，跨 tab 切换时用它恢复未保存编辑
-const draftContent = new Map<string, string>()
-
+// 草稿持有权在 files store（store.drafts）：store.content 是「上次保存/加载」的基准内容，
+// 跨 tab 切换 / 组件卸载（折叠、离页）时用它恢复未保存编辑
 const activeFile = computed<OpenFile | null>(
   () => store.openFiles.find((o) => o.relPath === store.activeRelPath) ?? null,
 )
@@ -88,8 +87,8 @@ function onModelChange(relPath: string) {
   const f = store.openFiles.find((o) => o.relPath === relPath)
   if (!f || !model) return
   f.dirty = model.getValue() !== f.content
-  if (draftContent.get(relPath) !== model.getValue()) {
-    draftContent.set(relPath, model.getValue())
+  if (store.drafts[relPath] !== model.getValue()) {
+    store.setDraft(relPath, model.getValue())
   }
 }
 
@@ -108,8 +107,10 @@ async function switchModel() {
   const m = await ensureMonaco()
   const ed = await ensureEditor()
   if (!m || !ed) return
+  // 快速连续切 tab：await 期间激活文件可能已变化，复查避免为旧文件建 model 遗留未 dispose 的 model
+  if (store.activeRelPath !== f.relPath) return
   // 有未保存改动时优先用草稿；否则用 store 基准内容（重载后 dirty=false，自然回落为磁盘内容）
-  const content = f.dirty && draftContent.has(f.relPath) ? draftContent.get(f.relPath)! : f.content
+  const content = f.dirty && store.drafts[f.relPath] !== undefined ? store.drafts[f.relPath]! : f.content
   const lang = languageFor(f.relPath)
   const uri = m.Uri.parse(`file:///${f.relPath}`)
   model = m.editor.createModel(content, lang, uri)
@@ -157,16 +158,7 @@ watch(
   },
 )
 
-// 关闭文件后清理草稿，避免残留
-watch(
-  () => store.openFiles.map((o) => o.relPath).join('\u0000'),
-  (relPaths) => {
-    const set = new Set(relPaths ? relPaths.split('\u0000') : [])
-    for (const k of Array.from(draftContent.keys())) {
-      if (!set.has(k)) draftContent.delete(k)
-    }
-  },
-)
+// 关闭/删除文件后清理草稿由 store 统一管理（closeFile/deleteEntry/renameEntry），组件不重复处理
 
 onMounted(async () => {
   await nextTick()
@@ -174,13 +166,13 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  // 草稿留在 store，组件卸载（折叠/离页）不丢未保存编辑
   model?.dispose()
   model = null
   editor?.dispose()
   editor = null
   editorHost = null
   activeModelRelPath = null
-  draftContent.clear()
 })
 </script>
 

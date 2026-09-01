@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { isIgnored, detectBinary, listDir, resolveEntry, readFileEntry, writeFileEntry, createEntry, renameEntry, deleteEntry, startWatch, stopWatch } from '../../src/main/files.js'
+import { isIgnored, detectBinary, listDir, resolveEntry, readFileEntry, writeFileEntry, createEntry, renameEntry, deleteEntry, startWatch, stopWatch, MAX_TEXT_SIZE } from '../../src/main/files.js'
 import { getBus } from '../../src/main/events.js'
 
 describe('isIgnored', () => {
@@ -89,6 +89,25 @@ describe('文件操作', () => {
     await fs.promises.writeFile(f, Buffer.from([0x01, 0x02, 0x00, 0x03]))
     const r = await readFileEntry(f)
     expect(r.binary).toBe(true)
+  })
+
+  it('超大文件只读前 1MB+1 字节，不整读入内存', async () => {
+    const f = path.join(tmp, 'huge.txt')
+    // 前 1MB+1 字节为文本，之后填充大量 NUL（旧实现整读会误判/内存尖峰）
+    const head = Buffer.alloc(MAX_TEXT_SIZE + 1, 0x61) // 'a'
+    const tail = Buffer.alloc(MAX_TEXT_SIZE, 0x00)
+    await fs.promises.writeFile(f, Buffer.concat([head, tail]))
+    const spy = vi.spyOn(fs.promises, 'readFile')
+    try {
+      const r = await readFileEntry(f)
+      expect(spy).not.toHaveBeenCalled() // 不整读，只做定长读取
+      expect(r.truncated).toBe(true)
+      expect(r.binary).toBe(false)
+      expect(r.size).toBe(MAX_TEXT_SIZE * 2 + 1)
+      expect(r.content.length).toBe(MAX_TEXT_SIZE)
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('create 文件/目录，rename 改名', async () => {
