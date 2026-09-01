@@ -3,6 +3,9 @@ import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, w
 import Icon from '../Icon.vue'
 import { useFilesStore, type TreeEntry } from '../../stores/files'
 
+// 递归组件自引用：模板内 <TreeRow> 需解析到本组件自身（Vue 3.5 官方机制）
+defineOptions({ name: 'TreeRow' })
+
 const store = useFilesStore()
 
 // ---------- 行内编辑态 ----------
@@ -168,7 +171,7 @@ onMounted(() => {
   <!-- 根实例：外层容器 + 空状态 + 右键浮层 -->
   <div v-if="isRoot" class="file-tree" @contextmenu.prevent>
     <div v-if="!store.workDir" class="tree-empty">无工作目录</div>
-    <div v-else-if="!entries.length" class="tree-empty">空</div>
+    <div v-else-if="!store.tree['']?.length" class="tree-empty">空</div>
     <TreeRow v-else :rel-path="''" :depth="0" />
 
     <div
