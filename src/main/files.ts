@@ -123,7 +123,7 @@ export function registerFilesIpc(): void {
   });
 }
 
-function startWatch(workDir: string): void {
+export function startWatch(workDir: string): void {
   if (watchers.has(workDir)) return;
   const w = chokidar.watch(workDir, {
     ignoreInitial: true,
@@ -141,7 +141,7 @@ function startWatch(workDir: string): void {
   watchers.set(workDir, w);
 }
 
-async function stopWatch(workDir: string): Promise<void> {
+export async function stopWatch(workDir: string): Promise<void> {
   const w = watchers.get(workDir);
   if (w) { await w.close(); watchers.delete(workDir); }
   const t = watcherTimers.get(workDir);

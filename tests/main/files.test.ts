@@ -1,9 +1,10 @@
 // tests/main/files.test.ts
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { isIgnored, detectBinary, listDir, resolveEntry, readFileEntry, writeFileEntry, createEntry, renameEntry, deleteEntry } from '../../src/main/files.js'
+import { isIgnored, detectBinary, listDir, resolveEntry, readFileEntry, writeFileEntry, createEntry, renameEntry, deleteEntry, startWatch, stopWatch } from '../../src/main/files.js'
+import { getBus } from '../../src/main/events.js'
 
 describe('isIgnored', () => {
   it('忽略常见目录', () => {
@@ -110,5 +111,80 @@ describe('文件操作', () => {
     fs.writeFileSync(path.join(d, 'sub', 'a.js'), 'a')
     await deleteEntry(d)
     expect(fs.existsSync(d)).toBe(false)
+  })
+})
+
+describe('file watcher', () => {
+  let tmp: string
+  let events: Array<{ workDir: string; relPath: string }>
+
+  // getBus 是进程级单例，事件在 afterEach 移除监听，避免跨用例串扰
+  function handler(ev: { workDir: string; relPath: string }): void {
+    events.push(ev)
+  }
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lynel-watch-'))
+    events = []
+    getBus().on('file:changed', handler)
+  })
+
+  afterEach(async () => {
+    getBus().off('file:changed', handler)
+    await stopWatch(tmp)
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  // 等 chokidar 完成初始化，避免写入落在初始扫描窗口内被 ignoreInitial 吞掉
+  async function waitReady(): Promise<void> {
+    await new Promise((r) => setTimeout(r, 500))
+  }
+
+  // 等待目标事件出现；覆盖 150ms 合帧延迟 + chokidar 抖动，timeout 放宽避免 flaky
+  async function waitEvent(relPath: string): Promise<{ workDir: string; relPath: string }> {
+    return vi.waitFor(() => {
+      const hit = events.find((e) => e.workDir === tmp && e.relPath === relPath)
+      if (!hit) throw new Error('未收到 file:changed 事件')
+      return hit
+    }, { timeout: 3000 })
+  }
+
+  it('修改文件触发 file:changed，relPath 用正斜杠', async () => {
+    const f = path.join(tmp, 'a.txt')
+    fs.writeFileSync(f, 'v1')
+    startWatch(tmp)
+    await waitReady()
+    fs.writeFileSync(f, 'v2')
+    const ev = await waitEvent('a.txt')
+    expect(ev.workDir).toBe(tmp)
+    expect(ev.relPath).toBe('a.txt')
+  })
+
+  it('忽略 node_modules 内的文件写入', async () => {
+    const nm = path.join(tmp, 'node_modules')
+    fs.mkdirSync(nm, { recursive: true })
+    startWatch(tmp)
+    await waitReady()
+    // 先写一个普通文件确认 watcher 已生效
+    fs.writeFileSync(path.join(tmp, 'keep.txt'), 'a')
+    await waitEvent('keep.txt')
+    // 向忽略目录写文件，不应产生任何 file:changed 事件
+    fs.writeFileSync(path.join(nm, 'dep.js'), 'x')
+    await new Promise((r) => setTimeout(r, 600))
+    expect(events.some((e) => e.workDir === tmp && e.relPath.startsWith('node_modules'))).toBe(false)
+  })
+
+  it('stopWatch 后不再触发事件', async () => {
+    const f = path.join(tmp, 'a.txt')
+    fs.writeFileSync(f, 'v1')
+    startWatch(tmp)
+    await waitReady()
+    fs.writeFileSync(f, 'v2')
+    await waitEvent('a.txt') // 确认 watcher 已生效
+    await stopWatch(tmp)
+    const before = events.length
+    fs.writeFileSync(f, 'v3')
+    await new Promise((r) => setTimeout(r, 600))
+    expect(events.length).toBe(before)
   })
 })
