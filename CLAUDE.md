@@ -69,6 +69,7 @@ npm run dist:linux
 - Pinia 用 setup style；Vue 组件用 `<script setup lang="ts">`；路由用 hash mode。
 - 样式用 `styles/theme.css` 的 CSS 变量，不要硬编码颜色。
 - 图标统一用 `@lucide/vue`，通过 `components/Icon.vue` 引用；禁止在界面里用 emoji / Unicode 符号当图标。
+- **例外（文件树语言图标）**：文件树按扩展名显示彩色语言 logo，用 vscode-icons 提取的本地 SVG 资产（`src/renderer/src/assets/file-icons/`），在 `FileTree.vue` 通过 `EXT_ICON` 映射 + `import.meta.glob` 按需引用；UI 其余部分仍统一 lucide。
 - `Pinia ref<Record<K, V>>` 更新要用整体 spread：`state.value = { ...state.value, [id]: v }`。
 - 错误返回 `error` / reject，不要抛未捕获异常；主进程未捕获异常会导致窗口白屏。
 
