@@ -114,4 +114,15 @@ export const UpdateUpdateConfig = (cfg: any) => api().updateUpdateConfig(cfg);
 export const DshEnsure = () => api().dshEnsure();
 export const DshShutdown = () => api().dshShutdown();
 
+// 右侧文件编辑器侧栏
+export const FileListDir = (workDir: string, relPath?: string) => api().fileListDir(workDir, relPath);
+export const FileRead = (workDir: string, relPath: string) => api().fileRead(workDir, relPath);
+export const FileWrite = (workDir: string, relPath: string, content: string) => api().fileWrite(workDir, relPath, content);
+export const FileCreate = (workDir: string, relPath: string, isDir: boolean) => api().fileCreate(workDir, relPath, isDir);
+export const FileRename = (workDir: string, oldRel: string, newRel: string) => api().fileRename(workDir, oldRel, newRel);
+export const FileDelete = (workDir: string, relPath: string) => api().fileDelete(workDir, relPath);
+export const FileWatch = (workDir: string) => api().fileWatch(workDir);
+export const FileUnwatch = (workDir: string) => api().fileUnwatch(workDir);
+export const FileChanged = (cb: (e: { workDir: string; relPath: string }) => void) => EventsOn('file:changed', cb);
+
 export const isElectronDev = import.meta.env.DEV;

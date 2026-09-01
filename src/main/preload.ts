@@ -124,6 +124,22 @@ const api = {
   // DeepSeek Harness（dsh）
   dshEnsure: () => ipcRenderer.invoke('dsh:ensure'),
   dshShutdown: () => ipcRenderer.invoke('dsh:shutdown'),
+
+  // 右侧文件编辑器侧栏
+  fileListDir: (workDir: string, relPath?: string) =>
+    ipcRenderer.invoke('file:listDir', workDir, relPath),
+  fileRead: (workDir: string, relPath: string) =>
+    ipcRenderer.invoke('file:read', workDir, relPath),
+  fileWrite: (workDir: string, relPath: string, content: string) =>
+    ipcRenderer.invoke('file:write', workDir, relPath, content),
+  fileCreate: (workDir: string, relPath: string, isDir: boolean) =>
+    ipcRenderer.invoke('file:create', workDir, relPath, isDir),
+  fileRename: (workDir: string, oldRel: string, newRel: string) =>
+    ipcRenderer.invoke('file:rename', workDir, oldRel, newRel),
+  fileDelete: (workDir: string, relPath: string) =>
+    ipcRenderer.invoke('file:delete', workDir, relPath),
+  fileWatch: (workDir: string) => ipcRenderer.invoke('file:watch', workDir),
+  fileUnwatch: (workDir: string) => ipcRenderer.invoke('file:unwatch', workDir),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);
