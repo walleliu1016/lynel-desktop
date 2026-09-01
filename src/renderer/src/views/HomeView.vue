@@ -146,6 +146,9 @@
                   <span class="sub-dot" /> 终端
                 </button>
                 <button class="sub-tab" :class="{ active: activeSubTab === 'trace' }" @click="setSubTab('trace')">Trace</button>
+                <button class="sub-tab" :class="{ active: activeSubTab === 'code' }" @click="setSubTab('code')">
+                  <Icon name="file-code" :size="13" /> 代码
+                </button>
               </div>
               <div v-show="activeSubTab === 'terminal'" class="sub-pane">
                 <SessionTabContent
@@ -159,6 +162,9 @@
               </div>
               <div v-show="activeSubTab === 'trace'" class="sub-pane">
                 <TracePane />
+              </div>
+              <div v-show="activeSubTab === 'code'" class="sub-pane">
+                <CodeView />
               </div>
             </template>
             <div v-else class="empty"><div class="empty-text">未选择会话</div></div>
@@ -191,8 +197,6 @@
           </div>
         </div>
       </div>
-      <!-- 右侧代码编辑器侧栏：仅会话页且有 workdir 时渲染（见上方注释的 WorkspacePanel 已下线） -->
-      <CodeSidebar v-if="tabsStore.activeType === 'session' && activeSessionWorkdir" />
     </div>
     <NewSessionDialog
       :open="showNewSession"
@@ -230,7 +234,7 @@ import GlobalTabs from '../components/GlobalTabs.vue'
 import SessionList from '../components/SessionList.vue'
 import TracePane from '../components/trace/TracePane.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
-import CodeSidebar from '../components/code/CodeSidebar.vue'
+import CodeView from '../components/code/CodeView.vue'
 import WelcomeTab from '../components/WelcomeTab.vue'
 import SessionTabContent from '../components/SessionTabContent.vue'
 import SettingsTab from '../components/SettingsTab.vue'
@@ -269,13 +273,13 @@ const harnessUrl = ref('')
 const harnessLoading = ref(false)
 const harnessError = ref('')
 // 每个会话各自的 终端/Trace 选中态（按 sessionId 记录），切回会话时保留
-const subTabBySession = ref<Record<string, 'terminal' | 'trace'>>({})
-const activeSubTab = computed<'terminal' | 'trace'>(() => {
+const subTabBySession = ref<Record<string, 'terminal' | 'trace' | 'code'>>({})
+const activeSubTab = computed<'terminal' | 'trace' | 'code'>(() => {
   const sid = activeSessionId.value
   return (sid && subTabBySession.value[sid]) || 'terminal'
 })
 
-function setSubTab(tab: 'terminal' | 'trace') {
+function setSubTab(tab: 'terminal' | 'trace' | 'code') {
   const sid = activeSessionId.value
   if (!sid) return
   subTabBySession.value = { ...subTabBySession.value, [sid]: tab }
