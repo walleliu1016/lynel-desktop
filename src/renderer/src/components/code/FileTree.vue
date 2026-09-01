@@ -35,7 +35,7 @@ import { useFilesStore, type TreeEntry } from '../../stores/files'
 
 // ---------- 文件类型图标（vscode-icons 提取的本地 SVG 资产） ----------
 // 按扩展名映射到 assets/file-icons/ 下的图标名；未匹配回退 null（用 lucide file-text）
-const ICON_ASSETS = import.meta.glob('../assets/file-icons/*.svg', {
+const ICON_ASSETS = import.meta.glob('../../assets/file-icons/*.svg', {
   eager: true,
   query: '?url',
   import: 'default',
@@ -85,7 +85,7 @@ function fileIconUrl(name: string): string {
   const ext = name.slice(idx + 1).toLowerCase()
   const icon = EXT_ICON[ext]
   if (!icon) return ''
-  return ICON_ASSETS[`../assets/file-icons/${icon}.svg`] ?? ''
+  return ICON_ASSETS[`../../assets/file-icons/${icon}.svg`] ?? ''
 }
 
 // 递归组件自引用：模板内 <TreeRow> 需解析到本组件自身（Vue 3.5 官方机制）
