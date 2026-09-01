@@ -146,6 +146,7 @@ status: idle / working / waiting / error / ended
 | `event` | string | ⚠️ | 仅 mode=event 时必填：`created` / `opened` / `closed` / `title_updated` |
 | `cwd` | string | ❌ | 工作目录 |
 | `jsonl_path` | string | ❌ | JSONL 文件路径 |
+| `agent` | string | ❌ | agent 类型：`claude` / `codex` / `opencode` / `omp`，缺省 `claude` |
 
 > **注意**：没有 `activity` 字段。activity 由 Cloud 根据 hook 事件维护，Desktop 不需要关心。
 

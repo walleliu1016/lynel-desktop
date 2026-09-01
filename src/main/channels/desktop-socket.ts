@@ -25,6 +25,7 @@ import { io, type Socket } from 'socket.io-client';
 import https from 'node:https';
 import type { OutputChannel, HookChannel, HookEventLike } from './channel.js';
 import type { LynelEnvelope } from '../protocol/envelope.js';
+import type { AgentKind } from '../agents/index.js';
 import { getLogger } from '../log.js';
 import { notifyExternal, errMessage } from './notify-error.js';
 
@@ -52,6 +53,8 @@ export interface SyncSession {
   project_name?: string;
   title?: string;
   last_activity_at?: number;
+  /** agent 类型：claude / codex / opencode / omp，缺省 claude */
+  agent?: AgentKind;
   state: 'open' | 'ended';
   /** 触发本次上报的事件类型；mode=event 时必填 */
   event?: SyncSessionEvent;

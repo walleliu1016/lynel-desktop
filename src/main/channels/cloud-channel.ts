@@ -8,6 +8,7 @@
 
 import type { OutputChannel, HookChannel, HookEventLike } from './channel.js';
 import type { LynelEnvelope } from '../protocol/envelope.js';
+import type { AgentKind } from '../agents/index.js';
 import { getLogger } from '../log.js';
 import { notifyExternal, errMessage } from './notify-error.js';
 
@@ -25,6 +26,8 @@ export interface SyncSession {
   project_name?: string;
   title?: string;
   last_activity_at?: number;
+  /** agent 类型：claude / codex / opencode / omp，缺省 claude */
+  agent?: AgentKind;
 }
 
 // sendPermissionRequest 同步等待 cloud 响应后的结果。bodyText 原样透传给 hookserver。

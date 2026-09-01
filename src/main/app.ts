@@ -736,6 +736,7 @@ export class App {
       project_name: project,
       title,
       last_activity_at: Math.floor(Date.now() / 1000),
+      agent: r?.agent ?? 'claude',
       state,
       ...(event ? { event } : {}),
     };
