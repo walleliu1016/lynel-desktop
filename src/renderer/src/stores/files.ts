@@ -111,9 +111,14 @@ export const useFilesStore = defineStore('files', () => {
     const wd = workDir.value
     if (!wd) return
     const rel = parentRel ? `${parentRel}/${name}` : name
-    await FileCreate(wd, rel, isDir)
-    if (!expanded.value.has(parentRel)) expanded.value = new Set([...expanded.value, parentRel])
-    await loadDir(parentRel)
+    try {
+      await FileCreate(wd, rel, isDir)
+      if (!expanded.value.has(parentRel)) expanded.value = new Set([...expanded.value, parentRel])
+      await loadDir(parentRel)
+    } catch (e: any) {
+      // 管理操作失败由 store 负责提示，调用方无需处理
+      pushToast({ level: 'error', source: 'file', message: `新建失败：${e?.message ?? e}` })
+    }
   }
 
   async function renameEntry(oldRel: string, newName: string) {
@@ -121,25 +126,35 @@ export const useFilesStore = defineStore('files', () => {
     if (!wd) return
     const parent = oldRel.includes('/') ? oldRel.slice(0, oldRel.lastIndexOf('/')) : ''
     const newRel = parent ? `${parent}/${newName}` : newName
-    await FileRename(wd, oldRel, newRel)
-    if (parent && expanded.value.has(parent)) await loadDir(parent)
-    // 重命名打开的 tab
-    openFiles.value = openFiles.value.map((o) => o.relPath === oldRel ? { ...o, relPath: newRel } : o)
-    if (activeRelPath.value === oldRel) activeRelPath.value = newRel
+    try {
+      await FileRename(wd, oldRel, newRel)
+      if (parent && expanded.value.has(parent)) await loadDir(parent)
+      // 重命名打开的 tab
+      openFiles.value = openFiles.value.map((o) => o.relPath === oldRel ? { ...o, relPath: newRel } : o)
+      if (activeRelPath.value === oldRel) activeRelPath.value = newRel
+    } catch (e: any) {
+      // 管理操作失败由 store 负责提示，调用方无需处理
+      pushToast({ level: 'error', source: 'file', message: `重命名失败：${e?.message ?? e}` })
+    }
   }
 
   async function deleteEntry(relPath: string) {
     const wd = workDir.value
     if (!wd) return
     if (!window.confirm(`确定删除「${relPath}」？此操作不可撤销。`)) return
-    await FileDelete(wd, relPath)
-    const parent = relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/')) : ''
-    if (parent && expanded.value.has(parent)) await loadDir(parent)
-    if (parent === '') await loadDir('')
-    // 关闭被删文件的 tab
-    openFiles.value = openFiles.value.filter((o) => o.relPath !== relPath)
-    if (activeRelPath.value === relPath) {
-      activeRelPath.value = openFiles.value[openFiles.value.length - 1]?.relPath ?? null
+    try {
+      await FileDelete(wd, relPath)
+      const parent = relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/')) : ''
+      if (parent && expanded.value.has(parent)) await loadDir(parent)
+      if (parent === '') await loadDir('')
+      // 关闭被删文件的 tab
+      openFiles.value = openFiles.value.filter((o) => o.relPath !== relPath)
+      if (activeRelPath.value === relPath) {
+        activeRelPath.value = openFiles.value[openFiles.value.length - 1]?.relPath ?? null
+      }
+    } catch (e: any) {
+      // 管理操作失败由 store 负责提示，调用方无需处理
+      pushToast({ level: 'error', source: 'file', message: `删除失败：${e?.message ?? e}` })
     }
   }
 
