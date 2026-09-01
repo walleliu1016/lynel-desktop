@@ -1,6 +1,10 @@
 // 文件服务核心纯函数：忽略清单 / 二进制判定 / 目录列出 / 路径校验
 import fs from 'node:fs';
 import path from 'node:path';
+import { ipcMain } from 'electron';
+import chokidar from 'chokidar';
+import type { FSWatcher } from 'chokidar';
+import { getBus } from './events.js';
 
 export const MAX_TEXT_SIZE = 1024 * 1024; // 1MB，超过视为大文件只读
 
@@ -75,4 +79,71 @@ export async function deleteEntry(filePath: string): Promise<void> {
   const stat = await fs.promises.lstat(filePath);
   if (stat.isDirectory()) await fs.promises.rm(filePath, { recursive: true, force: true });
   else await fs.promises.unlink(filePath);
+}
+
+// —— 以下为文件服务 IPC + chokidar 监听 ——
+const watchers = new Map<string, FSWatcher>();
+const watcherTimers = new Map<string, NodeJS.Timeout>();
+
+export function registerFilesIpc(): void {
+  ipcMain.handle('file:listDir', async (_e, workDir: string, relPath?: string) =>
+    listDir(resolveEntry(workDir, relPath || '')));
+
+  ipcMain.handle('file:read', async (_e, workDir: string, relPath: string) =>
+    readFileEntry(resolveEntry(workDir, relPath)));
+
+  ipcMain.handle('file:write', async (_e, workDir: string, relPath: string, content: string) => {
+    await writeFileEntry(resolveEntry(workDir, relPath), content);
+    return { ok: true };
+  });
+
+  ipcMain.handle('file:create', async (_e, workDir: string, relPath: string, isDir: boolean) => {
+    await createEntry(resolveEntry(workDir, relPath), isDir);
+    return { ok: true };
+  });
+
+  ipcMain.handle('file:rename', async (_e, workDir: string, oldRel: string, newRel: string) => {
+    await renameEntry(workDir, oldRel, newRel);
+    return { ok: true };
+  });
+
+  ipcMain.handle('file:delete', async (_e, workDir: string, relPath: string) => {
+    await deleteEntry(resolveEntry(workDir, relPath));
+    return { ok: true };
+  });
+
+  ipcMain.handle('file:watch', async (_e, workDir: string) => {
+    startWatch(workDir);
+    return { ok: true };
+  });
+
+  ipcMain.handle('file:unwatch', async (_e, workDir: string) => {
+    await stopWatch(workDir);
+    return { ok: true };
+  });
+}
+
+function startWatch(workDir: string): void {
+  if (watchers.has(workDir)) return;
+  const w = chokidar.watch(workDir, {
+    ignoreInitial: true,
+    ignored: (p: string) => isIgnored(path.basename(p)),
+  });
+  w.on('all', (_event, p: string) => {
+    const rel = path.relative(workDir, p).replace(/\\/g, '/');
+    // 150ms 合帧，避免高频写入打爆 IPC
+    const t = watcherTimers.get(workDir);
+    if (t) clearTimeout(t);
+    watcherTimers.set(workDir, setTimeout(() => {
+      getBus().emit('file:changed', { workDir, relPath: rel });
+    }, 150));
+  });
+  watchers.set(workDir, w);
+}
+
+async function stopWatch(workDir: string): Promise<void> {
+  const w = watchers.get(workDir);
+  if (w) { await w.close(); watchers.delete(workDir); }
+  const t = watcherTimers.get(workDir);
+  if (t) { clearTimeout(t); watcherTimers.delete(workDir); }
 }
