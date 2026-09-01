@@ -143,9 +143,11 @@
             <template v-if="sessionTabs.length > 0">
               <div class="sub-tabs">
                 <button class="sub-tab" :class="{ active: activeSubTab === 'terminal' }" @click="setSubTab('terminal')">
-                  <span class="sub-dot" /> 终端
+                  <Icon name="terminal" :size="13" /> 终端
                 </button>
-                <button class="sub-tab" :class="{ active: activeSubTab === 'trace' }" @click="setSubTab('trace')">Trace</button>
+                <button class="sub-tab" :class="{ active: activeSubTab === 'trace' }" @click="setSubTab('trace')">
+                  <Icon name="activity" :size="13" /> Trace
+                </button>
                 <button class="sub-tab" :class="{ active: activeSubTab === 'code' }" @click="setSubTab('code')">
                   <Icon name="file-code" :size="13" /> 代码
                 </button>
@@ -1059,7 +1061,6 @@ watch(
 }
 .sub-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
 .sub-tab.active { background: var(--accent-soft-bg); color: var(--accent); font-weight: 600; }
-.sub-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--status-success); }
 .sub-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 /* DeepSeek Harness：iframe 始终挂载，非激活时透明垫底（不 display:none，避免冻结重载） */
 .dsh-frame-wrap {
