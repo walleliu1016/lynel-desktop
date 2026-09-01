@@ -81,31 +81,29 @@ function onExpand() {
 
 <template>
   <div class="code-view" :class="{ dragging }">
-    <template v-if="!store.collapsed">
-      <aside class="tree-panel" :style="{ width: width + 'px' }">
-        <div class="panel-toolbar">
-          <button class="tool-btn" title="刷新文件树" aria-label="刷新文件树" @click="onRefresh">
-            <Icon name="refresh-cw" :size="14" />
-          </button>
-          <button class="tool-btn" title="新建文件" aria-label="新建文件" @click="onNewFile">
-            <Icon name="plus" :size="14" />
-          </button>
-          <span class="toolbar-spacer" />
-          <button class="tool-btn" title="折叠文件树" aria-label="折叠文件树" @click="onCollapse">
-            <Icon name="panel-left-close" :size="14" />
-          </button>
-        </div>
-        <FileTree :rel-path="''" :depth="0" />
-        <div class="resize-handle" title="拖拽调整宽度" @mousedown.prevent="onResizeStart" />
-      </aside>
-      <section class="editor-panel">
-        <FileTabs />
-        <CodeEditor />
-      </section>
-    </template>
-    <div v-else class="tree-collapsed" title="展开文件树" @click="onExpand">
+    <aside v-if="!store.collapsed" class="tree-panel" :style="{ width: width + 'px' }">
+      <div class="panel-toolbar">
+        <button class="tool-btn" title="刷新文件树" aria-label="刷新文件树" @click="onRefresh">
+          <Icon name="refresh-cw" :size="14" />
+        </button>
+        <button class="tool-btn" title="新建文件" aria-label="新建文件" @click="onNewFile">
+          <Icon name="plus" :size="14" />
+        </button>
+        <span class="toolbar-spacer" />
+        <button class="tool-btn" title="折叠文件树" aria-label="折叠文件树" @click="onCollapse">
+          <Icon name="panel-left-close" :size="14" />
+        </button>
+      </div>
+      <FileTree :rel-path="''" :depth="0" />
+      <div class="resize-handle" title="拖拽调整宽度" @mousedown.prevent="onResizeStart" />
+    </aside>
+    <button v-else type="button" class="tree-collapsed" title="展开文件树" aria-label="展开文件树" @click="onExpand">
       <Icon name="panel-left-open" :size="16" />
-    </div>
+    </button>
+    <section class="editor-panel">
+      <FileTabs />
+      <CodeEditor />
+    </section>
   </div>
 </template>
 
@@ -176,6 +174,10 @@ function onExpand() {
   display: flex;
   align-items: center;
   justify-content: center;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
   color: var(--text-secondary);
   cursor: pointer;
   border-right: 1px solid var(--border);
