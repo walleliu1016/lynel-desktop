@@ -1,14 +1,7 @@
-<script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type Ref } from 'vue'
-import Icon from '../Icon.vue'
-import { useFilesStore, type TreeEntry } from '../../stores/files'
+<script lang="ts">
+import type { InjectionKey, Ref } from 'vue'
 
-// 递归组件自引用：模板内 <TreeRow> 需解析到本组件自身（Vue 3.5 官方机制）
-defineOptions({ name: 'TreeRow' })
-
-const store = useFilesStore()
-
-// ---------- 行内编辑态 ----------
+// 递归组件共享上下文类型：根实例 provide，子实例 inject，保证全局只有一行在编辑、一个菜单在展示
 interface EditState {
   kind: 'create' | 'rename'
   parentRel: string // create: 父目录 relPath；rename: 旧条目的父目录 relPath
@@ -16,8 +9,6 @@ interface EditState {
   name: string // 输入框当前值
   oldRel?: string // rename 时的旧 relPath
 }
-
-// ---------- 右键浮层 ----------
 interface MenuState {
   x: number
   y: number
@@ -26,18 +17,31 @@ interface MenuState {
   isDir: boolean
   parentRel: string
 }
-
-// 递归组件共享上下文：根实例 provide，子实例 inject，保证全局只有一行在编辑、一个菜单在展示
 interface TreeRowCtx {
   editing: Ref<EditState | null>
   menu: Ref<MenuState | null>
 }
-const KEY = Symbol('tree-row-ctx')
 
-const injectCtx = inject<TreeRowCtx | null>(KEY, null)
+// 注入键必须声明在普通 <script> 块（模块顶层）：<script setup> 内的 const 会被编译器
+// 搬进 setup 作用域，每个实例重新 Symbol() 产生不同 symbol，导致 provide/inject 链断裂、
+// 递归组件无限挂载（Maximum call stack size exceeded）
+const TREE_ROW_CTX: InjectionKey<TreeRowCtx> = Symbol('tree-row-ctx')
+</script>
+
+<script setup lang="ts">
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import Icon from '../Icon.vue'
+import { useFilesStore, type TreeEntry } from '../../stores/files'
+
+// 递归组件自引用：模板内 <TreeRow> 需解析到本组件自身（Vue 3.5 官方机制）
+defineOptions({ name: 'TreeRow' })
+
+const store = useFilesStore()
+
+const injectCtx = inject(TREE_ROW_CTX, null)
 const editing = injectCtx ? injectCtx.editing : ref<EditState | null>(null)
 const menu = injectCtx ? injectCtx.menu : ref<MenuState | null>(null)
-if (!injectCtx) provide(KEY, { editing, menu })
+if (!injectCtx) provide(TREE_ROW_CTX, { editing, menu })
 const isRoot = !injectCtx
 
 const props = defineProps<{ relPath: string; depth: number }>()
