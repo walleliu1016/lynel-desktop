@@ -89,6 +89,9 @@ export const useFilesStore = defineStore('files', () => {
 
   /** 会话删除时清理其现场快照，避免泄漏 */
   function forgetSession(sid: string) {
+    // 关闭的是当前加载的会话时，同步失效现场标记，避免延后 watch 触发的
+    // setSession 把快照重新保存回来（越删越回填导致泄漏）
+    if (sid === lastSessionId) lastSessionId = ''
     if (!(sid in sessionState.value)) return
     const next = { ...sessionState.value }
     delete next[sid]
