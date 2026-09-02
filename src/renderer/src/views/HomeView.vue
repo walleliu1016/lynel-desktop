@@ -149,7 +149,7 @@
                   <Icon name="activity" :size="13" /> Trace
                 </button>
                 <button class="sub-tab" :class="{ active: activeSubTab === 'code' }" @click="setSubTab('code')">
-                  <Icon name="file-code" :size="13" /> 代码
+                  <Icon name="folder-tree" :size="13" /> 文件
                 </button>
               </div>
               <div v-show="activeSubTab === 'terminal'" class="sub-pane">
