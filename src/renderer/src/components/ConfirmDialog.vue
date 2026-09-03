@@ -94,9 +94,7 @@ watch(() => props.open, (open) => {
 .dialog {
   width: 440px;
   max-width: calc(100% - 40px);
-  background: var(--material-bg, rgba(255,255,255,0.72));
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: var(--bg-panel);
   border: 1px solid var(--border); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-window);
   display: flex; flex-direction: column;

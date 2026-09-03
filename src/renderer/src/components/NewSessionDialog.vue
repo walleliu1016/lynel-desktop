@@ -229,9 +229,7 @@ function onSubmit() {
   width: 520px;
   max-width: calc(100% - 40px);
   max-height: calc(100vh - 80px);
-  background: var(--material-bg, rgba(255,255,255,0.72));
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: var(--bg-panel);
   border: 1px solid var(--border); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-window);
   display: flex; flex-direction: column;
@@ -252,7 +250,7 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
   background: transparent; border: none;
   transition: background 0.15s, color 0.15s;
 }
-.tab:hover { color: var(--text-primary); background: var(--bg-input); }
+.tab:hover { color: var(--text-primary); background: var(--tab-hover-bg); }
 .tab:active { background: var(--border); }
 .tab.active { color: var(--accent); background: var(--accent-soft-bg); }
 .body {

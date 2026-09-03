@@ -62,9 +62,7 @@ onMounted(async () => {
 }
 .dialog {
   width: 700px; height: 520px;
-  background: var(--material-bg, rgba(255,255,255,0.72));
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-window);
