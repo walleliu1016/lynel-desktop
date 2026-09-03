@@ -45,6 +45,8 @@ watch(() => props.open, (open) => {
 </script>
 
 <template>
+  <!-- Teleport 到 body：与打开 Session 弹窗一致，脱离 .home 层级，避免被终端合成层压住 -->
+  <Teleport to="body">
   <div class="overlay" :class="{ open }" @click.self="open && $emit('cancel')">
     <SpringTransition>
     <div v-if="open" class="dialog" role="dialog" aria-modal="true">
@@ -72,13 +74,14 @@ watch(() => props.open, (open) => {
     </div>
     </SpringTransition>
   </div>
+  </Teleport>
 </template>
 
 <style scoped>
 .overlay {
   position: fixed; inset: 0; background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
-  z-index: 1000;
+  z-index: 9998;
   opacity: 0; pointer-events: none;
   transition: opacity 0.2s ease;
 }
