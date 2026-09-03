@@ -1,4 +1,7 @@
 // src/main/auth-persistence.ts
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { safeStorage } from 'electron';
 import { getStore } from './store.js';
 
@@ -60,4 +63,29 @@ export function loadStoredAuth(): StoredAuth | null {
 /** 清除持久化 JWT */
 export function clearStoredAuth(): void {
   getStore('settings').delete(JWT_KEY);
+}
+
+/** 明文凭据文件（供本机其他应用读取当前云登录态），默认 ~/.lynel-desktop/credential.json */
+const CRED_FILE = path.join(os.homedir(), '.lynel-desktop', 'credential.json');
+
+/** 明文写当前云凭据；原子写（临时文件 + rename），写失败静默不影响主流程 */
+export function writeCredentialFile(userId: string, jwt: string, filePath?: string): void {
+  const target = filePath ?? CRED_FILE;
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const tmp = `${target}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ userId, jwt }), 'utf8');
+    fs.renameSync(tmp, target);
+  } catch {
+    /* 凭据文件仅作辅助，写失败不阻断 */
+  }
+}
+
+/** 删除明文凭据文件（退出登录 / 凭据失效时） */
+export function clearCredentialFile(filePath?: string): void {
+  try {
+    fs.rmSync(filePath ?? CRED_FILE, { force: true });
+  } catch {
+    /* 忽略 */
+  }
 }

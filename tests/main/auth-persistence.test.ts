@@ -1,5 +1,8 @@
 // tests/main/auth-persistence.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { safeStorage } from 'electron';
 import { getStore } from '../../src/main/store.js';
 import {
@@ -7,7 +10,14 @@ import {
   loadStoredAuth,
   clearStoredAuth,
   decideRestore,
+  writeCredentialFile,
+  clearCredentialFile,
 } from '../../src/main/auth-persistence.js';
+
+function tmpCredPath(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lynel-cred-'));
+  return path.join(dir, 'credential.json');
+}
 
 const store = vi.hoisted(() => ({
   _data: {} as Record<string, unknown>,
@@ -73,5 +83,29 @@ describe('auth-persistence', () => {
     expect(decideRestore(true, true, 'u1')).toBe('pending');
     expect(decideRestore(true, false, 'u1')).toBe('form');
     expect(decideRestore(false, false, '')).toBe('form');
+  });
+
+  it('writeCredentialFile 明文写入 userId+jwt 供兄弟应用读取', () => {
+    const f = tmpCredPath();
+    try {
+      writeCredentialFile('u1', 'jwt-abc', f);
+      expect(JSON.parse(fs.readFileSync(f, 'utf8'))).toEqual({ userId: 'u1', jwt: 'jwt-abc' });
+    } finally {
+      fs.rmSync(path.dirname(f), { recursive: true, force: true });
+    }
+  });
+
+  it('clearCredentialFile 删除且幂等', () => {
+    const f = tmpCredPath();
+    try {
+      writeCredentialFile('u1', 'jwt', f);
+      expect(fs.existsSync(f)).toBe(true);
+      clearCredentialFile(f);
+      expect(fs.existsSync(f)).toBe(false);
+      clearCredentialFile(f); // 不存在时再删不抛
+      expect(fs.existsSync(f)).toBe(false);
+    } finally {
+      fs.rmSync(path.dirname(f), { recursive: true, force: true });
+    }
   });
 });

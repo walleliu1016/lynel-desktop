@@ -125,6 +125,9 @@ export class DesktopSocket implements OutputChannel, HookChannel {
   // 状态变更回调（供 UI 显示连接状态）
   onStateChange: ((state: ConnectionState) => void) | null = null;
 
+  // 凭据（userId / jwt）变更回调（app.ts 注入：写/删本机明文凭据文件供其他应用读取）
+  onCredentialChange: ((userId: string | undefined, jwt: string | undefined) => void) | null = null;
+
   isEnabled(): boolean {
     return this.enabled && this.url.length > 0;
   }
@@ -147,6 +150,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     if ('error' in result) return { ok: false, error: result.error };
     this.password = password;
     this.token = result.token;
+    this.syncCredential();
     // 触发重连，新 socket 连接后 ensureJwtAndAuth 会直接 emit desktop:auth（已有 token）
     this.reconnect();
     return { ok: true };
@@ -159,17 +163,24 @@ export class DesktopSocket implements OutputChannel, HookChannel {
   clearCredentials(): void {
     this.password = undefined;
     this.token = undefined;
+    this.syncCredential();
   }
 
   /** 启动恢复：注入上次认证的 JWT，不触发重连；connect 后 ensureJwtAndAuth 直接 emit desktop:auth */
   restoreToken(userId: string, jwt: string): void {
     this.userId = userId;
     this.token = jwt;
+    this.syncCredential();
   }
 
   /** 读取当前内存 token（供 app 登录成功后持久化） */
   getToken(): string | undefined {
     return this.token;
+  }
+
+  /** token / userId 变化后同步回调（驱动明文凭据文件写删，供本机其他应用读取） */
+  private syncCredential(): void {
+    this.onCredentialChange?.(this.userId, this.token);
   }
 
   updateConfig(cfg: DesktopSocketConfig): void {
@@ -256,6 +267,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
       getLogger().error('[desktop-socket] auth failed:', data?.reason, raw ? JSON.stringify(raw).slice(0, 200) : '');
       this.setState('auth_failed');
       this.token = undefined;
+      this.syncCredential();
       void this.ensureJwtAndAuth();
     });
 
@@ -362,6 +374,7 @@ export class DesktopSocket implements OutputChannel, HookChannel {
         return;
       }
       this.token = result.token;
+      this.syncCredential();
       // 异步 login 期间 socket 可能已断开，此时不 emit，
       // token 已缓存，下次 connect 事件会走 token 复用路径同步 emit
       if (!this.socket?.connected) {

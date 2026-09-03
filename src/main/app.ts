@@ -34,7 +34,7 @@ import { consumeInputForExitDetect, type EscapePhase } from './exit-detect.js';
 import { initUpdater } from './updater/index.js';
 import { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
 import { readCodexModelProvider, mergeOmpModelsYml, mergeCodexConfigToml, mergeOpencodeConfig, applyClaudeEnv, migrateActiveProviders, AGENT_KINDS } from './providers-apply.js';
-import { loadStoredAuth, saveStoredAuth, clearStoredAuth, decideRestore } from './auth-persistence.js';
+import { loadStoredAuth, saveStoredAuth, clearStoredAuth, decideRestore, writeCredentialFile, clearCredentialFile } from './auth-persistence.js';
 
 export { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
 
@@ -535,6 +535,21 @@ export class App {
       }
       if (state === 'authenticated') {
         this.sendCloudSessionSnapshot();
+      }
+    };
+    // 凭据文件：登录/换 token 时明文写 ~/.lynel-desktop/credential.json，供本机其他应用读取；
+    // 凭据清除（退出登录 / 认证失败）时删除，避免留下失效 token
+    this.desktopSocket.onCredentialChange = (userId, jwt) => {
+      try {
+        if (userId && jwt) {
+          writeCredentialFile(userId, jwt);
+          getLogger().info(`[app] credential file updated for user=${userId}`);
+        } else {
+          clearCredentialFile();
+          getLogger().info('[app] credential file cleared');
+        }
+      } catch (err: any) {
+        getLogger().warn(`[app] credential file update failed: ${err?.message || err}`);
       }
     };
     await this.ensureHookServer();
