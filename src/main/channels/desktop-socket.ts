@@ -178,6 +178,11 @@ export class DesktopSocket implements OutputChannel, HookChannel {
     return this.token;
   }
 
+  /** 注入 onCredentialChange 后由 app 补一次同步：兜底 restoreToken 启动恢复早于回调注册的场景 */
+  refreshCredentialSync(): void {
+    this.syncCredential();
+  }
+
   /** token / userId 变化后同步回调（驱动明文凭据文件写删，供本机其他应用读取） */
   private syncCredential(): void {
     this.onCredentialChange?.(this.userId, this.token);

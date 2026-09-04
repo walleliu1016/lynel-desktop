@@ -552,6 +552,8 @@ export class App {
         getLogger().warn(`[app] credential file update failed: ${err?.message || err}`);
       }
     };
+    // 注入回调后补一次同步：restoreToken 启动恢复早于回调注册，需兜底写凭据文件
+    this.desktopSocket.refreshCredentialSync();
     await this.ensureHookServer();
     this.watchJsonl();
     this.startAiTitleRefresh();
