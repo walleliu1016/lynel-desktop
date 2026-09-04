@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getStore } from './store.js';
 import { getBus } from './events.js';
 import { getLogger } from './log.js';
@@ -1405,6 +1406,45 @@ export class App {
         return true
       } catch {
         return false
+      }
+    })
+
+    // 终端里点击本地文件路径：resolve + stat 校验后返回结构化结果，动作由渲染层决定。
+    //  - workdir 内的文件：返回 relPath，渲染层在「文件」编辑器打开 tab（不调系统默认应用）
+    //  - 目录 / workdir 外文件：这里直接系统打开（目录在文件管理器定位、外部文件用默认程序）→ external
+    //  - 不存在（伪路径/噪声）：返回 none 静默，点击无反应
+    // file://、绝对路径原样解析；~/ 展开 home；其余以会话 workdir 为基准的相对路径。
+    ipcMain.handle('app:openTerminalPath', async (_event, workdir: string, rawPath: string) => {
+      try {
+        const raw = String(rawPath ?? '').trim()
+        if (!raw || raw.length > 4096) return { kind: 'none' }
+        let fullPath: string
+        if (/^file:\/\//i.test(raw)) {
+          fullPath = fileURLToPath(new URL(raw))
+        } else if (/^[A-Za-z]:[\\/]/.test(raw) || path.isAbsolute(raw)) {
+          fullPath = path.normalize(raw)
+        } else if (raw.startsWith('~/')) {
+          fullPath = path.join(os.homedir(), raw.slice(2))
+        } else {
+          fullPath = path.resolve(workdir || process.cwd(), raw)
+        }
+        const st = await fs.promises.stat(fullPath).catch(() => null)
+        if (!st) return { kind: 'none' }
+        if (st.isDirectory()) {
+          shell.showItemInFolder(fullPath)
+          return { kind: 'external' }
+        }
+        // workdir 内文件 → 返回 relPath 由渲染层在编辑器打开；否则走系统默认应用
+        if (workdir) {
+          const rel = path.relative(workdir, fullPath)
+          if (rel && !path.isAbsolute(rel) && !rel.startsWith('..')) {
+            return { kind: 'workdir-file', relPath: rel.split(path.sep).join('/') }
+          }
+        }
+        await shell.openPath(fullPath)
+        return { kind: 'external' }
+      } catch {
+        return { kind: 'none' }
       }
     })
 

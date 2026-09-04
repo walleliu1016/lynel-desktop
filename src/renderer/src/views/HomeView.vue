@@ -160,6 +160,7 @@
                   :session-id="tab.payload?.sessionId as string"
                   :workdir="tab.payload?.workdir as string"
                   :visible="activeSessionId === tab.payload?.sessionId"
+                  @open-file="onTerminalOpenFile"
                 />
               </div>
               <div v-show="activeSubTab === 'trace'" class="sub-pane">
@@ -494,6 +495,20 @@ async function onSelectSession(id: string) {
     trace.load()
   }
   // 非 wasActive 时 trace 加载由 activeSessionId watch 统一处理
+}
+
+/** 终端里点击 workdir 内文件路径：在「文件」编辑器打开 tab，并切到文件子页 */
+async function onTerminalOpenFile(p: { sessionId: string; workdir: string; relPath: string }) {
+  if (!p.sessionId || !p.workdir || !p.relPath) return
+  // 只有当前激活会话的终端可点击；不一致时忽略（防错位切 store）
+  if (activeSessionId.value !== p.sessionId) return
+  try {
+    await files.setSession(p.sessionId, p.workdir)
+    await files.openFile(p.relPath)
+    setSubTab('code')
+  } catch (e: any) {
+    pushToast({ level: 'error', source: 'file', message: `打开文件失败：${e?.message ?? e}` })
+  }
 }
 
 /** 加载/启动 harness（幂等：已就绪则复用 URL，重试按钮复用）。 */

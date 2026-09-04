@@ -16,6 +16,7 @@
       @starting="loading = true"
       @ready="loading = false"
       @data="onTerminalData"
+      @open-file="(p) => emit('open-file', p)"
     />
     <PermissionToast
       :tool-name="permissionToastName"
@@ -54,6 +55,10 @@ const props = withDefaults(defineProps<{
 }>(), {
   visible: true,
 })
+
+const emit = defineEmits<{
+  (e: 'open-file', payload: { sessionId: string; workdir: string; relPath: string }): void
+}>()
 
 const sessions = useSessionsStore()
 const loading = ref(false)

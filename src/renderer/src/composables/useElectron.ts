@@ -1,4 +1,4 @@
-import type { ElectronAPI } from '../../../main/preload.js';
+import type { ElectronAPI, OpenTerminalPathResult } from '../../../main/preload.js';
 import type { ScanEvent } from '../../../main/wecom-scan.js';
 
 declare global {
@@ -15,6 +15,7 @@ function api(): ElectronAPI {
 export const GetAppInfo = () => api().getAppInfo();
 export const ClipboardWrite = (text: string) => api().clipboardWrite(text);
 export const OpenExternal = (url: string) => api().openExternal(url);
+export const OpenTerminalPath = (workdir: string, rawPath: string): Promise<OpenTerminalPathResult> => api().openTerminalPath(workdir, rawPath);
 export const LoginWithToken = (userId: string, token: string, remember: boolean) =>
   api().loginWithToken(userId, token, remember);
 export const AuthRestoreState = () => api().authRestoreState();

@@ -1,9 +1,17 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
+/** app:openTerminalPath 的返回值：渲染层据 kind 决定动作 */
+export interface OpenTerminalPathResult {
+  kind: 'workdir-file' | 'external' | 'none'
+  relPath?: string
+}
+
 const api = {
   getAppInfo: () => ipcRenderer.invoke('app:getAppInfo'),
   clipboardWrite: (text: string) => ipcRenderer.invoke('app:clipboardWrite', text),
   openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
+  openTerminalPath: (workdir: string, rawPath: string) =>
+    ipcRenderer.invoke('app:openTerminalPath', workdir, rawPath) as Promise<OpenTerminalPathResult>,
   loginWithToken: (userId: string, token: string, remember: boolean) =>
     ipcRenderer.invoke('app:loginWithToken', userId, token, remember),
   logout: () => ipcRenderer.invoke('app:logout'),

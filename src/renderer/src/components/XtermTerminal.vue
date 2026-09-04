@@ -39,6 +39,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SerializeAddon } from '@xterm/addon-serialize'
+import { FileLinkProvider } from '../terminal/FileLinkProvider'
 import '@xterm/xterm/css/xterm.css'
 import { EventsOn, ResizeTerminal, OpenSessionTerminalSized, ClipboardWrite, OpenExternal } from '../composables/useElectron'
 import { pushToast } from '../composables/useToast'
@@ -128,6 +129,8 @@ const emit = defineEmits<{
   (e: 'data', data: string): void
   (e: 'starting'): void
   (e: 'ready'): void
+  /** 点击 workdir 内文件路径：请求在「文件」编辑器打开该 relPath */
+  (e: 'open-file', payload: { sessionId: string; workdir: string; relPath: string }): void
 }>()
 
 const terminalEl = ref<HTMLElement | null>(null)
@@ -365,6 +368,12 @@ async function initializeTerminal() {
   // 自定义链接点击：不再 window.open 新建 Electron 窗口，改走系统默认浏览器
   term.loadAddon(new WebLinksAddon((_event, uri) => {
     OpenExternal(uri)
+  }))
+  // 文件路径可点击：http(s) 由上方 WebLinksAddon 打开浏览器。
+  // 本地路径（含相对路径，以会话 workdir 为基准）：workdir 内文件交给父级在
+  // 「文件」编辑器打开 tab（emit open-file），目录 / workdir 外文件走系统默认方式
+  term.registerLinkProvider(new FileLinkProvider(term, props.workdir, (relPath) => {
+    emit('open-file', { sessionId: props.sessionId, workdir: props.workdir, relPath })
   }))
   // SerializeAddon：用于字体/字号切换时把老 buffer（含 ANSI 颜色）序列化出来，
   // reset + 重写时由新 cols 自动重新 wrap。
