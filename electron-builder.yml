@@ -30,8 +30,8 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  # 检测到 APPLE_API_KEY / APPLE_ID 凭据环境变量时自动 notarize + staple
-  notarize: true
+  # 暂禁用公证：签名凭据未注入（CI 构建不签名不公证），待 macos-signing 方案落地后再开启
+  notarize: false
 linux:
   target:
     - target: AppImage
