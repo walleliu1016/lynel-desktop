@@ -34,6 +34,7 @@ import { OutputBatcher } from './output-batcher.js';
 import { consumeInputForExitDetect, type EscapePhase } from './exit-detect.js';
 import { initUpdater } from './updater/index.js';
 import { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
+import { readFavoriteSessions, addFavorite as writeFavorite, removeFavorite as dropFavorite, mergeFavoriteTitles } from './favorites.js';
 import { readCodexModelProvider, mergeOmpModelsYml, mergeCodexConfigToml, mergeOpencodeConfig, applyClaudeEnv, migrateActiveProviders, AGENT_KINDS } from './providers-apply.js';
 import { loadStoredAuth, saveStoredAuth, clearStoredAuth, decideRestore, writeCredentialFile, clearCredentialFile } from './auth-persistence.js';
 
@@ -1792,6 +1793,19 @@ export class App {
     ipcMain.handle('app:removeRecentSession', (_event, sessionId: string) => {
       removeRecentSession(sessionId);
       this.debouncedSendCloudSessionSnapshot();
+    });
+
+    // 会话收藏（独立于 recents 30 条窗口，不进 cloud 上行）
+    ipcMain.handle('app:getFavorites', () => {
+      const favs = this.withRecentLock(() => readFavoriteSessions());
+      const recents = this.withRecentLock(() => readRecentSessions());
+      return mergeFavoriteTitles(favs, recents);
+    });
+    ipcMain.handle('app:addFavorite', (_event, record: Parameters<typeof writeFavorite>[0]) =>
+      this.withRecentLock(() => writeFavorite(record)),
+    );
+    ipcMain.handle('app:removeFavorite', (_event, sessionId: string) => {
+      this.withRecentLock(() => dropFavorite(sessionId));
     });
 
     // Bot 管理
