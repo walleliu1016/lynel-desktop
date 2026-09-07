@@ -48,6 +48,7 @@ import {
   Smartphone,
   Sparkles,
   Square,
+  Star,
   Terminal,
   Trash2,
   User,
@@ -60,6 +61,7 @@ const props = defineProps<{
   name: string
   size?: number
   strokeWidth?: number
+  fill?: boolean
 }>()
 
 const icons: Record<string, unknown> = {
@@ -118,6 +120,7 @@ const icons: Record<string, unknown> = {
   'clock': Clock,
   expand: Expand,
   shrink: Shrink,
+  star: Star,
 }
 
 const Comp = computed(() => icons[props.name] ?? null)
@@ -129,5 +132,6 @@ const Comp = computed(() => icons[props.name] ?? null)
     v-if="Comp"
     :size="size ?? 16"
     :stroke-width="strokeWidth ?? 2"
+    :fill="fill ? 'currentColor' : 'none'"
   />
 </template>
