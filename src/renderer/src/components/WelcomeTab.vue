@@ -34,7 +34,7 @@
             <div v-if="!filteredRecent.length" class="loading">{{ recentSearchText ? '无匹配结果' : '暂无历史会话' }}</div>
             <RecentSessionList
               v-else
-              :list="filteredRecent"
+              :list="orderedRecent"
               :limit="5"
               @select="$emit('open-recent', $event)"
             />
@@ -55,6 +55,7 @@ import RecentSessionList from './RecentSessionList.vue'
 import SpringTransition from './SpringTransition.vue'
 import BuddyHost from './buddy/BuddyHost.vue'
 import { useRecentStore } from '../stores/recent'
+import { useFavoritesStore } from '../stores/favorites'
 import { useSessionsStore } from '../stores/sessions'
 import { useRecentSessionSearch } from '../composables/useRecentSessionSearch'
 import type { AgentKind } from '../types/agents'
@@ -62,7 +63,16 @@ import type { RecentSession } from '../types/recent'
 
 const recent = useRecentStore()
 const sessions = useSessionsStore()
+const favorites = useFavoritesStore()
 const { search: recentSearchText, filtered: filteredRecent } = useRecentSessionSearch()
+
+// 收藏项排到最前（稳定分组：收藏在前、其余在后；搜索时也只重排结果内的收藏项）
+const orderedRecent = computed(() => {
+  const favIds = new Set(favorites.favorites.map((f) => f.sessionId))
+  const favs = filteredRecent.value.filter((r) => favIds.has(r.sessionId))
+  const rest = filteredRecent.value.filter((r) => !favIds.has(r.sessionId))
+  return [...favs, ...rest]
+})
 
 // 创建中 loading 直接绑定全局 store，创建成功/失败后自动复位
 const creating = computed(() => sessions.creating)
@@ -78,6 +88,7 @@ function onQuickCreate(workdir: string, prompt: string, extraArgs: string[], bot
 
 onMounted(() => {
   void recent.loadRecentSessions()
+  void favorites.loadFavorites()
 })
 </script>
 

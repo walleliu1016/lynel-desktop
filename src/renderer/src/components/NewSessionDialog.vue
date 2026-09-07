@@ -5,56 +5,13 @@
     <SpringTransition>
     <div v-if="open" class="dialog">
       <div class="head">
-        <h2>打开 Session</h2>
+        <h2>新建会话</h2>
         <button class="close" aria-label="关闭" title="关闭" @click="$emit('close')">
           <Icon name="close" :size="14" />
         </button>
       </div>
-      <div class="tabs">
-        <button
-          class="tab"
-          :class="{ active: tab === 'history' }"
-          @click="tab = 'history'"
-        >
-          历史会话
-        </button>
-        <button
-          class="tab"
-          :class="{ active: tab === 'new' }"
-          @click="tab = 'new'"
-        >
-          打开新目录
-        </button>
-      </div>
       <div class="body">
-        <div v-if="tab === 'history'" class="tab-panel">
-          <div v-if="recent.loading" class="empty">加载中…</div>
-          <template v-else>
-            <div v-if="recent.recentSessions.length" class="history-search">
-              <Icon name="search" :size="12" class="search-icon" />
-              <input
-                v-model="historySearch"
-                class="search-input"
-                placeholder="搜索历史会话（项目 / 标题 / 目录）"
-                @keydown.escape="historySearch = ''"
-              />
-              <button v-if="historySearch" class="search-clear" aria-label="清除搜索" title="清除搜索" @click="historySearch = ''">
-                <Icon name="close" :size="12" />
-              </button>
-            </div>
-            <div v-if="recent.recentSessions.length" class="count-row">
-              <span>{{ historySearch ? `${filteredRecentSessions.length} / ${recent.recentSessions.length}` : `共 ${recent.recentSessions.length} 个` }}</span>
-            </div>
-            <div v-if="!filteredRecentSessions.length" class="empty">{{ historySearch ? '无匹配结果' : '暂无历史会话' }}</div>
-            <RecentSessionList
-              v-else
-              :list="filteredRecentSessions"
-              :limit="10"
-              @select="onRecent"
-            />
-          </template>
-        </div>
-        <form v-else @submit.prevent="onSubmit" class="tab-panel new-form">
+        <form @submit.prevent="onSubmit" class="new-form">
           <div class="form-group">
             <label class="form-label">工作目录</label>
             <div class="dir-row">
@@ -113,26 +70,19 @@ import Icon from './Icon.vue'
 import SpringTransition from './SpringTransition.vue'
 import AgentSelect from './AgentSelect.vue'
 import Select, { type SelectOption } from './Select.vue'
-import RecentSessionList from './RecentSessionList.vue'
-import { useRecentStore } from '../stores/recent'
 import { useBotsStore } from '../stores/bots'
 import { useSessionsStore } from '../stores/sessions'
-import type { RecentSession } from '../types/recent'
 import { agentMeta, type AgentKind } from '../types/agents'
 import { GetAppInfo, PickDirectory } from '../composables/useElectron'
-import { useRecentSessionSearch } from '../composables/useRecentSessionSearch'
 
 const props = defineProps<{ open: boolean; loading?: boolean }>()
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'create', workdir: string, prompt: string, extraArgs: string[], botId?: string, agent?: AgentKind): void
-  (e: 'open-recent', item: RecentSession): void
 }>()
 
-const recent = useRecentStore()
 const botsStore = useBotsStore()
 const sessions = useSessionsStore()
-const tab = ref<'history' | 'new'>('history')
 const workdir = ref('')
 const prompt = ref('')
 const agent = ref<AgentKind>('claude')
@@ -140,7 +90,6 @@ const flagsOpen = ref(false)
 const selectedFlags = ref<string[]>([])
 const selectedBot = ref('')
 const isClaude = computed(() => agent.value === 'claude')
-const { search: historySearch, filtered: filteredRecentSessions } = useRecentSessionSearch()
 
 function isBotAvailable(botId: string): boolean {
   const sessionId = sessions.botBindings[botId] || sessions.sessionBots[botId]
@@ -172,7 +121,6 @@ const flagOptions = [
 
 watch(() => props.open, async (isOpen) => {
   if (isOpen) {
-    void recent.loadRecentSessions()
     void botsStore.load()
     void sessions.loadBotBindings()
     workdir.value = ''
@@ -181,8 +129,6 @@ watch(() => props.open, async (isOpen) => {
     selectedFlags.value = []
     selectedBot.value = ''
     flagsOpen.value = false
-    historySearch.value = ''
-    tab.value = recent.recentSessions.length ? 'history' : 'new'
     // 工作目录默认 home：不手动选择则直接使用，避免必须点「选择…」
     try {
       const info = await GetAppInfo()
@@ -197,10 +143,6 @@ watch(agent, () => {
     flagsOpen.value = false
   }
 })
-
-function onRecent(item: RecentSession) {
-  emit('open-recent', item)
-}
 
 async function onPick() {
   try {
@@ -239,51 +181,9 @@ function onSubmit() {
 h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
 .close { color: var(--text-secondary); padding: 2px 6px; border-radius: var(--radius-sm); display: flex; align-items: center; }
 .close:hover { background: var(--bg-hover); color: var(--text-primary); }
-.tabs {
-  display: flex; gap: 4px; padding: 0 20px 8px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.tab {
-  padding: 6px 10px; border-radius: var(--radius-md);
-  font-size: 12px; font-weight: 600; color: var(--text-secondary);
-  background: transparent; border: none;
-  transition: background 0.15s, color 0.15s;
-}
-.tab:hover { color: var(--text-primary); background: var(--tab-hover-bg); }
-.tab:active { background: var(--border); }
-.tab.active { color: var(--accent); background: var(--accent-soft-bg); }
 .body {
   flex: 1; min-height: 0; overflow-y: auto;
   padding: 16px 20px 20px;
-}
-.tab-panel { min-height: 0; }
-.empty { padding: 24px; text-align: center; font-size: 12px; color: var(--text-tertiary); }
-.history-search {
-  position: relative; margin-bottom: 8px;
-}
-.history-search .search-icon {
-  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-  color: var(--text-tertiary); pointer-events: none;
-}
-.history-search .search-input {
-  width: 100%; height: 32px;
-  background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 0 28px 0 30px;
-  color: var(--text-primary); font-size: 12px; font-family: inherit;
-  outline: none; transition: border-color 0.15s;
-}
-.history-search .search-input:focus { border-color: var(--accent); }
-.history-search .search-input::placeholder { color: var(--text-tertiary); }
-.history-search .search-clear {
-  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
-  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
-  color: var(--text-tertiary); border-radius: 50%;
-}
-.history-search .search-clear:hover { background: var(--border); color: var(--text-primary); }
-.count-row {
-  font-size: 11px; color: var(--text-tertiary);
-  padding: 0 2px 8px;
 }
 .new-form { display: flex; flex-direction: column; }
 .form-group { margin-bottom: 12px; }

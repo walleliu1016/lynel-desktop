@@ -4,11 +4,13 @@
       v-for="item in visibleList"
       :key="item.sessionId"
       class="recent-item"
+      :class="{ fav: favIds.has(item.sessionId) }"
       @click="$emit('select', item)"
     >
       <span class="status-dot" :class="item.state" />
       <AgentBadge :agent="item.agent" size="sm" class="recent-agent" />
       <span class="title" :title="displayTitle(item)">{{ displayTitle(item) }}</span>
+      <FavoriteStar :session-id="item.sessionId" class="recent-star" @toggle="onToggle(item)" />
       <span class="meta">{{ item.project }} · {{ duration(item.lastOpenedAt) }}</span>
     </div>
     <button
@@ -24,7 +26,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import AgentBadge from './AgentBadge.vue'
+import FavoriteStar from './FavoriteStar.vue'
 import { sessionDisplayTitle } from '../stores/sessions'
+import { useFavoritesStore } from '../stores/favorites'
 import type { RecentSession } from '../types/recent'
 import { agentMeta } from '../types/agents'
 import { useSettingsStore } from '../stores/settings'
@@ -38,11 +42,23 @@ defineEmits<{ (e: 'select', item: RecentSession): void }>()
 const expanded = ref(false)
 
 const settings = useSettingsStore()
+const favorites = useFavoritesStore()
+
+async function onToggle(item: RecentSession) {
+  if (favorites.isFavorite(item.sessionId)) {
+    await favorites.removeFavorite(item.sessionId).catch(() => {})
+  } else {
+    await favorites.addFavorite(item).catch(() => {})
+  }
+}
 
 // 按 agent 启用开关过滤：关闭的 agent 历史会话不显示（老会话无 agent 回退 claude，恒显示）
 const enabledList = computed(() =>
   props.list.filter((item) => settings.isAgentEnabled(agentMeta(item.agent).kind)),
 )
+
+// 收藏会话 id 集合（标题强调色标识，不占布局）
+const favIds = computed(() => new Set(favorites.favorites.map((f) => f.sessionId)))
 
 // 每分钟更新一次，驱动 duration 重新计算
 const tick = ref(0)
@@ -114,6 +130,23 @@ function duration(lastOpenedAt: number) {
   font-size: var(--fs-caption); color: var(--text-secondary);
   white-space: nowrap; flex-shrink: 0;
 }
+/* 收藏星标：默认折叠不占位（meta 稳定靠右），hover 行或已收藏(active)时展开。
+   用 !important 覆盖 FavoriteStar 内部固定 width:22px，实现宽度从 0 过渡到 22。 */
+.recent-star {
+  width: 0 !important;
+  opacity: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+  margin: 0;
+  transition: width .12s ease, opacity .12s ease, margin .12s ease;
+}
+.recent-item:hover .recent-star {
+  width: 22px !important;
+  opacity: 1;
+  margin-right: 2px;
+}
+/* 已收藏：标题强调色（收藏置顶于列表内，颜色标识，不占布局） */
+.recent-item.fav .title { color: var(--accent); }
 .toggle-more {
   width: 100%; text-align: left;
   padding: 6px 10px; border-radius: var(--radius-md);

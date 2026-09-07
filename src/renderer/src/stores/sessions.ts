@@ -71,16 +71,19 @@ export const useSessionsStore = defineStore('sessions', () => {
   const botBindings = ref<Record<string, string>>({})
   // 全量会话索引：ListSessions 结果按 id 建索引，供绑定会话等不在左侧列表中的会话查 project/title
   const allSessions = ref<Record<string, SessionMeta>>({})
+  // 全量历史会话的有序列表：ListSessions 全量按 mtime 降序（最近活跃优先），供打开会话弹窗 / 全量搜索使用
+  const allOrdered = ref<SessionMeta[]>([])
 
   const active = computed(() => list.value.find((s) => s.id === activeId.value) ?? null)
 
-  /** 全量加载会话索引（ListSessions 返回所有会话，含 project），供绑定会话展示 project·title。 */
+  /** 全量加载会话索引（ListSessions 返回所有会话，含 project）：同时更新 allSessions map 与 allOrdered 数组。 */
   async function loadAllSessions() {
     try {
       const all = (await ListSessions()) as SessionMeta[]
       const idx: Record<string, SessionMeta> = {}
       for (const s of all) idx[s.id] = s
       allSessions.value = idx
+      allOrdered.value = [...all].sort((a, b) => (b.mtime || 0) - (a.mtime || 0))
     } catch (e: any) {
       console.error('[sessions] loadAllSessions failed:', e?.message || e)
     }
@@ -450,6 +453,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     botNames.value = {}
     botBindings.value = {}
     allSessions.value = {}
+    allOrdered.value = []
   }
 
   // 左侧列表只显示手动打开/创建的会话，启动时不做历史自动填充；
@@ -457,7 +461,7 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   return { list, activeId, active, streaming, state,
     creating, loading, adopted, drafts, hookPermissions, opened,
-    userTitles, titleSources, sessionBots, botNames, botBindings, allSessions,
+    userTitles, titleSources, sessionBots, botNames, botBindings, allSessions, allOrdered,
     setDraft, create, open, select, send, setHookPermission,
     refreshList, handleHookEvent, remove, renameSession, applyTitleChange,
     applyRebind,

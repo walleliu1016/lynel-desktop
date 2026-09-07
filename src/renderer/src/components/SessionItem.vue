@@ -21,6 +21,11 @@
       />
       <span v-else class="title">{{ title }}</span>
     </div>
+    <FavoriteStar
+      :session-id="props.meta.id"
+      class="item-star"
+      @toggle="onToggleFav"
+    />
     <span class="time">{{ duration }}</span>
     <span v-if="currentBotId" class="bot-mark" :title="botMarkTitle">
       <Icon name="bot" :size="12" />
@@ -107,9 +112,11 @@ import { computed, ref, nextTick, onMounted, onUnmounted } from 'vue'
 import AgentBadge from './AgentBadge.vue'
 import SessionTooltip from './SessionTooltip.vue'
 import BotAddDialog from './BotAddDialog.vue'
+import FavoriteStar from './FavoriteStar.vue'
 import Icon from './Icon.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useBotsStore } from '../stores/bots'
+import { useFavoritesStore, toFavorite } from '../stores/favorites'
 import { pushToast } from '../composables/useToast'
 
 import { ClipboardWrite } from '../composables/useElectron'
@@ -120,6 +127,7 @@ const emit = defineEmits<{ (e: 'select'): void }>()
 
 const sessions = useSessionsStore()
 const botsStore = useBotsStore()
+const favorites = useFavoritesStore()
 const showTip = ref(false)
 const itemEl = ref<HTMLElement | null>(null)
 const tipAnchor = ref({ x: 0, y: 0 })
@@ -156,6 +164,14 @@ function closeMenu() {
 function cancelHide() {
   if (showTimer) { clearTimeout(showTimer); showTimer = null }
   if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
+}
+
+async function onToggleFav() {
+  if (favorites.isFavorite(props.meta.id)) {
+    await favorites.removeFavorite(props.meta.id).catch((e: any) => pushToast({ level: 'error', source: 'session', message: '取消收藏失败：' + (e?.message || e) }))
+  } else {
+    await favorites.addFavorite(toFavorite(props.meta)).catch((e: any) => pushToast({ level: 'error', source: 'session', message: '收藏失败：' + (e?.message || e) }))
+  }
 }
 
 async function onContextMenu(e: MouseEvent) {
@@ -402,6 +418,21 @@ async function onBotAdded(botId: string) {
 .dot.awaiting {
   background: var(--status-error);
   animation: pulse-opacity 1.2s ease-in-out infinite;
+}
+/* 收藏星标：默认折叠不占位（时间/状态点保持稳定靠右），hover 行或已收藏(active)时展开。
+   用 !important 覆盖 FavoriteStar 内部固定 width:22px，实现宽度从 0 过渡到 22。 */
+.item-star {
+  width: 0 !important;
+  opacity: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+  margin: 0;
+  transition: width .12s ease, opacity .12s ease, margin .12s ease;
+}
+.session-item:hover .item-star {
+  width: 22px !important;
+  opacity: 1;
+  margin-left: 2px;
 }
 .context-menu-overlay {
   position: fixed; inset: 0; z-index: 999;

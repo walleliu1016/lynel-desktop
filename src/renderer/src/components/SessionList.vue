@@ -34,7 +34,7 @@
         </template>
       </div>
     </div>
-    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -125,5 +125,4 @@ const filteredList = computed(() => {
   0%, 100% { opacity: 0.45; }
   50% { opacity: 0.75; }
 }
-
 </style>

@@ -49,10 +49,42 @@
             <Icon name="close" :size="12" />
           </button>
         </div>
+        <!-- 收藏夹入口：点击在下方展开收藏区（独立于会话列表） -->
+        <button v-if="!sidebarCollapsed" class="home-entry tooltip-wrap" :class="{ active: favListOpen }" aria-label="收藏夹" @click="onToggleFavList">
+          <Icon name="star" :size="16" :fill="favListOpen" />
+          <span class="entry-label">收藏夹</span>
+          <span class="tooltip">收藏夹</span>
+        </button>
+        <!-- 收藏夹展开区：仅展示收藏行（导航上已有「收藏夹」入口，故此处不再重复标题）；
+             收起方式：再点「收藏夹」或点其它导航 -->
+        <div v-if="!sidebarCollapsed && favListOpen" class="fav-pane">
+          <div v-if="favorites.favorites.length" class="fav-pane-items">
+            <div
+              v-for="f in favorites.favorites"
+              :key="f.sessionId"
+              class="fav-pane-row"
+              :class="{ active: f.sessionId === activeSessionId }"
+              :title="favTitle(f)"
+              @click="onOpenFavorite(f.sessionId)"
+            >
+              <AgentBadge :agent="f.agent" size="sm" />
+              <span class="fav-pane-text">{{ favTitle(f) }}</span>
+              <button class="fav-pane-del" title="取消收藏" @click.stop="onRemoveFav(f.sessionId)">
+                <Icon name="star" :size="12" :fill="true" />
+              </button>
+            </div>
+          </div>
+          <div v-else class="fav-pane-empty">暂无收藏，可 hover 会话行星标收藏</div>
+        </div>
         <!-- 折叠态：搜索仅图标，点击展开侧栏并进入搜索 -->
         <button v-if="sidebarCollapsed" class="home-entry search-entry tooltip-wrap" aria-label="搜索" @click="onCollapsedSearch">
           <Icon name="search" :size="16" />
           <span class="tooltip">搜索</span>
+        </button>
+        <!-- 折叠态：收藏夹仅图标，点击展开侧栏并进入收藏视图 -->
+        <button v-if="sidebarCollapsed" class="home-entry tooltip-wrap" aria-label="收藏夹" @click="onCollapsedFav">
+          <Icon name="star" :size="16" />
+          <span class="tooltip">收藏夹</span>
         </button>
         <!-- 折叠态：会话列表仅图标，点击展开侧栏 -->
         <button v-if="sidebarCollapsed" class="home-entry session-collapsed-btn tooltip-wrap" aria-label="会话列表" @click="sidebarCollapsed = false">
@@ -61,13 +93,13 @@
         </button>
         <SessionList
           v-else
-          :list="sessions.list"
+          :list="searchResults"
           :active-id="activeSessionId"
           :search="searchQuery"
           @select="onSelectSession"
         >
           <template #actions>
-            <button class="head-action tooltip-wrap" aria-label="打开 Session" @click="showNewSession = true">
+            <button class="head-action tooltip-wrap" aria-label="打开 Session" @click="showOpenSession = true">
               <Icon name="folder-open" :size="13" />
               <span class="tooltip-down">打开 Session</span>
             </button>
@@ -206,7 +238,13 @@
       :loading="sessions.creating"
       @close="showNewSession = false"
       @create="onCreateFromSession"
-      @open-recent="onOpenRecent"
+    />
+    <OpenSessionDialog
+      :open="showOpenSession"
+      @close="showOpenSession = false"
+      @create="showNewSession = true; showOpenSession = false"
+      @open="onOpenRecent"
+      @open-fav="onOpenFavorite"
     />
     <CloseSessionDialog
       :open="showCloseDialog"
@@ -235,6 +273,7 @@ import Icon from '../components/Icon.vue'
 import DeepSeekLogo from '../components/DeepSeekLogo.vue'
 import GlobalTabs from '../components/GlobalTabs.vue'
 import SessionList from '../components/SessionList.vue'
+import AgentBadge from '../components/AgentBadge.vue'
 import TracePane from '../components/trace/TracePane.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import CodeView from '../components/code/CodeView.vue'
@@ -244,7 +283,9 @@ import SettingsTab from '../components/SettingsTab.vue'
 import GuideTab from '../components/GuideTab.vue'
 import NewSessionDialog from '../components/NewSessionDialog.vue'
 import CloseSessionDialog from '../components/CloseSessionDialog.vue'
+import OpenSessionDialog from '../components/OpenSessionDialog.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
+import { useFavoritesStore, type FavoriteSession } from '../stores/favorites'
 import { useTabsStore } from '../stores/tabs'
 import { useTraceStore } from '../stores/trace'
 import { useFilesStore } from '../stores/files'
@@ -261,12 +302,16 @@ import type { Tab as SettingsTabKey } from '../components/SettingsTabs.vue'
 const router = useRouter()
 const auth = useAuthStore()
 const sessions = useSessionsStore()
+const favorites = useFavoritesStore()
 const tabsStore = useTabsStore()
 const trace = useTraceStore()
 const files = useFilesStore()
 useEventStream()
 
 const showNewSession = ref(false)
+const showOpenSession = ref(false)
+// 收藏夹视图开关：侧栏导航「收藏夹」点击切换（SessionList 内展示全部收藏）
+const favListOpen = ref(false)
 const username = ref('')
 const version = ref('')
 const sidebarCollapsed = ref(false)
@@ -301,7 +346,11 @@ const searchInputEl = ref<HTMLInputElement | null>(null)
 // 会话列表底部操作区（设置/指南/账户/退出，横向并列）
 
 function openSearch() {
+  // 搜索作用于全部会话，退出收藏视图
+  favListOpen.value = false
   searchOpen.value = true
+  // 首次进搜索才懒加载全量历史会话（避免启动时拉取全部；无搜索时仍回落侧栏 30 条）
+  if (sessions.allOrdered.length === 0) void sessions.loadAllSessions()
   nextTick(() => searchInputEl.value?.focus())
 }
 
@@ -309,6 +358,22 @@ function closeSearch() {
   searchOpen.value = false
   searchQuery.value = ''
 }
+
+/** 会话列表数据源：无搜索时回落侧栏最近 30 条（原默认体验）；
+    有搜索词时在全量历史（allOrdered，按 mtime 降序）上做大小写无关子串匹配。
+    收藏项统一由 SessionList 顶部「收藏」分组展示，此处列表由 SessionList 负责剔除收藏，
+    不再做收藏优先排序（避免同一会话在会话区与收藏分组重复出现）。 */
+const searchResults = computed(() => {
+  const q = (searchQuery.value || '').trim().toLowerCase()
+  if (!q) return sessions.list
+  const pool = sessions.allOrdered
+  return pool.filter((s) => {
+    const pn = s.project.toLowerCase()
+    const wd = s.workdir.toLowerCase()
+    const title = (s.user_title || s.first_prompt || s.ai_title || '').toLowerCase()
+    return pn.includes(q) || wd.includes(q) || title.includes(q) || s.id.toLowerCase().includes(q)
+  })
+})
 
 const { isMaximized, minimize, toggleMaximize, hide } = useWindowState()
 const isMac = computed(() => navigator.platform.toLowerCase().includes('mac'))
@@ -383,6 +448,9 @@ onMounted(async () => {
     username.value = info.username
     version.value = info.version
   } catch {}
+
+  // 预加载收藏数据，打开会话弹窗时无需等待
+  void favorites.loadFavorites()
 
   try {
     const status = await GetUpdateStatus()
@@ -542,14 +610,29 @@ function onCollapsedSearch() {
   openSearch()
 }
 
-/** 收起态点击左侧导航图标（首页）：先展开侧栏再执行导航 */
+/** 展开态点击「收藏夹」：切换全部会话 / 收藏视图；首次进入确保收藏已加载 */
+function onToggleFavList() {
+  favListOpen.value = !favListOpen.value
+  if (favListOpen.value && favorites.favorites.length === 0) void favorites.loadFavorites()
+}
+
+/** 折叠态点击「收藏夹」图标：先展开侧栏再进入收藏视图 */
+function onCollapsedFav() {
+  sidebarCollapsed.value = false
+  if (!favListOpen.value) favListOpen.value = true
+  if (favorites.favorites.length === 0) void favorites.loadFavorites()
+}
+
+/** 收起态点击左侧导航图标（首页等）：先展开侧栏再执行导航；导航即退出收藏视图回全部会话 */
 function onCollapsedEntry(fn: () => void) {
   if (sidebarCollapsed.value) sidebarCollapsed.value = false
+  favListOpen.value = false
   fn()
 }
 
-/** 打开 Harness（全屏 Web）：自动折叠左侧栏，让出空间 */
+/** 打开 Harness（全屏 Web）：自动折叠左侧栏，让出空间；同时退出收藏视图 */
 function onOpenHarness() {
+  favListOpen.value = false
   tabsStore.openHarness()
   sidebarCollapsed.value = true
 }
@@ -575,9 +658,12 @@ async function onCreateFromSession(workdir: string, prompt: string, extraArgs: s
   showNewSession.value = false
 }
 
-async function onOpenRecent(item: RecentSession) {
+/** 打开一个已存在的会话（RecentSession）：Adopt + OpenTerminal + 开 tab + 云 bot 绑定完整链路。
+    新建/打开会话/收藏三处打开已有会话共用此函数，避免复制大段逻辑。 */
+async function openExistingSession(item: RecentSession, errLabel: string) {
   // 先关弹窗立即进入主界面，再后台启动 PTY/代理（避免等待异步完成才消失）
   showNewSession.value = false
+  showOpenSession.value = false
   try {
     // 重复打开当前已激活的会话：activeSessionId 不变化，需强制刷新 trace
     const wasActive = activeSessionId.value === item.sessionId
@@ -600,8 +686,39 @@ async function onOpenRecent(item: RecentSession) {
       trace.load()
     }
   } catch (e: any) {
-    console.error('[home] open recent failed:', e?.message || e)
-    pushToast({ level: 'error', source: 'session', message: '打开最近会话失败：' + (e?.message || e) })
+    console.error('[home] open existing failed:', e?.message || e)
+    pushToast({ level: 'error', source: 'session', message: errLabel + '失败：' + (e?.message || e) })
+  }
+}
+
+function onOpenRecent(item: RecentSession) {
+  void openExistingSession(item, '打开最近会话')
+}
+
+/** 打开收藏会话：favorites.toRecent 还原为 RecentSession，复用 openExistingSession */
+function onOpenFavorite(sid: string) {
+  const item = favorites.toRecent(sid)
+  if (!item) return
+  void openExistingSession(item, '打开收藏会话')
+}
+
+/** 收藏夹行标题：FavoriteSession → sessionDisplayTitle 期望形态 */
+function favTitle(f: FavoriteSession): string {
+  return sessionDisplayTitle({
+    id: f.sessionId,
+    user_title: f.userTitle,
+    ai_title: f.aiTitle,
+    first_prompt: f.firstPrompt,
+    project: f.project,
+  })
+}
+
+/** 收藏夹取消收藏 */
+async function onRemoveFav(sid: string) {
+  try {
+    await favorites.removeFavorite(sid)
+  } catch (e: any) {
+    pushToast({ level: 'error', source: 'session', message: '取消收藏失败：' + (e?.message || e) })
   }
 }
 
@@ -1012,6 +1129,41 @@ watch(
   transform: none;
 }
 
+/* 收藏夹展开区：干净列表风格，独立于会话列表 */
+.fav-pane {
+  margin: 0 8px 8px;
+  background: var(--bg-input);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fav-pane-items {
+  max-height: 240px; overflow-y: auto; overflow-x: hidden;
+  padding: 6px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.fav-pane-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px; border-radius: var(--radius-sm);
+  cursor: pointer; position: relative;
+}
+.fav-pane-row:hover { background: var(--session-item-hover-bg); }
+.fav-pane-row.active { background: var(--session-item-active-bg); }
+.fav-pane-text {
+  flex: 1; min-width: 0;
+  font-size: var(--fs-body); color: var(--text-primary); font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fav-pane-del {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border: none; background: transparent;
+  color: var(--accent); border-radius: 4px; cursor: pointer; opacity: 0;
+  transition: opacity 0.12s;
+}
+.fav-pane-row:hover .fav-pane-del { opacity: 1; }
+.fav-pane-empty { padding: 12px; text-align: center; font-size: 12px; color: var(--text-tertiary); }
 .layout { flex: 1; display: flex; min-height: 0; gap: 0; background: transparent; }
 .left {
   width: 280px; display: flex; flex-direction: column;
