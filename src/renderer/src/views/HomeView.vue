@@ -5,14 +5,14 @@
         <div class="left-top" :class="{ mac: isMac, win: isWindows, collapsed: sidebarCollapsed }">
           <template v-if="!sidebarCollapsed">
             <span v-if="!isMac" class="brand-inline" aria-hidden="true">Lynel Desktop</span>
-            <button class="top-btn tooltip-wrap" aria-label="收起侧边栏" @click="sidebarCollapsed = true">
-              <Icon name="panel-left-close" :size="16" />
-              <span class="tooltip-down">收起侧边栏</span>
-            </button>
             <div v-if="cloudEnabled" class="cloud-status" :class="cloudStatusClass" :title="cloudStatusTitle">
               <span class="dot" />
               <span class="label">{{ cloudStatusText }}</span>
             </div>
+            <button class="top-btn tooltip-wrap" aria-label="收起侧边栏" @click="sidebarCollapsed = true">
+              <Icon name="panel-left-close" :size="16" />
+              <span class="tooltip-down">收起侧边栏</span>
+            </button>
           </template>
         </div>
         <div v-if="isMac && !sidebarCollapsed" class="left-brand-area">
