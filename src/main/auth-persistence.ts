@@ -65,6 +65,12 @@ export function clearStoredAuth(): void {
   getStore('settings').delete(JWT_KEY);
 }
 
+/** 清除「记住我」的用户名（登出时调用）。
+ *  云关闭时若不清 currentUser，decideRestore 会把登出/重启再次分流到 home（表现为"自动登录"）。 */
+export function clearStoredUser(): void {
+  getStore('settings').delete('currentUser');
+}
+
 /** 明文凭据文件（供本机其他应用读取当前云登录态），默认 ~/.lynel-desktop/credential.json */
 const CRED_FILE = path.join(os.homedir(), '.lynel-desktop', 'credential.json');
 

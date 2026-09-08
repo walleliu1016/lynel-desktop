@@ -9,6 +9,7 @@ import {
   saveStoredAuth,
   loadStoredAuth,
   clearStoredAuth,
+  clearStoredUser,
   decideRestore,
   writeCredentialFile,
   clearCredentialFile,
@@ -75,6 +76,12 @@ describe('auth-persistence', () => {
     saveStoredAuth('u1', 'jwt-abc');
     clearStoredAuth();
     expect(loadStoredAuth()).toBeNull();
+  });
+
+  it('clearStoredUser 删除记住的用户名', () => {
+    store.set('currentUser', 'u1');
+    clearStoredUser();
+    expect(store.get('currentUser')).toBeUndefined();
   });
 
   it('decideRestore 三分支', () => {

@@ -36,7 +36,7 @@ import { initUpdater } from './updater/index.js';
 import { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
 import { readFavoriteSessions, addFavorite as writeFavorite, removeFavorite as dropFavorite, mergeFavoriteTitles } from './favorites.js';
 import { readCodexModelProvider, mergeOmpModelsYml, mergeCodexConfigToml, mergeOpencodeConfig, applyClaudeEnv, migrateActiveProviders, AGENT_KINDS } from './providers-apply.js';
-import { loadStoredAuth, saveStoredAuth, clearStoredAuth, decideRestore, writeCredentialFile, clearCredentialFile } from './auth-persistence.js';
+import { loadStoredAuth, saveStoredAuth, clearStoredAuth, clearStoredUser, decideRestore, writeCredentialFile, clearCredentialFile } from './auth-persistence.js';
 
 export { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
 
@@ -1501,6 +1501,9 @@ export class App {
       this.desktopSocket.clearCredentials();
       // 5. 清除持久化 JWT（记住我），避免退出后再启动又自动登录
       clearStoredAuth();
+      // 6. 清除记住的用户名：云关闭时 decideRestore 仅凭 currentUser 即判 home，
+      //    不清会导致登出/重启后又被分流直接进主页（表现为"退出又自动登录"）
+      clearStoredUser();
       this.desktopSocket.disconnect();
       // 4. 通知前端刷新
       getBus().emit('sessions:list:changed');
