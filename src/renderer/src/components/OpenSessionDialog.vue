@@ -50,6 +50,10 @@
                 <span class="row-project">{{ s.project }}</span>
               </div>
             </div>
+            <div v-else-if="!sessions.allLoaded || sessions.allLoading" class="empty loading">
+              <span class="hist-spinner" aria-hidden="true" />
+              <span>正在加载历史会话…</span>
+            </div>
             <div v-else class="empty">{{ q ? '无匹配结果' : '暂无历史会话' }}</div>
           </div>
         </div>
@@ -84,11 +88,13 @@ const emit = defineEmits<{
 const sessions = useSessionsStore()
 const favorites = useFavoritesStore()
 
-// 弹窗打开时加载数据：收藏每次打开都刷新；历史走懒加载（全量已就绪则不重复拉取）
+// 弹窗打开时加载数据：收藏每次打开都刷新；历史全量每次打开都刷新
+// （loadAllSessions 内部去重并发；磁盘缓存后为 stat-only，开销可忽略），
+// 保证新会话 / 改名等能及时反映，加载期间由 allLoading 显示 loading 而非「暂无历史会话」。
 watch(() => props.open, (isOpen) => {
   if (!isOpen) return
   void favorites.loadFavorites()
-  if (sessions.allOrdered.length === 0) void sessions.loadAllSessions()
+  void sessions.loadAllSessions()
 })
 
 // 收藏会话已在顶部「收藏」区展示，历史列表剔除收藏项，避免同一会话重复出现
@@ -272,4 +278,24 @@ h2 { font-size: 14px; color: var(--text-primary); margin: 0; }
 .status-dot.ended { background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-tertiary); }
 .status-dot.awaiting_permission { background: var(--status-error); }
 .empty { padding: 20px; text-align: center; font-size: 12px; color: var(--text-tertiary); }
+/* 加载态：spinner + 文案竖向居中；与 NewSessionDialog/QuickLaunch 的 loading 转圈同款 */
+.empty.loading {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  color: var(--text-secondary);
+}
+.hist-spinner {
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: hist-spin 0.75s linear infinite;
+}
+@keyframes hist-spin { to { transform: rotate(360deg); } }
+/* reset.css 在系统「减少动态效果」时会把所有动画压成 0.01ms/1 次，
+   loading 转圈是状态反馈动画，仍需保持旋转，故在此豁免 */
+@media (prefers-reduced-motion: reduce) {
+  .hist-spinner {
+    animation: hist-spin 0.75s linear infinite !important;
+  }
+}
 </style>

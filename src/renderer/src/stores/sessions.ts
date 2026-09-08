@@ -76,16 +76,26 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   const active = computed(() => list.value.find((s) => s.id === activeId.value) ?? null)
 
+  // 全量索引加载状态：区分「正在扫描历史」「已加载但确无历史」「尚未加载」，
+  // 供打开会话弹窗 / 搜索在首次全量扫描期间显示 loading，而不是误导性的「暂无历史会话」。
+  const allLoading = ref(false)
+  const allLoaded = ref(false)
+
   /** 全量加载会话索引（ListSessions 返回所有会话，含 project）：同时更新 allSessions map 与 allOrdered 数组。 */
   async function loadAllSessions() {
+    if (allLoading.value) return
+    allLoading.value = true
     try {
       const all = (await ListSessions()) as SessionMeta[]
       const idx: Record<string, SessionMeta> = {}
       for (const s of all) idx[s.id] = s
       allSessions.value = idx
       allOrdered.value = [...all].sort((a, b) => (b.mtime || 0) - (a.mtime || 0))
+      allLoaded.value = true
     } catch (e: any) {
       console.error('[sessions] loadAllSessions failed:', e?.message || e)
+    } finally {
+      allLoading.value = false
     }
   }
 
@@ -462,6 +472,7 @@ export const useSessionsStore = defineStore('sessions', () => {
   return { list, activeId, active, streaming, state,
     creating, loading, adopted, drafts, hookPermissions, opened,
     userTitles, titleSources, sessionBots, botNames, botBindings, allSessions, allOrdered,
+    allLoading, allLoaded,
     setDraft, create, open, select, send, setHookPermission,
     refreshList, handleHookEvent, remove, renameSession, applyTitleChange,
     applyRebind,

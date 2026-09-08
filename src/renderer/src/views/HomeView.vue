@@ -349,8 +349,9 @@ function openSearch() {
   // 搜索作用于全部会话，退出收藏视图
   favListOpen.value = false
   searchOpen.value = true
-  // 首次进搜索才懒加载全量历史会话（避免启动时拉取全部；无搜索时仍回落侧栏 30 条）
-  if (sessions.allOrdered.length === 0) void sessions.loadAllSessions()
+  // 每次进搜索都刷新全量历史会话（loadAllSessions 内部去重并发；磁盘缓存后 stat-only，开销可忽略），
+  // 避免重启后首次全量扫描期间搜索结果空、以及长时间运行后索引过期漏掉新会话。
+  void sessions.loadAllSessions()
   nextTick(() => searchInputEl.value?.focus())
 }
 
