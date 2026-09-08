@@ -11,6 +11,9 @@ import {
   decodeProjectDirName,
   clearFileMetaCache,
   scanFileMeta,
+  setFileMetaCacheFile,
+  loadFileMetaCache,
+  flushFileMetaCache,
 } from '../../src/main/jsonl.js';
 
 describe('jsonl', () => {
@@ -131,5 +134,81 @@ describe('jsonl', () => {
     clearFileMetaCache();
     const meta5 = await scanFileMeta(p, stat1);
     expect(meta5.firstPrompt).toBe('bbbb');
+  });
+
+  it('scanFileMeta 磁盘缓存：重启后同 stat 直接命中，文件变更则失效重读', async () => {
+    const workDir = '/work_disk';
+    const p = getSessionJsonlPath('sess-disk', workDir);
+    await fs.mkdir(path.dirname(p), { recursive: true });
+    const cacheFile = path.join(tmpDir, 'meta-cache.json');
+
+    // 首次运行：写盘 + flush 落盘，模拟正常退出前
+    const contentA =
+      JSON.stringify({ type: 'user', message: { role: 'user', content: '磁盘缓存 hello' }, ai_title: 'disk-title', cwd: workDir }) + '\n';
+    await fs.writeFile(p, contentA, 'utf8');
+    const statA = await fs.stat(p);
+
+    setFileMetaCacheFile(cacheFile);
+    try {
+      await loadFileMetaCache();
+      const meta1 = await scanFileMeta(p, statA);
+      expect(meta1.firstPrompt).toBe('磁盘缓存 hello');
+      expect(meta1.msgCount).toBe(1);
+
+      await flushFileMetaCache();
+      const persisted = JSON.parse(await fs.readFile(cacheFile, 'utf8')) as Array<{ p: string; m: number; s: number }>;
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0].p).toBe(p);
+
+      // 模拟重启：清空内存缓存 + 复位 loaded 标志，再从磁盘加载
+      clearFileMetaCache();
+      setFileMetaCacheFile(null);
+      setFileMetaCacheFile(cacheFile);
+      await loadFileMetaCache();
+      // 相同 stat 命中磁盘恢复的 meta，不再读盘
+      const meta2 = await scanFileMeta(p, statA);
+      expect(meta2.firstPrompt).toBe('磁盘缓存 hello');
+
+      // 重启后文件内容已变（size 变化 → key 失效），应重读拿到新内容而不是磁盘旧值
+      const contentB =
+        JSON.stringify({ type: 'user', message: { role: 'user', content: '磁盘缓存已被更新成一条更长的内容' }, ai_title: 'disk-title-new', cwd: workDir }) + '\n';
+      await fs.writeFile(p, contentB, 'utf8');
+      const statB = await fs.stat(p);
+      expect(statB.size).not.toBe(statA.size);
+      const meta3 = await scanFileMeta(p, statB);
+      expect(meta3.firstPrompt).toBe('磁盘缓存已被更新成一条更长的内容');
+      expect(meta3.aiTitle).toBe('disk-title-new');
+    } finally {
+      // 复位，避免挂起写盘定时器 / 缓存路径污染后续用例
+      setFileMetaCacheFile(null);
+    }
+  });
+
+  it('scanFileMeta 磁盘缓存：损坏或缺失缓存文件不抛错，退回全量扫描', async () => {
+    const workDir = '/work_corrupt';
+    const p = getSessionJsonlPath('sess-corrupt', workDir);
+    await fs.mkdir(path.dirname(p), { recursive: true });
+    await fs.writeFile(
+      p,
+      JSON.stringify({ message: { role: 'user', content: '损坏缓存下的扫描', cwd: workDir } }) + '\n',
+      'utf8',
+    );
+
+    const cacheFile = path.join(tmpDir, 'meta-cache-corrupt.json');
+    await fs.writeFile(cacheFile, 'not-json{{{', 'utf8');
+    setFileMetaCacheFile(cacheFile);
+    try {
+      await loadFileMetaCache(); // 损坏内容应被吞掉，不抛
+      const stat = await fs.stat(p);
+      const meta = await scanFileMeta(p, stat);
+      expect(meta.firstPrompt).toBe('损坏缓存下的扫描');
+
+      // 文件不存在时 load 也应为 no-op 不抛
+      setFileMetaCacheFile(null);
+      setFileMetaCacheFile(path.join(tmpDir, 'meta-cache-missing.json'));
+      await loadFileMetaCache();
+    } finally {
+      setFileMetaCacheFile(null);
+    }
   });
 });

@@ -143,6 +143,74 @@ interface FileMeta {
 const FILE_META_CACHE_MAX = 1024;
 const fileMetaCache = new Map<string, { mtimeMs: number; size: number; meta: FileMeta }>();
 
+// 磁盘持久化（可选，默认不启用保持纯内存，测试隔离）：启用后把 scanFileMeta 结果按
+// (mtimeMs, size) 键持久化到 JSON 文件，应用重启后首次全量扫描变成 stat-only，
+// 消除「打开会话弹窗历史为空要等全量读盘」的冷启动等待。
+const META_CACHE_SAVE_DELAY_MS = 2000;
+let metaCacheFile: string | null = null;
+let metaCacheLoaded = false;
+let metaCacheSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** 启用/停用磁盘缓存。传 null 停用并清空内存缓存与挂起写盘定时器（测试隔离用）。 */
+export function setFileMetaCacheFile(file: string | null): void {
+  if (metaCacheSaveTimer) {
+    clearTimeout(metaCacheSaveTimer);
+    metaCacheSaveTimer = null;
+  }
+  metaCacheFile = file;
+  metaCacheLoaded = false;
+  if (!file) fileMetaCache.clear();
+}
+
+/** 启动时加载磁盘缓存（幂等；未启用或已加载则 no-op）。 */
+export async function loadFileMetaCache(): Promise<void> {
+  if (!metaCacheFile || metaCacheLoaded) return;
+  metaCacheLoaded = true;
+  try {
+    const raw = await fs.readFile(metaCacheFile, 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return;
+    for (const item of parsed) {
+      const rec = item as { p?: unknown; m?: unknown; s?: unknown; meta?: unknown } | null;
+      if (!rec || typeof rec.p !== 'string' || typeof rec.m !== 'number' || typeof rec.s !== 'number') continue;
+      const meta = rec.meta as FileMeta | undefined;
+      if (!meta || typeof meta !== 'object') continue;
+      fileMetaCache.set(rec.p, { mtimeMs: rec.m, size: rec.s, meta });
+    }
+  } catch {
+    // 缓存文件不存在/损坏：忽略，退回全量读盘重建
+  }
+}
+
+/** 退出/测试收尾时立刻落盘并清掉挂起定时器。 */
+export async function flushFileMetaCache(): Promise<void> {
+  if (metaCacheSaveTimer) {
+    clearTimeout(metaCacheSaveTimer);
+    metaCacheSaveTimer = null;
+  }
+  await persistMetaCache();
+}
+
+async function persistMetaCache(): Promise<void> {
+  if (!metaCacheFile || !metaCacheLoaded) return;
+  try {
+    const arr = Array.from(fileMetaCache.entries()).map(([p, v]) => ({ p, m: v.mtimeMs, s: v.size, meta: v.meta }));
+    await fs.mkdir(path.dirname(metaCacheFile), { recursive: true });
+    await fs.writeFile(metaCacheFile, JSON.stringify(arr), 'utf8');
+  } catch {
+    // 写盘失败只影响冷启动速度，不影响正确性，静默忽略
+  }
+}
+
+function scheduleMetaCacheSave(): void {
+  if (!metaCacheFile) return;
+  if (metaCacheSaveTimer) clearTimeout(metaCacheSaveTimer);
+  metaCacheSaveTimer = setTimeout(() => {
+    metaCacheSaveTimer = null;
+    void persistMetaCache();
+  }, META_CACHE_SAVE_DELAY_MS);
+}
+
 // 测试/外部清理用：清空 scanFileMeta 缓存
 export function clearFileMetaCache(): void {
   fileMetaCache.clear();
@@ -189,6 +257,7 @@ export async function scanFileMeta(filePath: string, stat?: fsSync.Stats): Promi
       if (oldest !== undefined) fileMetaCache.delete(oldest);
     }
     fileMetaCache.set(filePath, { mtimeMs: stat.mtimeMs, size: stat.size, meta: result });
+    scheduleMetaCacheSave();
   }
   return result;
 }

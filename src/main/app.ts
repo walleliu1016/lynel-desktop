@@ -233,6 +233,7 @@ function extractToolInput(input: any): string {
 }
 
 const RECENT_SESSIONS_PATH = path.join(os.homedir(), '.lynel-desktop', 'recent-sessions.json');
+const SESSION_META_CACHE_PATH = path.join(os.homedir(), '.lynel-desktop', 'session-meta-cache.json');
 const MAX_RECENT_SESSIONS = 30;
 
 function readRecentSessions(): RecentSessionRecord[] {
@@ -458,6 +459,10 @@ export class App {
   }
 
   async init(): Promise<void> {
+    // scanFileMeta 结果跨重启持久化：首次全量扫描（打开会话弹窗 / 搜索）变成 stat-only，
+    // 避免重启后头一阵历史列表空等全量读盘。启动即加载但不 await（未就绪时首次调用会整读重建）。
+    jsonl.setFileMetaCacheFile(SESSION_META_CACHE_PATH);
+    void jsonl.loadFileMetaCache();
     this.applyChannelConfigs();
     this.applyAutoSettings();
     this.applyPushSettings();
@@ -566,6 +571,8 @@ export class App {
     getLogger().info('[app] shutdown begin');
     // 0. flush 防抖窗口内的 instanceStore 待写值，避免退出丢状态
     this.flushStoreWrites();
+    // 0.1 落盘 scanFileMeta 磁盘缓存，避免退出时挂起定时器内的增量丢失
+    await jsonl.flushFileMetaCache();
     // 1. 停止 AI title 定时轮询
     if (this.aiTitleRefreshTimer) {
       clearInterval(this.aiTitleRefreshTimer);
