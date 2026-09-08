@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { SessionMeta, SessionState } from '../types/session'
 import type { RecentSession } from '../types/recent'
+import { useFavoritesStore } from './favorites'
 import { CreateSession, ListSessions, SendMessage, AdoptSession, RenameSession, BindSessionBot, ListBots, ListBotBindings, GetSessionBotBinding } from '../composables/useElectron'
 
 export interface HookPermissionRequest {
@@ -163,6 +164,9 @@ export const useSessionsStore = defineStore('sessions', () => {
       updated.title_source = source
       list.value = [...list.value.slice(0, idx), updated, ...list.value.slice(idx + 1)]
     }
+    // 联动收藏夹：收藏项保存的是标题快照，改会话名后同步内存态，
+    // 侧栏收藏夹 / 打开会话弹窗立即显示新名，无需等 loadFavorites 重拉。
+    useFavoritesStore().applySessionTitle(id, title, source)
   }
 
   /** Claude /clear 后主进程把当前 PTY 迁移到新 sessionId：把旧 id 的所有状态 key 换成新 id。 */
