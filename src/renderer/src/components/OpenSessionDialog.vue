@@ -91,8 +91,10 @@ const favorites = useFavoritesStore()
 // 弹窗打开时加载数据：收藏每次打开都刷新；历史全量每次打开都刷新
 // （loadAllSessions 内部去重并发；磁盘缓存后为 stat-only，开销可忽略），
 // 保证新会话 / 改名等能及时反映，加载期间由 allLoading 显示 loading 而非「暂无历史会话」。
+// 每次打开都清空历史搜索词，避免上次输入残留（弹窗常驻挂载，q 会跨次保留）。
 watch(() => props.open, (isOpen) => {
   if (!isOpen) return
+  q.value = ''
   void favorites.loadFavorites()
   void sessions.loadAllSessions()
 })
