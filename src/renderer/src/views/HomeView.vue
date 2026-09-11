@@ -1039,6 +1039,9 @@ watch(
 .win-btn.close:hover { background: var(--status-error); color: var(--text-inverse); }
 .left-bottom {
   flex-shrink: 0;
+  /* 收起态下 SessionList（flex:1）被换成图标按钮，侧栏里没有元素撑满剩余高度，
+     用 margin-top:auto 吃掉空白，保证底部按钮始终贴底 */
+  margin-top: auto;
   border-top: 1px solid var(--border);
   background: var(--bg-panel);
   -webkit-app-region: no-drag;
