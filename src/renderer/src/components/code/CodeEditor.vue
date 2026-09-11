@@ -32,6 +32,19 @@ let activeModelRelPath: string | null = null
 // 当前 Monaco 主题名。编辑器创建时使用；终端主题变化时重建。
 let currentThemeName = 'code-default-dark'
 
+/**
+ * 窗口恢复可见时补一次 layout，触发 Monaco 重渲染。
+ * Monaco 的行内容（文字 + 行号）由 requestAnimationFrame 调度渲染，而窗口处于
+ * 隐藏/最小化/托盘时 Chromium 会暂停 rAF（document.visibilityState === 'hidden'），
+ * 此时创建或更新编辑器只建出空壳：有 .monaco-editor 与 .view-lines，但没有一行内容，
+ * 且容器尺寸不变不会再触发 automaticLayout 的 ResizeObserver，窗口恢复后也不会自愈。
+ * 表现即「文件子页整块空白、行号都没有」。
+ */
+function relayoutOnVisible() {
+  if (document.visibilityState !== 'visible' || !editor) return
+  requestAnimationFrame(() => editor?.layout())
+}
+
 // 草稿持有权在 files store（store.drafts）：store.content 是「上次保存/加载」的基准内容，
 // 跨 tab 切换 / 组件卸载（折叠、离页）时用它恢复未保存编辑
 const activeFile = computed<OpenFile | null>(
@@ -242,12 +255,16 @@ watch(
 )
 
 onMounted(async () => {
+  document.addEventListener('visibilitychange', relayoutOnVisible)
+  window.addEventListener('focus', relayoutOnVisible)
   if (!settings.cfg) await settings.load()
   await nextTick()
   await switchModel()
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', relayoutOnVisible)
+  window.removeEventListener('focus', relayoutOnVisible)
   // 草稿留在 store，组件卸载（折叠/离页）不丢未保存编辑
   model?.dispose()
   model = null
