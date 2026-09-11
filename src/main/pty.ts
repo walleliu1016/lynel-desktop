@@ -339,6 +339,26 @@ class OutputRing {
   }
 }
 
+/**
+ * Windows 包装器 cmd.exe 的绝对路径。
+ * node-pty 的 native 侧只对【相对】file 名走 get_shell_path() 解析：它读的是主进程
+ * `Path` 环境变量（不是 spawn 传入的 env），实现上还会丢掉 Path 的最后一段、Path 超过
+ * MAX_ENV 时 `GetEnvironmentVariableW` 也取不到，解析结果为空就抛 `File not found: `。
+ * 传绝对路径可完全绕开该解析，native 侧只剩一次 file_exists 检查。
+ * （这类机器上表现为「binExists=true、probe=true，但 startPty 同步抛出 File not found:」。）
+ */
+let cachedCmdExe: string | null = null;
+function resolveCmdExe(): string {
+  if (cachedCmdExe) return cachedCmdExe;
+  const candidates = [
+    process.env.ComSpec,
+    process.env.COMSPEC,
+    path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe'),
+  ];
+  cachedCmdExe = candidates.find((p) => !!p && fs.existsSync(p)) || 'cmd.exe';
+  return cachedCmdExe;
+}
+
 function buildCommand(
   bin: string,
   sessionId: string,
@@ -357,13 +377,13 @@ function buildCommand(
   if (os.platform() === 'win32') {
     const envEntries = Object.entries(env);
     if (envEntries.length === 0) {
-      return { file: 'cmd.exe', args: ['/c', bin, ...args] };
+      return { file: resolveCmdExe(), args: ['/c', bin, ...args] };
     }
     // Windows ConPTY 通过 pty.spawn 的 env 选项传播环境变量不可靠，
     // 在命令行显式 set 后再执行目标程序，确保 ANTHROPIC_BASE_URL 等变量生效。
     const envArgs = envEntries.flatMap(([k, v]) => ['set', `${k}=${v}`]);
     getLogger().info(`[pty] windows env injection: ${envArgs.join(' ')} && ${bin} ${args.join(' ')}`);
-    return { file: 'cmd.exe', args: ['/c', ...envArgs, '&&', bin, ...args] };
+    return { file: resolveCmdExe(), args: ['/c', ...envArgs, '&&', bin, ...args] };
   }
   return { file: bin, args };
 }
