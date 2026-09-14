@@ -129,4 +129,16 @@ export const FileWatch = (workDir: string) => api().fileWatch(workDir);
 export const FileUnwatch = (workDir: string) => api().fileUnwatch(workDir);
 export const FileChanged = (cb: (e: { workDir: string; relPath: string }) => void) => EventsOn('file:changed', cb);
 
+// 项目终端（每会话一个 shell）
+export const ShellEnsure = (sessionId: string, workDir: string, cols: number, rows: number) =>
+  api().shellEnsure(sessionId, workDir, cols, rows) as Promise<{
+    ok: boolean
+    replay?: string
+    error?: string
+  }>
+export const ShellWrite = (sessionId: string, data: string) => api().shellWrite(sessionId, data)
+export const ShellResize = (sessionId: string, cols: number, rows: number) =>
+  api().shellResize(sessionId, cols, rows)
+export const ShellClose = (sessionId: string) => api().shellClose(sessionId)
+
 export const isElectronDev = import.meta.env.DEV;

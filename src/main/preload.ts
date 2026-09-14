@@ -151,6 +151,14 @@ const api = {
     ipcRenderer.invoke('file:delete', workDir, relPath),
   fileWatch: (workDir: string) => ipcRenderer.invoke('file:watch', workDir),
   fileUnwatch: (workDir: string) => ipcRenderer.invoke('file:unwatch', workDir),
+
+  shellEnsure: (sessionId: string, workDir: string, cols: number, rows: number) =>
+    ipcRenderer.invoke('shell:ensure', sessionId, workDir, cols, rows),
+  shellWrite: (sessionId: string, data: string) =>
+    ipcRenderer.invoke('shell:write', sessionId, data),
+  shellResize: (sessionId: string, cols: number, rows: number) =>
+    ipcRenderer.invoke('shell:resize', sessionId, cols, rows),
+  shellClose: (sessionId: string) => ipcRenderer.invoke('shell:close', sessionId),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

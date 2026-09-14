@@ -27,6 +27,12 @@ import { agentSpec, isAgentEnabledBySettings, type AgentKind, type AgentSpec } f
 import { start as startPty, PtyMode, PtySize, preloadShellEnv } from './pty.js';
 import { registerTraceIpc } from './trace/ipc.js';
 import { registerFilesIpc } from './files.js';
+import {
+  registerShellIpc,
+  close as closeShell,
+  rebind as rebindShell,
+  closeAll as closeAllShells,
+} from './shell.js';
 import type { BotConfig } from './types/bot.js';
 import { startScan as wecomStartScan, cancelScan } from './wecom-scan.js';
 import { notifyExternal, errMessage } from './channels/notify-error.js';
@@ -475,6 +481,8 @@ export class App {
     session.setOnRemove((id) => {
       this.wecomChannel.clearSessionMappings(id);
       this.ptyOutBatcher.clear(id);
+      // 会话删除时一并关掉它的项目终端，否则 shell PTY 会泄漏成孤儿进程
+      closeShell(id);
     });
     this.wecomChannel.setSessionTitleResolver((sessionId: string) => {
       const list = this.withRecentLock(() => readRecentSessions());
@@ -569,6 +577,8 @@ export class App {
 
   async shutdown(): Promise<void> {
     getLogger().info('[app] shutdown begin');
+    // 应用退出前杀干净项目终端，避免 shell PTY 变成孤儿进程
+    closeAllShells();
     // 0. flush 防抖窗口内的 instanceStore 待写值，避免退出丢状态
     this.flushStoreWrites();
     // 0.1 落盘 scanFileMeta 磁盘缓存，避免退出时挂起定时器内的增量丢失
@@ -1394,6 +1404,7 @@ export class App {
   private registerIpcHandlers(): void {
     registerTraceIpc();
     registerFilesIpc();
+    registerShellIpc();
     // 初始化在线升级
     initUpdater(() => this.window!);
     // 系统剪贴板写入：渲染端 navigator.clipboard 在 file:// + contextIsolation 下
@@ -2326,6 +2337,8 @@ export class App {
       getLogger().warn(`[app:rebind] session not found or no process oldId=${oldId.slice(0, 8)}`);
       return;
     }
+    // 项目终端跟着用户走：/clear 换了 sessionId，但用户不该看到终端被重置
+    rebindShell(oldId, newId);
     const proc = s.process;
     // 清掉旧 wirePty 监听，用新 id 重绑（闭包里的 buffer/emit 归一到新 id）
     this.ptyCleanups.get(oldId)?.();
