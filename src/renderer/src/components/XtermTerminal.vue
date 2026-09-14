@@ -45,7 +45,7 @@ import '@xterm/xterm/css/xterm.css'
 import { EventsOn, ResizeTerminal, OpenSessionTerminalSized, ClipboardWrite, OpenExternal } from '../composables/useElectron'
 import { pushToast } from '../composables/useToast'
 import { useSettingsStore } from '../stores/settings'
-import { defaultTerminalConfig, type TerminalConfig, type TerminalTheme } from '../types/settings'
+import { defaultTerminalConfig, type TerminalConfig } from '../types/settings'
 
 const settings = useSettingsStore()
 

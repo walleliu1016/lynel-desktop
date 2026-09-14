@@ -58,19 +58,33 @@ export async function waitForFontReady(family: string, size: number): Promise<vo
   }
 }
 
-/** rAF 节流：合并同一帧内的多次 theme 同步，避免快速点击触发连续 22 次 reflow */
-let pendingThemeSync: { t: Terminal; theme: TerminalTheme } | null = null
+/** rAF 节流：按 Terminal 实例分片，合并同一帧内的多次 theme 同步。
+ *  不能只用一个 pending 槽：多个 XtermTerminal 会同时挂载（HomeView 用
+ *  v-for + v-show），单槽会让先到的实例被后到的覆盖，只有最后一个终端换色。
+ *  用 WeakMap 按实例分片，各实例都拿到更新；同一实例在一帧内的多次调用仍被合并，
+ *  避免快速点击触发连续 22 次 reflow。 */
+const pendingThemeSync = new WeakMap<Terminal, TerminalTheme>()
+let pendingTerminals: Terminal[] = []
 let themeSyncRaf = 0
 export function scheduleThemeSync(t: Terminal, theme: TerminalTheme) {
-  pendingThemeSync = { t, theme }
+  pendingThemeSync.set(t, theme)
+  if (!pendingTerminals.includes(t)) pendingTerminals.push(t)
   if (themeSyncRaf) return
   themeSyncRaf = requestAnimationFrame(() => {
     themeSyncRaf = 0
-    const job = pendingThemeSync
-    pendingThemeSync = null
-    if (!job) return
-    job.t.options.theme = applyThemeSync(job.theme) as any
-    // xterm 不会自动用新 theme 重绘已有 buffer；必须显式 refresh 才能让已显示的字符换色
-    job.t.refresh(0, job.t.rows - 1)
+    const list = pendingTerminals
+    pendingTerminals = []
+    for (const term of list) {
+      const th = pendingThemeSync.get(term)
+      if (!th) continue
+      pendingThemeSync.delete(term)
+      try {
+        term.options.theme = applyThemeSync(th) as any
+        // xterm 不会自动用新 theme 重绘已有 buffer；必须显式 refresh 才能让已显示的字符换色
+        term.refresh(0, term.rows - 1)
+      } catch {
+        // 实例可能已在同一帧内被销毁，跳过
+      }
+    }
   })
 }
