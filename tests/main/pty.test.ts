@@ -29,8 +29,15 @@ describe('pty', () => {
   });
 
   // raw 模式用于启动交互式 shell（powershell/cmd/bash）：跳过 buildCommand 的
-  // win32 `cmd.exe /c` 包装，直接把 shell 交给 pty.spawn。
-  it.skipIf(isCI)('raw 模式直通 spawn shell 并能收发', { timeout: 20000 }, async () => {
+  // win32 `cmd.exe /c` 包装，同时忽略 Claude 专属的 --session-id / --resume 参数。
+  //
+  // 用例故意传 PtyMode.New + 假 sessionId，以此区分两条路径：
+  //   raw 分支   → args 为空，shell 正常启动，`echo <marker>` 能回显 marker；
+  //   非 raw 分支 → args 变成 ['--session-id', 'fake-session-id']，win32 下实际执行
+  //                `<shell> --session-id fake-session-id`，shell 把它当非法参数报错退出
+  //                （非 win32 下 /bin/sh 报 `--session-id: not found`），marker 永不出现。
+  // 因此只要 raw 分支被删掉，本用例的断言必然失败，具备真正的回归保护能力。
+  it.skipIf(isCI)('raw 模式忽略 Claude 专属参数，shell 仍能正常交互', { timeout: 20000 }, async () => {
     const { start, PtyMode } = await import('../../src/main/pty.js');
     const isWin = process.platform === 'win32';
     const bin = isWin ? 'powershell.exe' : '/bin/sh';
@@ -38,9 +45,9 @@ describe('pty', () => {
 
     const proc = start(
       process.cwd(),
-      '',
+      'fake-session-id',
       bin,
-      PtyMode.Auto,
+      PtyMode.New,
       {},
       { cols: 80, rows: 24 },
       [],
