@@ -33,7 +33,11 @@ let cleanups: (() => void)[] = []
 let lastCols = 0
 let lastRows = 0
 
+// init() 可重入保护：切会话时旧 init 可能仍挂在 await 上，用 generation 让它作废
+let initGen = 0
+
 function disposeTerm() {
+  initGen++
   for (const fn of cleanups) {
     try { fn() } catch { /* 忽略 */ }
   }
@@ -52,7 +56,8 @@ function fitAndResize() {
   if (!term || !hostEl.value || !props.visible) return
   if (hostEl.value.clientWidth <= 0 || hostEl.value.clientHeight <= 0) return
   fitAddon?.fit()
-  if (term.cols === 0 || term.rows === 0) return
+  // addon-fit 的下限是 2x1，不会是 0；这里拦的是折叠动画中途的退化尺寸
+  if (term.cols < 20 || term.rows < 5) return
   term.refresh(0, term.rows - 1)
   if (term.cols === lastCols && term.rows === lastRows) return
   lastCols = term.cols
@@ -60,22 +65,25 @@ function fitAndResize() {
   void ShellResize(props.sessionId, term.cols, term.rows).catch(() => {})
 }
 
-/** 取当前终端尺寸；容器不可见时 fit 会得到 0 列行，用 80x24 兜底 */
+/** 取当前终端尺寸。容器极小时 fit 会算出 2x1 这类退化尺寸（addon-fit 内部下限是 2/1，
+ *  不会是 0），用有意义的下限兜底；容器展开后由 ResizeObserver 触发 ShellResize 修正。 */
 function safeTermSize(): { cols: number; rows: number } {
-  const cols = term && term.cols > 0 ? term.cols : 80
-  const rows = term && term.rows > 0 ? term.rows : 24
+  const cols = term && term.cols >= 20 ? term.cols : 80
+  const rows = term && term.rows >= 5 ? term.rows : 24
   return { cols, rows }
 }
 
 async function init() {
-  if (term || !hostEl.value) return
+  if (!props.sessionId || term || !hostEl.value) return
+  const gen = ++initGen
   if (!settings.cfg) await settings.load()
+  if (gen !== initGen) return
 
   const cfg = settings.cfg?.terminal ?? defaultTerminalConfig()
   // 创建 Terminal 前同步应用 theme，避免首帧颜色错误
   const themeObj = applyThemeSync(cfg.theme)
   await waitForFontReady(cfg.fontFamily, cfg.fontSize)
-  if (!hostEl.value) return
+  if (gen !== initGen || !hostEl.value) return
 
   term = new Terminal({
     cursorBlink: cfg.cursorBlink,
@@ -94,7 +102,10 @@ async function init() {
 
   // 等两帧布局，让 xterm 的 char size 测量稳定后再 fit
   await new Promise((r) => requestAnimationFrame(r))
+  if (gen !== initGen) return
   await new Promise((r) => requestAnimationFrame(r))
+  if (gen !== initGen) return
+
   // 折叠态/隐藏态挂载时容器尺寸为 0，fit 会得出 0 列行，不能拿去启动 PTY；
   // 此时跳过 fit，用下面的默认尺寸兜底，展开后由 visible watcher + ResizeObserver 修正
   const host = hostEl.value
@@ -102,17 +113,21 @@ async function init() {
     fitAddon.fit()
   }
 
-  term.onData((data: string) => {
-    void ShellWrite(props.sessionId, data).catch(() => {})
+  // 固定当前实例，避免 await 期间模块级 term 被后来的 init() 改写
+  const t = term
+  const sid = props.sessionId
+
+  t.onData((data: string) => {
+    void ShellWrite(sid, data).catch(() => {})
   })
 
-  cleanups.push(EventsOn(`shell:${props.sessionId}`, (data: string) => term?.write(data)))
-  cleanups.push(EventsOn(`shell:exit:${props.sessionId}`, () => { exited.value = true }))
+  cleanups.push(EventsOn(`shell:${sid}`, (data: string) => t.write(data)))
+  cleanups.push(EventsOn(`shell:exit:${sid}`, () => { exited.value = true }))
 
   // 主题跟随设置变化
   cleanups.push(watch(
     () => settings.cfg?.terminal.theme,
-    (t) => { if (term && t) scheduleThemeSync(term, t) },
+    (th) => { if (th) scheduleThemeSync(t, th) },
   ))
 
   resizeObserver = new ResizeObserver(() => {
@@ -122,28 +137,30 @@ async function init() {
   resizeObserver.observe(hostEl.value)
 
   const size = safeTermSize()
-  const res = await ShellEnsure(props.sessionId, props.workDir, size.cols, size.rows)
+  const res = await ShellEnsure(sid, props.workDir, size.cols, size.rows)
+  if (gen !== initGen) return
   if (!res.ok) {
     errorMsg.value = res.error ?? '启动终端失败'
     return
   }
-  if (res.replay) term.write(res.replay)
-  term.focus()
+  if (res.replay) t.write(res.replay)
+  t.focus()
 }
 
 async function restart() {
-  if (!term) return
+  if (!props.sessionId || !term) return
   exited.value = false
   errorMsg.value = ''
-  term.reset()
+  const t = term
+  t.reset()
   const size = safeTermSize()
   const res = await ShellEnsure(props.sessionId, props.workDir, size.cols, size.rows)
   if (!res.ok) {
     errorMsg.value = res.error ?? '启动终端失败'
     return
   }
-  if (res.replay) term.write(res.replay)
-  term.focus()
+  if (res.replay) t.write(res.replay)
+  t.focus()
 }
 
 // 会话切换：重建 xterm（PTY 保留在主进程，靠 replay 回放）
