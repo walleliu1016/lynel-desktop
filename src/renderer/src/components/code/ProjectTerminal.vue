@@ -60,6 +60,13 @@ function fitAndResize() {
   void ShellResize(props.sessionId, term.cols, term.rows).catch(() => {})
 }
 
+/** 取当前终端尺寸；容器不可见时 fit 会得到 0 列行，用 80x24 兜底 */
+function safeTermSize(): { cols: number; rows: number } {
+  const cols = term && term.cols > 0 ? term.cols : 80
+  const rows = term && term.rows > 0 ? term.rows : 24
+  return { cols, rows }
+}
+
 async function init() {
   if (term || !hostEl.value) return
   if (!settings.cfg) await settings.load()
@@ -88,7 +95,12 @@ async function init() {
   // 等两帧布局，让 xterm 的 char size 测量稳定后再 fit
   await new Promise((r) => requestAnimationFrame(r))
   await new Promise((r) => requestAnimationFrame(r))
-  fitAddon.fit()
+  // 折叠态/隐藏态挂载时容器尺寸为 0，fit 会得出 0 列行，不能拿去启动 PTY；
+  // 此时跳过 fit，用下面的默认尺寸兜底，展开后由 visible watcher + ResizeObserver 修正
+  const host = hostEl.value
+  if (host && host.clientWidth > 0 && host.clientHeight > 0) {
+    fitAddon.fit()
+  }
 
   term.onData((data: string) => {
     void ShellWrite(props.sessionId, data).catch(() => {})
@@ -109,7 +121,8 @@ async function init() {
   })
   resizeObserver.observe(hostEl.value)
 
-  const res = await ShellEnsure(props.sessionId, props.workDir, term.cols, term.rows)
+  const size = safeTermSize()
+  const res = await ShellEnsure(props.sessionId, props.workDir, size.cols, size.rows)
   if (!res.ok) {
     errorMsg.value = res.error ?? '启动终端失败'
     return
@@ -123,7 +136,8 @@ async function restart() {
   exited.value = false
   errorMsg.value = ''
   term.reset()
-  const res = await ShellEnsure(props.sessionId, props.workDir, term.cols, term.rows)
+  const size = safeTermSize()
+  const res = await ShellEnsure(props.sessionId, props.workDir, size.cols, size.rows)
   if (!res.ok) {
     errorMsg.value = res.error ?? '启动终端失败'
     return
