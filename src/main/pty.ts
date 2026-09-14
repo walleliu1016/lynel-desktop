@@ -348,7 +348,7 @@ class OutputRing {
  * （这类机器上表现为「binExists=true、probe=true，但 startPty 同步抛出 File not found:」。）
  */
 let cachedCmdExe: string | null = null;
-function resolveCmdExe(): string {
+export function resolveCmdExe(): string {
   if (cachedCmdExe) return cachedCmdExe;
   const candidates = [
     process.env.ComSpec,
@@ -398,6 +398,13 @@ export interface StartOptions {
   probe?: boolean;
   /** 错误提示用的 agent 展示名（如 'Codex (OpenAI)'）；缺省回退 bin */
   agentLabel?: string;
+  /**
+   * 直通模式：跳过 buildCommand() 的 win32 `cmd.exe /c` 包装与 Claude 专属 session 参数，
+   * 直接把 { file: resolvedBin, args: extraArgs } 交给 pty.spawn。
+   * 用于启动交互式 shell（powershell/cmd/bash）—— 多一层 cmd 会让 Ctrl+C / Ctrl+Z 等
+   * 控制字符的语义变形。此模式下 probe 必须保持 false（--version 是 Claude 专属探测）。
+   */
+  raw?: boolean;
 }
 
 export function start(
@@ -439,7 +446,10 @@ export function start(
     probeBin(resolvedBin, { ...process.env, ...darwinEnv, ...env } as { [key: string]: string }, label, bin);
   }
 
-  const { file, args } = buildCommand(resolvedBin, sessionId, mode, env, extraArgs);
+  // raw：交互式 shell 直通 spawn，不经 cmd.exe /c 包装，也不带 --session-id/--resume
+  const { file, args } = opts.raw
+    ? { file: resolvedBin, args: [...extraArgs] }
+    : buildCommand(resolvedBin, sessionId, mode, env, extraArgs);
   const mergedEnv = { ...process.env, ...darwinEnv, ...env } as { [key: string]: string };
 
   logger.info(`[pty] spawn ${file} ${args.map((a) => `"${a}"`).join(' ')} (cwd=${cwd}) resolvedBin=${resolvedBin} binExists=${binExists} probe=${!!opts.probe}`);
