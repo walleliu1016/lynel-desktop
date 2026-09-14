@@ -39,16 +39,17 @@ export const useFilesStore = defineStore('files', () => {
   // 每个会话独立记忆的工作区现场。切换会话即时还原。
   const sessionState = ref<Record<string, SessionWorkspace>>({})
   // 当前已加载现场的会话 id（'' = 无）。setSession 切走时先保存现场到该槽位。
-  let lastSessionId = ''
+  // 用 ref 而非普通变量：CodeView / BottomPanel 需响应式感知会话切换来重建终端。
+  const currentSessionId = ref('')
 
   async function setSession(id: string, wd: string) {
     // 同一会话重复设置：现场已就绪，直接返回避免误清
-    if (lastSessionId === id && workDir.value === wd) return
+    if (currentSessionId.value === id && workDir.value === wd) return
     // 1. 保存当前会话现场（仅当确实有会话在场）
-    if (lastSessionId && workDir.value) {
+    if (currentSessionId.value && workDir.value) {
       sessionState.value = {
         ...sessionState.value,
-        [lastSessionId]: {
+        [currentSessionId.value]: {
           openFiles: openFiles.value.map((o) => ({ ...o })),
           drafts: { ...drafts.value },
           activeRelPath: activeRelPath.value,
@@ -59,7 +60,7 @@ export const useFilesStore = defineStore('files', () => {
     // 2. 切换工作目录：unwatch 旧目录
     if (workDir.value) await FileUnwatch(workDir.value).catch(() => {})
     workDir.value = wd
-    lastSessionId = id
+    currentSessionId.value = id
     tree.value = { '': [] }
     rootCreateRequest.value = 0
     // 3. 恢复新会话现场；无则初始化空
@@ -91,7 +92,7 @@ export const useFilesStore = defineStore('files', () => {
   function forgetSession(sid: string) {
     // 关闭的是当前加载的会话时，同步失效现场标记，避免延后 watch 触发的
     // setSession 把快照重新保存回来（越删越回填导致泄漏）
-    if (sid === lastSessionId) lastSessionId = ''
+    if (sid === currentSessionId.value) currentSessionId.value = ''
     if (!(sid in sessionState.value)) return
     const next = { ...sessionState.value }
     delete next[sid]
@@ -257,7 +258,7 @@ export const useFilesStore = defineStore('files', () => {
   initWatcher()
 
   return {
-    workDir, tree, expanded, openFiles, drafts, activeRelPath, collapsed, rootCreateRequest,
+    workDir, currentSessionId, tree, expanded, openFiles, drafts, activeRelPath, collapsed, rootCreateRequest,
     setSession, forgetSession, loadDir, toggleExpand, openFile, closeFile, saveFile, reloadFile,
     setDraft, clearDraft,
     createEntry, renameEntry, deleteEntry,
