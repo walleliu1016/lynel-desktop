@@ -147,9 +147,17 @@ export function registerShellIpc(): void {
     (_e, sessionId: string, workDir: string, cols: number, rows: number) =>
       ensure(sessionId, workDir, cols, rows),
   );
-  ipcMain.handle('shell:write', (_e, sessionId: string, data: string) => write(sessionId, data));
-  ipcMain.handle('shell:resize', (_e, sessionId: string, cols: number, rows: number) =>
-    resize(sessionId, cols, rows),
-  );
-  ipcMain.handle('shell:close', (_e, sessionId: string) => close(sessionId));
+  // write/resize/close 对不存在的会话是静默 no-op，没有失败路径；IPC 边界统一回 { ok: true }
+  ipcMain.handle('shell:write', (_e, sessionId: string, data: string) => {
+    write(sessionId, data);
+    return { ok: true };
+  });
+  ipcMain.handle('shell:resize', (_e, sessionId: string, cols: number, rows: number) => {
+    resize(sessionId, cols, rows);
+    return { ok: true };
+  });
+  ipcMain.handle('shell:close', (_e, sessionId: string) => {
+    close(sessionId);
+    return { ok: true };
+  });
 }
