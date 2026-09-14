@@ -4,6 +4,7 @@ import Icon from '../Icon.vue'
 import FileTree from './FileTree.vue'
 import FileTabs from './FileTabs.vue'
 import CodeEditor from './CodeEditor.vue'
+import BottomPanel from './BottomPanel.vue'
 import { useFilesStore } from '../../stores/files'
 
 const store = useFilesStore()
@@ -108,10 +109,13 @@ function onExpand() {
     <button v-else type="button" class="tree-collapsed" title="展开文件树" aria-label="展开文件树" @click="onExpand">
       <Icon name="panel-left-open" :size="16" />
     </button>
-    <section class="editor-panel">
-      <FileTabs />
-      <CodeEditor />
-    </section>
+    <div class="main-column">
+      <section class="editor-panel">
+        <FileTabs />
+        <CodeEditor />
+      </section>
+      <BottomPanel :session-id="store.currentSessionId" :work-dir="store.workDir" />
+    </div>
   </div>
 </template>
 
@@ -196,6 +200,13 @@ function onExpand() {
   background: transparent;
 }
 .resize-handle:hover { background: var(--accent); }
+.main-column {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .editor-panel {
   flex: 1;
   min-width: 0;

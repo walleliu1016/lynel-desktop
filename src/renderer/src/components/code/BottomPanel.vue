@@ -1,0 +1,179 @@
+<script setup lang="ts">
+import { onBeforeUnmount, ref } from 'vue'
+import Icon from '../Icon.vue'
+import ProjectTerminal from './ProjectTerminal.vue'
+
+const props = defineProps<{
+  sessionId: string
+  workDir: string
+}>()
+
+const HEIGHT_KEY = 'lynel:code-bottom-height'
+const COLLAPSED_KEY = 'lynel:code-bottom-collapsed'
+const MIN_HEIGHT = 120
+const DEFAULT_HEIGHT = 320
+
+function maxHeight(): number {
+  return Math.round(window.innerHeight * 0.7)
+}
+
+function loadHeight(): number {
+  try {
+    const v = Number(localStorage.getItem(HEIGHT_KEY))
+    if (Number.isFinite(v) && v >= MIN_HEIGHT) return Math.min(v, maxHeight())
+  } catch { /* localStorage 不可用则用默认值 */ }
+  return DEFAULT_HEIGHT
+}
+
+const height = ref(loadHeight())
+const collapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1')
+// Phase 2 会把 'git' 加进来；现在只有终端
+const activeTab = ref<'terminal'>('terminal')
+
+// ---------- 拖高（面板上边缘） ----------
+const dragging = ref(false)
+let startY = 0
+let startHeight = 0
+
+function onResizeStart(e: MouseEvent) {
+  e.preventDefault()
+  startY = e.clientY
+  startHeight = height.value
+  dragging.value = true
+  document.body.style.userSelect = 'none'
+  document.addEventListener('mousemove', onResizeMove)
+  document.addEventListener('mouseup', onResizeEnd)
+}
+
+function onResizeMove(e: MouseEvent) {
+  if (!dragging.value) return
+  // 上边缘向上拖 = 变高，故用减法
+  const next = startHeight - (e.clientY - startY)
+  height.value = Math.min(maxHeight(), Math.max(MIN_HEIGHT, next))
+}
+
+function onResizeEnd() {
+  if (!dragging.value) return
+  dragging.value = false
+  document.body.style.userSelect = ''
+  document.removeEventListener('mousemove', onResizeMove)
+  document.removeEventListener('mouseup', onResizeEnd)
+  try { localStorage.setItem(HEIGHT_KEY, String(height.value)) } catch { /* 忽略 */ }
+}
+
+function toggleCollapse() {
+  collapsed.value = !collapsed.value
+  try { localStorage.setItem(COLLAPSED_KEY, collapsed.value ? '1' : '0') } catch { /* 忽略 */ }
+}
+
+onBeforeUnmount(() => {
+  if (dragging.value) onResizeEnd()
+})
+</script>
+
+<template>
+  <section
+    class="bottom-panel"
+    :class="{ dragging, collapsed }"
+    :style="{ height: collapsed ? '32px' : height + 'px' }"
+  >
+    <div v-if="!collapsed" class="panel-resize-handle" @mousedown.prevent="onResizeStart" />
+    <div class="panel-bar">
+      <button
+        class="panel-tab"
+        :class="{ active: activeTab === 'terminal' }"
+        @click="activeTab = 'terminal'"
+      >
+        <Icon name="terminal" :size="13" /> 终端
+      </button>
+      <span class="bar-spacer" />
+      <button
+        class="bar-btn"
+        :title="collapsed ? '展开面板' : '折叠面板'"
+        :aria-label="collapsed ? '展开面板' : '折叠面板'"
+        @click="toggleCollapse"
+      >
+        <Icon :name="collapsed ? 'chevron-up' : 'chevron-down'" :size="14" />
+      </button>
+    </div>
+    <!-- v-show 而非 v-if：终端实例必须常驻，切走再切回不能丢 buffer / 重建 PTY -->
+    <div v-show="!collapsed" class="panel-body">
+      <ProjectTerminal
+        :session-id="props.sessionId"
+        :work-dir="props.workDir"
+        :visible="!collapsed && activeTab === 'terminal'"
+      />
+    </div>
+  </section>
+</template>
+
+<style scoped>
+.bottom-panel {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.bottom-panel.dragging { cursor: row-resize; }
+.panel-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  cursor: row-resize;
+  z-index: 5;
+  background: transparent;
+}
+.panel-resize-handle:hover { background: var(--accent); }
+.panel-bar {
+  height: 32px;
+  min-height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.panel-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.panel-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+.panel-tab.active { color: var(--text-primary); background: var(--code-hover); }
+.bar-spacer { flex: 1; }
+.bar-btn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.bar-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+</style>
