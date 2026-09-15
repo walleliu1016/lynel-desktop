@@ -43,8 +43,9 @@ export const useGitStore = defineStore('git', () => {
     loading.value = true
     try {
       const res = await GitStatus(wd)
-      // 切换会话期间可能已经换了 workDir，丢弃过期结果
-      if (token !== refreshSeq) return
+      // 序号：更晚发起的 refresh 存在时本结果作废
+      // 目录：workDir 可能已被清空或切走（清空路径不会自增序号，故必须同时比对目录）
+      if (token !== refreshSeq || workDir.value !== wd) return
       if (res.ok) {
         status.value = res.data
         error.value = ''
@@ -54,7 +55,8 @@ export const useGitStore = defineStore('git', () => {
       }
     } catch (e: any) {
       // 即使走 reject 分支也要丢弃过期结果，否则错误文案会落到新会话上
-      if (token !== refreshSeq) return
+      // 同样要同时比对序号与目录
+      if (token !== refreshSeq || workDir.value !== wd) return
       error.value = e?.message ?? String(e)
     } finally {
       // 只有最后一次发起的 refresh 才复位 loading，否则会把新会话的加载态提前关掉
