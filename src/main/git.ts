@@ -8,9 +8,13 @@
 // dist/esm/index.js（真 ESM，有可调用的 export default）。
 // 命名导出 `simpleGit` 在 typings 和 ESM 运行时都已声明，且与 default 是同一个函数
 // 对象（已实测 `default === simpleGit` 为 true），所以用命名导入既类型正确又不改变行为。
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { simpleGit, type SimpleGit } from 'simple-git';
+
+const execFileAsync = promisify(execFile);
 
 export type GitFileStatus = 'M' | 'A' | 'D' | 'R' | 'C' | 'U' | '?';
 
@@ -228,4 +232,74 @@ export async function discard(workDir: string, relPaths: string[]): Promise<GitO
       if (fs.existsSync(abs)) fs.rmSync(abs, { recursive: true, force: true });
     }
   });
+}
+
+/** 与 files.ts 保持一致的单文件文本上限；超过则截断标记 */
+export const MAX_TEXT_SIZE = 1024 * 1024;
+
+export async function commit(workDir: string, message: string): Promise<GitOpResult> {
+  const msg = message.trim();
+  if (!msg) return { ok: false, error: '提交说明不能为空' };
+  return runOp(() => gitFor(workDir).commit(msg));
+}
+
+/** fetch / pull / push。耗时可能较长，调用方负责禁用按钮防重复触发。 */
+export async function remoteOp(
+  workDir: string,
+  op: 'fetch' | 'pull' | 'push',
+): Promise<{ ok: true; summary: string } | { ok: false; error: string }> {
+  try {
+    const g = gitFor(workDir);
+    if (op === 'fetch') {
+      const r = await g.fetch();
+      return { ok: true, summary: `fetch 完成（${r.remote ?? ''}）` };
+    }
+    if (op === 'pull') {
+      const r = await g.pull();
+      const changed = r.summary?.changes ?? 0;
+      return { ok: true, summary: `pull 完成，更新 ${changed} 个文件` };
+    }
+    const r = await g.push();
+    return { ok: true, summary: `push 完成（${r.pushed?.length ?? 0} 个分支）` };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/** 取某 revision 下某个文件的内容（diff 两侧靠它）。
+ *  binary / 超大文件的处理策略与 files.ts 的 readFileEntry 一致。
+ *  这里**刻意不用** simple-git 的 raw()：它默认按 utf8 解码，二进制内容会被破坏，
+ *  而这个函数的调用方（diff 视图）需要靠原始字节判断二进制。 */
+export async function fileAtRev(
+  workDir: string,
+  rev: string,
+  relPath: string,
+): Promise<
+  | { ok: true; content: string; binary: boolean; truncated: boolean }
+  | { ok: false; error: string }
+> {
+  try {
+    const { stdout } = await execFileAsync('git', ['show', `${rev}:${relPath}`], {
+      cwd: workDir,
+      encoding: 'buffer',
+      maxBuffer: MAX_TEXT_SIZE * 4,
+    });
+    const data = stdout as unknown as Buffer;
+
+    if (data.subarray(0, 8192).includes(0)) {
+      return { ok: true, content: '', binary: true, truncated: false };
+    }
+    if (data.length > MAX_TEXT_SIZE) {
+      return {
+        ok: true,
+        content: data.subarray(0, MAX_TEXT_SIZE).toString('utf8'),
+        binary: false,
+        truncated: true,
+      };
+    }
+    return { ok: true, content: data.toString('utf8'), binary: false, truncated: false };
+  } catch (err: any) {
+    // 文件在该 revision 不存在（新增文件取 HEAD 版本）是正常情况
+    return { ok: false, error: err?.message || String(err) };
+  }
 }

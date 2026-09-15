@@ -212,3 +212,70 @@ describe('git 变更操作', () => {
     }
   });
 });
+
+describe('git 提交 / 取版本 / 远程', () => {
+  let repo: string;
+  const sh = (args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
+
+  beforeAll(() => {
+    repo = makeRepo();
+    fs.writeFileSync(path.join(repo, 'f.txt'), 'one\n');
+    sh(['add', 'f.txt']);
+    sh(['commit', '-m', 'first']);
+  });
+
+  afterAll(() => fs.rmSync(repo, { recursive: true, force: true }));
+
+  it('commit 用给定 message 提交暂存区', async () => {
+    const { commit, getStatus } = await import('../../src/main/git.js');
+    fs.writeFileSync(path.join(repo, 'f.txt'), 'two\n');
+    sh(['add', 'f.txt']);
+    const res = await commit(repo, 'second commit');
+    expect(res.ok).toBe(true);
+    const log = execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: repo, encoding: 'utf8' }).trim();
+    expect(log).toBe('second commit');
+    const s = await getStatus(repo);
+    expect(s.ok && s.data.staged).toEqual([]);
+  });
+
+  it('commit 空 message 直接拒绝，不产生提交', async () => {
+    const { commit } = await import('../../src/main/git.js');
+    const before = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
+    const res = await commit(repo, '   ');
+    expect(res.ok).toBe(false);
+    const after = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
+    expect(after).toBe(before);
+  });
+
+  it('fileAtRev 取 HEAD 历史版本，index 版本用 :0', async () => {
+    const { fileAtRev } = await import('../../src/main/git.js');
+    // 工作区改成 three，未暂存 → HEAD 仍是 two，index 也是 two
+    fs.writeFileSync(path.join(repo, 'f.txt'), 'three\n');
+
+    const head = await fileAtRev(repo, 'HEAD', 'f.txt');
+    expect(head.ok && head.content).toBe('two\n');
+
+    const index = await fileAtRev(repo, ':0', 'f.txt');
+    expect(index.ok && index.content).toBe('two\n');
+
+    // 暂存后 index 变成 three，HEAD 不变
+    sh(['add', 'f.txt']);
+    const index2 = await fileAtRev(repo, ':0', 'f.txt');
+    expect(index2.ok && index2.content).toBe('three\n');
+    const head2 = await fileAtRev(repo, 'HEAD', 'f.txt');
+    expect(head2.ok && head2.content).toBe('two\n');
+  });
+
+  it('fileAtRev 对不存在的路径返回错误而非抛异常', async () => {
+    const { fileAtRev } = await import('../../src/main/git.js');
+    const res = await fileAtRev(repo, 'HEAD', 'nope.txt');
+    expect(res.ok).toBe(false);
+  });
+
+  it('remoteOp 在没有远端时返回可读错误', async () => {
+    const { remoteOp } = await import('../../src/main/git.js');
+    const res = await remoteOp(repo, 'push');
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.length).toBeGreaterThan(0);
+  });
+});
