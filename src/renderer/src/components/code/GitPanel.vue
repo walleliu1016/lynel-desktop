@@ -35,16 +35,9 @@ const statusLabel: Record<GitFileChange['status'], string> = {
 }
 
 /** 点击变更行 → 在编辑器区打开 diff。未暂存/未跟踪对比 HEAD↔工作区；
- *  已暂存对比 HEAD↔index。
- *
- *  TODO(Task 8)：真正的 `files.openDiff(relPath, rev)` 由 Task 8 添加到 stores/files.ts，
- *  当前尚不存在。为让本任务独立通过 vue-tsc，这里先用本地占位（点击暂无反应）；
- *  Task 8 落地后把函数体换成
- *    files.openDiff(f.path, group === 'staged' ? ':0' : 'HEAD')
- *  并删除下面的 void 语句即可，模板与调用点无需改动。 */
+ *  已暂存对比 HEAD↔index。 */
 function openDiff(f: GitFileChange, group: Group['key']) {
-  void f
-  void group
+  files.openDiff(f.path, group === 'staged' ? ':0' : 'HEAD')
 }
 
 function onStage(f: GitFileChange) {

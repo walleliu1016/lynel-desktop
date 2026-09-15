@@ -4,6 +4,7 @@ import Icon from '../Icon.vue'
 import FileTree from './FileTree.vue'
 import FileTabs from './FileTabs.vue'
 import CodeEditor from './CodeEditor.vue'
+import CodeDiffView from './CodeDiffView.vue'
 import BottomPanel from './BottomPanel.vue'
 import { useFilesStore } from '../../stores/files'
 import { useGitStore } from '../../stores/git'
@@ -124,8 +125,14 @@ function onExpand() {
         <Icon name="panel-left-open" :size="16" />
       </button>
       <section class="editor-panel">
-        <FileTabs />
-        <CodeEditor />
+        <!-- 用 v-show 而非 v-if：保留两个组件实例，避免 Monaco 反复重建 -->
+        <div v-show="!store.diffRequest" class="editor-slot">
+          <FileTabs />
+          <CodeEditor />
+        </div>
+        <div v-show="!!store.diffRequest" class="editor-slot">
+          <CodeDiffView />
+        </div>
       </section>
     </div>
     <BottomPanel
@@ -233,6 +240,12 @@ function onExpand() {
 .editor-panel {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.editor-slot {
+  flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;

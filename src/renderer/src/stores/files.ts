@@ -35,6 +35,8 @@ export const useFilesStore = defineStore('files', () => {
   const activeRelPath = ref<string | null>(null)
   const collapsed = ref(false) // 侧栏折叠态（HomeView 持有也可，先放这里）
   const rootCreateRequest = ref(0) // 工具条「新建文件」请求计数：+1 触发树根弹行内输入
+  /** 当前要在编辑器区展示的 diff（null = 显示普通编辑器） */
+  const diffRequest = ref<{ relPath: string; rev: string } | null>(null)
 
   // 每个会话独立记忆的工作区现场。切换会话即时还原。
   const sessionState = ref<Record<string, SessionWorkspace>>({})
@@ -60,6 +62,8 @@ export const useFilesStore = defineStore('files', () => {
     // 2. 切换工作目录：unwatch 旧目录
     if (workDir.value) await FileUnwatch(workDir.value).catch(() => {})
     workDir.value = wd
+    // 切换会话清掉 diff，避免展示上一个目录的文件
+    diffRequest.value = null
     currentSessionId.value = id
     tree.value = { '': [] }
     rootCreateRequest.value = 0
@@ -97,6 +101,15 @@ export const useFilesStore = defineStore('files', () => {
     const next = { ...sessionState.value }
     delete next[sid]
     sessionState.value = next
+  }
+
+  /** 在编辑器区打开某个文件的 diff。rev 为 ':0' 表示对比暂存区，'HEAD' 表示对比最后一次提交 */
+  function openDiff(relPath: string, rev: string) {
+    diffRequest.value = { relPath, rev }
+  }
+
+  function closeDiff() {
+    diffRequest.value = null
   }
 
   /** 拉取单层目录（已展开时刷新用）。返回条目列表，不抛错时更新 tree。 */
@@ -259,6 +272,7 @@ export const useFilesStore = defineStore('files', () => {
 
   return {
     workDir, currentSessionId, tree, expanded, openFiles, drafts, activeRelPath, collapsed, rootCreateRequest,
+    diffRequest, openDiff, closeDiff,
     setSession, forgetSession, loadDir, toggleExpand, openFile, closeFile, saveFile, reloadFile,
     setDraft, clearDraft,
     createEntry, renameEntry, deleteEntry,
