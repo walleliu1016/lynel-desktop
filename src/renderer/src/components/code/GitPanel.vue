@@ -63,7 +63,9 @@ async function onDiscard(f: GitFileChange) {
 }
 
 async function onCommit() {
-  if (committing.value || !message.value.trim()) return
+  // 与提交按钮的 :disabled 保持一致：Ctrl+Enter 会绕过按钮 disabled，
+  // 若此处不拦 hasStaged，空暂存区提交失败后会把输入框清空。
+  if (committing.value || !git.hasStaged || !message.value.trim()) return
   committing.value = true
   try {
     await git.commit(message.value)
@@ -149,7 +151,7 @@ async function onCommit() {
       />
       <button
         class="commit-btn"
-        :disabled="!git.hasStaged || !message.trim() || committing"
+        :disabled="!git.hasStaged || !message.trim() || committing || !!git.busyOp"
         @click="onCommit"
       >
         <Icon name="check" :size="13" /> 提交
