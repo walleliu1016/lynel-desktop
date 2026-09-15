@@ -4,17 +4,8 @@ import Icon from '../Icon.vue'
 import { pushToast } from '../../composables/useToast'
 import { useFilesStore, type OpenFile } from '../../stores/files'
 import { useSettingsStore } from '../../stores/settings'
+import { ensureMonaco, applyMonacoTheme, currentThemeId } from '../../monaco/setup'
 
-// 注意：monaco-editor 0.56 的 exports 映射为 "./*" -> "./esm/vs/*.js"，会在 `*` 前拼接 esm/vs 前缀。
-// Vite 8（Rolldown）严格按 exports 解析，`monaco-editor/esm/vs/...` 会被解析成不存在的 `esm/vs/esm/vs/...` 而报错。
-// 因此这里去掉 `esm/vs` 前缀，让 `*` 捕获 `editor/editor.worker`，解析到 `./esm/vs/editor/editor.worker.js`。
-import editorWorker from 'monaco-editor/editor/editor.worker?worker'
-import jsonWorker from 'monaco-editor/language/json/json.worker?worker'
-import cssWorker from 'monaco-editor/language/css/css.worker?worker'
-import htmlWorker from 'monaco-editor/language/html/html.worker?worker'
-import tsWorker from 'monaco-editor/language/typescript/ts.worker?worker'
-
-type Monaco = typeof import('monaco-editor')
 type StandaloneEditor = import('monaco-editor').editor.IStandaloneCodeEditor
 type ITextModel = import('monaco-editor').editor.ITextModel
 
@@ -22,8 +13,7 @@ const store = useFilesStore()
 const settings = useSettingsStore()
 const editorEl = ref<HTMLElement | null>(null)
 
-// 懒加载单例：monaco 模块只在首次需要时 import；同一时刻只维护一个 live 编辑器
-let monacoModule: Monaco | null = null
+// 同一时刻只维护一个 live 编辑器
 let editor: StandaloneEditor | null = null
 let editorHost: HTMLElement | null = null // 编辑器绑定到的宿主元素（v-if 分支切换后可能重建）
 let model: ITextModel | null = null
@@ -64,78 +54,15 @@ function languageFor(relPath: string): string {
   return 'plaintext'
 }
 
-/** 读 CSS 变量值（html 上全局 --term-*）。未定义时回退黑色，避免 Monaco 报非法色值 */
-function cssVar(name: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#000000'
-}
-
-/** 当前终端主题 id：优先 data-term-theme 属性，缺省回退 default-dark */
-function currentThemeId(): string {
-  return document.documentElement.getAttribute('data-term-theme') || 'default-dark'
-}
-
-/** 由 --term-* 构建 Monaco 主题（运行时读 CSS，单一色源）。返回主题名。 */
-function buildMonacoTheme(monaco: Monaco, themeId: string): string {
-  const themeName = `code-${themeId}`
-  const fg = cssVar('--term-fg')
-  const bg = cssVar('--term-bg')
-  const selection = cssVar('--term-selection')
-  const cursor = cssVar('--term-cursor')
-  const brightBlack = cssVar('--term-bright-black')
-  // 亮色终端（solarized-light / warm-light）用浅色 base，保证未映射 token 有足够对比度
-  const base = themeId === 'solarized-light' || themeId === 'warm-light' ? 'vs' : 'vs-dark'
-  monaco.editor.defineTheme(themeName, {
-    base,
-    inherit: true,
-    rules: [
-      { token: 'comment', foreground: brightBlack },
-      { token: 'keyword', foreground: cssVar('--term-magenta') },
-      { token: 'string', foreground: cssVar('--term-green') },
-      { token: 'number', foreground: cssVar('--term-yellow') },
-      { token: 'type', foreground: cssVar('--term-blue') },
-      { token: 'identifier', foreground: fg },
-      { token: 'function', foreground: cssVar('--term-cyan') },
-      { token: 'delimiter.bracket', foreground: cssVar('--term-magenta') },
-      { token: 'operator', foreground: cssVar('--term-red') },
-    ],
-    colors: {
-      'editor.background': bg,
-      'editor.foreground': fg,
-      'editorLineNumber.foreground': brightBlack,
-      'editor.selectionBackground': selection,
-      'editorCursor.foreground': cursor,
-    },
-  })
-  return themeName
-}
-
-/** 应用当前终端主题：先把 data-term-theme 同步为目标主题（幂等，与 XtermTerminal 同源），
- *  再 getComputedStyle 读新色值构建 Monaco 主题并应用到 live 编辑器。
+/** 应用当前终端主题：由 monaco/setup 构建主题（内部同步 data-term-theme 并读 CSS 变量）并应用到 live 编辑器。
  *  settings.cfg.terminal.theme 由 watch 触发时已是新值；未加载时回退 data-term-theme 属性。 */
-async function applyMonacoTheme() {
+async function applyThemeToEditor() {
   const m = await ensureMonaco()
   if (!m) return
   const theme = settings.cfg?.terminal.theme ?? currentThemeId()
-  document.documentElement.setAttribute('data-term-theme', theme)
-  currentThemeName = buildMonacoTheme(m, theme)
+  currentThemeName = applyMonacoTheme(m, theme)
   // 切换主题用全局 monaco.editor.setTheme（IStandaloneCodeEditor 无实例级 setTheme）
   if (editor) m.editor.setTheme(currentThemeName)
-}
-
-async function ensureMonaco(): Promise<Monaco | null> {
-  if (monacoModule) return monacoModule
-  const m = await import('monaco-editor')
-  self.MonacoEnvironment = {
-    getWorker(_: string, label: string) {
-      if (label === 'json') return new jsonWorker()
-      if (label === 'css' || label === 'scss' || label === 'less') return new cssWorker()
-      if (label === 'html' || label === 'handlebars' || label === 'razor') return new htmlWorker()
-      if (label === 'typescript' || label === 'javascript') return new tsWorker()
-      return new editorWorker()
-    },
-  }
-  monacoModule = m
-  return m
 }
 
 async function ensureEditor(): Promise<StandaloneEditor | null> {
@@ -147,7 +74,7 @@ async function ensureEditor(): Promise<StandaloneEditor | null> {
   // 首次创建，或宿主元素随 v-if 分支重建后重新创建（同一时刻仍只有 1 个 live 编辑器）
   if (editor) editor.dispose()
   // 先同步主题（可能已由 watch 更新过 currentThemeName，也可能需要初始化）
-  await applyMonacoTheme()
+  await applyThemeToEditor()
   editor = m.editor.create(el, {
     theme: currentThemeName,
     automaticLayout: true,
@@ -242,7 +169,7 @@ watch(
 // 终端主题变化：重建 Monaco 主题并应用到 live 编辑器
 watch(
   () => settings.cfg?.terminal.theme,
-  () => { void applyMonacoTheme() },
+  () => { void applyThemeToEditor() },
 )
 
 // 代码编辑器字号变化：即时应用到 live 编辑器（未创建时创建已读最新值，跳过即可）
