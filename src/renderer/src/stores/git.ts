@@ -29,17 +29,22 @@ export const useGitStore = defineStore('git', () => {
   })
   const hasStaged = computed(() => (status.value?.staged.length ?? 0) > 0)
 
+  // refresh 的 in-flight 序号：切换会话或快速连点刷新时，只有最后一次发起的结果才作数
+  let refreshSeq = 0
+
   async function refresh(): Promise<void> {
     const wd = workDir.value
     if (!wd) {
       status.value = null
+      error.value = ''
       return
     }
+    const token = ++refreshSeq
     loading.value = true
     try {
       const res = await GitStatus(wd)
       // 切换会话期间可能已经换了 workDir，丢弃过期结果
-      if (workDir.value !== wd) return
+      if (token !== refreshSeq) return
       if (res.ok) {
         status.value = res.data
         error.value = ''
@@ -48,9 +53,12 @@ export const useGitStore = defineStore('git', () => {
         error.value = res.error
       }
     } catch (e: any) {
+      // 即使走 reject 分支也要丢弃过期结果，否则错误文案会落到新会话上
+      if (token !== refreshSeq) return
       error.value = e?.message ?? String(e)
     } finally {
-      loading.value = false
+      // 只有最后一次发起的 refresh 才复位 loading，否则会把新会话的加载态提前关掉
+      if (token === refreshSeq) loading.value = false
     }
   }
 
@@ -71,6 +79,12 @@ export const useGitStore = defineStore('git', () => {
   async function withOp(name: string, fn: () => Promise<{ ok: boolean; error?: string }>) {
     // 任何写操作进行中都不允许再发起另一个（防连点重复提交）
     if (busyOp.value) return
+    // 没有工作目录就没有仓库可操作。必须在这里拦住：主进程侧 empty baseDir 会被
+    // simple-git 当作 falsy 而回退到 process.cwd()，那会把变更写进应用自己的仓库。
+    if (!workDir.value) {
+      pushToast({ level: 'error', source: 'git', message: '未选择会话，无法执行 Git 操作' })
+      return
+    }
     busyOp.value = name
     try {
       const res = await fn()
