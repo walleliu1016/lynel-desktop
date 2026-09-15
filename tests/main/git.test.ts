@@ -197,6 +197,29 @@ describe('git 变更操作', () => {
     expect(after.ok && after.data.untracked.map((f) => f.path)).not.toContain('added.txt');
   });
 
+  it('discard 对干净且已跟踪的文件：拒绝而不是删掉它', async () => {
+    const { discard } = await import('../../src/main/git.js');
+    // 独立仓库：该文件的路径必须「干净且已跟踪」，不受同 describe 其他用例的状态污染。
+    // 场景来源：用户点「丢弃」弹出确认框期间，Claude 在后台 add + commit 了该文件，
+    // 等用户点确定时它已不在任何变更分组里 —— 旧实现会走 else 分支 rmSync 掉它。
+    const cleanRepo = makeRepo();
+    try {
+      const p = path.join(cleanRepo, 'committed.txt');
+      fs.writeFileSync(p, 'committed\n');
+      sh(['add', 'committed.txt'], cleanRepo);
+      sh(['commit', '-m', 'commit it'], cleanRepo);
+
+      // 干净树：committed.txt 不在 staged/unstaged/untracked/conflicted 任何一组里
+      const res = await discard(cleanRepo, ['committed.txt']);
+      expect(res.ok).toBe(false);
+      // 最关键的断言：文件必须还在，内容不变
+      expect(fs.existsSync(p)).toBe(true);
+      expect(fs.readFileSync(p, 'utf8')).toBe('committed\n');
+    } finally {
+      fs.rmSync(cleanRepo, { recursive: true, force: true });
+    }
+  });
+
   it('discard 拒绝越界路径，且不删除工作目录外的文件', async () => {
     const { discard } = await import('../../src/main/git.js');
     // 哨兵放在仓库的父目录（os.tmpdir()），rel 用 `../<name>` 指过去

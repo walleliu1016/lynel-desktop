@@ -194,6 +194,16 @@ function resolveInside(workDir: string, rel: string): string {
 export async function discard(workDir: string, relPaths: string[]): Promise<GitOpResult> {
   if (relPaths.length === 0) return { ok: true };
 
+  // 先把所有路径解析到工作目录内的绝对路径。越界必须在任何磁盘操作前就拒绝，且
+  // 越界的报错要优先于下面「无可丢弃的变更」—— 否则一条 ../ 路径会先被分组兜底拦下，
+  // 报出「无变更」而掩盖了越界这个更严重的问题。
+  let resolved: Map<string, string>;
+  try {
+    resolved = new Map(relPaths.map((rel) => [rel, resolveInside(workDir, rel)]));
+  } catch (err: any) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+
   const status = await getStatus(workDir);
   if (!status.ok) return { ok: false, error: status.error };
 
@@ -206,13 +216,19 @@ export async function discard(workDir: string, relPaths: string[]): Promise<GitO
     ...s.staged.map((f) => f.path),
     ...s.conflicted.map((f) => f.path),
   ]);
+  // 只有确认是未跟踪，才允许删除
+  const untracked = new Set(s.untracked.map((f) => f.path));
 
   const toRestore: string[] = [];
   const toDelete: string[] = [];
   for (const rel of relPaths) {
     if (addedStaged.has(rel)) toDelete.push(rel);
     else if (tracked.has(rel)) toRestore.push(rel);
-    else toDelete.push(rel); // 未跟踪
+    else if (untracked.has(rel)) toDelete.push(rel);
+    // 不在任何分组里 = 该文件已干净（无变更可丢弃），或状态在二次确认期间被外部改变
+    // （如 Claude 在后台 add + commit 了它）。绝不能当作未跟踪删除 —— 那会把用户刚提交
+    // 的文件从磁盘删掉。fail-closed。
+    else return { ok: false, error: `无可丢弃的变更: ${rel}` };
   }
 
   return runOp(async () => {
@@ -233,8 +249,8 @@ export async function discard(workDir: string, relPaths: string[]): Promise<GitO
     }
 
     for (const rel of toDelete) {
-      const abs = resolveInside(workDir, rel);
-      if (fs.existsSync(abs)) fs.rmSync(abs, { recursive: true, force: true });
+      const abs = resolved.get(rel);
+      if (abs && fs.existsSync(abs)) fs.rmSync(abs, { recursive: true, force: true });
     }
   });
 }
