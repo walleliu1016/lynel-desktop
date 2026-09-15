@@ -123,7 +123,13 @@ export const DshShutdown = () => api().dshShutdown();
 
 // 右侧文件编辑器侧栏
 export const FileListDir = (workDir: string, relPath?: string) => api().fileListDir(workDir, relPath);
-export const FileRead = (workDir: string, relPath: string) => api().fileRead(workDir, relPath);
+export const FileRead = (workDir: string, relPath: string) =>
+  api().fileRead(workDir, relPath) as Promise<{
+    content: string
+    size: number
+    binary: boolean
+    truncated: boolean
+  }>;
 export const FileWrite = (workDir: string, relPath: string, content: string) => api().fileWrite(workDir, relPath, content);
 export const FileCreate = (workDir: string, relPath: string, isDir: boolean) => api().fileCreate(workDir, relPath, isDir);
 export const FileRename = (workDir: string, oldRel: string, newRel: string) => api().fileRename(workDir, oldRel, newRel);

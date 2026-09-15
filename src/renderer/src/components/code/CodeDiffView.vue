@@ -16,6 +16,9 @@ const hostEl = ref<HTMLElement | null>(null)
 const loading = ref(false)
 const errorMsg = ref('')
 const notice = ref('') // 二进制 / 超大文件提示
+/** 「无内容可显示」（二进制）时隐藏 diff 宿主区，避免提示条下方还挂着上一次的 diff。
+ *  截断提示不置此标志：截断内容仍要显示，提示条只是说明它不完整。 */
+const hostHidden = ref(false)
 
 let diffEditor: DiffEditor | null = null
 let originalModel: ITextModel | null = null
@@ -49,8 +52,13 @@ async function ensureEditor(): Promise<DiffEditor | null> {
   const el = hostEl.value
   if (!m || !el) return null
   if (diffEditor) return diffEditor
-  if (!settings.cfg) await settings.load()
+  if (!settings.cfg) {
+    await settings.load()
+    // await 期间并发的那次 load 可能已创建编辑器，复检避免同一宿主上建出两个实例（后者泄漏）
+    if (diffEditor) return diffEditor
+  }
   await syncTheme()
+  if (diffEditor) return diffEditor
   diffEditor = m.editor.createDiffEditor(el, {
     theme: currentThemeName,
     automaticLayout: true,
@@ -64,64 +72,95 @@ async function ensureEditor(): Promise<DiffEditor | null> {
 }
 
 function disposeModels() {
+  // 先解绑再释放：否则 diffEditor 会继续持有一个已 dispose 的 model 引用
+  diffEditor?.setModel(null)
   originalModel?.dispose()
   modifiedModel?.dispose()
   originalModel = null
   modifiedModel = null
 }
 
+/** 归一化后的单侧 diff 内容 */
+interface DiffSide { ok: boolean; content: string; binary: boolean; truncated: boolean; error: string }
+
+/** 归一化两侧取数结果。
+ *  GitFileAtRev 返回 `{ ok: true, content, binary, truncated } | { ok: false, error }`（有 ok 判别字段）；
+ *  FileRead 返回 `{ content, size, binary, truncated }`（成功即内容，**没有** ok）。
+ *  两者形状不同，靠 `'ok' in res` 按真实形状区分，避免拿 ok 去解 FileRead 导致恒假（右栏恒空）。 */
+function normalizeSide(
+  res: Awaited<ReturnType<typeof GitFileAtRev>> | Awaited<ReturnType<typeof FileRead>>,
+): DiffSide {
+  if ('ok' in res) {
+    return res.ok
+      ? { ok: true, content: res.content, binary: res.binary, truncated: res.truncated, error: '' }
+      : { ok: false, content: '', binary: false, truncated: false, error: res.error }
+  }
+  return { ok: true, content: res.content, binary: res.binary, truncated: res.truncated, error: '' }
+}
+
+/** 加载序号：快速连点不同文件时，旧的一次 load 在 await 返回后必须发现自己已被取代，
+ *  否则会为旧文件建 model（永不 dispose，泄漏）并可能覆盖新文件已显示的内容。 */
+let loadSeq = 0
+
 async function load() {
   const req = files.diffRequest
   const wd = files.workDir
   if (!req || !wd) return
 
-  const ed = await ensureEditor()
-  // 必须重新 await ensureMonaco()，不能读模块级的 monacoModule ——
-  // watch 触发的 load 可能早于组件首次挂载时那次赋值的完成
-  const m = await ensureMonaco()
-  if (!ed || !m) return
-
+  const seq = ++loadSeq
+  // 提到入口：首次打开要 settings.load() + 动态 import monaco，期间给用户加载提示
   loading.value = true
   errorMsg.value = ''
   notice.value = ''
-  disposeModels()
+  hostHidden.value = false
 
   try {
-    const [left, right] = await Promise.all([
+    const ed = await ensureEditor()
+    // 必须重新 await ensureMonaco()，不能读模块级的 monacoModule ——
+    // watch 触发的 load 可能早于组件首次挂载时那次赋值的完成
+    const m = await ensureMonaco()
+    if (seq !== loadSeq) return
+    if (!ed || !m) return
+
+    const [leftRaw, rightRaw] = await Promise.all([
       GitFileAtRev(wd, 'HEAD', req.relPath),
       req.rev === ':0' ? GitFileAtRev(wd, ':0', req.relPath) : FileRead(wd, req.relPath),
     ])
+    // 取数是最慢的一步，这里最可能被取代：丢弃刚取到的内容，不要再建 model
+    if (seq !== loadSeq) return
 
-    // 左侧不存在是正常的（新增文件还没提交过）→ 用空内容。
-    // 右侧为 index 内容时读取失败才是真错误（例如文件已被删除）。
-    const leftOk = left.ok
-    const rightOk = right.ok
-    if (!rightOk && req.rev === ':0') {
+    // 归一化：左侧总是 GitFileAtRev（HEAD），右侧可能是 GitFileAtRev（:0）或 FileRead（工作区）
+    const left = normalizeSide(leftRaw)
+    const right = normalizeSide(rightRaw)
+
+    // 左侧不存在是正常的（新增文件还没提交过）→ 归一化为空内容。
+    // 右侧失败只可能来自 :0（FileRead 失败会 reject 进 catch），此时是真错误（如文件已删除）。
+    if (!right.ok) {
       errorMsg.value = right.error
       return
     }
-
-    const leftBinary = leftOk && left.binary
-    const rightBinary = right.ok && right.binary
-    if (leftBinary || rightBinary) {
+    if (left.binary || right.binary) {
       notice.value = '二进制文件，无法显示 diff'
+      hostHidden.value = true
       return
     }
-    const leftTruncated = leftOk && left.truncated
-    const rightTruncated = right.ok && right.truncated
-    if (leftTruncated || rightTruncated) {
+    if (left.truncated || right.truncated) {
       notice.value = '文件过大，仅显示截断内容'
     }
+
+    // 确认本次是最新加载、且确实要建 model 后，才释放旧 model（先解绑再 dispose）。
+    // 放在 await 之后是为了避免：被取代的那次 load 误 dispose 当前正在显示的 model。
+    disposeModels()
 
     const lang = languageFor(req.relPath)
     const uriBase = `file:///${req.relPath}`
     originalModel = m.editor.createModel(
-      leftOk ? left.content : '',
+      left.content,
       lang,
       m.Uri.parse(`${uriBase}?rev=HEAD`),
     )
     modifiedModel = m.editor.createModel(
-      right.ok ? right.content : '',
+      right.content,
       lang,
       m.Uri.parse(`${uriBase}?rev=${req.rev}`),
     )
@@ -129,7 +168,8 @@ async function load() {
   } catch (e: any) {
     errorMsg.value = e?.message ?? String(e)
   } finally {
-    loading.value = false
+    // 只有本次仍是最新加载时才复位 loading，否则会把后续加载的 loading 提前关掉
+    if (seq === loadSeq) loading.value = false
   }
 }
 
@@ -171,7 +211,9 @@ void (async () => {
     <div v-if="loading" class="diff-hint">正在加载…</div>
     <div v-else-if="errorMsg" class="diff-hint error">{{ errorMsg }}</div>
     <div v-else-if="notice" class="diff-hint">{{ notice }}</div>
-    <div ref="hostEl" class="diff-host" />
+    <!-- 无内容可显示（loading/错误/二进制）时隐藏宿主区，避免提示条下方还挂着上一次的 diff 内容。
+         用 v-show 而非 v-if：销毁宿主 DOM 会连带 Monaco 编辑器一起重建。 -->
+    <div v-show="!loading && !errorMsg && !hostHidden" ref="hostEl" class="diff-host" />
   </div>
 </template>
 
