@@ -75,6 +75,10 @@ function safeTermSize(): { cols: number; rows: number } {
 
 async function init() {
   if (!props.sessionId || term || !hostEl.value) return
+  // 一次性可见闸门：CodeView 在会话 tab 期间常挂载，面板也可能折叠或停在非终端
+  // 子页，此时不该白白 spawn 一个 shell 进程。不可见就返回，等 props.visible 变真
+  // 时由 visible watcher 补 init（故 sessionId watcher 在不可见时也会安全空转）。
+  if (!props.visible) return
   const gen = ++initGen
   if (!settings.cfg) await settings.load()
   if (gen !== initGen) return
@@ -121,7 +125,14 @@ async function init() {
     void ShellWrite(sid, data).catch(() => {})
   })
 
-  cleanups.push(EventsOn(`shell:${sid}`, (data: string) => t.write(data)))
+  // 订阅先于 ShellEnsure 是必须的（否则快照时刻到订阅时刻之间的输出会丢），
+  // 但直接写会和 replay 快照重复；所以先入队，拿到快照后再按序落地。
+  const pending: string[] = []
+  let replayDone = false
+  cleanups.push(EventsOn(`shell:${sid}`, (data: string) => {
+    if (replayDone) t.write(data)
+    else pending.push(data)
+  }))
   cleanups.push(EventsOn(`shell:exit:${sid}`, () => { exited.value = true }))
 
   // 主题跟随设置变化
@@ -144,6 +155,9 @@ async function init() {
     return
   }
   if (res.replay) t.write(res.replay)
+  replayDone = true
+  for (const chunk of pending) t.write(chunk)
+  pending.length = 0
   t.focus()
 }
 
@@ -172,10 +186,14 @@ watch(() => props.sessionId, async () => {
   await init()
 })
 
-// 面板/标签重新可见：容器尺寸可能已变，补一次 fit
+// 面板/标签重新可见：容器尺寸可能已变，补一次 fit；若此前因不可见未启动，这里补 init
 watch(() => props.visible, async (v) => {
   if (!v) return
   await nextTick()
+  if (!term) {
+    await init()
+    return
+  }
   await new Promise((r) => requestAnimationFrame(r))
   fitAndResize()
   term?.focus()
@@ -183,6 +201,9 @@ watch(() => props.visible, async (v) => {
 
 onMounted(async () => {
   await nextTick()
+  // 不可见时不启动：终端面板可能只是被挂载（CodeView 在会话 tab 期间常挂载、
+  // 或面板处于折叠/非终端标签态），此时不该白白 spawn 一个 shell 进程。
+  if (!props.visible) return
   await init()
 })
 
