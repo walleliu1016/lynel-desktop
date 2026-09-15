@@ -124,21 +124,32 @@ async function load() {
 
     const [leftRaw, rightRaw] = await Promise.all([
       GitFileAtRev(wd, 'HEAD', req.relPath),
-      req.rev === ':0' ? GitFileAtRev(wd, ':0', req.relPath) : FileRead(wd, req.relPath),
+      // FileRead 失败是 reject（删除态的工作区文件已不在磁盘）。这里归一为 null，
+      // 与 GitFileAtRev 的 ok:false 一起走「右侧缺失」分支，避免 reject 冒泡进 catch
+      // 变成一条原始英文 fatal（ENOENT: no such file or directory...）。
+      req.rev === ':0'
+        ? GitFileAtRev(wd, ':0', req.relPath)
+        : FileRead(wd, req.relPath).catch(() => null),
     ])
     // 取数是最慢的一步，这里最可能被取代：丢弃刚取到的内容，不要再建 model
     if (seq !== loadSeq) return
 
-    // 归一化：左侧总是 GitFileAtRev（HEAD），右侧可能是 GitFileAtRev（:0）或 FileRead（工作区）
+    // 归一化：左侧总是 GitFileAtRev（HEAD），右侧可能是 GitFileAtRev（:0）/ FileRead（工作区）/
+    // null（FileRead 失败）。右侧为 null 时按「取不到内容」处理，content 为空。
     const left = normalizeSide(leftRaw)
-    const right = normalizeSide(rightRaw)
+    const right: DiffSide = rightRaw
+      ? normalizeSide(rightRaw)
+      : { ok: false, content: '', binary: false, truncated: false, error: '' }
 
     // 左侧不存在是正常的（新增文件还没提交过）→ 归一化为空内容。
-    // 右侧失败只可能来自 :0（FileRead 失败会 reject 进 catch），此时是真错误（如文件已删除）。
-    if (!right.ok) {
-      errorMsg.value = right.error
+    // 只有左右两侧都取不到，才是真错误。
+    if (!left.ok && !right.ok) {
+      errorMsg.value = `无法读取文件内容：${right.error || left.error}`
       return
     }
+    // 右侧取不到 = 删除态（未暂存的 D 走 FileRead、已暂存的 D 走 :0，index/工作区都已无该文件）。
+    // 降级为空内容继续建 model → 用户看到的是「整文件被删」的 diff，而不是一条英文 fatal。
+    if (!right.ok) notice.value = '文件已删除，右侧内容为空'
     if (left.binary || right.binary) {
       notice.value = '二进制文件，无法显示 diff'
       hostHidden.value = true
@@ -166,7 +177,11 @@ async function load() {
     )
     ed.setModel({ original: originalModel, modified: modifiedModel })
   } catch (e: any) {
-    errorMsg.value = e?.message ?? String(e)
+    // 与 try 内一致：被取代的那次加载不得再覆盖画面（errorMsg 在模板里优先于宿主区，
+    // 会把新文件已加载好的 diff 遮掉）
+    if (seq !== loadSeq) return
+    // 原始 message 多为英文（如 IPC 层的异常），补一句中文说明再上屏
+    errorMsg.value = `加载 diff 失败：${e?.message ?? String(e)}`
   } finally {
     // 只有本次仍是最新加载时才复位 loading，否则会把后续加载的 loading 提前关掉
     if (seq === loadSeq) loading.value = false
