@@ -87,6 +87,15 @@ export function ensure(
       batcher.push(s.sessionId, data);
     });
     proc.onExit((info) => {
+      // close()/rebind 覆盖后这条 onExit 会迟到：此时表中该 id 已不属于本 session，
+      // 若仍按 s.sessionId 清理，会误删刚迁入的条目、丢它的缓冲，并发出错误的退出事件
+      // （用户看到"终端进程已退出"蒙层）。只有本 session 仍持有该 id 时才做收尾。
+      if (shells.get(s.sessionId) !== s) {
+        getLogger().info(
+          `[shell] stale exit sid=${s.sessionId.slice(0, 8)} code=${info.code}`,
+        );
+        return;
+      }
       // 先 flush 掉窗口期内的残余输出，保证退出事件不越位
       batcher.flush(s.sessionId);
       getBus().emit(`shell:exit:${s.sessionId}`, { code: info.code });
@@ -130,11 +139,25 @@ export function close(sessionId: string): void {
 export function rebind(oldId: string, newId: string): void {
   const s = shells.get(oldId);
   if (!s) return;
+  // 目标 id 已有 shell（例如 /resume 到本进程已打开过的会话）：先关掉它，
+  // 否则它会被这里的 set 覆盖而从 Map 消失，closeAll 扫不到 → 进程泄漏，
+  // 且它的 onExit 会误删刚迁移进来的条目并发错退出事件。
+  if (shells.has(newId)) close(newId);
   // 先把窗口期内的残余按旧 id 发掉，避免 pending 残留
   batcher.flush(oldId);
   shells.delete(oldId);
   s.sessionId = newId;
   shells.set(newId, s);
+}
+
+/** 会话表是否持有该 id 的 shell（测试与诊断用） */
+export function has(sessionId: string): boolean {
+  return shells.has(sessionId);
+}
+
+/** 当前活跃 shell 数量（测试与诊断用） */
+export function size(): number {
+  return shells.size;
 }
 
 export function closeAll(): void {

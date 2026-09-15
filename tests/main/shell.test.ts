@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { describe, it, expect, afterEach } from 'vitest';
 
 // 与 pty.test.ts 同样的原因：CI 的 macOS runner 在 headless 下 posix_spawnp 会失败
@@ -14,7 +15,7 @@ describe('shell', () => {
     const sh = pickShell();
     expect(sh.length).toBeGreaterThan(0);
     if (process.platform === 'win32') {
-      expect(sh).toMatch(/\.exe$/i);
+      expect(path.isAbsolute(sh)).toBe(true);
     } else {
       expect(sh.startsWith('/')).toBe(true);
     }
@@ -24,8 +25,8 @@ describe('shell', () => {
     const { ensure } = await import('../../src/main/shell.js');
     // workDir 传一个不存在的目录：spawn 应失败并返回结构化错误，而不是抛异常
     const res = ensure('nonexistent-session', '/definitely/not/a/real/dir/lynel', 80, 24);
-    expect(res).toHaveProperty('ok');
-    if (!res.ok) expect(typeof res.error).toBe('string');
+    // 判别联合不变量：ok 为真时必有 replay，为假时必有 error
+    expect('replay' in res).toBe(res.ok);
   });
 
   it.skipIf(isCI)('ensure 启动 shell，write 后能收到回显，close 后清理', { timeout: 30000 }, async () => {
@@ -48,6 +49,29 @@ describe('shell', () => {
     getBus().off(`shell:${sid}`, onData);
 
     expect(chunks.join('')).toContain(marker);
+    expect(mod.has(sid)).toBe(true);
     mod.close(sid);
+    expect(mod.has(sid)).toBe(false);
+  });
+
+  it.skipIf(isCI)('rebind 迁移会话 key，且目标已存在时不泄漏', { timeout: 30000 }, async () => {
+    const mod = await import('../../src/main/shell.js');
+    expect(mod.ensure('rb-a', process.cwd(), 80, 24).ok).toBe(true);
+    expect(mod.ensure('rb-b', process.cwd(), 80, 24).ok).toBe(true);
+    expect(mod.size()).toBe(2);
+
+    mod.rebind('rb-a', 'rb-c');
+    expect(mod.has('rb-a')).toBe(false);
+    expect(mod.has('rb-c')).toBe(true);
+    expect(mod.size()).toBe(2);
+
+    // 目标已存在：应关掉被覆盖的那个，而不是让它从 Map 消失
+    mod.rebind('rb-c', 'rb-b');
+    expect(mod.has('rb-c')).toBe(false);
+    expect(mod.has('rb-b')).toBe(true);
+    expect(mod.size()).toBe(1);
+
+    mod.close('rb-b');
+    expect(mod.size()).toBe(0);
   });
 });
