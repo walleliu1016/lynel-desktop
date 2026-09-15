@@ -199,7 +199,7 @@
                 <TracePane />
               </div>
               <div v-show="activeSubTab === 'code'" class="sub-pane">
-                <CodeView />
+                <CodeView :visible="activeSubTab === 'code'" />
               </div>
             </template>
             <div v-else class="empty"><div class="empty-text">未选择会话</div></div>

@@ -1,13 +1,26 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Icon from '../Icon.vue'
 import FileTree from './FileTree.vue'
 import FileTabs from './FileTabs.vue'
 import CodeEditor from './CodeEditor.vue'
 import BottomPanel from './BottomPanel.vue'
 import { useFilesStore } from '../../stores/files'
+import { useGitStore } from '../../stores/git'
+
+/** 「文件」子页当前是否可见。由 HomeView 传入 —— CodeView 被 v-show 常挂载，
+ *  自身感知不到子页切换，而底部面板的终端要据此决定是否启动。 */
+const props = withDefaults(defineProps<{ visible?: boolean }>(), { visible: true })
 
 const store = useFilesStore()
+const gitStore = useGitStore()
+
+// 会话切换 → git 面板跟着换目录并重挂 .git watcher
+watch(
+  () => store.workDir,
+  (wd) => { void gitStore.setSession(wd) },
+  { immediate: true },
+)
 
 /** 项目目录 basename（title 展示完整路径） */
 const dirName = computed(() => {
@@ -115,7 +128,11 @@ function onExpand() {
         <CodeEditor />
       </section>
     </div>
-    <BottomPanel :session-id="store.currentSessionId" :work-dir="store.workDir" />
+    <BottomPanel
+      :session-id="store.currentSessionId"
+      :work-dir="store.workDir"
+      :visible="props.visible"
+    />
   </div>
 </template>
 
@@ -139,6 +156,13 @@ function onExpand() {
   --status-warn-border: var(--code-border);
   --status-error: var(--term-red);
   --status-error-soft: var(--code-hover);
+  /* GitPanel 用到的两个变量需在此补齐：
+     - theme.css 未定义 --status-ok（只有 --status-success），不补则「ahead / 已暂存」的
+       绿色会失效退化为继承色；
+     - --accent 在上方已被重映射为 --term-fg，而全局 --text-inverse 是白色，
+       提交按钮会变成白字浅底；把 inverse 重映射为终端背景色才是「反色」的本意。 */
+  --status-ok: var(--term-green);
+  --text-inverse: var(--term-bg);
   flex: 1;
   min-height: 0;
   display: flex;

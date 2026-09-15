@@ -28,6 +28,7 @@ import {
   FileText,
   FolderOpen,
   FolderTree,
+  GitBranch,
   Home,
   Loader2,
   MessageSquare,
@@ -53,6 +54,7 @@ import {
   Star,
   Terminal,
   Trash2,
+  Undo2,
   User,
   Wrench,
   X,
@@ -99,6 +101,7 @@ const icons: Record<string, unknown> = {
   'file-code': FileCode,
   'folder-open': FolderOpen,
   'folder-tree': FolderTree,
+  'git-branch': GitBranch,
   loader: Loader2,
   terminal: Terminal,
   'shield-alert': ShieldAlert,
@@ -125,6 +128,7 @@ const icons: Record<string, unknown> = {
   expand: Expand,
   shrink: Shrink,
   star: Star,
+  'undo-2': Undo2,
 }
 
 const Comp = computed(() => icons[props.name] ?? null)

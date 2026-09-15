@@ -1,12 +1,21 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import Icon from '../Icon.vue'
+import GitPanel from './GitPanel.vue'
 import ProjectTerminal from './ProjectTerminal.vue'
+import { useGitStore } from '../../stores/git'
 
 const props = defineProps<{
   sessionId: string
   workDir: string
+  /** 「文件」子页是否可见（由 CodeView 透传）。终端必须据此决定是否启动进程：
+   *  CodeView 被 HomeView 用 v-show 常挂载，自身感知不到子页切换。 */
+  visible?: boolean
 }>()
+
+const gitStore = useGitStore()
+/** Git 标签上的变更数徽章 */
+const gitBadge = computed(() => gitStore.totalChanges)
 
 const HEIGHT_KEY = 'lynel:code-bottom-height'
 const COLLAPSED_KEY = 'lynel:code-bottom-collapsed'
@@ -45,8 +54,8 @@ function loadCollapsed(): boolean {
 
 const height = ref(loadHeight())
 const collapsed = ref(loadCollapsed())
-// Phase 2 会把 'git' 加进来；现在只有终端
-const activeTab = ref<'terminal'>('terminal')
+// Git 更常用，作为展开后的默认标签
+const activeTab = ref<'git' | 'terminal'>('git')
 
 // ---------- 拖高（面板上边缘） ----------
 const dragging = ref(false)
@@ -114,13 +123,21 @@ onBeforeUnmount(() => {
           aria-label="展开面板"
           @click="toggleCollapse"
         >
-          <Icon name="terminal" :size="13" />
-          <span>终端</span>
+          <Icon :name="activeTab === 'git' ? 'git-branch' : 'terminal'" :size="13" />
+          <span>{{ activeTab === 'git' ? 'Git' : '终端' }}</span>
           <span class="bar-spacer" />
           <Icon name="chevron-up" :size="14" />
         </button>
       </template>
       <template v-else>
+        <button
+          class="panel-tab"
+          :class="{ active: activeTab === 'git' }"
+          @click="activeTab = 'git'"
+        >
+          <Icon name="git-branch" :size="13" /> Git
+          <span v-if="gitBadge > 0" class="tab-badge">{{ gitBadge }}</span>
+        </button>
         <button
           class="panel-tab"
           :class="{ active: activeTab === 'terminal' }"
@@ -141,10 +158,12 @@ onBeforeUnmount(() => {
     </div>
     <!-- v-show 而非 v-if：终端实例必须常驻，切走再切回不能丢 buffer / 重建 PTY -->
     <div v-show="!collapsed" class="panel-body">
+      <GitPanel v-show="activeTab === 'git'" />
       <ProjectTerminal
+        v-show="activeTab === 'terminal'"
         :session-id="props.sessionId"
         :work-dir="props.workDir"
-        :visible="!collapsed && activeTab === 'terminal'"
+        :visible="(props.visible ?? true) && !collapsed && activeTab === 'terminal'"
       />
     </div>
   </section>
@@ -199,6 +218,14 @@ onBeforeUnmount(() => {
 }
 .panel-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
 .panel-tab.active { color: var(--text-primary); background: var(--code-hover); }
+.panel-tab .tab-badge {
+  margin-left: 2px;
+  padding: 0 4px;
+  border-radius: 7px;
+  background: var(--accent-soft-bg);
+  color: var(--text-primary);
+  font-size: 10px;
+}
 .bar-spacer { flex: 1; }
 .bar-btn {
   width: 26px;
