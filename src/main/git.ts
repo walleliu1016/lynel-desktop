@@ -12,7 +12,12 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { ipcMain } from 'electron';
+import chokidar from 'chokidar';
+import type { FSWatcher } from 'chokidar';
 import { simpleGit, type SimpleGit } from 'simple-git';
+import { getBus } from './events.js';
+import { getLogger } from './log.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -305,4 +310,68 @@ export async function fileAtRev(
     // 文件在该 revision 不存在（新增文件取 HEAD 版本）是正常情况
     return { ok: false, error: err?.message || String(err) };
   }
+}
+
+// —— .git 变更监听 ——
+// files.ts 的文件树 watcher 把 .git 放在 IGNORED_DIRS 里，看不到 git 内部状态变化
+// （提交、外部 checkout、切换分支），Git 面板必须自己盯 HEAD / index / refs。
+// 刻意不监 objects/ 与 logs/：写入极频繁且与 UI 展示无关。
+const watchers = new Map<string, FSWatcher>();
+const debounceTimers = new Map<string, NodeJS.Timeout>();
+
+export function watchGit(workDir: string): void {
+  if (watchers.has(workDir)) return;
+  const gitDir = `${workDir}/.git`;
+  const w = chokidar.watch(
+    [`${gitDir}/HEAD`, `${gitDir}/index`, `${gitDir}/refs`],
+    { ignoreInitial: true, depth: 4 },
+  );
+  w.on('all', () => {
+    const t = debounceTimers.get(workDir);
+    if (t) clearTimeout(t);
+    // 500ms 合帧：一次 git 操作会连写多个文件
+    debounceTimers.set(
+      workDir,
+      setTimeout(() => getBus().emit('git:changed', workDir), 500),
+    );
+  });
+  // 监听 chokidar 异步错误（EMFILE/ENOSPC/权限等），避免走向主进程未捕获异常路径
+  w.on('error', (err) => getLogger().warn(`[git] watcher error ${workDir}: ${err}`));
+  watchers.set(workDir, w);
+}
+
+export async function unwatchGit(workDir: string): Promise<void> {
+  const w = watchers.get(workDir);
+  if (w) {
+    await w.close();
+    watchers.delete(workDir);
+  }
+  const t = debounceTimers.get(workDir);
+  if (t) {
+    clearTimeout(t);
+    debounceTimers.delete(workDir);
+  }
+}
+
+// —— IPC ——
+export function registerGitIpc(): void {
+  ipcMain.handle('git:status', (_e, workDir: string) => getStatus(workDir));
+  ipcMain.handle('git:stage', (_e, workDir: string, paths: string[]) => stage(workDir, paths));
+  ipcMain.handle('git:unstage', (_e, workDir: string, paths: string[]) => unstage(workDir, paths));
+  ipcMain.handle('git:discard', (_e, workDir: string, paths: string[]) => discard(workDir, paths));
+  ipcMain.handle('git:commit', (_e, workDir: string, message: string) => commit(workDir, message));
+  ipcMain.handle('git:remoteOp', (_e, workDir: string, op: 'fetch' | 'pull' | 'push') =>
+    remoteOp(workDir, op),
+  );
+  ipcMain.handle('git:fileAtRev', (_e, workDir: string, rev: string, relPath: string) =>
+    fileAtRev(workDir, rev, relPath),
+  );
+  ipcMain.handle('git:watch', (_e, workDir: string) => {
+    watchGit(workDir);
+    return { ok: true };
+  });
+  ipcMain.handle('git:unwatch', async (_e, workDir: string) => {
+    await unwatchGit(workDir);
+    return { ok: true };
+  });
 }

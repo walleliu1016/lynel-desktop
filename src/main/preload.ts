@@ -159,6 +159,19 @@ const api = {
   shellResize: (sessionId: string, cols: number, rows: number) =>
     ipcRenderer.invoke('shell:resize', sessionId, cols, rows),
   shellClose: (sessionId: string) => ipcRenderer.invoke('shell:close', sessionId),
+
+  gitStatus: (workDir: string) => ipcRenderer.invoke('git:status', workDir),
+  gitStage: (workDir: string, paths: string[]) => ipcRenderer.invoke('git:stage', workDir, paths),
+  gitUnstage: (workDir: string, paths: string[]) =>
+    ipcRenderer.invoke('git:unstage', workDir, paths),
+  gitDiscard: (workDir: string, paths: string[]) =>
+    ipcRenderer.invoke('git:discard', workDir, paths),
+  gitCommit: (workDir: string, message: string) => ipcRenderer.invoke('git:commit', workDir, message),
+  gitRemoteOp: (workDir: string, op: string) => ipcRenderer.invoke('git:remoteOp', workDir, op),
+  gitFileAtRev: (workDir: string, rev: string, relPath: string) =>
+    ipcRenderer.invoke('git:fileAtRev', workDir, rev, relPath),
+  gitWatch: (workDir: string) => ipcRenderer.invoke('git:watch', workDir),
+  gitUnwatch: (workDir: string) => ipcRenderer.invoke('git:unwatch', workDir),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

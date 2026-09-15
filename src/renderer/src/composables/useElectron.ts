@@ -1,5 +1,8 @@
 import type { ElectronAPI, OpenTerminalPathResult } from '../../../main/preload.js';
 import type { ScanEvent } from '../../../main/wecom-scan.js';
+// Git 面板。类型直接复用主进程的定义（仅 type import，编译期擦除，
+// 不会把主进程代码拉进渲染进程 bundle），避免两份定义漂移。
+import type { GitFileChange, GitStatusResult } from '../../../main/git.js';
 
 declare global {
   interface Window {
@@ -142,5 +145,32 @@ export const ShellResize = (sessionId: string, cols: number, rows: number) =>
   api().shellResize(sessionId, cols, rows) as Promise<{ ok: boolean }>
 export const ShellClose = (sessionId: string) =>
   api().shellClose(sessionId) as Promise<{ ok: boolean }>
+
+// Git 面板。`export type { X } from 'mod'` 是重导出，不会把 X 带进当前作用域，
+// 所以上面的 `import type` 与这里的 `export type` 两行都要写。
+export type { GitFileChange, GitStatusResult }
+
+type GitOk<T> = { ok: true } & T
+type GitErr = { ok: false; error: string }
+
+export const GitStatus = (workDir: string) =>
+  api().gitStatus(workDir) as Promise<GitOk<{ data: GitStatusResult }> | GitErr>
+export const GitStage = (workDir: string, paths: string[]) =>
+  api().gitStage(workDir, paths) as Promise<GitOk<{}> | GitErr>
+export const GitUnstage = (workDir: string, paths: string[]) =>
+  api().gitUnstage(workDir, paths) as Promise<GitOk<{}> | GitErr>
+export const GitDiscard = (workDir: string, paths: string[]) =>
+  api().gitDiscard(workDir, paths) as Promise<GitOk<{}> | GitErr>
+export const GitCommit = (workDir: string, message: string) =>
+  api().gitCommit(workDir, message) as Promise<GitOk<{}> | GitErr>
+export const GitRemoteOp = (workDir: string, op: 'fetch' | 'pull' | 'push') =>
+  api().gitRemoteOp(workDir, op) as Promise<GitOk<{ summary: string }> | GitErr>
+export const GitFileAtRev = (workDir: string, rev: string, relPath: string) =>
+  api().gitFileAtRev(workDir, rev, relPath) as Promise<
+    GitOk<{ content: string; binary: boolean; truncated: boolean }> | GitErr
+  >
+export const GitWatch = (workDir: string) => api().gitWatch(workDir) as Promise<GitOk<{}>>
+export const GitUnwatch = (workDir: string) => api().gitUnwatch(workDir) as Promise<GitOk<{}>>
+export const GitChanged = (cb: (workDir: string) => void) => EventsOn('git:changed', cb)
 
 export const isElectronDev = import.meta.env.DEV;

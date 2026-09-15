@@ -33,6 +33,7 @@ import {
   rebind as rebindShell,
   closeAll as closeAllShells,
 } from './shell.js';
+import { registerGitIpc } from './git.js';
 import type { BotConfig } from './types/bot.js';
 import { startScan as wecomStartScan, cancelScan } from './wecom-scan.js';
 import { notifyExternal, errMessage } from './channels/notify-error.js';
@@ -1405,6 +1406,7 @@ export class App {
     registerTraceIpc();
     registerFilesIpc();
     registerShellIpc();
+    registerGitIpc();
     // 初始化在线升级
     initUpdater(() => this.window!);
     // 系统剪贴板写入：渲染端 navigator.clipboard 在 file:// + contextIsolation 下
