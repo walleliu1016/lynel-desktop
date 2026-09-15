@@ -31,11 +31,15 @@ function loadHeight(): number {
   return DEFAULT_HEIGHT
 }
 
+/** 面板折叠态。从未设置过（key 不存在）时默认折叠 —— 终端不应默认占着编辑器的高度。
+ *  用户手动展开/折叠后以 localStorage 为准。 */
 function loadCollapsed(): boolean {
   try {
-    return localStorage.getItem(COLLAPSED_KEY) === '1'
+    const v = localStorage.getItem(COLLAPSED_KEY)
+    if (v === null) return true
+    return v === '1'
   } catch {
-    return false
+    return true
   }
 }
 
@@ -102,22 +106,38 @@ onBeforeUnmount(() => {
   >
     <div v-if="!collapsed" class="panel-resize-handle" @mousedown.prevent="onResizeStart" />
     <div class="panel-bar">
-      <button
-        class="panel-tab"
-        :class="{ active: activeTab === 'terminal' }"
-        @click="activeTab = 'terminal'"
-      >
-        <Icon name="terminal" :size="13" /> 终端
-      </button>
-      <span class="bar-spacer" />
-      <button
-        class="bar-btn"
-        :title="collapsed ? '展开面板' : '折叠面板'"
-        :aria-label="collapsed ? '展开面板' : '折叠面板'"
-        @click="toggleCollapse"
-      >
-        <Icon :name="collapsed ? 'chevron-up' : 'chevron-down'" :size="14" />
-      </button>
+      <template v-if="collapsed">
+        <!-- 折叠态：整条即展开按钮，点任意位置都能展开（原先只有右侧 chevron 可点，太难点中） -->
+        <button
+          class="bar-expand"
+          title="展开面板"
+          aria-label="展开面板"
+          @click="toggleCollapse"
+        >
+          <Icon name="terminal" :size="13" />
+          <span>终端</span>
+          <span class="bar-spacer" />
+          <Icon name="chevron-up" :size="14" />
+        </button>
+      </template>
+      <template v-else>
+        <button
+          class="panel-tab"
+          :class="{ active: activeTab === 'terminal' }"
+          @click="activeTab = 'terminal'"
+        >
+          <Icon name="terminal" :size="13" /> 终端
+        </button>
+        <span class="bar-spacer" />
+        <button
+          class="bar-btn"
+          title="折叠面板"
+          aria-label="折叠面板"
+          @click="toggleCollapse"
+        >
+          <Icon name="chevron-down" :size="14" />
+        </button>
+      </template>
     </div>
     <!-- v-show 而非 v-if：终端实例必须常驻，切走再切回不能丢 buffer / 重建 PTY -->
     <div v-show="!collapsed" class="panel-body">
@@ -194,6 +214,24 @@ onBeforeUnmount(() => {
   transition: color 0.12s, background 0.12s;
 }
 .bar-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+/* 折叠态整条展开按钮：撑满标签条，扩大点击热区 */
+.bar-expand {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 100%;
+  padding: 0 4px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.12s, background 0.12s;
+}
+.bar-expand:hover { color: var(--text-primary); background: var(--bg-hover); }
 .panel-body {
   flex: 1;
   min-height: 0;
