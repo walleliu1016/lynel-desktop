@@ -89,33 +89,33 @@ function onExpand() {
 
 <template>
   <div class="code-view" :class="{ dragging }">
-    <aside v-if="!store.collapsed" class="tree-panel" :style="{ width: width + 'px' }">
-      <div class="panel-toolbar">
-        <button class="tool-btn" title="刷新文件树" aria-label="刷新文件树" @click="onRefresh">
-          <Icon name="refresh-cw" :size="14" />
-        </button>
-        <button class="tool-btn" title="新建文件" aria-label="新建文件" @click="onNewFile">
-          <Icon name="plus" :size="14" />
-        </button>
-        <span class="toolbar-dir" :title="store.workDir">{{ dirName }}</span>
-        <span class="toolbar-spacer" />
-        <button class="tool-btn" title="折叠文件树" aria-label="折叠文件树" @click="onCollapse">
-          <Icon name="panel-left-close" :size="14" />
-        </button>
-      </div>
-      <FileTree :rel-path="''" :depth="0" />
-      <div class="resize-handle" title="拖拽调整宽度" @mousedown.prevent="onResizeStart" />
-    </aside>
-    <button v-else type="button" class="tree-collapsed" title="展开文件树" aria-label="展开文件树" @click="onExpand">
-      <Icon name="panel-left-open" :size="16" />
-    </button>
-    <div class="main-column">
+    <div class="main-row">
+      <aside v-if="!store.collapsed" class="tree-panel" :style="{ width: width + 'px' }">
+        <div class="panel-toolbar">
+          <button class="tool-btn" title="刷新文件树" aria-label="刷新文件树" @click="onRefresh">
+            <Icon name="refresh-cw" :size="14" />
+          </button>
+          <button class="tool-btn" title="新建文件" aria-label="新建文件" @click="onNewFile">
+            <Icon name="plus" :size="14" />
+          </button>
+          <span class="toolbar-dir" :title="store.workDir">{{ dirName }}</span>
+          <span class="toolbar-spacer" />
+          <button class="tool-btn" title="折叠文件树" aria-label="折叠文件树" @click="onCollapse">
+            <Icon name="panel-left-close" :size="14" />
+          </button>
+        </div>
+        <FileTree :rel-path="''" :depth="0" />
+        <div class="resize-handle" title="拖拽调整宽度" @mousedown.prevent="onResizeStart" />
+      </aside>
+      <button v-else type="button" class="tree-collapsed" title="展开文件树" aria-label="展开文件树" @click="onExpand">
+        <Icon name="panel-left-open" :size="16" />
+      </button>
       <section class="editor-panel">
         <FileTabs />
         <CodeEditor />
       </section>
-      <BottomPanel :session-id="store.currentSessionId" :work-dir="store.workDir" />
     </div>
+    <BottomPanel :session-id="store.currentSessionId" :work-dir="store.workDir" />
   </div>
 </template>
 
@@ -142,10 +142,16 @@ function onExpand() {
   flex: 1;
   min-height: 0;
   display: flex;
+  flex-direction: column;
   background: var(--bg-panel);
   overflow: hidden;
 }
 .code-view.dragging { cursor: col-resize; }
+.main-row {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
 .tree-panel {
   position: relative;
   flex-shrink: 0;
@@ -200,13 +206,6 @@ function onExpand() {
   background: transparent;
 }
 .resize-handle:hover { background: var(--accent); }
-.main-column {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
 .editor-panel {
   flex: 1;
   min-width: 0;
