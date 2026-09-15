@@ -33,18 +33,22 @@ export interface GitStatusResult {
   conflicted: GitFileChange[];
 }
 
-const EMPTY_STATUS: GitStatusResult = {
-  isRepo: false,
-  branch: null,
-  tracking: null,
-  ahead: 0,
-  behind: 0,
-  detached: false,
-  staged: [],
-  unstaged: [],
-  untracked: [],
-  conflicted: [],
-};
+/** 非 git 仓库时的空状态。用工厂函数而非共享常量：常量做浅拷贝会让四个数组字段
+ *  在各次调用间共享同一个引用，任何调用方 push 都会污染全局。 */
+function emptyStatus(): GitStatusResult {
+  return {
+    isRepo: false,
+    branch: null,
+    tracking: null,
+    ahead: 0,
+    behind: 0,
+    detached: false,
+    staged: [],
+    unstaged: [],
+    untracked: [],
+    conflicted: [],
+  };
+}
 
 /** 每个 workDir 复用一个 SimpleGit 实例 */
 const clients = new Map<string, SimpleGit>();
@@ -125,7 +129,7 @@ export async function getStatus(
     const msg = err?.message || String(err);
     // 非 git 仓库时 simple-git 会抛错；这是正常的用户状态，不是错误
     if (/not a git repository/i.test(msg)) {
-      return { ok: true, data: { ...EMPTY_STATUS } };
+      return { ok: true, data: emptyStatus() };
     }
     return { ok: false, error: msg };
   }
