@@ -81,16 +81,40 @@ describe('git', () => {
 
 describe('git 变更操作', () => {
   let repo: string;
-  const sh = (args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
+  // 危险路径（MM 文件、A 文件、路径越界）各自用独立仓库，避免相互污染
+  let mmRepo: string;
+  let addRepo: string;
+  let escRepo: string;
+  const sh = (args: string[], cwd: string = repo) =>
+    execFileSync('git', args, { cwd, stdio: 'ignore' });
 
   beforeAll(() => {
     repo = makeRepo();
     fs.writeFileSync(path.join(repo, 'a.txt'), 'v1\n');
     sh(['add', 'a.txt']);
     sh(['commit', '-m', 'add a']);
+
+    // MM：已暂存，工作区又改（index='M'、working_dir='M'）
+    mmRepo = makeRepo();
+    fs.writeFileSync(path.join(mmRepo, 'm.txt'), 'v1\n');
+    sh(['add', 'm.txt'], mmRepo);
+    sh(['commit', '-m', 'add m'], mmRepo);
+    fs.writeFileSync(path.join(mmRepo, 'm.txt'), 'staged\n');
+    sh(['add', 'm.txt'], mmRepo);
+    fs.writeFileSync(path.join(mmRepo, 'm.txt'), 'working\n');
+
+    // A：新增且已暂存（无 HEAD 版本可还原）
+    addRepo = makeRepo();
+
+    // 路径越界用例的空仓库
+    escRepo = makeRepo();
   });
 
-  afterAll(() => fs.rmSync(repo, { recursive: true, force: true }));
+  afterAll(() => {
+    for (const r of [repo, mmRepo, addRepo, escRepo]) {
+      fs.rmSync(r, { recursive: true, force: true });
+    }
+  });
 
   it('stage 把未跟踪文件移入暂存区', async () => {
     const { stage, getStatus } = await import('../../src/main/git.js');
@@ -136,5 +160,55 @@ describe('git 变更操作', () => {
     expect(res.ok).toBe(false);
     if (!res.ok) expect(typeof res.error).toBe('string');
     fs.rmSync(plain, { recursive: true, force: true });
+  });
+
+  it('discard 对已暂存且工作区又改的文件（MM）：整回到 HEAD 而不是被删掉', async () => {
+    const { discard, getStatus } = await import('../../src/main/git.js');
+    const p = path.join(mmRepo, 'm.txt');
+
+    const before = await getStatus(mmRepo);
+    expect(before.ok && before.data.staged.find((f) => f.path === 'm.txt')?.status).toBe('M');
+    expect(before.ok && before.data.unstaged.find((f) => f.path === 'm.txt')?.status).toBe('M');
+
+    expect((await discard(mmRepo, ['m.txt'])).ok).toBe(true);
+
+    // 文件必须还在，且内容回到 HEAD 版本（暂存区与工作区都清空）
+    expect(fs.existsSync(p)).toBe(true);
+    expect(fs.readFileSync(p, 'utf8')).toBe('v1\n');
+    const after = await getStatus(mmRepo);
+    expect(after.ok && after.data.staged.map((f) => f.path)).not.toContain('m.txt');
+    expect(after.ok && after.data.unstaged.map((f) => f.path)).not.toContain('m.txt');
+  });
+
+  it('discard 对新增且已暂存的文件（A）：删除它', async () => {
+    const { discard, getStatus } = await import('../../src/main/git.js');
+    const p = path.join(addRepo, 'added.txt');
+    fs.writeFileSync(p, 'brand new\n');
+    sh(['add', 'added.txt'], addRepo);
+
+    const before = await getStatus(addRepo);
+    expect(before.ok && before.data.staged.find((f) => f.path === 'added.txt')?.status).toBe('A');
+
+    expect((await discard(addRepo, ['added.txt'])).ok).toBe(true);
+
+    expect(fs.existsSync(p)).toBe(false);
+    const after = await getStatus(addRepo);
+    expect(after.ok && after.data.staged.map((f) => f.path)).not.toContain('added.txt');
+    expect(after.ok && after.data.untracked.map((f) => f.path)).not.toContain('added.txt');
+  });
+
+  it('discard 拒绝越界路径，且不删除工作目录外的文件', async () => {
+    const { discard } = await import('../../src/main/git.js');
+    // 哨兵放在仓库的父目录（os.tmpdir()），rel 用 `../<name>` 指过去
+    const sentinel = path.join(os.tmpdir(), `lynel-outside-${process.pid}-${Date.now()}.txt`);
+    fs.writeFileSync(sentinel, 'safe\n');
+    try {
+      const res = await discard(escRepo, [`../${path.basename(sentinel)}`]);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error).toContain('路径越界');
+      expect(fs.existsSync(sentinel)).toBe(true);
+    } finally {
+      fs.rmSync(sentinel, { force: true });
+    }
   });
 });
