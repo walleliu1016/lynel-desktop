@@ -136,9 +136,11 @@ export const ShellEnsure = (sessionId: string, workDir: string, cols: number, ro
     replay?: string
     error?: string
   }>
-export const ShellWrite = (sessionId: string, data: string) => api().shellWrite(sessionId, data)
+export const ShellWrite = (sessionId: string, data: string) =>
+  api().shellWrite(sessionId, data) as Promise<{ ok: boolean }>
 export const ShellResize = (sessionId: string, cols: number, rows: number) =>
-  api().shellResize(sessionId, cols, rows)
-export const ShellClose = (sessionId: string) => api().shellClose(sessionId)
+  api().shellResize(sessionId, cols, rows) as Promise<{ ok: boolean }>
+export const ShellClose = (sessionId: string) =>
+  api().shellClose(sessionId) as Promise<{ ok: boolean }>
 
 export const isElectronDev = import.meta.env.DEV;

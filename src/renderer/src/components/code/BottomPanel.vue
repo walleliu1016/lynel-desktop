@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import Icon from '../Icon.vue'
 import ProjectTerminal from './ProjectTerminal.vue'
 
@@ -13,8 +13,14 @@ const COLLAPSED_KEY = 'lynel:code-bottom-collapsed'
 const MIN_HEIGHT = 120
 const DEFAULT_HEIGHT = 320
 
+const rootEl = ref<HTMLElement | null>(null)
+
+/** 面板可占的最大高度：以父容器实际高度为准（面板在 .code-view 内，比 window 矮），
+ *  拿不到容器时回退到窗口的 70%。 */
 function maxHeight(): number {
-  return Math.round(window.innerHeight * 0.7)
+  const parentH = rootEl.value?.parentElement?.clientHeight ?? 0
+  const base = parentH > 0 ? parentH : window.innerHeight
+  return Math.round(base * 0.7)
 }
 
 function loadHeight(): number {
@@ -25,8 +31,16 @@ function loadHeight(): number {
   return DEFAULT_HEIGHT
 }
 
+function loadCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 const height = ref(loadHeight())
-const collapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1')
+const collapsed = ref(loadCollapsed())
 // Phase 2 会把 'git' 加进来；现在只有终端
 const activeTab = ref<'terminal'>('terminal')
 
@@ -66,13 +80,22 @@ function toggleCollapse() {
   try { localStorage.setItem(COLLAPSED_KEY, collapsed.value ? '1' : '0') } catch { /* 忽略 */ }
 }
 
+// 窗口缩小后容器也变矮，重新夹取，避免面板把编辑器区压到 0
+function onWindowResize() {
+  const max = maxHeight()
+  if (height.value > max) height.value = Math.max(MIN_HEIGHT, max)
+}
+
+onMounted(() => window.addEventListener('resize', onWindowResize))
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', onWindowResize)
   if (dragging.value) onResizeEnd()
 })
 </script>
 
 <template>
   <section
+    ref="rootEl"
     class="bottom-panel"
     :class="{ dragging, collapsed }"
     :style="{ height: collapsed ? '32px' : height + 'px' }"
