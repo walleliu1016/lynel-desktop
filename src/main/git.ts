@@ -8,6 +8,8 @@
 // dist/esm/index.js（真 ESM，有可调用的 export default）。
 // 命名导出 `simpleGit` 在 typings 和 ESM 运行时都已声明，且与 default 是同一个函数
 // 对象（已实测 `default === simpleGit` 为 true），所以用命名导入既类型正确又不改变行为。
+import fs from 'node:fs';
+import path from 'node:path';
 import { simpleGit, type SimpleGit } from 'simple-git';
 
 export type GitFileStatus = 'M' | 'A' | 'D' | 'R' | 'C' | 'U' | '?';
@@ -167,6 +169,17 @@ export function unstage(workDir: string, relPaths: string[]): Promise<GitOpResul
   });
 }
 
+/** 把相对路径安全解析到 workDir 内；越界抛错（与 files.ts 的 resolveEntry 同一约定，
+ *  git 面板的删除操作同样不能让路径逃出工作目录） */
+function resolveInside(workDir: string, rel: string): string {
+  const base = path.resolve(workDir);
+  const target = path.resolve(base, rel);
+  if (target !== base && !target.startsWith(base + path.sep)) {
+    throw new Error(`路径越界: ${rel}`);
+  }
+  return target;
+}
+
 /** 丢弃工作区改动：已跟踪文件 checkout 还原；未跟踪文件直接删除。
  *  调用方（渲染进程）必须先做二次确认 —— 这是不可逆操作。 */
 export async function discard(workDir: string, relPaths: string[]): Promise<GitOpResult> {
@@ -175,29 +188,44 @@ export async function discard(workDir: string, relPaths: string[]): Promise<GitO
   const status = await getStatus(workDir);
   if (!status.ok) return { ok: false, error: status.error };
 
+  const s = status.data;
+  // 新增且已暂存的文件不在 HEAD 里，checkout 无处可还原 → 只能 unstage 后删除
+  const addedStaged = new Set(s.staged.filter((f) => f.status === 'A').map((f) => f.path));
+  // 其余已跟踪文件（工作区改动 / 已暂存改动 / 冲突）→ unstage 后 checkout 还原到 HEAD
   const tracked = new Set([
-    ...status.data.unstaged.map((f) => f.path),
-    ...status.data.staged.map((f) => f.path),
-    ...status.data.conflicted.map((f) => f.path),
+    ...s.unstaged.map((f) => f.path),
+    ...s.staged.map((f) => f.path),
+    ...s.conflicted.map((f) => f.path),
   ]);
+
+  const toRestore: string[] = [];
+  const toDelete: string[] = [];
+  for (const rel of relPaths) {
+    if (addedStaged.has(rel)) toDelete.push(rel);
+    else if (tracked.has(rel)) toRestore.push(rel);
+    else toDelete.push(rel); // 未跟踪
+  }
 
   return runOp(async () => {
     const g = gitFor(workDir);
-    const trackedPaths = relPaths.filter((p) => tracked.has(p));
-    const others = relPaths.filter((p) => !tracked.has(p));
 
-    if (trackedPaths.length > 0) {
-      // 先取消暂存再 checkout HEAD，保证「暂存 + 已修改」的文件也能整回到 HEAD
-      await unstage(workDir, trackedPaths);
-      await g.checkout(['--', ...trackedPaths]);
+    if (toRestore.length > 0) {
+      // 必须先取消暂存，否则 checkout 会从暂存区恢复，达不到「整回到 HEAD」
+      const u = await unstage(workDir, toRestore);
+      if (!u.ok) throw new Error(u.error);
+      await g.checkout(['--', ...toRestore]);
     }
-    if (others.length > 0) {
-      const fs = await import('node:fs');
-      const nodePath = await import('node:path');
-      for (const rel of others) {
-        const abs = nodePath.join(workDir, rel);
-        if (fs.existsSync(abs)) fs.rmSync(abs, { recursive: true, force: true });
-      }
+
+    // A 文件要先从索引移出，否则它仍是已暂存状态
+    const addedToDelete = toDelete.filter((rel) => addedStaged.has(rel));
+    if (addedToDelete.length > 0) {
+      const u = await unstage(workDir, addedToDelete);
+      if (!u.ok) throw new Error(u.error);
+    }
+
+    for (const rel of toDelete) {
+      const abs = resolveInside(workDir, rel);
+      if (fs.existsSync(abs)) fs.rmSync(abs, { recursive: true, force: true });
     }
   });
 }
