@@ -243,6 +243,12 @@ describe('git 提交 / 取版本 / 远程', () => {
     const before = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
     const res = await commit(repo, '   ');
     expect(res.ok).toBe(false);
+    // 必须命中「我们自己的中文 guard 文案」。若 guard 被删掉、把空白串直接交给 git：
+    //  - 仓库有暂存内容时，git 以 "Aborting commit due to empty commit message." 中止
+    //    （ok=false，但错误文案来自 git，不含我们的提示）；
+    //  - 工作区干净时（本用例的实际状态），simple-git 会静默返回成功（ok=true）。
+    // 断言文案才能把「我们的 guard 生效」与「git 自己兜底 / 空操作」区分开。
+    if (!res.ok) expect(res.error).toContain('不能为空');
     const after = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
     expect(after).toBe(before);
   });
@@ -277,5 +283,58 @@ describe('git 提交 / 取版本 / 远程', () => {
     const res = await remoteOp(repo, 'push');
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.length).toBeGreaterThan(0);
+  });
+
+  it('fileAtRev 对二进制文件返回 binary=true 且不返回内容', async () => {
+    const { fileAtRev } = await import('../../src/main/git.js');
+    const binPath = path.join(repo, 'logo.bin');
+    // 含 NUL 字节 → 二进制判定；前 8KB 采样内即可命中
+    fs.writeFileSync(binPath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02, 0x03]));
+    sh(['add', 'logo.bin']);
+    sh(['commit', '-m', 'add binary']);
+
+    const res = await fileAtRev(repo, 'HEAD', 'logo.bin');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.binary).toBe(true);
+    expect(res.content).toBe('');
+    expect(res.truncated).toBe(false);
+  });
+
+  it('fileAtRev 对超过 1MB 的文本返回 truncated=true 且内容被截断', { timeout: 30000 }, async () => {
+    const { fileAtRev, MAX_TEXT_SIZE } = await import('../../src/main/git.js');
+    const bigPath = path.join(repo, 'big.txt');
+    // 纯 ASCII 文本，长度略超阈值，保证不会命中二进制判定（无 NUL）
+    const content = 'a'.repeat(MAX_TEXT_SIZE + 1024);
+    fs.writeFileSync(bigPath, content, 'utf8');
+    sh(['add', 'big.txt']);
+    sh(['commit', '-m', 'add big file']);
+
+    const res = await fileAtRev(repo, 'HEAD', 'big.txt');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.binary).toBe(false);
+    expect(res.truncated).toBe(true);
+    expect(res.content.length).toBe(MAX_TEXT_SIZE);
+  });
+
+  it('fileAtRev 按原始字节量长度：非法 UTF-8 文本不会因解码膨胀被误判超限', async () => {
+    const { fileAtRev, MAX_TEXT_SIZE } = await import('../../src/main/git.js');
+    const p = path.join(repo, 'latin1.txt');
+    // 0x80 是孤立的 UTF-8 连续字节（非法序列）：解码为 1 个 U+FFFD，但重新用 utf8
+    // 编码会膨胀成 3 字节（EF BF BD）。
+    // 若实现走「先解码成字符串、再 re-encode 成 Buffer」这条路径（simple-git 的 raw() 正是
+    // 如此），长度会被放大 3 倍越过 MAX_TEXT_SIZE，此处就会误报 truncated=true。
+    // 正确实现直接在原始 Buffer 上量长度 —— 这正是「刻意不用 raw()」保住字节保真的意义。
+    fs.writeFileSync(p, Buffer.alloc(MAX_TEXT_SIZE, 0x80));
+    sh(['add', 'latin1.txt']);
+    sh(['commit', '-m', 'add latin1']);
+
+    const res = await fileAtRev(repo, 'HEAD', 'latin1.txt');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.binary).toBe(false); // 首 8KB 无 NUL，不命中二进制分支
+    expect(res.truncated).toBe(false); // 原始字节长度恰为上限，不算超限
+    expect(res.content.length).toBe(MAX_TEXT_SIZE);
   });
 });

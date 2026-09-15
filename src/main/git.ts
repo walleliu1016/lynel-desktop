@@ -282,6 +282,9 @@ export async function fileAtRev(
     const { stdout } = await execFileAsync('git', ['show', `${rev}:${relPath}`], {
       cwd: workDir,
       encoding: 'buffer',
+      // 4MB 上限：超过它 execFile 会 kill 子进程并 reject，转成 { ok:false, error }。
+      // 这与 files.ts 的 readFileEntry 在超限文件上的行为不同（那边稳定返回 truncated:true）——
+      // 这里有意从简：diff 场景下源文件极少超过 4MB，报错比截断更能暴露异常。
       maxBuffer: MAX_TEXT_SIZE * 4,
     });
     const data = stdout as unknown as Buffer;
