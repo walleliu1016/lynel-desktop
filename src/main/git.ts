@@ -178,12 +178,15 @@ export function unstage(workDir: string, relPaths: string[]): Promise<GitOpResul
   });
 }
 
-/** 把相对路径安全解析到 workDir 内；越界抛错（与 files.ts 的 resolveEntry 同一约定，
- *  git 面板的删除操作同样不能让路径逃出工作目录） */
+/** 把相对路径安全解析到 workDir 内；越界抛错。
+ *  这里**刻意比 files.ts 的 resolveEntry 更严**：那边放行 target === base，因为它的调用点
+ *  都只接受 UI 选中条目、且不执行删除。本函数的调用点会对结果做 rmSync(recursive)，
+ *  而 rel 为 '.' 或空串时 target === base 会解析到工作目录本身 —— 放行等于允许删掉整个
+ *  工作目录。爆炸半径不该用「UI 不会这么传」来担保，故只允许严格位于工作目录内部的路径。 */
 function resolveInside(workDir: string, rel: string): string {
   const base = path.resolve(workDir);
   const target = path.resolve(base, rel);
-  if (target !== base && !target.startsWith(base + path.sep)) {
+  if (!target.startsWith(base + path.sep)) {
     throw new Error(`路径越界: ${rel}`);
   }
   return target;
@@ -370,24 +373,59 @@ export async function unwatchGit(workDir: string): Promise<void> {
 }
 
 // —— IPC ——
+/** 所有以 workDir 为第一参数的 handler 都过这道守卫：空目录会让 simple-git 回退到
+ *  process.cwd()（开发态即本仓库），可能把变更写进应用自己的仓库。
+ *  渲染层已经拦过一次，这里是主进程侧的纵深防御 —— 主进程是最后一道防线。
+ *  返回形状与各 channel 原有的错误分支一致（{ ok: false, error }），不改变成功路径。 */
+function withWorkDir<T extends unknown[]>(
+  fn: (workDir: string, ...args: T) => Promise<unknown>,
+) {
+  return async (_e: unknown, workDir: string, ...args: T) => {
+    if (!workDir) return { ok: false, error: 'workDir 为空' };
+    return fn(workDir, ...args);
+  };
+}
+
 export function registerGitIpc(): void {
-  ipcMain.handle('git:status', (_e, workDir: string) => getStatus(workDir));
-  ipcMain.handle('git:stage', (_e, workDir: string, paths: string[]) => stage(workDir, paths));
-  ipcMain.handle('git:unstage', (_e, workDir: string, paths: string[]) => unstage(workDir, paths));
-  ipcMain.handle('git:discard', (_e, workDir: string, paths: string[]) => discard(workDir, paths));
-  ipcMain.handle('git:commit', (_e, workDir: string, message: string) => commit(workDir, message));
-  ipcMain.handle('git:remoteOp', (_e, workDir: string, op: 'fetch' | 'pull' | 'push') =>
-    remoteOp(workDir, op),
+  ipcMain.handle('git:status', withWorkDir((workDir: string) => getStatus(workDir)));
+  ipcMain.handle(
+    'git:stage',
+    withWorkDir((workDir: string, paths: string[]) => stage(workDir, paths)),
   );
-  ipcMain.handle('git:fileAtRev', (_e, workDir: string, rev: string, relPath: string) =>
-    fileAtRev(workDir, rev, relPath),
+  ipcMain.handle(
+    'git:unstage',
+    withWorkDir((workDir: string, paths: string[]) => unstage(workDir, paths)),
   );
-  ipcMain.handle('git:watch', (_e, workDir: string) => {
-    watchGit(workDir);
-    return { ok: true };
-  });
-  ipcMain.handle('git:unwatch', async (_e, workDir: string) => {
-    await unwatchGit(workDir);
-    return { ok: true };
-  });
+  ipcMain.handle(
+    'git:discard',
+    withWorkDir((workDir: string, paths: string[]) => discard(workDir, paths)),
+  );
+  ipcMain.handle(
+    'git:commit',
+    withWorkDir((workDir: string, message: string) => commit(workDir, message)),
+  );
+  ipcMain.handle(
+    'git:remoteOp',
+    withWorkDir((workDir: string, op: 'fetch' | 'pull' | 'push') => remoteOp(workDir, op)),
+  );
+  ipcMain.handle(
+    'git:fileAtRev',
+    withWorkDir((workDir: string, rev: string, relPath: string) =>
+      fileAtRev(workDir, rev, relPath),
+    ),
+  );
+  ipcMain.handle(
+    'git:watch',
+    withWorkDir(async (workDir: string) => {
+      watchGit(workDir);
+      return { ok: true };
+    }),
+  );
+  ipcMain.handle(
+    'git:unwatch',
+    withWorkDir(async (workDir: string) => {
+      await unwatchGit(workDir);
+      return { ok: true };
+    }),
+  );
 }

@@ -64,17 +64,38 @@ export const useGitStore = defineStore('git', () => {
     }
   }
 
+  /** 当前已在主进程挂上 watcher 的目录。必须显式记录：setSession 是异步的，
+   *  两次调用交错时 workDir 可能已被后来的调用改写，从它反推会漏卸载
+   *  （A→B→C 交错下 B 的 watcher 会永远留在主进程的 Map 里）。 */
+  let watchedDir = ''
+  /** setSession 的调用序号。仅靠 watchedDir 不足以挡住交错：A→B→C 时 B 恢复后
+   *  会看到 watchedDir 已是 C，于是「C !== B」成立又重新挂上 B，泄漏 C。
+   *  用序号保证只有最后一次调用才有资格落 watcher。 */
+  let sessionSeq = 0
+
   /** 切换会话：换目录、重挂 watcher、刷新一次 */
   async function setSession(wd: string): Promise<void> {
     if (workDir.value === wd) return
-    const prev = workDir.value
+    const seq = ++sessionSeq
     workDir.value = wd
     status.value = null
     error.value = ''
-    if (prev) await GitUnwatch(prev).catch(() => {})
+    // 卸载「真正挂着的那一个」，而不是当前 workDir
+    if (watchedDir && watchedDir !== wd) {
+      const old = watchedDir
+      watchedDir = ''
+      await GitUnwatch(old).catch(() => {})
+    }
     if (!wd) return
-    await GitWatch(wd).catch(() => {})
-    await refresh()
+    // 本次已被更晚的调用取代：绝不再挂 watcher（否则挂上的是已离开的目录且永不回收）
+    if (seq !== sessionSeq) return
+    // 若已有别的调用抢先挂上了同一个目标目录，就不用重复挂
+    if (watchedDir !== wd) {
+      await GitWatch(wd).catch(() => {})
+      watchedDir = wd
+    }
+    // 同一时刻只有一个会话是「当前」的，只有最新的那次刷新才有意义
+    if (seq === sessionSeq) await refresh()
   }
 
   /** 统一包装「执行一次写操作 + 刷新 + 失败提示」 */
