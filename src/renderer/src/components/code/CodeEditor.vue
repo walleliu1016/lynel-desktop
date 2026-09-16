@@ -152,6 +152,19 @@ watch(
   },
 )
 
+// 从 diff tab 切回编辑器 tab：容器刚从 display:none 恢复。Monaco 在隐藏期间会被
+// 布局成 0×0，而恢复时 automaticLayout 的 ResizeObserver 未必再触发一次 ——
+// 于是 model 明明还在，画面上却一行都没有（整块空白、行号也缺）。
+// 切换时主动补一次 layout，不依赖自动检测。
+watch(
+  () => store.activeView,
+  async (v) => {
+    if (v !== 'file') return
+    await nextTick()
+    requestAnimationFrame(() => editor?.layout())
+  },
+)
+
 // 外部变更 reload / 保存后 store.content 变化：model 与 store 内容不一致则同步。
 // 保存场景 model 内容 === f.content（等式守卫跳过 setValue，避免重置撤销栈）；
 // reload 场景 model 持有旧内容 ≠ f.content → setValue 刷成磁盘内容（放弃本地改动语义）。

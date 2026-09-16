@@ -35,8 +35,13 @@ export const useFilesStore = defineStore('files', () => {
   const activeRelPath = ref<string | null>(null)
   const collapsed = ref(false) // 侧栏折叠态（HomeView 持有也可，先放这里）
   const rootCreateRequest = ref(0) // 工具条「新建文件」请求计数：+1 触发树根弹行内输入
-  /** 当前要在编辑器区展示的 diff（null = 显示普通编辑器） */
+  /** 当前打开的 diff（null = 没有 diff tab）。
+   *  rev 为 ':0' 表示对比暂存区，'HEAD' 表示对比最后一次提交。 */
   const diffRequest = ref<{ relPath: string; rev: string } | null>(null)
+  /** 编辑器区当前展示哪一侧：'file' = 普通编辑器，'diff' = diff 视图。
+   *  diffRequest 非空只代表「存在 diff tab」，不代表正在看它 —— diff 与文件 tab 并列，
+   *  用户可以切回文件而不必关闭 diff，所以两者必须分开记录。 */
+  const activeView = ref<'file' | 'diff'>('file')
 
   // 每个会话独立记忆的工作区现场。切换会话即时还原。
   const sessionState = ref<Record<string, SessionWorkspace>>({})
@@ -64,6 +69,7 @@ export const useFilesStore = defineStore('files', () => {
     workDir.value = wd
     // 切换会话清掉 diff，避免展示上一个目录的文件
     diffRequest.value = null
+    activeView.value = 'file'
     currentSessionId.value = id
     tree.value = { '': [] }
     rootCreateRequest.value = 0
@@ -103,13 +109,21 @@ export const useFilesStore = defineStore('files', () => {
     sessionState.value = next
   }
 
-  /** 在编辑器区打开某个文件的 diff。rev 为 ':0' 表示对比暂存区，'HEAD' 表示对比最后一次提交 */
+  /** 打开某个文件的 diff（作为 tab 与文件并列），并切到 diff 视图 */
   function openDiff(relPath: string, rev: string) {
     diffRequest.value = { relPath, rev }
+    activeView.value = 'diff'
   }
 
   function closeDiff() {
     diffRequest.value = null
+    activeView.value = 'file'
+  }
+
+  /** 激活某个已打开的文件 tab：切回编辑器视图 */
+  function activateFile(relPath: string) {
+    activeRelPath.value = relPath
+    activeView.value = 'file'
   }
 
   /** 拉取单层目录（已展开时刷新用）。返回条目列表，不抛错时更新 tree。 */
@@ -135,13 +149,14 @@ export const useFilesStore = defineStore('files', () => {
     const wd = workDir.value
     if (!wd) return
     const existing = openFiles.value.find((o) => o.relPath === relPath)
-    if (existing) { activeRelPath.value = relPath; return }
+    if (existing) { activeRelPath.value = relPath; activeView.value = 'file'; return }
     const r = await FileRead(wd, relPath)
     openFiles.value = [...openFiles.value, {
       relPath, content: r.content, dirty: false, binary: r.binary,
       truncated: r.truncated, externalChanged: false, savedVersion: 0,
     }]
     activeRelPath.value = relPath
+    activeView.value = 'file'
   }
 
   /** 写草稿（整体 spread 更新） */
@@ -272,7 +287,7 @@ export const useFilesStore = defineStore('files', () => {
 
   return {
     workDir, currentSessionId, tree, expanded, openFiles, drafts, activeRelPath, collapsed, rootCreateRequest,
-    diffRequest, openDiff, closeDiff,
+    diffRequest, activeView, openDiff, closeDiff, activateFile,
     setSession, forgetSession, loadDir, toggleExpand, openFile, closeFile, saveFile, reloadFile,
     setDraft, clearDraft,
     createEntry, renameEntry, deleteEntry,

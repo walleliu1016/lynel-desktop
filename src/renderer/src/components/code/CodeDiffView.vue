@@ -165,16 +165,23 @@ async function load() {
 
     const lang = languageFor(req.relPath)
     const uriBase = `file:///${req.relPath}`
-    originalModel = m.editor.createModel(
-      left.content,
-      lang,
-      m.Uri.parse(`${uriBase}?rev=HEAD`),
-    )
-    modifiedModel = m.editor.createModel(
-      right.content,
-      lang,
-      m.Uri.parse(`${uriBase}?rev=${req.rev}`),
-    )
+    // 两侧 URI 必须互不相同。未暂存的 diff 两侧 rev 都是 'HEAD'（HEAD ↔ 工作区），
+    // 只用 `?rev=` 会让 original / modified 解析成同一个 URI；Monaco 的 ModelService
+    // 对同一 URI 只允许一个 model，第二次 createModel 直接抛
+    // 「Cannot add model because it already exists!」。加 `side` 区分两侧。
+    // 建 model 前顺带清掉同 URI 的孤儿 model：正常路径由 disposeModels() 释放，
+    // 但 HMR / 异常路径可能漏掉，留着会让这里再次撞车。
+    const makeModel = (
+      content: string,
+      rev: string,
+      side: 'original' | 'modified',
+    ): ITextModel => {
+      const uri = m.Uri.parse(`${uriBase}?rev=${rev}&side=${side}`)
+      m.editor.getModel(uri)?.dispose()
+      return m.editor.createModel(content, lang, uri)
+    }
+    originalModel = makeModel(left.content, 'HEAD', 'original')
+    modifiedModel = makeModel(right.content, req.rev, 'modified')
     ed.setModel({ original: originalModel, modified: modifiedModel })
   } catch (e: any) {
     // 与 try 内一致：被取代的那次加载不得再覆盖画面（errorMsg 在模板里优先于宿主区，
@@ -193,6 +200,14 @@ watch(() => files.diffRequest, async () => {
   await nextTick()
   await load()
 }, { deep: true })
+
+// 与 CodeEditor 对称：从文件 tab 切回 diff tab 时容器刚从 display:none 恢复，
+// 主动补一次 layout，避免 Monaco 停在隐藏期间算出的 0×0 尺寸上。
+watch(() => files.activeView, async (v) => {
+  if (v !== 'diff') return
+  await nextTick()
+  requestAnimationFrame(() => diffEditor?.layout())
+})
 
 watch(() => settings.cfg?.terminal.theme, () => { void syncTheme() })
 

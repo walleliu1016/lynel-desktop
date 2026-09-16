@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import Icon from '../Icon.vue'
 import { useFilesStore } from '../../stores/files'
 
@@ -8,9 +9,10 @@ function basename(relPath: string): string {
   return relPath.slice(relPath.lastIndexOf('/') + 1)
 }
 
-function activate(relPath: string) {
-  store.activeRelPath = relPath
-}
+/** diff tab 的对比对象标签：暂存区（index）或最后一次提交（HEAD） */
+const diffRevLabel = computed(() =>
+  store.diffRequest?.rev === ':0' ? '暂存区' : 'HEAD',
+)
 
 function onReload(relPath: string) {
   void store.reloadFile(relPath).catch(() => {})
@@ -22,14 +24,14 @@ function onClose(relPath: string) {
 </script>
 
 <template>
-  <div v-if="store.openFiles.length" class="file-tabs">
+  <div v-if="store.openFiles.length || store.diffRequest" class="file-tabs">
     <div
       v-for="f in store.openFiles"
       :key="f.relPath"
       class="tab"
-      :class="{ active: store.activeRelPath === f.relPath }"
+      :class="{ active: store.activeView === 'file' && store.activeRelPath === f.relPath }"
       :title="f.relPath"
-      @click="activate(f.relPath)"
+      @click="store.activateFile(f.relPath)"
     >
       <span v-if="f.dirty" class="dirty-dot" />
       <Icon name="file-text" :size="13" />
@@ -44,6 +46,21 @@ function onClose(relPath: string) {
         <span>重新加载</span>
       </button>
       <button class="close-btn" title="关闭" @click.stop="onClose(f.relPath)">
+        <Icon name="close" :size="12" />
+      </button>
+    </div>
+    <!-- diff tab：与文件 tab 并列，可随时切回文件而不必关掉它 -->
+    <div
+      v-if="store.diffRequest"
+      class="tab"
+      :class="{ active: store.activeView === 'diff' }"
+      :title="`${store.diffRequest.relPath} ↔ ${diffRevLabel}`"
+      @click="store.activeView = 'diff'"
+    >
+      <Icon name="git-compare" :size="13" />
+      <span class="tab-name">{{ basename(store.diffRequest.relPath) }}</span>
+      <span class="tab-rev">{{ diffRevLabel }}</span>
+      <button class="close-btn" title="关闭 diff" @click.stop="store.closeDiff()">
         <Icon name="close" :size="12" />
       </button>
     </div>
@@ -88,6 +105,12 @@ function onClose(relPath: string) {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 180px;
+}
+/* diff tab 的对比对象标签（暂存区 / HEAD） */
+.tab-rev {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-tertiary);
 }
 .reload-btn {
   display: inline-flex;
