@@ -39,6 +39,8 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SerializeAddon } from '@xterm/addon-serialize'
+import { WebglAddon } from '@xterm/addon-webgl'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { FileLinkProvider } from '../terminal/FileLinkProvider'
 import { applyThemeSync, waitForFontReady, scheduleThemeSync } from '../terminal/theme'
 import '@xterm/xterm/css/xterm.css'
@@ -312,8 +314,32 @@ async function initializeTerminal() {
 
   term.open(terminalEl.value)
 
-  // 强制 xterm renderer 用新字体重测 char size，避免 fit 拿到旧 metrics 算出错的 cols
-  ;(term as any)._core?._renderService?.onCharSizeChanged?.()
+  // Unicode11：按 Unicode 11 的宽度规则给 CJK / emoji 占位。默认的 Unicode 6
+  // 宽度表会让中文与 emoji 错位，中文环境下必须开。要求 allowProposedApi。
+  try {
+    term.loadAddon(new Unicode11Addon())
+    term.unicode.activeVersion = '11'
+  } catch (err) {
+    console.warn('[XtermTerminal] Unicode11Addon 加载失败，中文宽度可能错位:', err)
+  }
+
+  // WebGL 渲染器：内置 dom renderer 在大 scrollback + 高频输出时重排代价高，
+  // Claude 会话是流式输出，换 WebGL 后渲染开销显著下降。
+  // 必须在 open() 之后加载（依赖已挂载的 DOM 与 canvas context）。
+  // 远程桌面 / 虚拟机 / 显卡驱动异常等环境会加载失败或运行中丢失 context，
+  // 此时 dispose 掉并静默回退到内置 renderer —— 只影响性能，不影响功能。
+  try {
+    const webgl = new WebglAddon()
+    webgl.onContextLoss(() => { webgl.dispose() })
+    term.loadAddon(webgl)
+  } catch (err) {
+    console.warn('[XtermTerminal] WebglAddon 不可用，回退内置渲染器:', err)
+  }
+
+  // 强制 renderer 用新字体重测 char size，避免 fit 拿到旧 metrics 算出错的 cols。
+  // 注意：xterm 6.1.0-beta.304 起 `_core._renderService.onCharSizeChanged` 已移除
+  // （xterm 重构了渲染层），char size 的职责移到 CharSizeService，故改用 measure()。
+  forceCharSizeMeasure()
   // 等待浏览器完成布局，让 xterm 的 char size 测量和 IntersectionObserver 生效
   await new Promise((resolve) => requestAnimationFrame(resolve))
   await new Promise((resolve) => requestAnimationFrame(resolve))
@@ -466,6 +492,17 @@ function fitAndResize(): boolean {
   lastRows = term.rows
   ResizeTerminal(props.sessionId, term.cols, term.rows).catch(() => {})
   return true
+}
+
+// 强制 renderer 用当前字体重新测量字符尺寸。
+// xterm 6.1.0-beta.304 起 `_core._renderService.onCharSizeChanged` 已移除（渲染层重构），
+// char size 的职责移交给 CharSizeService，改用 measure()。两个可能的挂载位置都探一次
+// （Terminal 实例 / TerminalCore），内部结构再变时至少不会静默失效。
+function forceCharSizeMeasure(): void {
+  if (!term) return
+  const t = term as any
+  const svc = t._charSizeService ?? t._core?._charSizeService
+  svc?.measure?.()
 }
 
 // 直接调用 xterm.js 内部的 viewport._sync()，强制刷新滚动条尺寸。

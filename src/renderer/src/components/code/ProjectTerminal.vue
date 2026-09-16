@@ -2,6 +2,8 @@
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebglAddon } from '@xterm/addon-webgl'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import '@xterm/xterm/css/xterm.css'
 import Icon from '../Icon.vue'
 import {
@@ -103,6 +105,23 @@ async function init() {
   fitAddon = new FitAddon()
   term.loadAddon(fitAddon)
   term.open(hostEl.value)
+
+  // 与 XtermTerminal 保持一致：Unicode11 让 CJK / emoji 按正确宽度占位
+  try {
+    term.loadAddon(new Unicode11Addon())
+    term.unicode.activeVersion = '11'
+  } catch (err) {
+    console.warn('[ProjectTerminal] Unicode11Addon 加载失败，中文宽度可能错位:', err)
+  }
+
+  // WebGL 渲染器，加载失败或 context 丢失时静默回退内置 renderer（详见 XtermTerminal 注释）
+  try {
+    const webgl = new WebglAddon()
+    webgl.onContextLoss(() => { webgl.dispose() })
+    term.loadAddon(webgl)
+  } catch (err) {
+    console.warn('[ProjectTerminal] WebglAddon 不可用，回退内置渲染器:', err)
+  }
 
   // 等两帧布局，让 xterm 的 char size 测量稳定后再 fit
   await new Promise((r) => requestAnimationFrame(r))
