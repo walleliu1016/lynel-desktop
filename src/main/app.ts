@@ -8,6 +8,7 @@ import { getStore } from './store.js';
 import { getBus } from './events.js';
 import { getLogger } from './log.js';
 import { dshManager } from './dsh.js';
+import { installHarnessCookie } from './dsh-cookie.js';
 import * as jsonl from './jsonl.js';
 import * as session from './session.js';
 import { normalizeWorkdir } from './workdir.js';
@@ -2138,7 +2139,11 @@ export class App {
     ipcMain.on('window:center', () => this.window?.center());
     ipcMain.on('window:quit', () => app.quit());
 
-    // DeepSeek Harness（dsh）：确保/关闭 harness 进程，返回 iframe 加载 URL
+    // harness 每次就绪（首次 / 重启 / 更新后）都先把鉴权 cookie 装进 Electron 会话：
+    // dsh 下发的是 SameSite=Strict，iframe 的跨站上下文里带不上，页面会停在鉴权提示。
+    dshManager.onReady((handle) => installHarnessCookie(handle.url));
+
+    // DeepSeek Harness（dsh）：确保/关闭/重启 harness 进程，返回 iframe 加载 URL
     ipcMain.handle('dsh:ensure', async (): Promise<{ url: string; port: number }> => {
       const handle = await dshManager.ensure();
       return { url: handle.url, port: handle.port };
@@ -2146,6 +2151,16 @@ export class App {
     ipcMain.handle('dsh:shutdown', async () => {
       await dshManager.shutdown();
     });
+    // 重启：装完插件后 `~/.dsh` 的 profile 改动不热加载，必须重启才生效。
+    // 每次启动都是 `--port 0`，端口会变，调用方要把 iframe 切到返回的新 URL。
+    ipcMain.handle('dsh:restart', async (): Promise<{ url: string; port: number }> => {
+      const handle = await dshManager.restart();
+      return { url: handle.url, port: handle.port };
+    });
+    ipcMain.handle('dsh:version', async () => dshManager.version());
+    // 更新：内部先停 harness（Windows 下运行中的 node 会锁定全局包文件），
+    // 安装完成后由渲染进程决定是否重启
+    ipcMain.handle('dsh:update', async () => dshManager.update());
   }
 
   /** 工作区信任确认自动接受：监听 PTY 输出，出现 claude/codex 的信任确认界面时

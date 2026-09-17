@@ -135,6 +135,9 @@ const api = {
   // DeepSeek Harness（dsh）
   dshEnsure: () => ipcRenderer.invoke('dsh:ensure'),
   dshShutdown: () => ipcRenderer.invoke('dsh:shutdown'),
+  dshRestart: () => ipcRenderer.invoke('dsh:restart'),
+  dshVersion: () => ipcRenderer.invoke('dsh:version'),
+  dshUpdate: () => ipcRenderer.invoke('dsh:update'),
 
   // 右侧文件编辑器侧栏
   fileListDir: (workDir: string, relPath?: string) =>

@@ -118,6 +118,7 @@
               </button>
             </div>
             <div class="bottom-right">
+              <HarnessMenu />
               <button class="top-btn tooltip-wrap" aria-label="使用指南" @click="openGuideTab">
                 <Icon name="help" :size="13" />
                 <span class="tooltip">使用指南</span>
@@ -129,6 +130,7 @@
             </div>
           </div>
           <div v-else class="bottom-collapsed">
+            <HarnessMenu collapsed />
             <button class="top-btn tooltip-wrap" aria-label="使用指南" @click="openGuideTab">
               <Icon name="help" :size="16" />
               <span class="tooltip">使用指南</span>
@@ -215,19 +217,28 @@
                避免 Chromium 冻结 display:none 的跨源 iframe 导致切回时重新加载页面。 -->
           <div class="dsh-frame-wrap" :class="{ active: tabsStore.activeType === 'harness' }">
             <iframe
-              v-if="harnessUrl"
-              :src="harnessUrl"
+              v-if="harness.url"
+              :src="harness.url"
               class="dsh-frame"
               allow="clipboard-read; clipboard-write"
             />
-            <div v-if="harnessLoading" class="dsh-state">
+            <!-- pending 覆盖启动 / 重启 / 更新三种耗时状态，文案由 store 给 -->
+            <div v-if="harness.pending" class="dsh-state">
               <Icon name="loader" :size="18" class="dsh-spinner" />
-              <span>正在启动 DeepSeek Harness…</span>
+              <span>{{ harness.busyText }}</span>
             </div>
-            <div v-else-if="harnessError" class="dsh-state">
-              <Icon name="alert-circle" :size="18" />
-              <span class="dsh-error-text">{{ harnessError }}</span>
-              <button class="dsh-retry" @click="loadHarness">重试</button>
+            <!-- 启动失败的报错往往是一整段 stderr 堆栈：必须左对齐、等宽、可滚动、
+                 可换行。原先跟着 loading 一起居中，长文本既读不了也看不全 -->
+            <div v-else-if="harness.error" class="dsh-error">
+              <div class="dsh-error-head">
+                <Icon name="alert-circle" :size="16" />
+                <span class="dsh-error-title">DeepSeek Harness 启动失败</span>
+                <div class="dsh-error-actions">
+                  <button class="dsh-retry" @click="onCopyHarnessError">复制报错</button>
+                  <button class="dsh-retry" @click="harness.ensure()">重试</button>
+                </div>
+              </div>
+              <pre class="dsh-error-body">{{ harness.error }}</pre>
             </div>
           </div>
         </div>
@@ -289,9 +300,11 @@ import { useFavoritesStore, type FavoriteSession } from '../stores/favorites'
 import { useTabsStore } from '../stores/tabs'
 import { useTraceStore } from '../stores/trace'
 import { useFilesStore } from '../stores/files'
+import { useHarnessStore } from '../stores/harness'
+import HarnessMenu from '../components/HarnessMenu.vue'
 import type { RecentSession } from '../types/recent'
 import type { SessionState } from '../types/session'
-import { GetAppInfo, AdoptSession, OpenSessionTerminal, CloseSession, Logout, CloudConnectionState, GetSettings, DshEnsure } from '../composables/useElectron'
+import { GetAppInfo, AdoptSession, OpenSessionTerminal, CloseSession, Logout, CloudConnectionState, GetSettings, ClipboardWrite } from '../composables/useElectron'
 import { EventsOn, GetUpdateStatus } from '../composables/useElectron'
 import { useWindowState } from '../composables/useWindowState'
 import { pushToast } from '../composables/useToast'
@@ -306,6 +319,7 @@ const favorites = useFavoritesStore()
 const tabsStore = useTabsStore()
 const trace = useTraceStore()
 const files = useFilesStore()
+const harness = useHarnessStore()
 useEventStream()
 
 const showNewSession = ref(false)
@@ -316,10 +330,6 @@ const username = ref('')
 const version = ref('')
 const sidebarCollapsed = ref(false)
 const workspaceCollapsed = ref(true)
-// DeepSeek Harness tab：iframe 加载 harness 完整 UI
-const harnessUrl = ref('')
-const harnessLoading = ref(false)
-const harnessError = ref('')
 // 每个会话各自的 终端/Trace 选中态（按 sessionId 记录），切回会话时保留
 const subTabBySession = ref<Record<string, 'terminal' | 'trace' | 'code'>>({})
 const activeSubTab = computed<'terminal' | 'trace' | 'code'>(() => {
@@ -580,27 +590,13 @@ async function onTerminalOpenFile(p: { sessionId: string; workdir: string; relPa
   }
 }
 
-/** 加载/启动 harness（幂等：已就绪则复用 URL，重试按钮复用）。 */
-async function loadHarness() {
-  if (harnessUrl.value) return
-  harnessLoading.value = true
-  harnessError.value = ''
-  try {
-    const res = await DshEnsure()
-    harnessUrl.value = res.url
-  } catch (e: any) {
-    harnessError.value = e?.message ?? String(e)
-  } finally {
-    harnessLoading.value = false
-  }
-}
 
 // 首次进入 harness tab 时加载 harness（不自动折叠左侧栏）
 // 离开会话页时清理 files store（停止 watcher + 清空状态），避免残留影响终端性能
 watch(
   () => tabsStore.activeType,
   (type) => {
-    if (type === 'harness') void loadHarness()
+    if (type === 'harness') void harness.ensure()
     if (type !== 'session') void files.setSession('', '')
   },
 )
@@ -629,6 +625,16 @@ function onCollapsedEntry(fn: () => void) {
   if (sidebarCollapsed.value) sidebarCollapsed.value = false
   favListOpen.value = false
   fn()
+}
+
+/** 复制 harness 启动报错：长堆栈在界面上不好逐段选中，直接整段复制 */
+async function onCopyHarnessError() {
+  try {
+    await ClipboardWrite(harness.error)
+    pushToast({ level: 'info', source: 'harness', message: '报错已复制到剪贴板' })
+  } catch (e: any) {
+    pushToast({ level: 'error', source: 'harness', message: `复制失败：${e?.message ?? e}` })
+  }
 }
 
 /** 打开 Harness（全屏 Web）：自动折叠左侧栏，让出空间；同时退出收藏视图 */
@@ -1275,7 +1281,48 @@ watch(
     animation: dsh-spin 1s linear infinite !important;
   }
 }
-.dsh-error-text { color: var(--status-error); max-width: 420px; text-align: center; line-height: 1.5; }
+/* 错误态：整体左对齐铺满，正文区自己滚动 —— 长堆栈要能看全、能选中复制 */
+.dsh-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 22px;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+.dsh-error-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  color: var(--status-error);
+  font-size: var(--fs-body-sm);
+}
+.dsh-error-title { font-weight: 600; }
+.dsh-error-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+.dsh-error-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
 .dsh-retry {
   padding: 6px 14px;
   border: 1px solid var(--border-strong);

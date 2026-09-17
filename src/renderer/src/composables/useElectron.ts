@@ -11,6 +11,7 @@ import type {
   GitStashEntry,
   GitStatusResult,
 } from '../../../main/git.js';
+import type { DshVersionInfo } from '../../../main/dsh.js';
 
 declare global {
   interface Window {
@@ -126,8 +127,14 @@ export const GetUpdateConfig = () => api().getUpdateConfig();
 export const UpdateUpdateConfig = (cfg: any) => api().updateUpdateConfig(cfg);
 
 // DeepSeek Harness（dsh）
-export const DshEnsure = () => api().dshEnsure();
+export const DshEnsure = (): Promise<{ url: string; port: number }> => api().dshEnsure();
 export const DshShutdown = () => api().dshShutdown();
+export const DshRestart = (): Promise<{ url: string; port: number }> => api().dshRestart();
+export const DshVersion = (): Promise<DshVersionInfo> => api().dshVersion();
+export const DshUpdate = (): Promise<{ version: string }> => api().dshUpdate();
+// 重导出给 store 用（`export type { X } from` 不会把 X 带进当前作用域，
+// 上面的 import type 与本行都要写）
+export type { DshVersionInfo };
 
 // 右侧文件编辑器侧栏
 export const FileListDir = (workDir: string, relPath?: string) => api().fileListDir(workDir, relPath);
