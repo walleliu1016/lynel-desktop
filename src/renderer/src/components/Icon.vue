@@ -4,6 +4,7 @@ import {
   Activity,
   AlertCircle,
   AlertTriangle,
+  Archive,
   ArrowDown,
   ArrowLeft,
   ArrowLeftToLine,
@@ -30,6 +31,7 @@ import {
   FolderTree,
   GitBranch,
   GitCompare,
+  History,
   Home,
   Loader2,
   MessageSquare,
@@ -70,6 +72,7 @@ const props = defineProps<{
 }>()
 
 const icons: Record<string, unknown> = {
+  archive: Archive,
   minimize: Minus,
   maximize: Square,
   restore: Copy,
@@ -105,6 +108,7 @@ const icons: Record<string, unknown> = {
   'folder-tree': FolderTree,
   'git-branch': GitBranch,
   'git-compare': GitCompare,
+  'history': History,
   loader: Loader2,
   terminal: Terminal,
   'shield-alert': ShieldAlert,

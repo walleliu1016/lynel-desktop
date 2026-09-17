@@ -36,12 +36,20 @@ export const useFilesStore = defineStore('files', () => {
   const collapsed = ref(false) // 侧栏折叠态（HomeView 持有也可，先放这里）
   const rootCreateRequest = ref(0) // 工具条「新建文件」请求计数：+1 触发树根弹行内输入
   /** 当前打开的 diff（null = 没有 diff tab）。
-   *  rev 为 ':0' 表示对比暂存区，'HEAD' 表示对比最后一次提交。 */
-  const diffRequest = ref<{ relPath: string; rev: string } | null>(null)
+   *  left / right 是要对比的两个 revision；right 为 `WORKTREE` 时表示右侧取工作区文件内容
+   *  （而不是某个 revision 里的版本）。label 是标签栏上的对比说明（工作区 / 暂存区 / 短 hash）。 */
+  const diffRequest = ref<{
+    relPath: string
+    left: string
+    right: string
+    label: string
+  } | null>(null)
   /** 编辑器区当前展示哪一侧：'file' = 普通编辑器，'diff' = diff 视图。
    *  diffRequest 非空只代表「存在 diff tab」，不代表正在看它 —— diff 与文件 tab 并列，
    *  用户可以切回文件而不必关闭 diff，所以两者必须分开记录。 */
   const activeView = ref<'file' | 'diff'>('file')
+  /** 是否在编辑器里显示行内 blame（由 FileTabs 上的开关控制，跨文件保持） */
+  const blameEnabled = ref(false)
 
   // 每个会话独立记忆的工作区现场。切换会话即时还原。
   const sessionState = ref<Record<string, SessionWorkspace>>({})
@@ -109,9 +117,11 @@ export const useFilesStore = defineStore('files', () => {
     sessionState.value = next
   }
 
-  /** 打开某个文件的 diff（作为 tab 与文件并列），并切到 diff 视图 */
-  function openDiff(relPath: string, rev: string) {
-    diffRequest.value = { relPath, rev }
+  /** 打开某个文件的 diff（作为 tab 与文件并列），并切到 diff 视图。
+   *  变更列表用 `openDiff(path, 'HEAD', 'WORKTREE', '工作区')`；
+   *  查看历史提交里的文件用 `openDiff(path, hash + '^', hash, shortHash)`。 */
+  function openDiff(relPath: string, left: string, right: string, label: string) {
+    diffRequest.value = { relPath, left, right, label }
     activeView.value = 'diff'
   }
 
@@ -287,7 +297,7 @@ export const useFilesStore = defineStore('files', () => {
 
   return {
     workDir, currentSessionId, tree, expanded, openFiles, drafts, activeRelPath, collapsed, rootCreateRequest,
-    diffRequest, activeView, openDiff, closeDiff, activateFile,
+    diffRequest, activeView, blameEnabled, openDiff, closeDiff, activateFile,
     setSession, forgetSession, loadDir, toggleExpand, openFile, closeFile, saveFile, reloadFile,
     setDraft, clearDraft,
     createEntry, renameEntry, deleteEntry,

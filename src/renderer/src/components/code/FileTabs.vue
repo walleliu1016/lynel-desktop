@@ -9,10 +9,8 @@ function basename(relPath: string): string {
   return relPath.slice(relPath.lastIndexOf('/') + 1)
 }
 
-/** diff tab 的对比对象标签：暂存区（index）或最后一次提交（HEAD） */
-const diffRevLabel = computed(() =>
-  store.diffRequest?.rev === ':0' ? '暂存区' : 'HEAD',
-)
+/** diff tab 的对比说明，直接取自 diffRequest（工作区 / 暂存区 / 短 hash） */
+const diffLabel = computed(() => store.diffRequest?.label ?? '')
 
 function onReload(relPath: string) {
   void store.reloadFile(relPath).catch(() => {})
@@ -25,45 +23,58 @@ function onClose(relPath: string) {
 
 <template>
   <div v-if="store.openFiles.length || store.diffRequest" class="file-tabs">
-    <div
-      v-for="f in store.openFiles"
-      :key="f.relPath"
-      class="tab"
-      :class="{ active: store.activeView === 'file' && store.activeRelPath === f.relPath }"
-      :title="f.relPath"
-      @click="store.activateFile(f.relPath)"
-    >
-      <span v-if="f.dirty" class="dirty-dot" />
-      <Icon name="file-text" :size="13" />
-      <span class="tab-name">{{ basename(f.relPath) }}</span>
-      <button
-        v-if="f.externalChanged"
-        class="reload-btn"
-        title="重新加载（放弃本地改动）"
-        @click.stop="onReload(f.relPath)"
+    <!-- 可滚动的 tab 区。右侧的开关按钮必须留在滚动容器之外，
+         否则 tab 一多就被推出视口、点不到了 -->
+    <div class="tab-scroll">
+      <div
+        v-for="f in store.openFiles"
+        :key="f.relPath"
+        class="tab"
+        :class="{ active: store.activeView === 'file' && store.activeRelPath === f.relPath }"
+        :title="f.relPath"
+        @click="store.activateFile(f.relPath)"
       >
-        <Icon name="warning" :size="12" />
-        <span>重新加载</span>
-      </button>
-      <button class="close-btn" title="关闭" @click.stop="onClose(f.relPath)">
-        <Icon name="close" :size="12" />
-      </button>
+        <span v-if="f.dirty" class="dirty-dot" />
+        <Icon name="file-text" :size="13" />
+        <span class="tab-name">{{ basename(f.relPath) }}</span>
+        <button
+          v-if="f.externalChanged"
+          class="reload-btn"
+          title="重新加载（放弃本地改动）"
+          @click.stop="onReload(f.relPath)"
+        >
+          <Icon name="warning" :size="12" />
+          <span>重新加载</span>
+        </button>
+        <button class="close-btn" title="关闭" @click.stop="onClose(f.relPath)">
+          <Icon name="close" :size="12" />
+        </button>
+      </div>
+      <!-- diff tab：与文件 tab 并列，可随时切回文件而不必关掉它 -->
+      <div
+        v-if="store.diffRequest"
+        class="tab"
+        :class="{ active: store.activeView === 'diff' }"
+        :title="`${store.diffRequest.relPath} · ${diffLabel}`"
+        @click="store.activeView = 'diff'"
+      >
+        <Icon name="git-compare" :size="13" />
+        <span class="tab-name">{{ basename(store.diffRequest.relPath) }}</span>
+        <span class="tab-rev">{{ diffLabel }}</span>
+        <button class="close-btn" title="关闭 diff" @click.stop="store.closeDiff()">
+          <Icon name="close" :size="12" />
+        </button>
+      </div>
     </div>
-    <!-- diff tab：与文件 tab 并列，可随时切回文件而不必关掉它 -->
-    <div
-      v-if="store.diffRequest"
-      class="tab"
-      :class="{ active: store.activeView === 'diff' }"
-      :title="`${store.diffRequest.relPath} ↔ ${diffRevLabel}`"
-      @click="store.activeView = 'diff'"
+    <!-- 行内 blame 开关：打开后当前光标行尾显示作者 / 时间 / 短 hash -->
+    <button
+      class="bar-toggle"
+      :class="{ on: store.blameEnabled }"
+      :title="store.blameEnabled ? '关闭行内 blame' : '显示行内 blame（光标所在行）'"
+      @click="store.blameEnabled = !store.blameEnabled"
     >
-      <Icon name="git-compare" :size="13" />
-      <span class="tab-name">{{ basename(store.diffRequest.relPath) }}</span>
-      <span class="tab-rev">{{ diffRevLabel }}</span>
-      <button class="close-btn" title="关闭 diff" @click.stop="store.closeDiff()">
-        <Icon name="close" :size="12" />
-      </button>
-    </div>
+      <Icon name="history" :size="13" />
+    </button>
   </div>
 </template>
 
@@ -71,14 +82,36 @@ function onClose(relPath: string) {
 .file-tabs {
   display: flex;
   align-items: center;
-  gap: 2px;
   height: 32px;
   padding: 0 6px;
-  overflow-x: auto;
   flex-shrink: 0;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
 }
+.tab-scroll {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+}
+.bar-toggle {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.bar-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+.bar-toggle.on { color: var(--accent); }
 .tab {
   display: inline-flex;
   align-items: center;

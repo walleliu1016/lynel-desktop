@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -359,5 +359,565 @@ describe('git 提交 / 取版本 / 远程', () => {
     expect(res.binary).toBe(false); // 首 8KB 无 NUL，不命中二进制分支
     expect(res.truncated).toBe(false); // 原始字节长度恰为上限，不算超限
     expect(res.content.length).toBe(MAX_TEXT_SIZE);
+  });
+});
+
+describe('git 提交历史图', () => {
+  let repo: string;
+  let empty: string;
+  let plain: string;
+
+  /** 在指定目录跑一条 git 命令 */
+  const git = (dir: string, args: string[]) =>
+    execFileSync('git', args, { cwd: dir, stdio: 'ignore' });
+
+  const commit = (dir: string, msg: string) =>
+    git(dir, ['commit', '--allow-empty', '-m', msg]);
+
+  beforeAll(() => {
+    // 复用 makeRepo：它已 init 并产出第一个 commit，且关闭了 autocrlf
+    repo = makeRepo();
+    // 空仓库：init 了但一个 commit 都没有（git log 会直接失败）
+    empty = fs.mkdtempSync(path.join(os.tmpdir(), 'lynel-git-empty-'));
+    git(empty, ['init']);
+    plain = fs.mkdtempSync(path.join(os.tmpdir(), 'lynel-git-plain-'));
+  });
+
+  afterAll(() => {
+    for (const d of [repo, empty, plain]) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  it('按时间倒序列出提交，带出 hash / 短 hash / 作者 / 主题', async () => {
+    fs.writeFileSync(path.join(repo, 'a.txt'), 'a\n');
+    git(repo, ['add', 'a.txt']);
+    git(repo, ['commit', '-m', 'feat: 第二个提交']);
+    commit(repo, 'chore: 第三个提交');
+
+    const { logGraph } = await import('../../src/main/git.js');
+    const res = await logGraph(repo);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    expect(res.data.length).toBeGreaterThanOrEqual(3);
+    // --graph 是倒序的：最新提交在最前
+    expect(res.data[0].message).toBe('chore: 第三个提交');
+    expect(res.data[1].message).toBe('feat: 第二个提交');
+    expect(res.data[0].author).toBe('lynel-test');
+    expect(res.data[0].hash).toMatch(/^[0-9a-f]{40}$/);
+    expect(res.data[0].hash.startsWith(res.data[0].shortHash)).toBe(true);
+    expect(res.data[0].parents.length).toBeGreaterThanOrEqual(1);
+    // 图形前缀要留着给前端画线，且含提交点
+    expect(res.data[0].graphLine).toContain('*');
+  });
+
+  it('HEAD 装饰解析为 head 类型并带出分支名', async () => {
+    const { logGraph } = await import('../../src/main/git.js');
+    const res = await logGraph(repo);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    const headRef = res.data[0].refs.find((r) => r.type === 'head');
+    expect(headRef).toBeDefined();
+    expect(headRef?.name).toBeTruthy();
+  });
+
+  it('max 参数限制返回条数', async () => {
+    const { logGraph } = await import('../../src/main/git.js');
+    const res = await logGraph(repo, 1);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.data.length).toBe(1);
+  });
+
+  // 关键用例：--graph 会在 commit 之间插入纯图形行（只有连接线、不含字段）。
+  // 若按固定 7 行切块而不跳过这些行，字段会整体错位（message 里混进 hash）。
+  it('存在分支与合并提交时字段不错位', { timeout: 30000 }, async () => {
+    git(repo, ['checkout', '-b', 'feature']);
+    fs.writeFileSync(path.join(repo, 'f.txt'), 'f\n');
+    git(repo, ['add', 'f.txt']);
+    git(repo, ['commit', '-m', 'feat: 分支上的提交']);
+    git(repo, ['checkout', '-']);
+    commit(repo, 'chore: 主干上的提交');
+    // --no-ff 保证一定产生合并提交，从而让 --graph 输出分叉 / 汇合线
+    git(repo, ['merge', '--no-ff', '-m', 'merge: 合并 feature', 'feature']);
+
+    const { logGraph } = await import('../../src/main/git.js');
+    const res = await logGraph(repo);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    // 每个条目都必须是完整的 40 位 hash —— 错位会让 message/author 落到 hash 字段上
+    for (const c of res.data) {
+      expect(c.hash).toMatch(/^[0-9a-f]{40}$/);
+      expect(c.shortHash).toMatch(/^[0-9a-f]{7,}$/);
+      expect(c.author).toBe('lynel-test');
+      expect(c.date).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(c.message.length).toBeGreaterThan(0);
+    }
+    // 合并提交有两个父提交
+    const merge = res.data.find((c) => c.message.startsWith('merge:'));
+    expect(merge).toBeDefined();
+    expect(merge?.parents.length).toBe(2);
+  });
+
+  it('空仓库（尚无 commit）返回空数组而不是报错', async () => {
+    const { logGraph } = await import('../../src/main/git.js');
+    const res = await logGraph(empty);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.data).toEqual([]);
+  });
+
+  it('非 git 目录返回空数组而不是抛错', async () => {
+    const { logGraph } = await import('../../src/main/git.js');
+    const res = await logGraph(plain);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.data).toEqual([]);
+  });
+});
+
+describe('git 单个提交详情', () => {
+  let repo: string;
+
+  const git = (args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
+  const head = () => execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo }).toString().trim();
+
+  beforeAll(() => {
+    repo = makeRepo();
+  });
+
+  afterAll(() => {
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  it('返回提交元信息与新增文件列表', async () => {
+    fs.writeFileSync(path.join(repo, 'x.txt'), 'x\n');
+    fs.writeFileSync(path.join(repo, 'y.txt'), 'y\n');
+    git(['add', 'x.txt', 'y.txt']);
+    git(['commit', '-m', 'feat: 新增两个文件']);
+    const hash = head();
+
+    const { commitDetail } = await import('../../src/main/git.js');
+    const res = await commitDetail(repo, hash);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    expect(res.data.hash).toBe(hash);
+    expect(res.data.shortHash).toBe(hash.slice(0, 7));
+    expect(res.data.message).toBe('feat: 新增两个文件');
+    expect(res.data.author).toBe('lynel-test');
+    expect(res.data.date).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(res.data.files.map((f) => f.path).sort()).toEqual(['x.txt', 'y.txt']);
+    expect(res.data.files.every((f) => f.status === 'A')).toBe(true);
+  });
+
+  it('修改与删除的文件带出对应状态', async () => {
+    fs.writeFileSync(path.join(repo, 'x.txt'), 'x2\n');
+    fs.rmSync(path.join(repo, 'y.txt'));
+    git(['add', '-A']);
+    git(['commit', '-m', 'fix: 改一个删一个']);
+    const hash = head();
+
+    const { commitDetail } = await import('../../src/main/git.js');
+    const res = await commitDetail(repo, hash);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    const byPath = new Map(res.data.files.map((f) => [f.path, f.status]));
+    expect(byPath.get('x.txt')).toBe('M');
+    expect(byPath.get('y.txt')).toBe('D');
+  });
+
+  it('重命名同时带出 path 与 oldPath', async () => {
+    git(['mv', 'x.txt', 'z.txt']);
+    git(['commit', '-m', 'refactor: 重命名']);
+    const hash = head();
+
+    const { commitDetail } = await import('../../src/main/git.js');
+    const res = await commitDetail(repo, hash);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    const renamed = res.data.files.find((f) => f.status === 'R');
+    expect(renamed).toBeDefined();
+    expect(renamed?.path).toBe('z.txt');
+    expect(renamed?.oldPath).toBe('x.txt');
+  });
+
+  // 合并提交默认不输出 name-status（合并 diff 为空），靠 --first-parent 相对第一父比较
+  it('合并提交也能列出文件', { timeout: 30000 }, async () => {
+    git(['checkout', '-b', 'side']);
+    fs.writeFileSync(path.join(repo, 'side.txt'), 's\n');
+    git(['add', 'side.txt']);
+    git(['commit', '-m', 'feat: 分支上的文件']);
+    git(['checkout', '-']);
+    git(['merge', '--no-ff', '-m', 'merge: 合并 side', 'side']);
+    const hash = head();
+
+    const { commitDetail } = await import('../../src/main/git.js');
+    const res = await commitDetail(repo, hash);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.data.files.map((f) => f.path)).toContain('side.txt');
+  });
+
+  it('不存在的 revision 返回 ok=false 而不是抛错', async () => {
+    const { commitDetail } = await import('../../src/main/git.js');
+    const res = await commitDetail(repo, 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef');
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error).toBeTruthy();
+  });
+});
+
+describe('git 分支', () => {
+  let repo: string;
+
+  const git = (args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
+  const currentBranch = () =>
+    execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repo }).toString().trim();
+
+  beforeAll(() => {
+    repo = makeRepo();
+  });
+
+  afterAll(() => {
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  it('列出本地分支并标出当前分支', async () => {
+    git(['branch', 'alpha']);
+
+    const { branchList } = await import('../../src/main/git.js');
+    const res = await branchList(repo);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    expect(res.data.map((b) => b.name)).toContain('alpha');
+    expect(res.data.filter((b) => b.current).length).toBe(1);
+    expect(res.data.every((b) => b.remote === false)).toBe(true);
+  });
+
+  it('branchCreate 新建并切过去', async () => {
+    const { branchCreate, branchList } = await import('../../src/main/git.js');
+    const res = await branchCreate(repo, 'feature-x');
+    expect(res.ok).toBe(true);
+    expect(currentBranch()).toBe('feature-x');
+
+    const list = await branchList(repo);
+    if (!list.ok) return;
+    expect(list.data.find((b) => b.name === 'feature-x')?.current).toBe(true);
+  });
+
+  it('branchCheckout 切回已有分支', async () => {
+    const { branchCheckout } = await import('../../src/main/git.js');
+    const res = await branchCheckout(repo, 'alpha');
+    expect(res.ok).toBe(true);
+    expect(currentBranch()).toBe('alpha');
+  });
+
+  it('branchCreate 空白名字直接拒绝，不会建成一个奇怪的分支', async () => {
+    const { branchCreate } = await import('../../src/main/git.js');
+    const res = await branchCreate(repo, '   ');
+    expect(res.ok).toBe(false);
+  });
+
+  it('branchDelete 删除已合并的分支', async () => {
+    const { branchDelete, branchList } = await import('../../src/main/git.js');
+    // feature-x 与 alpha 指向同一提交，属已合并
+    const res = await branchDelete(repo, 'feature-x');
+    expect(res.ok).toBe(true);
+
+    const list = await branchList(repo);
+    if (!list.ok) return;
+    expect(list.data.map((b) => b.name)).not.toContain('feature-x');
+  });
+
+  it('未合并分支：-d 被拒绝，force 用 -D 才删得掉', async () => {
+    git(['checkout', '-b', 'unmerged']);
+    fs.writeFileSync(path.join(repo, 'u.txt'), 'u\n');
+    git(['add', 'u.txt']);
+    git(['commit', '-m', 'feat: 未合并的提交']);
+    git(['checkout', 'alpha']);
+
+    const { branchDelete } = await import('../../src/main/git.js');
+    const soft = await branchDelete(repo, 'unmerged');
+    expect(soft.ok).toBe(false);
+
+    const forced = await branchDelete(repo, 'unmerged', true);
+    expect(forced.ok).toBe(true);
+  });
+});
+
+describe('git stash', () => {
+  let repo: string;
+
+  const git = (args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
+
+  beforeAll(() => {
+    repo = makeRepo();
+    fs.writeFileSync(path.join(repo, 'base.txt'), 'base\n');
+    git(['add', 'base.txt']);
+    git(['commit', '-m', 'chore: 基线']);
+  });
+
+  afterAll(() => {
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  it('初始没有 stash', async () => {
+    const { stashList } = await import('../../src/main/git.js');
+    const res = await stashList(repo);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.data).toEqual([]);
+  });
+
+  it('stashPush 收走改动（含未跟踪文件）并解析出说明与分支', async () => {
+    fs.writeFileSync(path.join(repo, 'base.txt'), 'base-modified\n');
+    fs.writeFileSync(path.join(repo, 'new.txt'), 'new\n');
+
+    const { stashPush, stashList } = await import('../../src/main/git.js');
+    const push = await stashPush(repo, '我的说明');
+    expect(push.ok).toBe(true);
+
+    // 工作区被清干净：已跟踪文件回到 HEAD，未跟踪文件也被收走
+    expect(fs.readFileSync(path.join(repo, 'base.txt'), 'utf8')).toBe('base\n');
+    expect(fs.existsSync(path.join(repo, 'new.txt'))).toBe(false);
+
+    const list = await stashList(repo);
+    expect(list.ok).toBe(true);
+    if (!list.ok) return;
+    expect(list.data.length).toBe(1);
+    expect(list.data[0].index).toBe(0);
+    expect(list.data[0].message).toBe('我的说明');
+    expect(list.data[0].branch).toBeTruthy();
+    expect(list.data[0].date).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('stashPop 恢复改动并移除该条目', async () => {
+    const { stashPop, stashList } = await import('../../src/main/git.js');
+    const pop = await stashPop(repo);
+    expect(pop.ok).toBe(true);
+    expect(fs.readFileSync(path.join(repo, 'base.txt'), 'utf8')).toBe('base-modified\n');
+
+    const list = await stashList(repo);
+    if (!list.ok) return;
+    expect(list.data).toEqual([]);
+  });
+
+  it('stashDrop 丢弃条目不恢复改动', async () => {
+    fs.writeFileSync(path.join(repo, 'base.txt'), 'again\n');
+
+    const { stashPush, stashDrop, stashList } = await import('../../src/main/git.js');
+    await stashPush(repo, '待丢弃');
+    const drop = await stashDrop(repo, 0);
+    expect(drop.ok).toBe(true);
+
+    // 改动随 drop 一起消失，工作区停在干净状态
+    expect(fs.readFileSync(path.join(repo, 'base.txt'), 'utf8')).toBe('base\n');
+    const list = await stashList(repo);
+    if (!list.ok) return;
+    expect(list.data).toEqual([]);
+  });
+
+  it('不带说明时自动 stash 的 reflog 文案也能解析出分支与说明', async () => {
+    fs.writeFileSync(path.join(repo, 'base.txt'), 'auto\n');
+
+    const { stashPush, stashList } = await import('../../src/main/git.js');
+    await stashPush(repo);
+
+    const list = await stashList(repo);
+    expect(list.ok).toBe(true);
+    if (!list.ok) return;
+    expect(list.data.length).toBe(1);
+    // reflog 原文是「WIP on <branch>: <hash> <subject>」，branch/message 都必须剥干净
+    expect(list.data[0].branch).toBeTruthy();
+    expect(list.data[0].message.length).toBeGreaterThan(0);
+    // 说明里不该残留 hash
+    expect(list.data[0].message).not.toMatch(/^[0-9a-f]{7,40}\s/);
+  });
+});
+
+describe('git blame', () => {
+  let repo: string;
+
+  const git = (args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
+
+  beforeAll(() => {
+    repo = makeRepo();
+  });
+
+  afterAll(() => {
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  it('逐行带出 hash / 作者 / 时间 / 主题', async () => {
+    fs.writeFileSync(path.join(repo, 'blame.txt'), 'l1\nl2\nl3\n');
+    git(['add', 'blame.txt']);
+    git(['commit', '-m', 'feat: 三行文件']);
+
+    const { blameFile } = await import('../../src/main/git.js');
+    const res = await blameFile(repo, 'blame.txt');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    expect(res.data.length).toBe(3);
+    expect(res.data.map((l) => l.lineNumber)).toEqual([1, 2, 3]);
+    for (const l of res.data) {
+      expect(l.hash).toMatch(/^[0-9a-f]{40}$/);
+      expect(l.hash.startsWith(l.shortHash)).toBe(true);
+      expect(l.author).toBe('lynel-test');
+      expect(l.date).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(l.summary).toBe('feat: 三行文件');
+    }
+  });
+
+  // 关键用例：porcelain 对同一 commit 只在首次给出元信息，后续行只有块头。
+  // 不做按 hash 缓存就会让后面的行继承「上一个出现的 commit」的作者 —— 静默错误归因。
+  it('同一提交的多行都归到正确作者；跨提交后旧提交的行不被新作者污染', async () => {
+    // 追加一行，产生第二个提交
+    fs.appendFileSync(path.join(repo, 'blame.txt'), 'l4\n');
+    git(['add', 'blame.txt']);
+    git([
+      '-c',
+      'user.name=second-author',
+      '-c',
+      'user.email=second@lynel.local',
+      'commit',
+      '-m',
+      'feat: 追加第四行',
+    ]);
+
+    const { blameFile } = await import('../../src/main/git.js');
+    const res = await blameFile(repo, 'blame.txt');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    expect(res.data.length).toBe(4);
+    // 前三行仍属第一次提交（同一 commit 的后续行只有块头，必须命中缓存）
+    for (const l of res.data.slice(0, 3)) {
+      expect(l.author).toBe('lynel-test');
+      expect(l.summary).toBe('feat: 三行文件');
+    }
+    // 第四行属第二次提交
+    const last = res.data[3];
+    expect(last.author).toBe('second-author');
+    expect(last.summary).toBe('feat: 追加第四行');
+    // 两次提交的 hash 必须不同，否则上面的作者断言其实没区分开
+    expect(last.hash).not.toBe(res.data[0].hash);
+  });
+
+  it('未跟踪文件返回空数组而不是报错', async () => {
+    fs.writeFileSync(path.join(repo, 'untracked-blame.txt'), 'x\n');
+
+    const { blameFile } = await import('../../src/main/git.js');
+    const res = await blameFile(repo, 'untracked-blame.txt');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.data).toEqual([]);
+  });
+
+  it('非 git 目录返回空数组而不是抛错', async () => {
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'lynel-blame-plain-'));
+    try {
+      const { blameFile } = await import('../../src/main/git.js');
+      const res = await blameFile(plain, 'whatever.txt');
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(res.data).toEqual([]);
+    } finally {
+      fs.rmSync(plain, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('git reset', () => {
+  let repo: string;
+  let base: string;
+
+  const git = (args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
+  const head = () => execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo }).toString().trim();
+
+  /** 造出「第二次提交 + 一个已暂存改动」的现场，三种 reset 都对它下手 */
+  function makeSecondCommitWithStagedChange() {
+    fs.writeFileSync(path.join(repo, 'r.txt'), 'v2\n');
+    git(['add', 'r.txt']);
+    git(['commit', '-m', 'feat: 第二次']);
+    fs.writeFileSync(path.join(repo, 'r.txt'), 'v3\n');
+    git(['add', 'r.txt']);
+  }
+
+  beforeAll(() => {
+    repo = makeRepo();
+    fs.writeFileSync(path.join(repo, 'r.txt'), 'v1\n');
+    git(['add', 'r.txt']);
+    git(['commit', '-m', 'chore: 第一次']);
+    base = head();
+  });
+
+  beforeEach(() => {
+    // 每个用例都从「初始提交 + 干净工作区」开始，避免用例间互相污染
+    git(['reset', '--hard', base]);
+    git(['clean', '-fd']);
+  });
+
+  afterAll(() => {
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  it('soft：只移动 HEAD，已暂存的改动原样留在索引里', async () => {
+    makeSecondCommitWithStagedChange();
+
+    const { resetTo, getStatus } = await import('../../src/main/git.js');
+    const res = await resetTo(repo, 'HEAD~1', 'soft');
+    expect(res.ok).toBe(true);
+    expect(head()).toBe(base);
+
+    // 索引没被动过 → 相对新 HEAD 仍是一条「已暂存修改」
+    const st = await getStatus(repo);
+    expect(st.ok).toBe(true);
+    if (!st.ok) return;
+    expect(st.data.staged.map((f) => f.path)).toContain('r.txt');
+  });
+
+  it('mixed：索引被重置，改动退回未暂存', async () => {
+    makeSecondCommitWithStagedChange();
+
+    const { resetTo, getStatus } = await import('../../src/main/git.js');
+    const res = await resetTo(repo, 'HEAD~1', 'mixed');
+    expect(res.ok).toBe(true);
+    expect(head()).toBe(base);
+
+    const st = await getStatus(repo);
+    expect(st.ok).toBe(true);
+    if (!st.ok) return;
+    expect(st.data.staged).toEqual([]);
+    expect(st.data.unstaged.map((f) => f.path)).toContain('r.txt');
+  });
+
+  it('hard：索引与工作区的改动一并丢弃', async () => {
+    fs.writeFileSync(path.join(repo, 'r.txt'), 'dirty\n');
+    fs.writeFileSync(path.join(repo, 'extra.txt'), 'x\n');
+    git(['add', 'extra.txt']);
+
+    const { resetTo, getStatus } = await import('../../src/main/git.js');
+    const res = await resetTo(repo, 'HEAD', 'hard');
+    expect(res.ok).toBe(true);
+
+    // 已跟踪文件回到 HEAD 版本
+    expect(fs.readFileSync(path.join(repo, 'r.txt'), 'utf8')).toBe('v1\n');
+    const st = await getStatus(repo);
+    expect(st.ok).toBe(true);
+    if (!st.ok) return;
+    expect(st.data.staged).toEqual([]);
+    expect(st.data.unstaged).toEqual([]);
+  });
+
+  it('不存在的 revision 返回 ok=false 而不是抛错', async () => {
+    const { resetTo } = await import('../../src/main/git.js');
+    const res = await resetTo(repo, 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef', 'soft');
+    expect(res.ok).toBe(false);
   });
 });

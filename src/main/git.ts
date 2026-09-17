@@ -331,6 +331,453 @@ export async function fileAtRev(
   }
 }
 
+// —— 提交历史图 ——
+
+/** 提交上的 ref 装饰（分支 / 远程分支 / 标签 / HEAD） */
+export interface GitGraphRef {
+  type: 'head' | 'branch' | 'remote' | 'tag'
+  name: string
+}
+
+export interface GitGraphCommit {
+  hash: string
+  shortHash: string
+  author: string
+  /** ISO 8601 提交时间，前端自行格式化为相对时间 */
+  date: string
+  message: string
+  refs: GitGraphRef[]
+  parents: string[]
+  /** `git log --graph` 给出的图形前缀（`* | \ /` 等）。原样交给前端按等宽字体渲染 */
+  graphLine: string
+}
+
+/** 历史图一次取多少条。200 条足够覆盖日常回溯，且解析与渲染开销都很小 */
+export const MAX_LOG = 200;
+
+/** 剥离 `git log --graph` 的图形前缀（`* | / \ _` 与空格），同时返回前缀本身。
+ *  图形行与数据行都带前缀：commit 行的前缀要留着画图，其余行的前缀要丢掉。 */
+function splitGraphPrefix(line: string): { prefix: string; content: string } {
+  const m = /^[*|/\\_ ]*/.exec(line);
+  const prefix = m ? m[0] : '';
+  return { prefix, content: line.slice(prefix.length) };
+}
+
+/** 解析 `--decorate=full` 的 `%D` 输出（如 `HEAD -> refs/heads/main, refs/tags/v1`） */
+function parseDecorations(raw: string): GitGraphRef[] {
+  if (!raw.trim()) return [];
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map<GitGraphRef>((s) => {
+      // `HEAD -> refs/heads/x`：当前检出的分支，同时是 HEAD
+      if (s.startsWith('HEAD -> ')) {
+        return { type: 'head', name: s.slice('HEAD -> '.length).replace(/^refs\/heads\//, '') };
+      }
+      if (s === 'HEAD') return { type: 'head', name: 'HEAD' };
+      if (s.startsWith('refs/heads/')) return { type: 'branch', name: s.slice('refs/heads/'.length) };
+      if (s.startsWith('refs/remotes/')) return { type: 'remote', name: s.slice('refs/remotes/'.length) };
+      if (s.startsWith('refs/tags/')) return { type: 'tag', name: s.slice('refs/tags/'.length) };
+      // 兜底：认不出的当普通分支名展示，总比丢掉信息好
+      return { type: 'branch', name: s };
+    });
+}
+
+/**
+ * 解析 `git log --graph --format=%H%n%h%n%P%n%an%n%aI%n%s%n%D` 的输出。
+ *
+ * 每个 commit 恰好占 7 行（hash / shortHash / parents / author / date / subject /
+ * decorations），但 `--graph` 会在 commit 之间插入**纯图形行**（只有连接线、没有数据）
+ * 用于画分叉与合并。因此不能简单地按 7 行切块 —— 必须先判断当前行的前缀后面
+ * 是否真的有内容：没有就是图形行，跳过一行即可（它不携带任何字段，不会让后续错位）。
+ */
+function parseLogGraph(output: string): GitGraphCommit[] {
+  const lines = output.split('\n');
+  const commits: GitGraphCommit[] = [];
+  let i = 0;
+  while (i + 6 < lines.length) {
+    const first = splitGraphPrefix(lines[i]);
+    if (!first.content) {
+      // 纯图形行（分叉 / 合并的连接线），不含字段
+      i++;
+      continue;
+    }
+    const parentsRaw = splitGraphPrefix(lines[i + 2]).content;
+    commits.push({
+      hash: first.content,
+      shortHash: splitGraphPrefix(lines[i + 1]).content,
+      parents: parentsRaw.split(/\s+/).filter(Boolean),
+      author: splitGraphPrefix(lines[i + 3]).content,
+      date: splitGraphPrefix(lines[i + 4]).content,
+      message: splitGraphPrefix(lines[i + 5]).content,
+      refs: parseDecorations(splitGraphPrefix(lines[i + 6]).content),
+      graphLine: first.prefix,
+    });
+    i += 7;
+  }
+  return commits;
+}
+
+/** 取提交历史图。空仓库（尚无任何 commit）与「非 git 目录」都返回空数组，
+ *  这两种都是正常的用户状态，不该当作错误弹给用户。 */
+export async function logGraph(
+  workDir: string,
+  max: number = MAX_LOG,
+): Promise<{ ok: true; data: GitGraphCommit[] } | { ok: false; error: string }> {
+  try {
+    const out = await gitFor(workDir).raw([
+      'log',
+      '--graph',
+      '--decorate=full',
+      '--format=%H%n%h%n%P%n%an%n%aI%n%s%n%D',
+      `-${max}`,
+    ]);
+    return { ok: true, data: parseLogGraph(out) };
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (/not a git repository/i.test(msg)) return { ok: true, data: [] };
+    // 全新仓库还没有 HEAD，`git log` 会报这几类错，属于正常状态
+    if (/does not have any commits|does not have a commit|unknown revision|bad default revision|your current branch .* does not have any commits/i.test(msg)) {
+      return { ok: true, data: [] };
+    }
+    return { ok: false, error: msg };
+  }
+}
+
+// —— 单个提交的详情 ——
+
+export interface GitCommitFile {
+  /** 复用变更列表同一套状态字母，前端可直接套用现有配色 */
+  status: GitFileStatus;
+  path: string;
+  /** 重命名 / 复制时的原路径 */
+  oldPath?: string;
+}
+
+export interface GitCommitInfo {
+  hash: string;
+  shortHash: string;
+  author: string;
+  date: string;
+  message: string;
+  files: GitCommitFile[];
+}
+
+/** `git show --name-status` 的状态字母归一化。T（类型变更）/ X / B 都归入 M，
+ *  避免前端出现它不认识的状态。 */
+function normalizeCommitStatus(raw: string): GitFileStatus {
+  const c = raw.trim().charAt(0).toUpperCase();
+  if (c === 'A' || c === 'D' || c === 'R' || c === 'C' || c === 'U' || c === 'M') return c;
+  return 'M';
+}
+
+/** 解析 `git show --name-status` 输出。前 5 行是 --format 的字段，其后是
+ *  `<status>\t<path>`（重命名/复制为 `<status>\t<oldPath>\t<newPath>`）。
+ *
+ *  加 `--first-parent`：合并提交与第一父的对比才有文件列表，否则 `git show` 对
+ *  merge 提交不输出任何 name-status，点开就是一片空白。 */
+export async function commitDetail(
+  workDir: string,
+  hash: string,
+): Promise<{ ok: true; data: GitCommitInfo } | { ok: false; error: string }> {
+  try {
+    const out = await gitFor(workDir).raw([
+      'show',
+      '--first-parent',
+      '--name-status',
+      '--format=%H%n%h%n%an%n%aI%n%s',
+      hash,
+    ]);
+    const lines = out.split('\n');
+    const files: GitCommitFile[] = [];
+    for (let i = 5; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+      const parts = line.split('\t');
+      if (parts.length < 2) continue;
+      const status = normalizeCommitStatus(parts[0]);
+      if ((status === 'R' || status === 'C') && parts.length >= 3) {
+        files.push({ status, path: parts[2], oldPath: parts[1] });
+      } else {
+        files.push({ status, path: parts[1] });
+      }
+    }
+    return {
+      ok: true,
+      data: {
+        hash: lines[0] ?? hash,
+        shortHash: lines[1] ?? hash.slice(0, 7),
+        author: lines[2] ?? '',
+        date: lines[3] ?? '',
+        message: lines[4] ?? '',
+        files,
+      },
+    };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+// —— 分支 ——
+
+export interface GitBranchInfo {
+  name: string;
+  current: boolean;
+  remote: boolean;
+  /** 跟踪的上游分支（如 origin/main），无则为 null */
+  upstream: string | null;
+  /** 最后一次提交的「短 hash + 主题」，列表里作为副标题 */
+  lastCommit: string;
+}
+
+/** `git branch --format` 的字段分隔符。分支名允许出现的字符里包含 `|`，
+ *  但实践中极其罕见；换成 NUL 反而会让 git 的 --format 解析变复杂。 */
+const BRANCH_FORMAT =
+  '--format=%(HEAD)|%(refname)|%(refname:short)|%(upstream:short)|%(objectname:short)|%(subject)';
+
+function parseBranches(output: string): GitBranchInfo[] {
+  const list: GitBranchInfo[] = [];
+  for (const line of output.split('\n')) {
+    if (!line.trim()) continue;
+    const parts = line.split('|');
+    if (parts.length < 6) continue;
+    const refname = parts[1];
+    // remote 不能用「名字里有没有 /」判断：本地分支同样可以是 feature/x
+    const remote = refname.startsWith('refs/remotes/');
+    // `refs/remotes/origin/HEAD` 是符号引用，不是真分支
+    if (refname.endsWith('/HEAD')) continue;
+    list.push({
+      name: parts[2],
+      current: parts[0].trim() === '*',
+      remote,
+      upstream: parts[3] || null,
+      lastCommit: `${parts[4]} ${parts[5]}`.trim(),
+    });
+  }
+  return list;
+}
+
+export async function branchList(
+  workDir: string,
+  includeRemote = false,
+): Promise<{ ok: true; data: GitBranchInfo[] } | { ok: false; error: string }> {
+  try {
+    const args = ['branch', BRANCH_FORMAT];
+    if (includeRemote) args.push('-a');
+    const out = await gitFor(workDir).raw(args);
+    return { ok: true, data: parseBranches(out) };
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    // 空仓库（尚无 commit）没有分支可列，属正常状态
+    if (/not a git repository|does not have any commits/i.test(msg)) {
+      return { ok: true, data: [] };
+    }
+    return { ok: false, error: msg };
+  }
+}
+
+/** 新建分支并切过去（等价 `git checkout -b`）。 */
+export function branchCreate(
+  workDir: string,
+  name: string,
+  startPoint?: string,
+): Promise<GitOpResult> {
+  const branch = name.trim();
+  if (!branch) return Promise.resolve({ ok: false, error: '分支名不能为空' });
+  return runOp(() => {
+    const args = ['checkout', '-b', branch];
+    if (startPoint) args.push(startPoint);
+    return gitFor(workDir).raw(args);
+  });
+}
+
+/** 切换分支。工作区有冲突性改动时 git 会自行拒绝，错误原样回给调用方。 */
+export function branchCheckout(workDir: string, name: string): Promise<GitOpResult> {
+  return runOp(() => gitFor(workDir).checkout(name));
+}
+
+/** 删除本地分支。force 对应 `-D`（未合并也删）。 */
+export function branchDelete(
+  workDir: string,
+  name: string,
+  force = false,
+): Promise<GitOpResult> {
+  return runOp(() => gitFor(workDir).raw(['branch', force ? '-D' : '-d', name]));
+}
+
+export type GitResetMode = 'soft' | 'mixed' | 'hard';
+
+/** 把当前分支重置到某个提交。
+ *  - `soft`：只移动 HEAD，索引与工作区都不动
+ *  - `mixed`：移动 HEAD 并重置索引，工作区改动保留（变成未暂存）
+ *  - `hard`：连索引与工作区一起丢弃 —— **不可逆**
+ *
+ *  `hard` 的确认责任在调用方：前端必须先做二次确认再发这个请求。 */
+export function resetTo(
+  workDir: string,
+  hash: string,
+  mode: GitResetMode,
+): Promise<GitOpResult> {
+  return runOp(() => gitFor(workDir).raw(['reset', `--${mode}`, hash]));
+}
+
+// —— stash ——
+
+export interface GitStashEntry {
+  index: number;
+  /** 创建 stash 时所在的分支 */
+  branch: string;
+  message: string;
+  date: string;
+}
+
+/** 解析 `git stash list --format=%gd%n%gs%n%aI`。
+ *  `%gs`（reflog subject）形如：
+ *    - `WIP on main: 1a2b3c4 提交主题`（自动 stash）
+ *    - `On main: 我的说明`（`stash push -m`）
+ *  两种前缀都要剥掉，只留分支名与用户可见的说明。 */
+function parseStashList(output: string): GitStashEntry[] {
+  const lines = output.split('\n');
+  const entries: GitStashEntry[] = [];
+  for (let i = 0; i + 2 < lines.length; i += 3) {
+    const ref = lines[i];
+    if (!ref.trim()) break;
+    const raw = lines[i + 1];
+    const date = lines[i + 2];
+    const index =
+      Number(/^stash@\{(\d+)\}$/.exec(ref.trim())?.[1] ?? '0') || 0;
+    const rest = raw.startsWith('WIP on ') ? raw.slice('WIP on '.length) : raw.startsWith('On ') ? raw.slice('On '.length) : raw;
+    const sep = rest.indexOf(': ');
+    const branch = sep >= 0 ? rest.slice(0, sep) : '';
+    // 自动 stash 的说明带 `<hash> <subject>`，hash 对用户没意义，去掉
+    let message = sep >= 0 ? rest.slice(sep + 2) : rest;
+    message = message.replace(/^[0-9a-f]{7,40}\s+/, '');
+    entries.push({ index, branch, message, date });
+  }
+  return entries;
+}
+
+export async function stashList(
+  workDir: string,
+): Promise<{ ok: true; data: GitStashEntry[] } | { ok: false; error: string }> {
+  try {
+    const out = await gitFor(workDir).raw(['stash', 'list', '--format=%gd%n%gs%n%aI']);
+    return { ok: true, data: parseStashList(out) };
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (/not a git repository/i.test(msg)) return { ok: true, data: [] };
+    return { ok: false, error: msg };
+  }
+}
+
+/** 暂存当前改动。默认带上未跟踪文件（`-u`）——否则新建的文件会被留在工作区，
+ *  与用户「把当前这些都收起来」的预期不符。 */
+export function stashPush(workDir: string, message?: string): Promise<GitOpResult> {
+  return runOp(() => {
+    const args = ['stash', 'push', '-u'];
+    if (message?.trim()) args.push('-m', message.trim());
+    return gitFor(workDir).raw(args);
+  });
+}
+
+/** 取出并删除指定 stash（`stash pop`）。index 省略即最近一条。 */
+export function stashPop(workDir: string, index = 0): Promise<GitOpResult> {
+  return runOp(() => gitFor(workDir).raw(['stash', 'pop', `stash@{${index}}`]));
+}
+
+/** 丢弃指定 stash（不可逆，调用方必须先二次确认）。 */
+export function stashDrop(workDir: string, index = 0): Promise<GitOpResult> {
+  return runOp(() => gitFor(workDir).raw(['stash', 'drop', `stash@{${index}}`]));
+}
+
+// —— blame ——
+
+export interface GitBlameLine {
+  /** 1-based 行号，对应文件当前内容 */
+  lineNumber: number;
+  hash: string;
+  shortHash: string;
+  author: string;
+  /** ISO 8601 作者时间（porcelain 给的是 unix 秒，这里已换算） */
+  date: string;
+  /** 该行所属提交的主题 */
+  summary: string;
+}
+
+/**
+ * 解析 `git blame --porcelain` 输出。
+ *
+ * porcelain 的元信息（author / author-time / summary）**只在某个 commit 首次出现时输出**，
+ * 之后引用同一 commit 的块只有一行块头。所以必须按 hash 缓存元信息 —— 否则后续行会
+ * 继承上一个 commit 的作者，那是**静默的错误归因**，比直接报错危险得多。
+ */
+function parsePorcelainBlame(output: string): GitBlameLine[] {
+  const meta = new Map<string, { author: string; date: string; summary: string }>();
+  const result: GitBlameLine[] = [];
+  let curHash = '';
+  let curLine = 0;
+  let pendingAuthor = '';
+  let pendingDate = '';
+  let pendingSummary = '';
+
+  for (const line of output.split('\n')) {
+    // 内容行（以 TAB 开头）→ 产出一行的归因。内容本身前端用不到，只要行号映射
+    if (line.startsWith('\t')) {
+      const cached = meta.get(curHash);
+      result.push({
+        lineNumber: curLine,
+        hash: curHash,
+        shortHash: curHash.slice(0, 7),
+        author: cached?.author ?? pendingAuthor,
+        date: cached?.date ?? pendingDate,
+        summary: cached?.summary ?? pendingSummary,
+      });
+      continue;
+    }
+
+    // 块头：`<sha> <orig-line> <final-line> [<num-lines>]`
+    const head = /^([0-9a-f]{40}) \d+ (\d+)(?: \d+)?$/.exec(line);
+    if (head) {
+      curHash = head[1];
+      curLine = Number(head[2]);
+      pendingAuthor = '';
+      pendingDate = '';
+      pendingSummary = '';
+      continue;
+    }
+
+    if (line.startsWith('author ')) {
+      pendingAuthor = line.slice('author '.length);
+    } else if (line.startsWith('author-time ')) {
+      const secs = Number(line.slice('author-time '.length));
+      pendingDate = Number.isFinite(secs) ? new Date(secs * 1000).toISOString() : '';
+    } else if (line.startsWith('summary ')) {
+      pendingSummary = line.slice('summary '.length);
+      // summary 是块内我们需要的最后一个字段，读到它就把这个 commit 的元信息落缓存
+      meta.set(curHash, { author: pendingAuthor, date: pendingDate, summary: pendingSummary });
+    }
+  }
+  return result;
+}
+
+export async function blameFile(
+  workDir: string,
+  relPath: string,
+): Promise<{ ok: true; data: GitBlameLine[] } | { ok: false; error: string }> {
+  try {
+    const out = await gitFor(workDir).raw(['blame', '--porcelain', '--', relPath]);
+    return { ok: true, data: parsePorcelainBlame(out) };
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    // 未跟踪 / 尚未提交的文件没有历史可 blame，属正常状态而非错误
+    if (/no such path|no such file|has no commits yet|not a git repository/i.test(msg)) {
+      return { ok: true, data: [] };
+    }
+    return { ok: false, error: msg };
+  }
+}
+
 // —— .git 变更监听 ——
 // files.ts 的文件树 watcher 把 .git 放在 IGNORED_DIRS 里，看不到 git 内部状态变化
 // （提交、外部 checkout、切换分支），Git 面板必须自己盯 HEAD / index / refs。
@@ -357,6 +804,14 @@ export function watchGit(workDir: string): void {
   // 监听 chokidar 异步错误（EMFILE/ENOSPC/权限等），避免走向主进程未捕获异常路径
   w.on('error', (err) => getLogger().warn(`[git] watcher error ${workDir}: ${err}`));
   watchers.set(workDir, w);
+}
+
+/** 关闭全部 git watcher 及其 debounce 定时器，应用退出时调用。
+ *  git 的 watcher 挂在模块级 Map 上（不归 App 实例管），shutdown 里的
+ *  `watchCleanup` 只覆盖文件 watcher，漏掉这些会导致退出流程被拉长时
+ *  chokidar 仍握着文件句柄。 */
+export async function closeAllGitWatchers(): Promise<void> {
+  await Promise.all([...watchers.keys()].map((d) => unwatchGit(d)));
 }
 
 export async function unwatchGit(workDir: string): Promise<void> {
@@ -412,6 +867,62 @@ export function registerGitIpc(): void {
     'git:fileAtRev',
     withWorkDir((workDir: string, rev: string, relPath: string) =>
       fileAtRev(workDir, rev, relPath),
+    ),
+  );
+  ipcMain.handle(
+    'git:logGraph',
+    withWorkDir((workDir: string, max?: number) => logGraph(workDir, max)),
+  );
+  ipcMain.handle(
+    'git:commitDetail',
+    withWorkDir((workDir: string, hash: string) => commitDetail(workDir, hash)),
+  );
+  ipcMain.handle(
+    'git:branchList',
+    withWorkDir((workDir: string, includeRemote?: boolean) =>
+      branchList(workDir, includeRemote),
+    ),
+  );
+  ipcMain.handle(
+    'git:branchCreate',
+    withWorkDir((workDir: string, name: string, startPoint?: string) =>
+      branchCreate(workDir, name, startPoint),
+    ),
+  );
+  ipcMain.handle(
+    'git:branchCheckout',
+    withWorkDir((workDir: string, name: string) => branchCheckout(workDir, name)),
+  );
+  ipcMain.handle(
+    'git:branchDelete',
+    withWorkDir((workDir: string, name: string, force?: boolean) =>
+      branchDelete(workDir, name, force),
+    ),
+  );
+  ipcMain.handle(
+    'git:stashList',
+    withWorkDir((workDir: string) => stashList(workDir)),
+  );
+  ipcMain.handle(
+    'git:stashPush',
+    withWorkDir((workDir: string, message?: string) => stashPush(workDir, message)),
+  );
+  ipcMain.handle(
+    'git:stashPop',
+    withWorkDir((workDir: string, index?: number) => stashPop(workDir, index)),
+  );
+  ipcMain.handle(
+    'git:stashDrop',
+    withWorkDir((workDir: string, index?: number) => stashDrop(workDir, index)),
+  );
+  ipcMain.handle(
+    'git:blame',
+    withWorkDir((workDir: string, relPath: string) => blameFile(workDir, relPath)),
+  );
+  ipcMain.handle(
+    'git:resetTo',
+    withWorkDir((workDir: string, hash: string, mode: GitResetMode) =>
+      resetTo(workDir, hash, mode),
     ),
   );
   ipcMain.handle(

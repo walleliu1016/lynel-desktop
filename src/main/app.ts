@@ -33,7 +33,7 @@ import {
   rebind as rebindShell,
   closeAll as closeAllShells,
 } from './shell.js';
-import { registerGitIpc } from './git.js';
+import { registerGitIpc, closeAllGitWatchers } from './git.js';
 import type { BotConfig } from './types/bot.js';
 import { startScan as wecomStartScan, cancelScan } from './wecom-scan.js';
 import { notifyExternal, errMessage } from './channels/notify-error.js';
@@ -625,6 +625,11 @@ export class App {
       } catch { /* ignore */ }
       this.watchCleanup = null;
     }
+    // 6.1 停止 git watcher。它挂在 git.ts 的模块级 Map 上，不在 watchCleanup 里，
+    // 不显式关闭就会随着退出流程一直握着 .git 目录的文件句柄
+    try {
+      await closeAllGitWatchers();
+    } catch { /* ignore */ }
     // 7. 关闭 channels
     try { await this.wecomChannel.close?.(); } catch { /* ignore */ }
     try { this.localFileChannel.close?.(); } catch { /* ignore */ }

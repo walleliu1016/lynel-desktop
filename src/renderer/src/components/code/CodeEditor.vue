@@ -5,6 +5,8 @@ import { pushToast } from '../../composables/useToast'
 import { useFilesStore, type OpenFile } from '../../stores/files'
 import { useSettingsStore } from '../../stores/settings'
 import { ensureMonaco, applyMonacoTheme, currentThemeId } from '../../monaco/setup'
+import { GitBlame, type GitBlameLine } from '../../composables/useElectron'
+import { formatRelTime } from '../../utils/time'
 
 type StandaloneEditor = import('monaco-editor').editor.IStandaloneCodeEditor
 type ITextModel = import('monaco-editor').editor.ITextModel
@@ -21,6 +23,56 @@ let activeModelRelPath: string | null = null
 
 // 当前 Monaco 主题名。编辑器创建时使用；终端主题变化时重建。
 let currentThemeName = 'code-default-dark'
+
+// —— 行内 blame ——
+// 按行号索引当前文件的归因。未跟踪 / 非仓库的文件是空表，此时不显示任何注解。
+let blameByLine = new Map<number, GitBlameLine>()
+let blameCollection: import('monaco-editor').editor.IEditorDecorationsCollection | null = null
+let monacoRef: typeof import('monaco-editor') | null = null
+let cursorDisposer: { dispose: () => void } | null = null
+
+/** 拉取指定文件的 blame。只在开关打开时发请求；失败或非仓库一律当空表处理，
+ *  blame 拿不到不该影响正常编辑。 */
+async function loadBlame(relPath: string): Promise<void> {
+  blameByLine = new Map()
+  if (!store.blameEnabled) return
+  const wd = store.workDir
+  if (!wd) return
+  const res = await GitBlame(wd, relPath).catch(() => null)
+  // await 期间可能已切到别的文件，丢弃过期结果
+  if (store.activeRelPath !== relPath) return
+  if (res?.ok) blameByLine = new Map(res.data.map((l) => [l.lineNumber, l]))
+}
+
+/** 只在光标所在行挂一条行尾注解（GitLens 的默认形态）。
+ *  不给整文件打注解：那会把编辑器刷得满屏灰字，大文件下也很吃渲染。 */
+function updateBlameDecoration(): void {
+  if (!editor || !monacoRef) return
+  if (!blameCollection) blameCollection = editor.createDecorationsCollection([])
+  if (!store.blameEnabled) {
+    blameCollection.clear()
+    return
+  }
+  const pos = editor.getPosition()
+  const info = pos ? blameByLine.get(pos.lineNumber) : undefined
+  if (!pos || !info) {
+    blameCollection.clear()
+    return
+  }
+  blameCollection.set([
+    {
+      range: new monacoRef.Range(pos.lineNumber, 1, pos.lineNumber, 1),
+      options: {
+        // 全角空格做视觉分隔：Monaco 会折叠普通空白的收尾
+        after: {
+          content: `　${info.author} · ${formatRelTime(info.date)} · ${info.shortHash}`,
+          inlineClassName: 'blame-inline',
+        },
+        hoverMessage: { value: `${info.summary}\n\n${info.hash}` },
+      },
+    },
+  ])
+}
 
 /**
  * 窗口恢复可见时补一次 layout，触发 Monaco 重渲染。
@@ -84,7 +136,11 @@ async function ensureEditor(): Promise<StandaloneEditor | null> {
     tabSize: 2,
   })
   editorHost = el
+  monacoRef = m
   editor.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.KeyS, () => { void saveActive() })
+  // 光标移动 → 只重算当前行的 blame 注解，开销可忽略
+  cursorDisposer?.dispose()
+  cursorDisposer = editor.onDidChangeCursorPosition(() => updateBlameDecoration())
   return editor
 }
 
@@ -105,6 +161,9 @@ async function switchModel() {
     model = null
   }
   activeModelRelPath = null
+  // 换文件先把上一份 blame 丢掉，避免新文件的行上短暂显示旧归因
+  blameByLine = new Map()
+  blameCollection?.clear()
   const f = activeFile.value
   if (!f || f.binary || f.truncated) {
     if (editor) editor.setModel(null)
@@ -124,6 +183,9 @@ async function switchModel() {
   model.onDidChangeContent(() => onModelChange(rel))
   ed.setModel(model)
   activeModelRelPath = f.relPath
+  // 换文件后重算 blame（开关关着时 loadBlame 直接返回空表，不会发请求）
+  await loadBlame(rel)
+  updateBlameDecoration()
 }
 
 async function saveActive() {
@@ -185,6 +247,20 @@ watch(
   () => { void applyThemeToEditor() },
 )
 
+// 行内 blame 开关：打开时按需拉当前文件的归因，关闭时清掉注解
+watch(
+  () => store.blameEnabled,
+  async (on) => {
+    const f = activeFile.value
+    if (on && f && !f.binary && !f.truncated) {
+      await loadBlame(f.relPath)
+    } else {
+      blameByLine = new Map()
+    }
+    updateBlameDecoration()
+  },
+)
+
 // 代码编辑器字号变化：即时应用到 live 编辑器（未创建时创建已读最新值，跳过即可）
 watch(
   () => settings.cfg?.code?.fontSize,
@@ -212,6 +288,11 @@ onBeforeUnmount(() => {
   editor = null
   editorHost = null
   activeModelRelPath = null
+  // blame：注解集合挂在编辑器上，随 editor.dispose 一起没了，但要断开光标监听
+  cursorDisposer?.dispose()
+  cursorDisposer = null
+  blameCollection = null
+  blameByLine = new Map()
 })
 </script>
 
@@ -278,4 +359,11 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .conflict-bar button:hover { background: var(--status-warn-bg); }
+
+/* 行内 blame 注解。Monaco 渲染出的 DOM 在编辑器容器内，需 :deep 穿透 scoped。
+   刻意不用 --text-tertiary：CodeView 把它重映射成了 --term-fg，会和代码同色看不出区别 */
+.code-editor :deep(.blame-inline) {
+  opacity: 0.45;
+  font-style: italic;
+}
 </style>

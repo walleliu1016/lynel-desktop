@@ -2,7 +2,15 @@ import type { ElectronAPI, OpenTerminalPathResult } from '../../../main/preload.
 import type { ScanEvent } from '../../../main/wecom-scan.js';
 // Git 面板。类型直接复用主进程的定义（仅 type import，编译期擦除，
 // 不会把主进程代码拉进渲染进程 bundle），避免两份定义漂移。
-import type { GitFileChange, GitStatusResult } from '../../../main/git.js';
+import type {
+  GitBlameLine,
+  GitBranchInfo,
+  GitCommitInfo,
+  GitFileChange,
+  GitGraphCommit,
+  GitStashEntry,
+  GitStatusResult,
+} from '../../../main/git.js';
 
 declare global {
   interface Window {
@@ -154,7 +162,15 @@ export const ShellClose = (sessionId: string) =>
 
 // Git 面板。`export type { X } from 'mod'` 是重导出，不会把 X 带进当前作用域，
 // 所以上面的 `import type` 与这里的 `export type` 两行都要写。
-export type { GitFileChange, GitStatusResult }
+export type {
+  GitBlameLine,
+  GitBranchInfo,
+  GitCommitInfo,
+  GitFileChange,
+  GitGraphCommit,
+  GitStashEntry,
+  GitStatusResult,
+}
 
 type GitOk<T> = { ok: true } & T
 type GitErr = { ok: false; error: string }
@@ -175,6 +191,37 @@ export const GitFileAtRev = (workDir: string, rev: string, relPath: string) =>
   api().gitFileAtRev(workDir, rev, relPath) as Promise<
     GitOk<{ content: string; binary: boolean; truncated: boolean }> | GitErr
   >
+export const GitLogGraph = (workDir: string, max?: number) =>
+  api().gitLogGraph(workDir, max) as Promise<GitOk<{ data: GitGraphCommit[] }> | GitErr>
+export const GitCommitDetail = (workDir: string, hash: string) =>
+  api().gitCommitDetail(workDir, hash) as Promise<GitOk<{ data: GitCommitInfo }> | GitErr>
+
+export const GitBranchList = (workDir: string, includeRemote?: boolean) =>
+  api().gitBranchList(workDir, includeRemote) as Promise<GitOk<{ data: GitBranchInfo[] }> | GitErr>
+export const GitBranchCreate = (workDir: string, name: string, startPoint?: string) =>
+  api().gitBranchCreate(workDir, name, startPoint) as Promise<GitOk<{}> | GitErr>
+export const GitBranchCheckout = (workDir: string, name: string) =>
+  api().gitBranchCheckout(workDir, name) as Promise<GitOk<{}> | GitErr>
+export const GitBranchDelete = (workDir: string, name: string, force?: boolean) =>
+  api().gitBranchDelete(workDir, name, force) as Promise<GitOk<{}> | GitErr>
+
+export const GitStashList = (workDir: string) =>
+  api().gitStashList(workDir) as Promise<GitOk<{ data: GitStashEntry[] }> | GitErr>
+export const GitStashPush = (workDir: string, message?: string) =>
+  api().gitStashPush(workDir, message) as Promise<GitOk<{}> | GitErr>
+export const GitStashPop = (workDir: string, index?: number) =>
+  api().gitStashPop(workDir, index) as Promise<GitOk<{}> | GitErr>
+export const GitStashDrop = (workDir: string, index?: number) =>
+  api().gitStashDrop(workDir, index) as Promise<GitOk<{}> | GitErr>
+
+export const GitBlame = (workDir: string, relPath: string) =>
+  api().gitBlame(workDir, relPath) as Promise<GitOk<{ data: GitBlameLine[] }> | GitErr>
+
+export const GitResetTo = (
+  workDir: string,
+  hash: string,
+  mode: 'soft' | 'mixed' | 'hard',
+) => api().gitResetTo(workDir, hash, mode) as Promise<GitOk<{}> | GitErr>
 export const GitWatch = (workDir: string) => api().gitWatch(workDir) as Promise<GitOk<{}>>
 export const GitUnwatch = (workDir: string) => api().gitUnwatch(workDir) as Promise<GitOk<{}>>
 export const GitChanged = (cb: (workDir: string) => void) => EventsOn('git:changed', cb)

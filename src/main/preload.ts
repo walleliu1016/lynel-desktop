@@ -170,6 +170,29 @@ const api = {
   gitRemoteOp: (workDir: string, op: string) => ipcRenderer.invoke('git:remoteOp', workDir, op),
   gitFileAtRev: (workDir: string, rev: string, relPath: string) =>
     ipcRenderer.invoke('git:fileAtRev', workDir, rev, relPath),
+  gitLogGraph: (workDir: string, max?: number) =>
+    ipcRenderer.invoke('git:logGraph', workDir, max),
+  gitCommitDetail: (workDir: string, hash: string) =>
+    ipcRenderer.invoke('git:commitDetail', workDir, hash),
+  gitBranchList: (workDir: string, includeRemote?: boolean) =>
+    ipcRenderer.invoke('git:branchList', workDir, includeRemote),
+  gitBranchCreate: (workDir: string, name: string, startPoint?: string) =>
+    ipcRenderer.invoke('git:branchCreate', workDir, name, startPoint),
+  gitBranchCheckout: (workDir: string, name: string) =>
+    ipcRenderer.invoke('git:branchCheckout', workDir, name),
+  gitBranchDelete: (workDir: string, name: string, force?: boolean) =>
+    ipcRenderer.invoke('git:branchDelete', workDir, name, force),
+  gitStashList: (workDir: string) => ipcRenderer.invoke('git:stashList', workDir),
+  gitStashPush: (workDir: string, message?: string) =>
+    ipcRenderer.invoke('git:stashPush', workDir, message),
+  gitStashPop: (workDir: string, index?: number) =>
+    ipcRenderer.invoke('git:stashPop', workDir, index),
+  gitStashDrop: (workDir: string, index?: number) =>
+    ipcRenderer.invoke('git:stashDrop', workDir, index),
+  gitBlame: (workDir: string, relPath: string) =>
+    ipcRenderer.invoke('git:blame', workDir, relPath),
+  gitResetTo: (workDir: string, hash: string, mode: 'soft' | 'mixed' | 'hard') =>
+    ipcRenderer.invoke('git:resetTo', workDir, hash, mode),
   gitWatch: (workDir: string) => ipcRenderer.invoke('git:watch', workDir),
   gitUnwatch: (workDir: string) => ipcRenderer.invoke('git:unwatch', workDir),
 };

@@ -123,13 +123,13 @@ async function load() {
     if (!ed || !m) return
 
     const [leftRaw, rightRaw] = await Promise.all([
-      GitFileAtRev(wd, 'HEAD', req.relPath),
+      GitFileAtRev(wd, req.left, req.relPath),
       // FileRead 失败是 reject（删除态的工作区文件已不在磁盘）。这里归一为 null，
       // 与 GitFileAtRev 的 ok:false 一起走「右侧缺失」分支，避免 reject 冒泡进 catch
       // 变成一条原始英文 fatal（ENOENT: no such file or directory...）。
-      req.rev === ':0'
-        ? GitFileAtRev(wd, ':0', req.relPath)
-        : FileRead(wd, req.relPath).catch(() => null),
+      req.right === 'WORKTREE'
+        ? FileRead(wd, req.relPath).catch(() => null)
+        : GitFileAtRev(wd, req.right, req.relPath),
     ])
     // 取数是最慢的一步，这里最可能被取代：丢弃刚取到的内容，不要再建 model
     if (seq !== loadSeq) return
@@ -180,8 +180,8 @@ async function load() {
       m.editor.getModel(uri)?.dispose()
       return m.editor.createModel(content, lang, uri)
     }
-    originalModel = makeModel(left.content, 'HEAD', 'original')
-    modifiedModel = makeModel(right.content, req.rev, 'modified')
+    originalModel = makeModel(left.content, req.left, 'original')
+    modifiedModel = makeModel(right.content, req.right, 'modified')
     ed.setModel({ original: originalModel, modified: modifiedModel })
   } catch (e: any) {
     // 与 try 内一致：被取代的那次加载不得再覆盖画面（errorMsg 在模板里优先于宿主区，
@@ -232,7 +232,7 @@ void (async () => {
       <span class="diff-path" :title="files.diffRequest?.relPath ?? ''">
         {{ files.diffRequest?.relPath }}
       </span>
-      <span class="diff-rev">{{ files.diffRequest?.rev === ':0' ? '暂存区' : '工作区' }} ↔ HEAD</span>
+      <span class="diff-rev">{{ files.diffRequest?.left }} ↔ {{ files.diffRequest?.label }}</span>
       <span class="bar-spacer" />
       <button class="bar-btn" title="关闭 diff" @click="files.closeDiff()">
         <Icon name="close" :size="13" />
