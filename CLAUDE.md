@@ -68,7 +68,8 @@ npm run dist:linux
 - 禁止直接 `window.electronAPI.X(...)`。
 - Pinia 用 setup style；Vue 组件用 `<script setup lang="ts">`；路由用 hash mode。
 - 样式用 `styles/theme.css` 的 CSS 变量，不要硬编码颜色。
-- 图标统一用 `@lucide/vue`，通过 `components/Icon.vue` 引用；禁止在界面里用 emoji / Unicode 符号当图标。
+- 图标统一用 `@lucide/vue`，通过 `components/Icon.vue` 引用；禁止在界面里用 emoji / Unicode 符号当图标。**新增图标前必须先查 `Icon.vue` 里的 `icons` 映射确认该键已注册**，未注册要按现有风格补上（import 一行 + 映射一行）。
+- 渲染进程的纯函数工具放 `src/renderer/src/utils/`（如 `time.ts` 的 `formatRelTime`）；跨组件复用的逻辑不要各写一份。
 - **例外（文件树语言图标）**：文件树按扩展名显示彩色语言 logo，用 vscode-icons 提取的本地 SVG 资产（`src/renderer/src/assets/file-icons/`），在 `FileTree.vue` 通过 `EXT_ICON` 映射 + `import.meta.glob` 按需引用；UI 其余部分仍统一 lucide。
 - `Pinia ref<Record<K, V>>` 更新要用整体 spread：`state.value = { ...state.value, [id]: v }`。
 - 错误返回 `error` / reject，不要抛未捕获异常；主进程未捕获异常会导致窗口白屏。
@@ -102,6 +103,9 @@ npm run dist:linux
 - `src/main/cost/`：价格表和用量计算。
 - `src/main/protocol/`：`LynelEnvelope` 协议定义（`envelope.ts`、`events.ts`、`usage.ts`）。
 - `src/main/archive/`：归档写入（blobs、happy.jsonl、raw archive、用量摘要）。
+- `src/main/git.ts`：Git 面板的唯一入口，用 `simple-git` 包装系统 git CLI（与 VSCode 同理：不重新实现 git）。覆盖状态 / 暂存 / 提交 / 远程操作、按 revision 取文件、提交历史图、单个提交详情、分支、stash、blame、reset。`.git` 目录用 chokidar 监听，500ms 合帧后推 `git:changed`。
+- `src/main/files.ts`：代码工作区的文件操作（列目录 / 读 / 写 / 新建 / 重命名 / 删除）+ 工作区 chokidar watcher（推 `file:changed`）。
+- `src/main/shell.ts`：项目终端（每会话一个交互式 shell PTY）。复用 `pty.ts` 的 `raw` 直通模式绕开 win32 的 `cmd.exe /c` 包装（多一层 cmd 会让 Ctrl+C 语义变形），输出经**独立**的 `OutputBatcher` 以 `shell:<sid>` 事件推送 —— 与 Claude PTY 的 `session:<sid>` 通道分离，复用会串流。
 
 ### 3. Session 生命周期与 PTY
 - **创建**：`App.createSessionInternal(workDir, prompt, extraArgs, autoTrust, botId?, agent?)` 是唯一入口。
@@ -131,6 +135,8 @@ npm run dist:linux
 - `XtermTerminal.vue` 启动时显示 loading 菊花，直到 xterm buffer 中真正存在可见行时才隐藏；同时保留 30s 和 5s 两级兜底隐藏。
 - 终端尺寸随容器变化自动调整：`ResizeObserver` 触发后 150ms debounce，再调用 `fitAddon.fit()` 计算新 `cols/rows`；只有尺寸真的改变时才调用 `ResizeTerminal` 通知 PTY。
 - PTY 输出经 `OutputBatcher`（16ms 合帧窗口）合并后再通过 IPC 推送给渲染进程，避免高频 chunk 导致 IPC 洪峰。`session.appendBuffer` 的本地缓冲仍逐 chunk 追加。发送 done / 错误提示等 out-of-band 消息前必须调用 `batcher.flush(id)` 保序。
+- xterm 额外加载 `addon-webgl`（渲染器）+ `addon-unicode11`（CJK / emoji 宽度），两者都必须在 `term.open()` 之后加载。WebGL 在大 scrollback + 高频流式输出下显著降低渲染开销；加载失败或运行中丢失 context 时 `dispose()` 后静默回退内置 renderer（只影响性能，不影响功能）。
+- `XtermTerminal.vue` 里有依赖 xterm **内部私有 API** 的两处补丁（`_charSizeService.measure()`、`_viewport._sync()`）。升级 xterm 时必须回头确认它们还在 —— beta.291 → beta.304 时 `_core._renderService.onCharSizeChanged` 就被移除了（渲染层重构），只能改用 `CharSizeService`。
 
 ### 5. Hooks
 - **配置方式**：不再修改全局 `~/.claude/settings.json`。`app.ts` 的 `createSettingsOverrideFile()` 在 `os.tmpdir()/lynel-desktop/` 下创建临时 settings 文件，通过 `--settings <tmpFile>` 传递给 Claude。文件包含：
@@ -325,6 +331,37 @@ npm run dist:linux
 - 就绪信号：解析 stdout 的 `dsh web: http://127.0.0.1:<port>`（`--port 0` 让 OS 分配随机端口），120s 超时 kill 进程树。
 - **更新 dsh**：用户 `npm i -g @deepseek-ai/dsh@latest`，不随 Lynel 发版。
 - **插件管理**：共享 `~/.dsh`（默认 `DSH_HOME`）profile。命令行 `dsh plugin --profile web add <pkg>` 加插件（内部转 pnpm，需系统 pnpm），装进 `~/.dsh/profiles/web/`（`dsh.profile.bundles` + `cordis.patch.yml`）。Lynel harness 用 web profile；dsh 单例常驻不热加载，改 profile 后需重启 dsh/harness（重启应用或杀 dsh 进程）。
+
+### 16. Git 面板与文件工作区
+
+**布局**：「文件」子页（`CodeView.vue`）= 左侧文件树（可拖宽）| 编辑器区；编辑器区底部是横跨全宽的 `BottomPanel`，含「Git / 终端」两个标签（`v-show` 常驻 —— 切走再切回不能丢 xterm buffer 或重建 PTY）。
+
+**编辑器区**：`FileTabs` + 两个 `v-show` 的 slot，由 `stores/files.ts` 的 `activeView`（`'file' | 'diff'`）决定显示 `CodeEditor` 还是 `CodeDiffView`。两者显隐用**互斥的 computed**（`showDiff` 与 `showEditor = !showDiff`）控制 —— 各自独立判断时，`activeView` 一旦取到意外值（如热更新后 store 实例陈旧、缺字段）会两个 `v-show` 同时为假，编辑器区整块空白。
+
+**diff 是并列的 tab，不是覆盖层**：
+- `diffRequest = { relPath, left, right, label }`，`right === 'WORKTREE'` 表示右侧取工作区文件内容。
+- 变更列表用 `openDiff(path, 'HEAD', 'WORKTREE', '工作区')`；查看历史提交里的文件用 `openDiff(path, hash + '^', hash, shortHash)`（`<hash>^` 对根提交取不到，左侧归零为空，正好呈现「整个文件都是新增」）。
+- **两侧 URI 必须互不相同**：未暂存的 diff 两侧 rev 都是 `'HEAD'`，只用 `?rev=` 会解析成同一个 URI，而 Monaco 的 ModelService 对同一 URI 只允许一个 model，第二次 `createModel` 直接抛 `Cannot add model because it already exists!`。故 URI 里带 `side=original|modified` 区分。
+
+**GitPanel 是横向分栏**：左栏固定像素宽（可拖，200–640px，存 `localStorage` 的 `lynel:git-changes-width`）+ 右栏历史图自适应剩余宽度。用固定像素而非比例是为了配合拖拽。
+
+**提交历史图**（`logGraph`）：用 `git log --graph --decorate=full --format=...`。解析时的关键点 —— commit 之间会插入**纯图形行**（只有连接线、不含任何字段），必须先判断行首图形前缀之后是否真有内容再决定是否消费后续 6 行，否则整体错位。
+
+**单个提交详情**（`commitDetail`）：`git show --first-parent --name-status`。合并提交默认不输出文件列表（合并 diff 为空），`--first-parent` 让它相对第一父比较，点开才有内容。
+
+**blame**（`blameFile`）：`git blame --porcelain` 的元信息（author / author-time / summary）**只在某个 commit 首次出现时输出**，之后引用同一 commit 的块只有块首行。必须按 hash 缓存元信息，否则后续行会**静默继承上一个 commit 的作者**。前端只给**光标所在行**挂行尾 `after` 装饰（GitLens 的默认形态），不给整文件打注解。
+
+**reset**（`resetTo`）：soft / mixed / hard 三种模式，`hard` 不可逆 —— 二次确认的责任在前端（`GitPanel.vue` 的 `onReset`），文案要如实写明各模式的波及面。
+
+**退出清理**：git watcher 挂在 `git.ts` 的**模块级 Map** 上（不归 App 实例管），所以 `App.shutdown()` 必须显式调 `closeAllGitWatchers()`；文件 watcher 由 `watchCleanup` 覆盖。会话关闭时 watcher 不通过 `setOnRemove` 释放，而是跟着「当前会话切换」走（`setSession` → `GitUnwatch(旧目录)`）—— 前提是 watcher 只服务当前会话。
+
+`src/renderer/src/utils/time.ts` 的 `formatRelTime` 被提交历史与 blame 共用，不要各写一份。
+
+**编辑器语言与语法高亮**：
+- `monaco/languages.ts` 的 `languageForPath()` 从 `monaco.languages.getLanguages()` 构建「扩展名 / 文件名 → 语言 id」索引，**不要手写映射表**：手写的覆盖不全（原先只有 10 条扩展名）、会随 Monaco 升级漂移，而且原先由 `CodeEditor` 与 `CodeDiffView` 各写一份，已经漂移过一次（diff 那份漏了 yaml）。纯匹配逻辑在 `monaco/langIndex.ts`，与 `setup.ts` 解耦（setup 顶部有 `?worker` 资源 import，node 下跑单测会炸），可直接单测。
+- `monaco/textmate.ts` 对**白名单语言**（markdown / yaml / ini）用 `vscode-textmate` + `vscode-oniguruma` 替换 Monaco 内置的 Monarch tokenizer —— 只挑 Monarch 明显不足或缺失的，因为 textmate 逐行用 oniguruma 扫描，比 Monarch 慢。语法文件在 `monaco/syntaxes/`（取自 VSCode 仓库，MIT），动态 import 按需加载；oniguruma 的 wasm 用 `?url` 取。
+  - **必须在 `createModel` 之前调 `installTextMate`**，否则 model 已经用 Monarch tokenize 过了。
+  - 不在白名单、已装过、或加载失败都是 no-op，失败静默回退 Monarch（高亮粗一点，不影响可用性）。
 
 ---
 

@@ -23,6 +23,9 @@ Lynel Desktop 把这几件事变成一个 native 窗口：图形化管理多会�
 - **历史会话自动扫描** — 读取 `~/.claude/projects/` 与 recent-sessions.json，文件变化即时刷新
 - **两栏布局** — 左侧栏（入口 + 会话列表，可折叠）| 中间内容区（标签页 + 每会话「终端 / Trace」子页）
 - **xterm.js 原生终端** — 中间区域嵌入 xterm.js，PTY 驱动交互式 agent，右键复制粘贴、Ctrl+滚轮调字号
+- **文件工作区** — 每个会话绑定其 workDir 的代码工作区：文件树 + Monaco 编辑器（多标签、语法高亮、外部变更提示），可开关的**行内 blame**（光标行尾显示作者 / 时间 / 提交）
+- **Git 面板** — 「文件」子页底部全宽面板的 Git 标签：变更列表（分组 / 暂存 / 取消暂存 / 丢弃）、提交与 fetch/pull/push、**提交历史图**（点击展开某次提交的文件变更、一键查看该文件的版本差异、软/混合/硬重置到任意提交）、**分支切换与新建/删除**、**stash 管理**（暂存 / 取出 / 丢弃）
+- **项目终端（每会话 shell）** — 与 Git 面板同处底部面板的终端标签，绑定当前会话的 workDir，独立于 agent 终端
 - **Trace 面板** — 每个会话独立的请求可视化子页，含状态、模型、Token、延迟、总费用、请求详情
 - **API 网关代理** — 本地拦截 API 流量，按 agent 适配 Anthropic / OpenAI Responses / Chat 格式，提取阶段数据
 - **权限仲裁器** — 统一管理权限请求，支持主窗口 / 企业微信多通道审批
@@ -56,7 +59,7 @@ Lynel Desktop 把这几件事变成一个 native 窗口：图形化管理多会�
 
 ## 技术栈
 
-桌面壳 Electron、前端 Vue 3 + TypeScript + Pinia、主进程 Node.js、持久化 electron-store + 本地 JSON、日志 electron-log、打包 electron-builder。
+桌面壳 Electron、前端 Vue 3 + TypeScript + Pinia（编辑器 Monaco、终端 xterm.js，均为本地依赖）、主进程 Node.js、Git 操作经 `simple-git` 包装系统 git CLI、持久化 electron-store + 本地 JSON、日志 electron-log、打包 electron-builder。
 
 ## License
 

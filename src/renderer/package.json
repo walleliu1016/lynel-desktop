@@ -24,6 +24,8 @@
     "motion": "^13.1.0",
     "pinia": "^3.0.4",
     "qrcode": "^1.5.4",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2",
     "vue": "^3.5.39",
     "vue-router": "^5.1.0"
   },

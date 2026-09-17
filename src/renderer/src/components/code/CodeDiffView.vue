@@ -5,6 +5,8 @@ import { FileRead, GitFileAtRev } from '../../composables/useElectron'
 import { useFilesStore } from '../../stores/files'
 import { useSettingsStore } from '../../stores/settings'
 import { ensureMonaco, applyMonacoTheme } from '../../monaco/setup'
+import { languageForPath } from '../../monaco/languages'
+import { installTextMate } from '../../monaco/textmate'
 
 type DiffEditor = import('monaco-editor').editor.IStandaloneDiffEditor
 type ITextModel = import('monaco-editor').editor.ITextModel
@@ -24,18 +26,6 @@ let diffEditor: DiffEditor | null = null
 let originalModel: ITextModel | null = null
 let modifiedModel: ITextModel | null = null
 let currentThemeName = 'code-default-dark'
-
-function languageFor(relPath: string): string {
-  if (relPath.endsWith('.ts') || relPath.endsWith('.tsx')) return 'typescript'
-  if (relPath.endsWith('.js') || relPath.endsWith('.jsx')) return 'javascript'
-  if (relPath.endsWith('.vue')) return 'html'
-  if (relPath.endsWith('.json')) return 'json'
-  if (relPath.endsWith('.md')) return 'markdown'
-  if (relPath.endsWith('.py')) return 'python'
-  if (relPath.endsWith('.css')) return 'css'
-  if (relPath.endsWith('.html')) return 'html'
-  return 'plaintext'
-}
 
 /** 应用到 Monaco 主题：与 CodeEditor 同源（都读 --term-*）。
  *  applyMonacoTheme 只构建并返回主题名，不负责应用，需调用方自行 setTheme。 */
@@ -163,7 +153,10 @@ async function load() {
     // 放在 await 之后是为了避免：被取代的那次 load 误 dispose 当前正在显示的 model。
     disposeModels()
 
-    const lang = languageFor(req.relPath)
+    const lang = await languageForPath(req.relPath)
+    await installTextMate(m, lang)
+    // 同 CodeEditor：await 期间可能已被更晚的加载取代，重建守卫
+    if (seq !== loadSeq) return
     const uriBase = `file:///${req.relPath}`
     // 两侧 URI 必须互不相同。未暂存的 diff 两侧 rev 都是 'HEAD'（HEAD ↔ 工作区），
     // 只用 `?rev=` 会让 original / modified 解析成同一个 URI；Monaco 的 ModelService

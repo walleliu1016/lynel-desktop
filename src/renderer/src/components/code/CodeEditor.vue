@@ -5,6 +5,8 @@ import { pushToast } from '../../composables/useToast'
 import { useFilesStore, type OpenFile } from '../../stores/files'
 import { useSettingsStore } from '../../stores/settings'
 import { ensureMonaco, applyMonacoTheme, currentThemeId } from '../../monaco/setup'
+import { languageForPath } from '../../monaco/languages'
+import { installTextMate } from '../../monaco/textmate'
 import { GitBlame, type GitBlameLine } from '../../composables/useElectron'
 import { formatRelTime } from '../../utils/time'
 
@@ -93,19 +95,6 @@ const activeFile = computed<OpenFile | null>(
   () => store.openFiles.find((o) => o.relPath === store.activeRelPath) ?? null,
 )
 
-function languageFor(relPath: string): string {
-  if (relPath.endsWith('.ts') || relPath.endsWith('.tsx')) return 'typescript'
-  if (relPath.endsWith('.js') || relPath.endsWith('.jsx')) return 'javascript'
-  if (relPath.endsWith('.vue')) return 'html'
-  if (relPath.endsWith('.json')) return 'json'
-  if (relPath.endsWith('.md')) return 'markdown'
-  if (relPath.endsWith('.py')) return 'python'
-  if (relPath.endsWith('.yaml') || relPath.endsWith('.yml')) return 'yaml'
-  if (relPath.endsWith('.css')) return 'css'
-  if (relPath.endsWith('.html')) return 'html'
-  return 'plaintext'
-}
-
 /** 应用当前终端主题：由 monaco/setup 构建主题（内部同步 data-term-theme 并读 CSS 变量）并应用到 live 编辑器。
  *  settings.cfg.terminal.theme 由 watch 触发时已是新值；未加载时回退 data-term-theme 属性。 */
 async function applyThemeToEditor() {
@@ -176,7 +165,13 @@ async function switchModel() {
   if (store.activeRelPath !== f.relPath) return
   // 有未保存改动时优先用草稿；否则用 store 基准内容（重载后 dirty=false，自然回落为磁盘内容）
   const content = f.dirty && store.drafts[f.relPath] !== undefined ? store.drafts[f.relPath]! : f.content
-  const lang = languageFor(f.relPath)
+  const lang = await languageForPath(f.relPath)
+  // 白名单语言换成 textmate tokenizer（其余语言是 no-op）。必须在 createModel 之前装，
+  // 这样 model 首次 tokenize 就走新语法
+  await installTextMate(m, lang)
+  // languageForPath / installTextMate 内部有 await，期间用户可能已经切走
+  // —— 重建一次守卫，避免给旧文件建 model
+  if (store.activeRelPath !== f.relPath) return
   const uri = m.Uri.parse(`file:///${f.relPath}`)
   model = m.editor.createModel(content, lang, uri)
   const rel = f.relPath
