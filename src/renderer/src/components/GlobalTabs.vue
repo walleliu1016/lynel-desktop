@@ -15,6 +15,7 @@
           <DeepSeekLogo v-if="tab.type === 'harness'" :size="12" />
           <Icon v-else-if="tab.type === 'settings'" name="settings" :size="12" />
           <Icon v-else-if="tab.type === 'guide'" name="help" :size="12" />
+          <Icon v-else-if="tab.type === 'tasks'" name="alarm-clock" :size="12" />
         </span>
         <!-- 会话 tab：左侧直接用 agent 标识（CC/CX/OC/PI）替代转圈状态图标；待审批以 tab 背景色提示 -->
         <AgentBadge v-if="tab.type === 'session'" :agent="sessionAgent(tab.id)" size="sm" class="tab-agent" />

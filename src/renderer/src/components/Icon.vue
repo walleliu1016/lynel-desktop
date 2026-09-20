@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import {
   Activity,
+  AlarmClock,
   AlertCircle,
   AlertTriangle,
   Archive,
@@ -27,6 +28,7 @@ import {
   Expand,
   FileCode,
   FileText,
+  Filter,
   FolderOpen,
   FolderTree,
   GitBranch,
@@ -42,7 +44,9 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Pencil,
+  Play,
   Plus,
+  Power,
   Puzzle,
   RefreshCw,
   RotateCcw,
@@ -51,6 +55,7 @@ import {
   Settings,
   ShieldAlert,
   Shrink,
+  Slash,
   Smartphone,
   Sparkles,
   Square,
@@ -72,6 +77,11 @@ const props = defineProps<{
 }>()
 
 const icons: Record<string, unknown> = {
+  'alarm-clock': AlarmClock,
+  filter: Filter,
+  power: Power,
+  slash: Slash,
+  play: Play,
   archive: Archive,
   minimize: Minus,
   maximize: Square,

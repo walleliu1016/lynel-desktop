@@ -49,6 +49,12 @@
             <Icon name="close" :size="12" />
           </button>
         </div>
+        <!-- 任务入口：定时任务面板（独立全屏 tab） -->
+        <button v-if="!sidebarCollapsed" class="home-entry tooltip-wrap" :class="{ active: tabsStore.activeType === 'tasks' }" aria-label="任务" @click="openTasksTab">
+          <Icon name="alarm-clock" :size="16" />
+          <span class="entry-label">任务</span>
+          <span class="tooltip">任务</span>
+        </button>
         <!-- 收藏夹入口：点击在下方展开收藏区（独立于会话列表） -->
         <button v-if="!sidebarCollapsed" class="home-entry tooltip-wrap" :class="{ active: favListOpen }" aria-label="收藏夹" @click="onToggleFavList">
           <Icon name="star" :size="16" :fill="favListOpen" />
@@ -80,6 +86,11 @@
         <button v-if="sidebarCollapsed" class="home-entry search-entry tooltip-wrap" aria-label="搜索" @click="onCollapsedSearch">
           <Icon name="search" :size="16" />
           <span class="tooltip">搜索</span>
+        </button>
+        <!-- 折叠态：任务仅图标，点击展开侧栏再打开任务 tab -->
+        <button v-if="sidebarCollapsed" class="home-entry tooltip-wrap" :class="{ active: tabsStore.activeType === 'tasks' }" aria-label="任务" @click="onCollapsedTasks">
+          <Icon name="alarm-clock" :size="16" />
+          <span class="tooltip">任务</span>
         </button>
         <!-- 折叠态：收藏夹仅图标，点击展开侧栏并进入收藏视图 -->
         <button v-if="sidebarCollapsed" class="home-entry tooltip-wrap" aria-label="收藏夹" @click="onCollapsedFav">
@@ -212,6 +223,9 @@
           <div v-show="tabsStore.activeType === 'guide'" class="content-pane">
             <GuideTab />
           </div>
+          <div v-show="tabsStore.activeType === 'tasks'" class="content-pane">
+            <TasksPane />
+          </div>
           <!-- DeepSeek Harness：普通 tab pane -->
           <!-- DeepSeek Harness：iframe 始终挂载，非激活时 opacity:0 垫底。
                避免 Chromium 冻结 display:none 的跨源 iframe 导致切回时重新加载页面。 -->
@@ -292,6 +306,7 @@ import WelcomeTab from '../components/WelcomeTab.vue'
 import SessionTabContent from '../components/SessionTabContent.vue'
 import SettingsTab from '../components/SettingsTab.vue'
 import GuideTab from '../components/GuideTab.vue'
+import TasksPane from '../components/tasks/TasksPane.vue'
 import NewSessionDialog from '../components/NewSessionDialog.vue'
 import CloseSessionDialog from '../components/CloseSessionDialog.vue'
 import OpenSessionDialog from '../components/OpenSessionDialog.vue'
@@ -736,6 +751,16 @@ function openSettingsTab(tab: SettingsTabKey = 'general') {
 
 function openGuideTab() {
   tabsStore.openGuide()
+}
+
+/** 折叠态点击「任务」图标：先展开侧栏再打开任务 tab */
+function onCollapsedTasks() {
+  sidebarCollapsed.value = false
+  openTasksTab()
+}
+
+function openTasksTab() {
+  tabsStore.openTasks()
 }
 
 function maybeShowStartupUpdate(status: any) {

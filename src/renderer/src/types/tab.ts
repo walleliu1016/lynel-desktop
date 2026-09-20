@@ -1,4 +1,4 @@
-export type TabType = 'welcome' | 'session' | 'settings' | 'guide' | 'harness'
+export type TabType = 'welcome' | 'session' | 'settings' | 'guide' | 'harness' | 'tasks'
 
 export interface Tab {
   id: string
