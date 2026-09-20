@@ -388,7 +388,13 @@ npm run dist:linux
 
 **无头参数**：`-p <prompt> --output-format stream-json --verbose --permission-mode bypassPermissions` + `--session-id|--resume <sid>`。`--verbose` 必需，不带直接报错；`stdio: ['ignore','pipe','pipe']` 中 `stdio[0]` 必须是 `'ignore'`（claude 会等 stdin 最多 3 秒，用 `pipe` 且不关会永久卡住）；env 里 `delete CLAUDECODE`（否则从 Claude Code 会话内 spawn 会被「不能嵌套」守卫挡住）。
 
-**启动恢复**（只做一次）：`status='running'` 的 run → 标 `interrupted`（进程已不在），`status='queued'` 的 run → **重新入队**（不丢）；恢复失败时 `recovered` 不置位，由后续 tick 重试。
+**启动恢复**（只做一次）：`status='running'` 的 run → 标 `interrupted`（进程已不在），`status='queued'` 的 run → **重新入队**（不丢）；恢复失败时 `recovered` 不置位，由后续 tick 重试。**残留（已接受，见 spec §6.2）**：恢复只改行、不杀进程 —— App 被硬杀（`taskkill /F` / SIGKILL / 断电）时 `killAllRuns()` 没机会执行，那个 detached 的 claude 进程会活着继续跑（输出管道已断），启动恢复不会去杀它；不做 pid 持久化 + 启动扫杀，因为跨平台判活/杀树不可靠（pid 复用会误杀），代价大于收益。
+
+**会话初始化标记的判据**：`session_initialized` 只在「**claude 真的把会话建起来了**」时置位 —— 非回退路径上 `a.events.length > 0`（解析出过任何事件，含 stderr）即算，**不是**只认 `status === 'done'`。只认成功的话，首跑一旦以 `error` / `timeout` / `interrupted` 收场就永远停在 0，下次又拿同一个 UUID 去 `--session-id` 新建 → claude 报 `Session ID already in use` → 任务永久失败且无自愈路径。回退分支里的 `setTaskSession(..., false)` 是另一回事，保持不动。同理，终态的 `last_run_at` / `last_status` 回写**覆盖全部终态**（不止 `done` / `error`），否则超时与被取消的任务在列表里一直挂着上一次的「成功」。
+
+**resume 回退重建前必须 `clearRunEvents(runId)`**：第一趟已经把 `run_events` 的 seq 0..N 落库了，只把 `a.seq` 归零会让重建这趟的每次插入都撞 `PRIMARY KEY (run_id, seq)`，而 `recordLine` 的 catch 吞掉异常、`a.seq += 1` 又在这个 try 里 —— 整趟事件一条都存不进去（run 报成功、流水空白）。
+
+**「立即执行」也走去重**：`runTaskNow` 先查 `listLiveRuns()`，该任务已有非终态 run 时**直接返回那个 run 的 id、不新建**（连点两下否则会起两个 claude 并发写同一 jsonl）；删除任务前先 `cancelTaskRuns(taskId)` 杀掉在跑的进程，再 `deleteTask`（级联删行的同时把进程留住 = UI 看不见也取消不了的孤儿 + 永久孤儿 `run_events`）。
 
 **渲染层**：`components/tasks/{TasksPane,TaskList,TaskDetailPane,TaskFormDialog,RunStreamView,ToolStepCard}.vue` + `stores/tasks.ts` + `utils/tasks.ts` + `types/tasks.ts`。`flattenRunEvents(events)` 是纯函数：按 `message.id` 分组（C1：assistant 是「一个 content block 一行」，同一 id 跨多行，不能按行边界切消息）、`tool_use.id` ↔ `tool_result.tool_use_id` 配对、StepCard 摘要映射、子代理按 `parent_tool_use_id` 缩进。**预设 ↔ cron 的模板逻辑在 `schedule.ts` 与 `TaskFormDialog.vue` 里各有一份**（前端不能 import 主进程模块，`buildExpr` / `detectPreset` 对应 `presetToCron` / `cronToPreset`，两边都含区间校验）；改模板要同步改两处。
 
