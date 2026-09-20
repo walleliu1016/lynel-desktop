@@ -7,6 +7,8 @@ import { setDbFile, closeDb, getDb } from '../../../src/main/tasks/db.js';
 import {
   createTask, getTask, listTasks, updateTask, deleteTask,
   setTaskSession, touchTaskAfterRun,
+  createRun, getRun, listRuns, listLiveRuns, markRunRunning,
+  finishRun, appendEvent, listEventsRaw, recoverStaleRuns,
 } from '../../../src/main/tasks/store.js';
 
 vi.mock('electron', () => ({ safeStorage: {} }));
@@ -131,5 +133,133 @@ describe('tasks CRUD', () => {
     const t = createTask(base);
     deleteTask(t.id);
     expect(getTask(t.id)).toBeNull();
+  });
+});
+
+describe('runs 与 run_events', () => {
+  it('createRun 建 queued run，trigger 正确落库', () => {
+    const t = createTask(base);
+    const r = createRun(t.id, 'scheduled');
+    expect(r.status).toBe('queued');
+    expect(r.trigger).toBe('scheduled');
+    expect(r.queuedAt).toBeGreaterThan(0);
+    expect(r.startedAt).toBeNull();
+    expect(r.eventCount).toBe(0);
+  });
+
+  it('markRunRunning 写 started_at 并切状态', () => {
+    const t = createTask(base);
+    const r = createRun(t.id, 'manual');
+    markRunRunning(r.id);
+    const got = getRun(r.id)!;
+    expect(got.status).toBe('running');
+    expect(got.startedAt).toBeGreaterThan(0);
+  });
+
+  it('finishRun 写终态与 result 字段', () => {
+    const t = createTask(base);
+    const r = createRun(t.id, 'scheduled');
+    markRunRunning(r.id);
+    finishRun(r.id, 'done', {
+      resultSubtype: 'success',
+      resultText: '搞定了',
+      numTurns: 3,
+      durationMs: 1200,
+      totalCostUsd: 0.0123,
+      usageJson: '{"input_tokens":10}',
+      exitCode: 0,
+      isError: 0,
+    });
+    const got = getRun(r.id)!;
+    expect(got.status).toBe('done');
+    expect(got.finishedAt).toBeGreaterThan(0);
+    expect(got.resultText).toBe('搞定了');
+    expect(got.numTurns).toBe(3);
+    expect(got.totalCostUsd).toBeCloseTo(0.0123);
+  });
+
+  it('listRuns 按 queued_at 倒序分页，before 做游标', () => {
+    const t = createTask(base);
+    const r1 = createRun(t.id, 'scheduled');
+    const r2 = createRun(t.id, 'scheduled');
+    const r3 = createRun(t.id, 'scheduled');
+    const page1 = listRuns(t.id, { limit: 2 });
+    expect(page1.map((r) => r.id)).toEqual([r3.id, r2.id]);
+    const page2 = listRuns(t.id, { limit: 2, before: page1[1].queuedAt });
+    expect(page2.map((r) => r.id)).toEqual([r1.id]);
+  });
+
+  it('listRuns 只返回该任务的 run', () => {
+    const t1 = createTask(base);
+    const t2 = createTask({ ...base, name: '另一个' });
+    createRun(t1.id, 'scheduled');
+    createRun(t2.id, 'scheduled');
+    expect(listRuns(t1.id, { limit: 10 })).toHaveLength(1);
+  });
+
+  it('appendEvent 逐行落库并可增量读取', () => {
+    const t = createTask(base);
+    const r = createRun(t.id, 'scheduled');
+    appendEvent(r.id, 0, 'system', 'init', '{"a":1}');
+    appendEvent(r.id, 1, 'assistant', null, '{"b":2}');
+    const all = listEventsRaw(r.id);
+    expect(all.map((e) => e.seq)).toEqual([0, 1]);
+    expect(all[0].payload).toBe('{"a":1}');
+    expect(listEventsRaw(r.id, 0).map((e) => e.seq)).toEqual([1]);
+    expect(listEventsRaw(r.id, 1)).toHaveLength(0);
+  });
+
+  it('appendEvent 同步递增 runs.event_count', () => {
+    const t = createTask(base);
+    const r = createRun(t.id, 'scheduled');
+    appendEvent(r.id, 0, 'stderr', null, 'x');
+    appendEvent(r.id, 1, 'stderr', null, 'y');
+    expect(getRun(r.id)!.eventCount).toBe(2);
+  });
+
+  it('listLiveRuns 只返回非终态', () => {
+    const t = createTask(base);
+    const a = createRun(t.id, 'scheduled');
+    const b = createRun(t.id, 'scheduled');
+    const c = createRun(t.id, 'scheduled');
+    markRunRunning(a.id);
+    finishRun(b.id, 'done');
+    expect(listLiveRuns().map((r) => r.id).sort()).toEqual([a.id, c.id].sort());
+  });
+
+  it('recoverStaleRuns: running 标 interrupted，queued 原样返回待重新入队', () => {
+    const t = createTask(base);
+    const a = createRun(t.id, 'scheduled');
+    const b = createRun(t.id, 'scheduled');
+    markRunRunning(a.id);
+    const res = recoverStaleRuns();
+    expect(res.interrupted.map((r) => r.id)).toEqual([a.id]);
+    expect(res.requeued.map((r) => r.id)).toEqual([b.id]);
+    expect(getRun(a.id)!.status).toBe('interrupted');
+    expect(getRun(a.id)!.error).toBe('App 退出时仍在运行');
+    expect(getRun(b.id)!.status).toBe('queued');
+  });
+
+  it('recoverStaleRuns 不动终态 run', () => {
+    const t = createTask(base);
+    const a = createRun(t.id, 'scheduled');
+    finishRun(a.id, 'done');
+    const res = recoverStaleRuns();
+    expect(res.interrupted).toHaveLength(0);
+    expect(res.requeued).toHaveLength(0);
+    expect(getRun(a.id)!.status).toBe('done');
+  });
+
+  it('recoverStaleRuns 幂等：二次调用不再动已 interrupted 的 run', () => {
+    const t = createTask(base);
+    const a = createRun(t.id, 'scheduled');
+    markRunRunning(a.id);
+    const first = recoverStaleRuns();
+    expect(first.interrupted.map((r) => r.id)).toEqual([a.id]);
+    const finishedAt = getRun(a.id)!.finishedAt;
+    const second = recoverStaleRuns();
+    expect(second.interrupted).toHaveLength(0);
+    expect(second.requeued).toHaveLength(0);
+    expect(getRun(a.id)!.finishedAt).toBe(finishedAt);
   });
 });
