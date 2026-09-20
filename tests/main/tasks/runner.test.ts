@@ -40,7 +40,9 @@ beforeEach(() => {
       spawnArgs = { bin, args, opts };
       return proc as never;
     }) as never,
-    claudeBin: () => 'claude',
+    // claudeBin 必须注入绝对 .exe 路径：win32 下 runner 会解析 claudeBin（裸名在本机没装 claude 时
+    // 走 fail-fast、根本不 spawn），绝对 .exe 路径会被 buildSpawnCommand 原样放行，fake spawn 才会被调用。
+    claudeBin: () => (process.platform === 'win32' ? path.join(dir, 'claude.exe') : 'claude'),
     // 注入 tmp 目录：不注入的话 deps.tasksDir() 会真实 mkdir + 写 ~/.lynel-desktop/tasks/CLAUDE.md。
     tasksDir: () => dir,
   });
@@ -246,7 +248,7 @@ describe('resume 回退（R2 实测判据）', () => {
         });
         return proc as never;
       }) as never,
-      claudeBin: () => 'claude',
+      claudeBin: () => (process.platform === 'win32' ? path.join(dir, 'claude.exe') : 'claude'),
     });
 
     startRun(r, getTask(t.id)!, { onEvent: () => {}, onFinish: () => {} });
@@ -280,7 +282,7 @@ describe('resume 回退（R2 实测判据）', () => {
         });
         return proc as never;
       }) as never,
-      claudeBin: () => 'claude',
+      claudeBin: () => (process.platform === 'win32' ? path.join(dir, 'claude.exe') : 'claude'),
     });
     startRun(r, getTask(t.id)!, { onEvent: () => {}, onFinish: () => {} });
     await vi.waitFor(() => expect(isRunning(r.id)).toBe(false), { timeout: 4000 });
@@ -318,7 +320,7 @@ describe('resume 回退（R2 实测判据）', () => {
         }
         return p as never;
       }) as never,
-      claudeBin: () => 'claude',
+      claudeBin: () => (process.platform === 'win32' ? path.join(dir, 'claude.exe') : 'claude'),
     });
 
     startRun(r, getTask(t.id)!, { onEvent: () => {}, onFinish: () => {} });
@@ -357,7 +359,7 @@ describe('resume 回退（R2 实测判据）', () => {
         }
         return p as never;
       }) as never,
-      claudeBin: () => 'claude',
+      claudeBin: () => (process.platform === 'win32' ? path.join(dir, 'claude.exe') : 'claude'),
     });
 
     const finished: string[] = [];
