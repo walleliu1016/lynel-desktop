@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { setDbFile, closeDb } from '../../../src/main/tasks/db.js';
+import { setDbFile, closeDb, getDb } from '../../../src/main/tasks/db.js';
 import {
   createTask, getTask, listTasks, updateTask, deleteTask,
   setTaskSession, touchTaskAfterRun,
@@ -70,10 +70,13 @@ describe('tasks CRUD', () => {
 
   it('updateTask 改字段并推进 updatedAt，返回新行', () => {
     const t = createTask(base);
+    // 先把 updated_at 回拨到 0，否则 updatedAt 断言可能因同一毫秒内相等而失去区分度
+    getDb().prepare('UPDATE tasks SET updated_at = 0 WHERE id = ?').run(t.id);
     const updated = updateTask(t.id, { name: '改名', nextRunAt: 999 });
     expect(updated.name).toBe('改名');
     expect(updated.nextRunAt).toBe(999);
-    expect(updated.updatedAt).toBeGreaterThanOrEqual(t.updatedAt);
+    expect(updated.updatedAt).toBeGreaterThan(0);
+    expect(getTask(t.id)!.updatedAt).toBe(updated.updatedAt);
   });
 
   it('updateTask 的 enabled 用 boolean 入参、落库为 0/1', () => {
@@ -88,7 +91,15 @@ describe('tasks CRUD', () => {
 
   it('updateTask 对空 patch 不报错、只推 updatedAt', () => {
     const t = createTask(base);
-    expect(() => updateTask(t.id, {})).not.toThrow();
+    getDb().prepare('UPDATE tasks SET updated_at = 0 WHERE id = ?').run(t.id);
+    let updated: ReturnType<typeof updateTask>;
+    expect(() => {
+      updated = updateTask(t.id, {});
+    }).not.toThrow();
+    expect(updated!.updatedAt).toBeGreaterThan(0);
+    // 空 patch 不得顺带改动其他字段
+    expect(updated!.name).toBe(t.name);
+    expect(updated!.nextRunAt).toBe(t.nextRunAt);
   });
 
   it('scheduleType 换成 once 时 scheduleExpr 置 null，反之亦然', () => {
