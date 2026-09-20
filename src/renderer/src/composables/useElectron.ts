@@ -233,4 +233,22 @@ export const GitWatch = (workDir: string) => api().gitWatch(workDir) as Promise<
 export const GitUnwatch = (workDir: string) => api().gitUnwatch(workDir) as Promise<GitOk<{}>>
 export const GitChanged = (cb: (workDir: string) => void) => EventsOn('git:changed', cb)
 
+// 定时任务
+export const TasksList = () => api().tasksList();
+export const TasksGet = (id: string) => api().tasksGet(id);
+export const TasksCreate = (input: unknown) => api().tasksCreate(input);
+export const TasksUpdate = (id: string, patch: unknown) => api().tasksUpdate(id, patch);
+export const TasksDelete = (id: string) => api().tasksDelete(id);
+export const TasksSetEnabled = (id: string, enabled: boolean) => api().tasksSetEnabled(id, enabled);
+export const TasksRunNow = (id: string) => api().tasksRunNow(id);
+export const TasksCancel = (runId: string) => api().tasksCancel(runId);
+export const TasksRuns = (taskId: string, opts: { limit: number; before?: number }) => api().tasksRuns(taskId, opts);
+export const TasksRun = (runId: string) => api().tasksRun(runId);
+export const TasksRunEvents = (runId: string, opts: { afterSeq?: number } = {}) => api().tasksRunEvents(runId, opts);
+export const TasksPreview = (schedule: unknown) => api().tasksPreview(schedule);
+
+export const OnTasksChanged = (cb: (tasks: unknown) => void) => EventsOn('tasks:changed', cb);
+export const OnTasksRunChanged = (cb: (run: unknown) => void) => EventsOn('tasks:runChanged', cb);
+export const OnTasksRunEvent = (cb: (payload: unknown) => void) => EventsOn('tasks:runEvent', cb);
+
 export const isElectronDev = import.meta.env.DEV;
