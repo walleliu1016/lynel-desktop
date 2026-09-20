@@ -18,9 +18,27 @@ const TASKS_CLAUDE_MD = `# Lynel 定时任务工作目录
 - 其他项目的 CLAUDE.md 不会被自动加载（它按当前工作目录发现）。
 `;
 
+/** 展开开头的 `~` / `~/`（Windows 上 `~\` 同样展开）。`~user/...` 不认，原样返回后由调用方按相对路径拒掉。 */
+function expandHome(raw: string): string {
+  if (raw === '~') return os.homedir();
+  if (raw.startsWith('~/') || raw.startsWith('~\\')) return path.join(os.homedir(), raw.slice(2));
+  return raw;
+}
+
+/**
+ * 归一化设置里的 `tasks_dir`。
+ *
+ * 设置页的占位符写的就是 `~/.lynel-desktop/tasks/`，用户照抄过来必须先展开成家目录 ——
+ * 否则 `ensureTasksDir` 会在 App 的 cwd 下建一个字面量 `~` 目录，而 runner 又拿同一个路径当 cwd。
+ * 相对路径一律当没配、回退默认：它同样会在 cwd 下凭空建目录，且换个启动方式（快捷方式 /
+ * 打包后的 working directory）就指向别处，每一次 spawn 都落在不确定的位置。
+ */
 export function resolveTasksDir(configured: unknown): string {
-  if (typeof configured === 'string' && configured.trim()) return configured.trim();
-  return DEFAULT_TASKS_DIR;
+  if (typeof configured !== 'string') return DEFAULT_TASKS_DIR;
+  const raw = configured.trim();
+  if (!raw) return DEFAULT_TASKS_DIR;
+  const expanded = expandHome(raw);
+  return path.isAbsolute(expanded) ? expanded : DEFAULT_TASKS_DIR;
 }
 
 export function tasksDir(): string {
