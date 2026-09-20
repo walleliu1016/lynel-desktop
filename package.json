@@ -39,6 +39,7 @@
     "@wecom/wecom-openclaw-plugin": "^20206.7.201",
     "@xterm/headless": "^6.0.0",
     "chokidar": "^4.0.0",
+    "croner": "^10.0.1",
     "electron-log": "^5.0.0",
     "electron-store": "^10.0.0",
     "electron-updater": "^6.8.9",
