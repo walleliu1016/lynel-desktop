@@ -29,6 +29,7 @@ import {
   FileCode,
   FileText,
   Filter,
+  FishingHook,
   FolderOpen,
   FolderTree,
   GitBranch,
@@ -129,6 +130,8 @@ const icons: Record<string, unknown> = {
   wrench: Wrench,
   puzzle: Puzzle,
   'corner-down-left': CornerDownLeft,
+  // lucide 没有名为 Hook 的图标，取图形最接近的 FishingHook（任务流水的 hook 事件行）
+  hook: FishingHook,
   'refresh-cw': RefreshCw,
   'rotate-ccw': RotateCcw,
   search: Search,
