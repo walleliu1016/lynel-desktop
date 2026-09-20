@@ -199,6 +199,11 @@ export function formatDuration(ms: number): string {
   return `${h}h${m}m`;
 }
 
+/** 取第一行非空文本（多行结果 / 报错只展示首行）。 */
+function firstLine(text: string | null): string {
+  return (text ?? '').split('\n').find((l) => l.trim() !== '') ?? '';
+}
+
 /** 运行历史一行的摘要文案。 */
 export function runSummaryText(resultText: string | null, error: string | null, status: string): string {
   if (status === 'queued') return '排队中';
@@ -206,7 +211,12 @@ export function runSummaryText(resultText: string | null, error: string | null, 
   if (status === 'skipped') return error ?? '排队超时未启动';
   if (status === 'interrupted') return error ?? '已中断';
   if (status === 'timeout') return error ?? '超过 30 分钟上限';
-  if (status === 'error') return error ?? '执行失败';
-  const first = (resultText ?? '').split('\n').find((l) => l.trim() !== '') ?? '';
-  return first.slice(0, 120);
+  // 主进程只在「没有 result 事件」时才写 runs.error；有 result 且 is_error 时
+  // （error_max_turns、API 报错）真正的原因在 result_text 里、error 为 null ——
+  // 不兜这一层，这些历史行全部退化成通用的「执行失败」，真实原因被丢掉。
+  if (status === 'error') {
+    const first = firstLine(resultText);
+    return error ?? (first ? first.slice(0, 120) : '执行失败');
+  }
+  return firstLine(resultText).slice(0, 120);
 }
