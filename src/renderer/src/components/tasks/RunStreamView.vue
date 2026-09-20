@@ -34,7 +34,11 @@
     </div>
 
     <div ref="bodyEl" class="sbody" @scroll="onScroll">
-      <template v-for="item in items" :key="item.at">
+      <!-- key 里必须带 run.id：RunStreamView 换 run 时是同一个组件实例，只按 at 做 key 会让
+           Vue 复用同下标的 ToolStepCard 实例，ToolStepCard 的 open 初值（Edit/Write 才展开）
+           就再也不会对新 run 的同下标元素重新求值 —— 折叠态会跨 run 串。
+           at 这一段不能去掉：折叠态是按「在未过滤列表里的下标」记的稳定标识。 -->
+      <template v-for="item in items" :key="run.id + ':' + item.at">
         <div v-if="item.kind === 'init'" class="meta-line">
           <span>Claude Code {{ item.version }}</span>
           <span class="dim">·</span>
@@ -62,6 +66,17 @@
         </div>
 
         <Markdown v-else-if="item.kind === 'text'" :text="item.text" class="md-text" />
+
+        <!-- 子代理（parent_tool_use_id 非 null → StreamItem.subagent）缩进成一组。
+             不加标题：StreamItem 只带布尔标志、没有子代理类型，任何名字都是编造的。
+             非子代理的 tool 走下一分支，DOM 与改动前逐字一致。 -->
+        <div v-else-if="item.kind === 'tool' && item.subagent" class="subagent">
+          <ToolStepCard
+            :item="item"
+            :hide-input="!show.input"
+            :hide-output="!show.output"
+          />
+        </div>
 
         <ToolStepCard
           v-else-if="item.kind === 'tool'"
@@ -137,9 +152,11 @@ const all = computed(() => flattenRunEvents(props.events))
 const items = computed<(StreamItem & { at: number })[]>(() => {
   let list = all.value.map((item, at) => ({ ...item, at }))
   if (!show.value.thinking) list = list.filter((i) => i.kind !== 'thinking')
+  // 「仅错误」= 只留失败项：失败的工具卡 + 失败的终局卡片，其余（成功的工具卡、正文、
+  // 思考、init、hook、stderr）一律滤掉。留着成功的终局卡片会把答案显出来，与标签语义不符。
   if (show.value.errorsOnly) {
     list = list.filter((i) =>
-      i.kind === 'result' ? i.summary.isError : i.kind !== 'tool' || i.status === 'error',
+      i.kind === 'tool' ? i.status === 'error' : i.kind === 'result' ? i.summary.isError : false,
     )
   }
   return list
@@ -340,6 +357,12 @@ onBeforeUnmount(() => {
   margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
   color: var(--text-primary);
+}
+
+/* 子代理（parent_tool_use_id 非 null）缩进：左侧留白 + 虚竖线，照设计稿第 3 节的 .subagent */
+.subagent {
+  margin-left: 20px; border-left: 2px dashed var(--border-strong);
+  padding-left: 12px; margin-top: 10px; margin-bottom: 10px;
 }
 
 .res {
