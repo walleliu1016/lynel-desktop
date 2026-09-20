@@ -183,6 +183,22 @@ export function formatNextRun(ms: number): string {
   return `${md} ${hm}`;
 }
 
+/** 运行时长文案（运行历史的时长列与运行流水共用）。
+ *  口径照设计稿的运行历史行：按「分秒」展示 —— 12s 那次失败写作 `0m12s`、2m18s 写作 `2m18s`、
+ *  30 分钟超时写作 `30m00s`；满一小时折叠成 `1h05m`（分钟位补零）。
+ *  入参非法（NaN / Infinity / 负数）时返回占位符，不抛错。 */
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  if (ms < 3_600_000) {
+    const m = Math.floor(ms / 60_000);
+    const s = String(Math.floor((ms % 60_000) / 1000)).padStart(2, '0');
+    return `${m}m${s}s`;
+  }
+  const h = Math.floor(ms / 3_600_000);
+  const m = String(Math.floor((ms % 3_600_000) / 60_000)).padStart(2, '0');
+  return `${h}h${m}m`;
+}
+
 /** 运行历史一行的摘要文案。 */
 export function runSummaryText(resultText: string | null, error: string | null, status: string): string {
   if (status === 'queued') return '排队中';

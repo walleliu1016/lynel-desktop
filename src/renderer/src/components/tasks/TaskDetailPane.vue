@@ -86,7 +86,7 @@
 import { computed } from 'vue'
 import Icon from '../Icon.vue'
 import RunStreamView from './RunStreamView.vue'
-import { formatNextRun, runSummaryText } from '../../utils/tasks'
+import { formatDuration, formatNextRun, runSummaryText } from '../../utils/tasks'
 import type { EventEnvelope, RunDto, TaskDto } from '../../types/tasks'
 
 const props = defineProps<{
@@ -110,6 +110,9 @@ defineEmits<{
 const LABELS: Record<string, string> = {
   queued: '排队中', running: '运行中', done: '成功', error: '失败',
   timeout: '超时', skipped: '已跳过', interrupted: '已中断',
+  // 单次任务的档期过了补救窗口：scheduler 写 lastStatus='missed' 但不更新 lastRunAt，
+  // 该状态会真的出现在「上次运行」行上。文案与 TaskList 的列表第二行保持一致。
+  missed: '已过期',
 }
 const ICONS: Record<string, string> = {
   queued: 'clock', running: 'loader', done: 'check', error: 'warning',
@@ -141,7 +144,7 @@ function formatAbs(ms: number): string {
 function metaText(r: RunDto): string {
   if (r.status === 'queued' || r.status === 'running') return '—'
   const bits: string[] = []
-  if (r.durationMs != null) bits.push(`${(r.durationMs / 1000).toFixed(1)}s`)
+  if (r.durationMs != null) bits.push(formatDuration(r.durationMs))
   if (r.numTurns != null) bits.push(`${r.numTurns} 轮`)
   if (r.totalCostUsd != null) bits.push(`$${r.totalCostUsd.toFixed(3)}`)
   return bits.join(' · ') || '—'
