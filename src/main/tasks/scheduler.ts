@@ -131,8 +131,12 @@ export function drain(): void {
     }
     // 先落 running 再启动：并发闸门数的是 running，不写就会把整个队列一口气放出去。
     markRunRunning(runId);
+    callbacks.onRunChanged(runId);
+    // 重新取行：上面的 `run` 是 markRunRunning 之前的快照（status 仍是 queued、startedAt 为 null），
+    // 直接传下去会让 runner 拿到陈旧数据。
+    const running = getRun(runId) ?? run;
     try {
-      deps.runner.start(run, task);
+      deps.runner.start(running, task);
     } catch (err) {
       // 启动抛错时 run 已经是 running，不落终态会永久占住一个并发位。
       finishRun(runId, 'error', { error: `启动失败: ${String((err as Error)?.message ?? err)}` });
@@ -146,12 +150,15 @@ export function enqueue(runId: string): void {
   drain();
 }
 
-/** 启动时的一次性恢复：running → interrupted（进程已不在），queued → 重新入队。 */
-function recoverStale(now: number): void {
+/** 启动时的一次性恢复：running → interrupted（进程已不在），queued → 重新入队。
+ *  用 run 自己落库的 queuedAt 作入队戳，遗留 run 的排队超时按它自己的排队时刻判定。 */
+function recoverStale(): void {
   if (recovered) return;
-  recovered = true;
   const { requeued } = recoverStaleRuns();
-  for (const r of requeued) queue.push({ runId: r.id, enqueuedAt: now });
+  // 只有恢复成功才置位：中途抛错时下一次 tick 还要重试，否则一次启动期的 DB 故障
+  // 就让遗留 running 永远占着并发位（activeCount 虚高），整个调度器静默停摆。
+  recovered = true;
+  for (const r of requeued) queue.push({ runId: r.id, enqueuedAt: r.queuedAt });
 }
 
 export function tick(now: number = deps.now()): void {
@@ -202,9 +209,13 @@ export function tick(now: number = deps.now()): void {
 
 export function startScheduler(): void {
   if (timer) return;
-  guard('启动恢复', () => recoverStale(deps.now()));
+  guard('启动恢复', () => recoverStale());
   guard('tick', () => tick());
-  timer = setInterval(() => guard('tick', () => tick()), TICK_INTERVAL_MS);
+  // 恢复失败时 recovered 还是 false，由后续 tick 重试（guard 保证回调本身不抛）。
+  timer = setInterval(() => {
+    guard('启动恢复', () => recoverStale());
+    guard('tick', () => tick());
+  }, TICK_INTERVAL_MS);
 }
 
 export function stopScheduler(): void {
