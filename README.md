@@ -34,6 +34,7 @@ Lynel Desktop 把这几件事变成一个 native 窗口：图形化管理多会�
 - **云端上行通道** — 阶段事件批量推送 + 会话元数据同步至云服务
 - **在线升级** — GitHub Releases 为主源、云服务为兜底，自动/手动检查更新
 - **窗口注意力** — 权限待审批时任务栏闪烁 / dock 弹跳 / 系统通知提醒
+- **定时任务** — 左栏「任务」入口：按 cron 预设（每天 / 每周 / 每月 / 每小时 / 每 N 分钟）或自定义表达式、或一次性时间点，自动无头执行 `claude -p`，完整记录每次运行的事件流（思考 / 文本 / 工具调用 / 成本）并可在 UI 回看；任务共用一个固定工作目录，失败时系统通知
 - **VS Code 扩展** — 独立于桌面端运行，在 VS Code 内嵌 Claude 终端，共享企业微信机器人与数据目录
 
 ## 安装
@@ -59,7 +60,7 @@ Lynel Desktop 把这几件事变成一个 native 窗口：图形化管理多会�
 
 ## 技术栈
 
-桌面壳 Electron、前端 Vue 3 + TypeScript + Pinia（编辑器 Monaco、终端 xterm.js，均为本地依赖）、主进程 Node.js、Git 操作经 `simple-git` 包装系统 git CLI、持久化 electron-store + 本地 JSON、日志 electron-log、打包 electron-builder。
+桌面壳 Electron、前端 Vue 3 + TypeScript + Pinia（编辑器 Monaco、终端 xterm.js，均为本地依赖）、主进程 Node.js、Git 操作经 `simple-git` 包装系统 git CLI、持久化 electron-store + 本地 JSON（定时任务的运行与事件流存 SQLite）、日志 electron-log、打包 electron-builder。
 
 ## License
 

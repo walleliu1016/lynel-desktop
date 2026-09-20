@@ -106,6 +106,7 @@ npm run dist:linux
 - `src/main/git.ts`：Git 面板的唯一入口，用 `simple-git` 包装系统 git CLI（与 VSCode 同理：不重新实现 git）。覆盖状态 / 暂存 / 提交 / 远程操作、按 revision 取文件、提交历史图、单个提交详情、分支、stash、blame、reset。`.git` 目录用 chokidar 监听，500ms 合帧后推 `git:changed`。
 - `src/main/files.ts`：代码工作区的文件操作（列目录 / 读 / 写 / 新建 / 重命名 / 删除）+ 工作区 chokidar watcher（推 `file:changed`）。
 - `src/main/shell.ts`：项目终端（每会话一个交互式 shell PTY）。复用 `pty.ts` 的 `raw` 直通模式绕开 win32 的 `cmd.exe /c` 包装（多一层 cmd 会让 Ctrl+C 语义变形），输出经**独立**的 `OutputBatcher` 以 `shell:<sid>` 事件推送 —— 与 Claude PTY 的 `session:<sid>` 通道分离，复用会串流。
+- `src/main/tasks/`：定时任务（`claude -p` 无头执行 + cron 调度 + SQLite 存事件流），自洽子系统，不接 apiproxy / Trace / 云通道，见第 17 节。
 
 ### 3. Session 生命周期与 PTY
 - **创建**：`App.createSessionInternal(workDir, prompt, extraArgs, autoTrust, botId?, agent?)` 是唯一入口。
@@ -363,6 +364,36 @@ npm run dist:linux
   - **必须在 `createModel` 之前调 `installTextMate`**，否则 model 已经用 Monarch tokenize 过了。
   - 不在白名单、已装过、或加载失败都是 no-op，失败静默回退 Monarch（高亮粗一点，不影响可用性）。
 
+### 17. 定时任务（Tasks）
+
+**入口与页面**：左栏「任务」（`HomeView.vue`，收藏夹按钮之前，折叠态另有一个「先展开侧栏再开 tab」的 handler）打开 `tasks` tab（`types/tab.ts` 的 `TabType` + `stores/tabs.ts` 的 `openTasks()`）。内容区 `components/tasks/TasksPane.vue` 是三段式（左任务列表 / 右任务详情 / 运行流水），与 `TracePane.vue` 同构。**UI 里没有「工作目录 / 项目」概念**，表单只有一行提示「要操作其他项目请在 prompt 里写绝对路径」。
+
+**模块划分**（`src/main/tasks/`）：
+- `paths.ts`：唯一工作目录 `tasksDir()`（读设置 `tasks_dir`，空则回退 `~/.lynel-desktop/tasks/`）+ `ensureTasksDir()`（`mkdir -p` + 落初始 `CLAUDE.md`，已存在不覆盖）。默认值**不要**指向安装目录：macOS 会破坏 `.app` 签名、electron-updater 升级会原地替换导致数据丢失、asar 内只读。
+- `db.ts`：**`node:sqlite` 的唯一接触点**（open / `PRAGMA journal_mode=WAL` / migration / close；`setDbFile()` 供测试切库）。库文件 `~/.lynel-desktop/tasks.db`。
+- `store.ts`：纯 CRUD + run 状态机，无业务逻辑。四张表 `tasks` / `runs` / `run_events` + `meta`(schema_version)。**`tasks` 表没有 `workdir` 字段**（cwd 是常量）；`run_events.payload` 存**原始 JSONL 行**（写入侧零解析，CLI 升级不丢字段，解析只在读取侧）；`deleteTask` 手动级联删 runs / run_events —— 表间没有外键（`runs.task_id` 未声明 REFERENCES），不删就只增不减。
+- `schedule.ts`：**纯函数**（不碰 DB、不碰时钟，时间一律由调用方传入）：`presetToCron` / `cronToPreset` / `computeNextRun`（只用 `croner` 的 `nextRun()`，不用它自带的 timer）/ `describeSchedule` / `isDue`，以及三个时间常量 `CATCH_UP_MS`(60min) / `QUEUE_TIMEOUT_MS`(30min) / `RUN_TIMEOUT_MS`(30min)。
+- `streamParse.ts`：**纯函数**，NDJSON 行 → 归一化事件（`parseStreamLine`）：`tool_result.content` 三态归一化、`usage` 白名单（原始 usage 含嵌套对象与字符串字段，直接 `Object.entries` 会渲染出一堆 `[object Object]`）、空 thinking block 过滤、`isResumeMissing`。**解析只在主进程做一次**（主 / 渲染是两个 bundle，不能互 import），`tasks:runEvents` IPC 返回的是归一化后的事件对象，渲染层只做折叠。
+- `runner.ts`：单次 run 的生命周期（spawn / 逐行消费 / 落库 / 推送 / 超时 kill / resume 回退）。**不建 run 记录**（调用方已建好 `queued`）。stdout 手写按 `\n` 切行（不用 `readline`：它会自作主张解析且不保序）；stderr 也进流（`type='stderr'`）并留尾部 20 行作为「无 result 事件」时的 error 文本；**成败以 `result` 事件的 `subtype` / `is_error` 判，exit code 只兜底**（存在 `subtype=success` + exit 0 但实际失败的场景）；没有 `result` 事件则无论 exit code 一律判 error。
+- `scheduler.ts`：模块级单例，30s tick + 内存队列 + 并发闸门（`tasks_max_concurrency`，默认 6）。tick 顺序：取启用任务 → `isDue`（`not_due` / `due` / `missed`；超 60min 补跑窗的 `missed` 直接推进 `nextRunAt`，`once` 类型标 `missed` 且 `enabled=0`）→ **单任务去重**（该 task 已有非终态 run 就跳过，不建 run 也不推进时间）→ 建 `queued` run + **先落库再入队**（崩溃恢复靠它）→ `drain()`。出队时 `now - enqueuedAt > 30min` 标 `skipped`；`markRunRunning` 必须**先写 running 再 start** —— 并发闸门数的是 running，不写会一口气把整个队列放出去。`nextRunAt` 为空时**只补算落库、不触发**（安全网，避免首次启动炸一堆）；正常情况下它在创建 / 编辑任务时就算好落库，表单预览和列表的「下次运行」直接可见。
+- `index.ts`：`initTasks(getMainWindow)`（照 `updater/index.ts` 的先例）+ `tasksShutdown()` + **12 个 IPC handler**（list / get / create / update / delete / setEnabled / runNow / cancel / runs / run / runEvents / preview）+ 三个推送（`tasks:changed` / `tasks:runChanged` / `tasks:runEvent`）。claude 路径每次调用重读设置（`claude_path`，回退 `spec.command`）。失败（`error` / `timeout` / `interrupted`）走 `windowAttention.notifyTaskFailure` 弹系统通知，成功不打扰。
+
+**启动顺序**（`app.ts` 的 `registerIpcHandlers()`）：`ensureTasksDir()` → **`jsonl.setExcludedProjects([tasksDir()])`** → `initTasks()`。退出时 `tasksShutdown()`（停 tick → `killTree` 在跑的 run 并标 `interrupted` → 关库）。
+
+**为什么必须排除**：任务 jsonl 与普通会话同根落在 `~/.claude/projects/<tasks-encoded>/`。不排除有三层冲突 —— 任务会话混进会话列表、chokidar 递归监听导致列表反复刷新、用户点开它让 Lynel 用同一 sid 起交互式 PTY **与任务进程并发写坏同一个 jsonl**。排除只作用于**枚举**（`scanAll` 跳目录、`watchProjects` 按相对路径首段剪整棵子树）；`listSessionIds` / `getSessionJsonlPath` 是按路径直查，**不受影响**，所以任务自己的 `--resume` 照常工作。
+
+**会话模型**：一个任务一个会话（创建时 `randomUUID()`）。首次 `--session-id`，成功后 `setTaskSession(..., true)` 之后走 `--resume`（**漏了这步下次会拿同一个 id 去「新建」，claude 报 Session ID already in use，上下文再也接不上**）。resume 目标缺失（`isResumeMissing`：`error_during_execution` + `is_error` + `num_turns=0` + 全程无 assistant 事件）→ 用 `--session-id` 重建**一次**，`fallbackUsed` 闸门防止 1s 一轮的 spawn 风暴；**那个错误 `result` 里的 `session_id` 是新生成的随机 UUID，绝不能写回 `tasks.session_id`**，否则下次 resume 指向空会话、静默丢掉全部上下文。`runs.resume_used` 是**三态**：`1` 真用了 `--resume`、`0` 回退重建过、`null` 其余（尤其首跑）—— 渲染层只在 `=== 0` 时显示「会话已重建」，首跑写 0 会误报。
+
+**Windows 的 spawn 解析**（`runner.ts` 的 `buildSpawnCommand`）：win32 上 claude 是 npm 生成的 `.cmd` shim，裸名 `claude` 会 `ENOENT`（Node 不做 PATHEXT 解析），直接指向 `claude.cmd` 会 `EINVAL`（Node ≥18.20 / 20.12 / 21.7 对 `.cmd` / `.bat` 无 shell spawn 的加固，CVE-2024-27980）。**不能照搬 `pty.ts` 的 `cmd.exe /d /c <shim>`**：本执行器带 `detached: true`，实测此时**只有直接子进程**的 stdout / stderr 还能进管道 —— `cmd.exe` / `powershell.exe` / `start /b /wait` / `shell: true` 四种包装全部拿到空输出（对照组：原生 `.exe` 直接 spawn 正常打印）。故用 `pty.ts` 的 `resolveBin` 找到 shim 后读它文本、代入 `%dp0%` / `$basedir`，解析出背后的原生 `.exe`，**让 claude 自己当直接子进程**；解析不出（非 npm 模板的自定义包装、旧版 `cli.js` 形态、PATH 里根本没有）就返回 `ok:false`、**直接判失败、绝不 spawn**。套壳启动不是「降级」而是更坏的失败：进程照样起、claude 照样以 `bypassPermissions` 真实执行并产生副作用，但 stdout 全丢，run 记成「exit 0，无可解析的 result 事件」的 error，用户看到失败会重跑，副作用翻倍。非 win32 行为不变。
+
+**无头参数**：`-p <prompt> --output-format stream-json --verbose --permission-mode bypassPermissions` + `--session-id|--resume <sid>`。`--verbose` 必需，不带直接报错；`stdio: ['ignore','pipe','pipe']` 中 `stdio[0]` 必须是 `'ignore'`（claude 会等 stdin 最多 3 秒，用 `pipe` 且不关会永久卡住）；env 里 `delete CLAUDECODE`（否则从 Claude Code 会话内 spawn 会被「不能嵌套」守卫挡住）。
+
+**启动恢复**（只做一次）：`status='running'` 的 run → 标 `interrupted`（进程已不在），`status='queued'` 的 run → **重新入队**（不丢）；恢复失败时 `recovered` 不置位，由后续 tick 重试。
+
+**渲染层**：`components/tasks/{TasksPane,TaskList,TaskDetailPane,TaskFormDialog,RunStreamView,ToolStepCard}.vue` + `stores/tasks.ts` + `utils/tasks.ts` + `types/tasks.ts`。`flattenRunEvents(events)` 是纯函数：按 `message.id` 分组（C1：assistant 是「一个 content block 一行」，同一 id 跨多行，不能按行边界切消息）、`tool_use.id` ↔ `tool_result.tool_use_id` 配对、StepCard 摘要映射、子代理按 `parent_tool_use_id` 缩进。**预设 ↔ cron 的模板逻辑在 `schedule.ts` 与 `TaskFormDialog.vue` 里各有一份**（前端不能 import 主进程模块，`buildExpr` / `detectPreset` 对应 `presetToCron` / `cronToPreset`，两边都含区间校验）；改模板要同步改两处。
+
+**测试设施**：根 `vitest.config.ts` 存在**只为**把 `node:sqlite` alias 到 `tests/helpers/node-sqlite.ts` —— vitest 2.1.9 的 vite-node 把内置模块白名单写死成 `node:test`，不认识 `node:sqlite`，会把裸 id `sqlite` 丢给 Vite 解析而失败。生产代码仍直接 `import 'node:sqlite'`。`flattenRunEvents` 是渲染层纯函数，但测试放 `tests/main/tasks/flatten.test.ts`（不依赖 Vue / 浏览器，可用真实 fixture 驱动「解析 → 折叠」整条链路），这是有意打破 `tests/main/` 镜像 `src/main/` 的约定。
+
 ---
 
 ## 提交规范
@@ -401,6 +432,13 @@ npm run dist:linux
 - `PermissionBroker` 的 `cancelBySessionTool` 返回被取消的 request id 时，调用者必须发送 `desktop:hook:abort` 通知云服务。
 - `session.rebind()` 不 kill 进程，保留 process/buffer 引用；用于 `/clear` 和 `/resume` 场景。
 - Trace 数据通过 IPC（`trace:*` handler）消费，不再通过 hookserver REST 端点。
+- 所有定时任务共用一个固定工作目录（设置项 `tasks_dir`，默认 `~/.lynel-desktop/tasks/`）：`tasks` 表没有 `workdir` 字段，UI 里也没有「项目」概念，prompt 里必须写绝对路径。
+- 任务会话的 jsonl 必须从会话枚举中排除（`jsonl.setExcludedProjects([tasksDir()])`），且必须在**任何会话扫描之前**调用；否则任务会话会进会话列表，用户点开它会与任务进程并发写坏同一个 jsonl。
+- `src/main/tasks/db.ts` 是 `node:sqlite` 的唯一接触点（experimental API，便于将来换实现）；其它文件一律经 `store.ts` 读写，不直接 import `node:sqlite`。
+- 无头 `-p` 模式下 `stdio[0]` 必须是 `'ignore'`：claude 会等 stdin 最多 3 秒，用 `pipe` 且不关闭会**永久卡住**。
+- `claude -p --output-format stream-json` 必须同时带 `--verbose`，否则直接报错。
+- win32 上解析不出 claude 背后的原生 `.exe` 时**直接判失败、绝不套壳 spawn**：`detached: true` 下套壳拿不到任何 stdout，而 claude 仍会以 `bypassPermissions` 真实执行并产生副作用。
+- resume 回退只允许一次，且失败 `result` 里的 `session_id`（新生成的随机 UUID）绝不能写回 `tasks.session_id`。
 
 ---
 
@@ -421,6 +459,8 @@ npm run dist:linux
 - `docs/superpowers/specs/2026-08-09-multi-agent-support-design.md` —— 多 Agent 支持设计文档（omp/codex/opencode，参考 `~/project/ccglass`）。
 - `docs/superpowers/specs/2026-08-09-multi-agent-ui-design.md` —— 多 Agent 前端 UI 设计文档（agent 选择、4 区域标识、ProviderTab 分组）。
 - `docs/superpowers/plans/2026-08-09-multi-agent-ui.md` —— 多 Agent 前端 UI 实施计划。
+- `docs/superpowers/specs/2026-09-18-tasks-scheduler-design.md` —— 定时任务设计文档（调度 / SQLite 存储 / 流水渲染）。
+- `docs/superpowers/plans/2026-09-18-tasks-scheduler.md` —— 定时任务实施计划。
 
 ---
 
