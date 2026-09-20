@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
 import kill from 'tree-kill';
-import { resolveBin, resolveCmdExe } from '../pty.js';
+import { resolveBin } from '../pty.js';
 import { ensureTasksDir } from './paths.js';
 import { RUN_TIMEOUT_MS } from './schedule.js';
 import {
@@ -93,7 +93,7 @@ const STDERR_TAIL_MAX = 20;
  *   claude.cmd → `"%dp0%\node_modules\@anthropic-ai\claude-code\bin\claude.exe"   %*`
  *   claude     → `exec "$basedir/node_modules/@anthropic-ai/claude-code/bin/claude.exe"   "$@"`
  * 把 `%dp0%` / `$basedir`（都是 shim 自身目录）代进去即可。只接受原生可执行文件
- * （.exe/.com）—— 认不出来就返回 null，交回调用方的兜底路径。
+ * （.exe/.com）—— 认不出来（含旧版 `cli.js` 形态）就返回 null，调用方据此判失败，不套壳启动。
  */
 function resolveShimTarget(shimPath: string): string | null {
   let text: string;
@@ -114,6 +114,24 @@ function resolveShimTarget(shimPath: string): string | null {
 }
 
 /**
+ * 认不出原生目标时，尽力给一条可照抄的候选路径：npm 全局装的 claude 原生 exe 固定落在
+ * `<shim 所在目录>\node_modules\@anthropic-ai\claude-code\bin\claude.exe`，而 shim 就在 npm prefix 下。
+ * 只在文件真的存在时才返回（不凭空编一条路径让用户去猜）。npm prefix 不固定（nvm / 自定义 --prefix），
+ * 所以按 shim 目录推导而不是硬编码 %APPDATA%\npm。
+ */
+function nativeExeHint(resolved: string): string | null {
+  const candidate = path.join(
+    path.dirname(resolved), 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe',
+  );
+  return fs.existsSync(candidate) ? candidate : null;
+}
+
+/** buildSpawnCommand 的结果：ok:false 表示本平台无法「不套壳」启动，调用方必须直接判失败、绝不 spawn。 */
+export type SpawnCommand =
+  | { ok: true; file: string; args: string[] }
+  | { ok: false; error: string };
+
+/**
  * 决定「spawn 什么」（file + args）。与参数构造分开，便于单测直接断言。
  *
  * Windows 上 claude 是 npm 装的 shim，两层坑：
@@ -125,20 +143,37 @@ function resolveShimTarget(shimPath: string): string | null {
  *      `shell: true` 四种包装全部拿到空输出（对照组：同样参数下 `where.exe node` 走 cmd 包装
  *      也是空，不 detached 则有输出；而原生 claude.exe 直接 spawn 则正常打印版本号）。
  *      故 win32 上的正解是「让 claude 自己当直接子进程」：解析出 shim 背后的原生 exe 直接 spawn。
- *   3. 解析不出原生目标（非 npm 模板的自定义包装）→ 退回 pty.ts 同款 cmd.exe /c 包装：
- *      进程能起来，但如上所述输出拿不到；这是兜底，不是期望路径。
+ *   3. 解析不出原生目标（非 npm 模板的自定义包装、旧版 cli.js 形态、PATH 里根本没有）→ **不 spawn**，
+ *      返回 ok:false 交调用方判失败。套壳启动不是「降级」，而是更坏的失败：进程照样起来、
+ *      claude 照样以 bypassPermissions 真实执行并产生副作用，但 stdout 全丢 → run 记成
+ *      「exit 0，无可解析的 result 事件」的 error 且事件流为空，用户看到失败会重跑，副作用翻倍。
  * 非 win32 保持原样（裸名交给内核按 PATH 解析），不改变 POSIX 行为。
  */
 export function buildSpawnCommand(
   bin: string,
   args: string[],
   plat: NodeJS.Platform = process.platform,
-): { file: string; args: string[] } {
-  if (plat !== 'win32') return { file: bin, args };
-  const resolved = resolveBin(bin, process.env as Record<string, string>) ?? bin;
-  const native = /\.(exe|com)$/i.test(resolved) ? resolved : resolveShimTarget(resolved);
-  if (native) return { file: native, args };
-  return { file: resolveCmdExe(), args: ['/d', '/c', resolved, ...args] };
+): SpawnCommand {
+  if (plat !== 'win32') return { ok: true, file: bin, args };
+  const resolved = resolveBin(bin, process.env as Record<string, string>);
+  if (resolved) {
+    const native = /\.(exe|com)$/i.test(resolved) ? resolved : resolveShimTarget(resolved);
+    if (native) return { ok: true, file: native, args };
+  }
+  return { ok: false, error: unresolvableError(bin, resolved) };
+}
+
+/** 解析失败的错误文案。要能直接落到 runs.error 让 UI 显示，并给出可执行的下一步。 */
+function unresolvableError(bin: string, resolved: string | null): string {
+  const hint = resolved ? nativeExeHint(resolved) : null;
+  const advice = hint
+    ? `请在设置里把「Claude 路径」(claude_path) 指向原生可执行文件：${hint}`
+    : '请在设置里把「Claude 路径」(claude_path) 指向原生 claude.exe（npm 全局安装目录为 `npm prefix -g` 的输出，'
+      + '原生 exe 在其 node_modules\\@anthropic-ai\\claude-code\\bin\\ 下），或先执行 `npm i -g @anthropic-ai/claude-code`。';
+  const found = resolved ? `只找到 ${resolved}` : `在 PATH 里没有找到「${bin}」`;
+  return `无法启动 claude：${found}，且没能解析出它背后的原生可执行文件（.exe/.com）。`
+    + '本次运行未启动任何进程（用 cmd.exe 套壳启动会丢失全部输出，而 claude 仍会真实执行并产生副作用）。'
+    + advice;
 }
 
 /**
@@ -257,8 +292,16 @@ function spawnOnce(a: ActiveRun, useResume: boolean): void {
   const env: NodeJS.ProcessEnv = { ...process.env };
   delete env.CLAUDECODE; // 从 Claude Code 会话内 spawn 会被嵌套守卫挡住
 
-  // win32 下解析出的是 shim 背后的原生 claude.exe（见 buildSpawnCommand），args 不变
-  const { file, args: spawnArgs } = buildSpawnCommand(deps.claudeBin(), args);
+  // win32 下解析出的是 shim 背后的原生 claude.exe（见 buildSpawnCommand），args 不变。
+  // ok:false = 解析不到原生目标：这里**直接判失败、不 spawn** —— 套壳启动虽然能把进程拉起来，
+  // 但在 detached 下拿不到任何输出（run 会记成「exit 0，无 result 事件」的 error），
+  // 而 claude 仍会以 bypassPermissions 真实执行并产生副作用，用户重跑等于副作用翻倍。
+  const cmd = buildSpawnCommand(deps.claudeBin(), args);
+  if (!cmd.ok) {
+    finish(a, 'error', { error: cmd.error });
+    return;
+  }
+  const { file, args: spawnArgs } = cmd;
 
   let proc: RunProc;
   try {
