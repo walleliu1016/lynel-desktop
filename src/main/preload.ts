@@ -198,6 +198,20 @@ const api = {
     ipcRenderer.invoke('git:resetTo', workDir, hash, mode),
   gitWatch: (workDir: string) => ipcRenderer.invoke('git:watch', workDir),
   gitUnwatch: (workDir: string) => ipcRenderer.invoke('git:unwatch', workDir),
+
+  // ---- 定时任务 ----
+  tasksList: () => ipcRenderer.invoke('tasks:list'),
+  tasksGet: (id: string) => ipcRenderer.invoke('tasks:get', id),
+  tasksCreate: (input: unknown) => ipcRenderer.invoke('tasks:create', input),
+  tasksUpdate: (id: string, patch: unknown) => ipcRenderer.invoke('tasks:update', id, patch),
+  tasksDelete: (id: string) => ipcRenderer.invoke('tasks:delete', id),
+  tasksSetEnabled: (id: string, enabled: boolean) => ipcRenderer.invoke('tasks:setEnabled', id, enabled),
+  tasksRunNow: (id: string) => ipcRenderer.invoke('tasks:runNow', id),
+  tasksCancel: (runId: string) => ipcRenderer.invoke('tasks:cancel', runId),
+  tasksRuns: (taskId: string, opts: unknown) => ipcRenderer.invoke('tasks:runs', taskId, opts),
+  tasksRun: (runId: string) => ipcRenderer.invoke('tasks:run', runId),
+  tasksRunEvents: (runId: string, opts: unknown) => ipcRenderer.invoke('tasks:runEvents', runId, opts),
+  tasksPreview: (schedule: unknown) => ipcRenderer.invoke('tasks:preview', schedule),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

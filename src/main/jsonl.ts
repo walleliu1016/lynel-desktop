@@ -29,6 +29,16 @@ export interface JsonlMessage {
 
 let rootDir = path.join(os.homedir(), '.claude', 'projects');
 
+// 定时任务的工作目录不进会话扫描 —— 否则任务会话会出现在会话列表里，
+// 用户点开它会让 Lynel 用同一个 sid 起交互式 PTY，与任务进程并发写坏同一个 jsonl。
+// 只影响「枚举」（scanAll / watchProjects）；listSessionIds / getSessionJsonlPath 是
+// 按路径直查，不受影响，所以任务自己的 --resume 照常工作。
+let excludedProjects = new Set<string>();
+
+export function setExcludedProjects(dirs: string[]): void {
+  excludedProjects = new Set(dirs.map(encodeProjectDirName));
+}
+
 export function setRoot(dir: string): void {
   rootDir = dir;
   // root 变了缓存的路径空间整体失效
@@ -91,6 +101,7 @@ export async function scanAll(): Promise<SessionMeta[]> {
     const entries = await fs.readdir(rootDir, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
+      if (excludedProjects.has(entry.name)) continue;
       const dirPath = path.join(rootDir, entry.name);
       const files = await fs.readdir(dirPath);
       let workDir = decodeProjectDirName(entry.name);
@@ -422,7 +433,12 @@ export async function scanFileAiTitle(filePath: string): Promise<string> {
 export function watchProjects(onChange: () => void): () => void {
   const watcher = chokidar.watch(rootDir, {
     ignored: (p) => {
-      const base = path.basename(p);
+      // 剪掉被排除项目目录的整棵子树
+      const rel = path.relative(rootDir, p);
+      if (rel && !rel.startsWith('..')) {
+        const top = rel.split(path.sep)[0];
+        if (excludedProjects.has(top)) return true;
+      }
       const stat = (() => {
         try {
           return fsSync.statSync(p);

@@ -41,6 +41,7 @@ import { notifyExternal, errMessage } from './channels/notify-error.js';
 import { OutputBatcher } from './output-batcher.js';
 import { consumeInputForExitDetect, type EscapePhase } from './exit-detect.js';
 import { initUpdater } from './updater/index.js';
+import { initTasks, tasksShutdown } from './tasks/index.js';
 import { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
 import { readFavoriteSessions, addFavorite as writeFavorite, removeFavorite as dropFavorite, mergeFavoriteTitles } from './favorites.js';
 import { readCodexModelProvider, mergeOmpModelsYml, mergeCodexConfigToml, mergeOpencodeConfig, applyClaudeEnv, migrateActiveProviders, AGENT_KINDS } from './providers-apply.js';
@@ -637,6 +638,12 @@ export class App {
     try { this.desktopSocket.close(); } catch { /* ignore */ }
     // 8. 关闭 DeepSeek Harness 子进程
     try { await dshManager.shutdown(); } catch (err: any) { getLogger().error(`[app] shutdown dsh failed: ${err.message}`); }
+    // 步骤 9：定时任务 —— 停调度器、杀掉在跑的 run、关库
+    try {
+      await tasksShutdown();
+    } catch (err) {
+      getLogger().error(`[app] tasks shutdown 失败: ${String((err as Error)?.message ?? err)}`);
+    }
     getLogger().info('[app] shutdown complete');
   }
 
@@ -1415,6 +1422,9 @@ export class App {
     registerGitIpc();
     // 初始化在线升级
     initUpdater(() => this.window!);
+    // 初始化定时任务（建目录 → 会话扫描排除 → 开库 → 注入回调 → 启动调度器）
+    // 必须早于首次会话列表扫描，否则任务会话会混进会话列表。
+    initTasks(() => this.window!);
     // 系统剪贴板写入：渲染端 navigator.clipboard 在 file:// + contextIsolation 下
     // 经常静默失败（权限/激活上下文），改走主进程 electron.clipboard 模块，
     // 保证写出的内容能被企业微信、浏览器等外部应用读到。

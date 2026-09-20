@@ -161,16 +161,27 @@ class WindowAttention {
     }
   }
 
+  /** 任务失败通知（定时任务用）。成功不打扰用户。 */
+  notifyTaskFailure(taskName: string, body: string): void {
+    this.show(`${APP_DISPLAY_NAME} · 任务失败`, `${taskName}\n${body}`, () =>
+      this.focusMainWindow(),
+    );
+  }
+
   private showNotification(entry: AttentionPendingEntry): void {
+    const dir = compactPath(entry.workDir);
+    this.show(
+      `${APP_DISPLAY_NAME} · 权限待审批`,
+      `${entry.title}\n项目：${entry.projectName}${dir ? `\n目录：${dir}` : ''}`,
+      () => this.focusSession(entry.sessionId),
+    );
+  }
+
+  private show(title: string, body: string, onClick?: () => void): void {
     if (!Notification.isSupported()) return;
     try {
-      const dir = compactPath(entry.workDir);
-      const n: NotificationType = new Notification({
-        title: `${APP_DISPLAY_NAME} · 权限待审批`,
-        body: `${entry.title}\n项目：${entry.projectName}${dir ? `\n目录：${dir}` : ''}`,
-        silent: false,
-      });
-      n.on('click', () => this.focusSession(entry.sessionId));
+      const n: NotificationType = new Notification({ title, body, silent: false });
+      if (onClick) n.on('click', onClick);
       n.show();
     } catch (err) {
       logger.warn('notification failed:', err);
