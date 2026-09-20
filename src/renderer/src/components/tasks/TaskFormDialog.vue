@@ -89,7 +89,7 @@
               <input
                 :value="expression"
                 class="inp mono"
-                :class="{ bad: exprError }"
+                :class="{ bad: !!exprError && preset.kind !== 'once' }"
                 :disabled="preset.kind === 'once'"
                 @input="onExprInput"
               />
@@ -172,6 +172,9 @@ function buildExpr(): string | null {
     case 'daily': return time ? `${time} * * *` : null
     case 'weekly': {
       if (!time || p.weekdays.length === 0) return null
+      // 越界的星期一律判非法，与主进程 presetToCron 的 assertInt(d, 0, 6, '星期') 对齐：
+      // 只挡 length === 0 的话，坏数组会拼出 `0 9 * * NaN` 这种「看起来像表达式」的串。
+      if (!p.weekdays.every((d) => inRange(d, 0, 6))) return null
       return `${time} * * ${[...p.weekdays].sort((a, b) => a - b).join(',')}`
     }
     case 'monthly': return time && inRange(p.dayOfMonth, 1, 31) ? `${time} ${p.dayOfMonth} * *` : null
@@ -215,7 +218,17 @@ function detectPreset(expr: string): Kind {
   }
   // M H * * D[,D...]
   if (dom === '*' && mon === '*' && dow !== '*') {
-    return dow.split(',').every((it) => num(it, 6) !== null) ? 'weekly' : 'custom'
+    // 按数字去重（不是按字符串）：`01,1` 在主进程 num() 后是 [1,1] → 判重复，
+    // 这里用字符串会比出两个不同项、把本该是「自定义」的表达式认成「每周」。
+    const days: number[] = []
+    for (const it of dow.split(',')) {
+      const d = num(it, 6)
+      if (d === null) return 'custom'
+      days.push(d)
+    }
+    // 重复的星期（`0 9 * * 1,1`）与主进程 cronToPreset 一样落「自定义」：
+    // 主进程的 describeSchedule 会回退成原始表达式，表单若认成「每周」两边就不一致了。
+    return new Set(days).size === days.length ? 'weekly' : 'custom'
   }
   // M H * * *
   if (dom === '*' && mon === '*' && dow === '*') return 'daily'
@@ -231,7 +244,10 @@ function applyExprToPreset(expr: string) {
     manualExpr.value = expr
     return
   }
-  const [mi, ho, dom, dow] = parts
+  // 5 段是 [分, 时, 日, 月, 星期]：第 4 段（月）用不到，但必须占位跳过，
+  // 否则 dow 会绑到 month 上 —— 此时 weekly 分支只会拿到 mon === '*' 的表达式，
+  // dow 恒为 '*' → weekdays = [NaN] → 表达式被写成 `0 9 * * NaN`。
+  const [mi, ho, dom, , dow] = parts
   preset.value = {
     ...preset.value,
     kind,
@@ -245,9 +261,22 @@ function applyExprToPreset(expr: string) {
 }
 
 const needsTime = computed(() => ['daily', 'weekly', 'monthly', 'hourly'].includes(preset.value.kind))
+
+/** 一次性任务的运行时间是否**原样没动**（与已存任务的 runAt 逐毫秒相同）。
+ *  跑过一次的 once 任务 nextRunAt 已被清空，preview 必返回空 → exprError='运行时间已过'；
+ *  没有这个豁免，改个名字都存不了（唯一出路是重选时间，那等于静默改期）。 */
+function onceUnmodified(): boolean {
+  const raw = props.task?.scheduleRaw
+  if (raw?.type !== 'once') return false
+  const s = scheduleDto()
+  return s?.type === 'once' && s.runAt === raw.runAt
+}
+
 const canSubmit = computed(() => {
   if (!name.value.trim() || !prompt.value.trim()) return false
-  if (preset.value.kind === 'once') return onceLocal.value !== '' && !exprError.value
+  if (preset.value.kind === 'once') {
+    return onceLocal.value !== '' && (onceUnmodified() || !exprError.value)
+  }
   return expression.value !== '' && !exprError.value
 })
 

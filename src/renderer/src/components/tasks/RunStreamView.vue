@@ -216,6 +216,8 @@ const barMeta = computed(() => {
   if (props.run.numTurns != null) bits.push(`${props.run.numTurns} 轮`)
   if (props.run.totalCostUsd != null) bits.push(`$${props.run.totalCostUsd.toFixed(3)}`)
   if (props.run.resultSubtype && props.run.status === 'error') bits.push(props.run.resultSubtype)
+  // resume_used 三态：1=走了 --resume，0=resume 目标缺失后回退重建，null=首次运行 / 不适用。
+  // 只有 0 才是「重建」，首跑不显示。
   if (props.run.resumeUsed === 0) bits.push('会话已重建')
   return bits.join(' · ')
 })

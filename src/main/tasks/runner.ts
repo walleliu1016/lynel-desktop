@@ -2,8 +2,11 @@
 // 单次 run 的执行器：spawn claude -p、逐行消费 stream-json、落库、推送、超时、resume 回退。
 // 不做调度决策（那是 scheduler 的职责），也不直接建 run 记录（调用方已建好 queued run）。
 import { spawn as nodeSpawn, type ChildProcessByStdio } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { Readable } from 'node:stream';
 import kill from 'tree-kill';
+import { resolveBin, resolveCmdExe } from '../pty.js';
 import { ensureTasksDir } from './paths.js';
 import { RUN_TIMEOUT_MS } from './schedule.js';
 import {
@@ -83,6 +86,73 @@ export function buildSpawnArgs(
 
 const STDERR_TAIL_MAX = 20;
 
+/**
+ * 从 npm 生成的 shim 里取出它真正执行的原生目标。
+ *
+ * npm 的 shim 是模板化的，目标路径一定被引号包着、且带 `node_modules`：
+ *   claude.cmd → `"%dp0%\node_modules\@anthropic-ai\claude-code\bin\claude.exe"   %*`
+ *   claude     → `exec "$basedir/node_modules/@anthropic-ai/claude-code/bin/claude.exe"   "$@"`
+ * 把 `%dp0%` / `$basedir`（都是 shim 自身目录）代进去即可。只接受原生可执行文件
+ * （.exe/.com）—— 认不出来就返回 null，交回调用方的兜底路径。
+ */
+function resolveShimTarget(shimPath: string): string | null {
+  let text: string;
+  try {
+    text = fs.readFileSync(shimPath, 'utf8');
+  } catch {
+    return null;
+  }
+  const dir = path.dirname(shimPath);
+  const hit = /"([^"\r\n]*node_modules[\\/][^"\r\n]*)"/.exec(text);
+  if (!hit) return null;
+  const raw = hit[1]
+    .replace(/%~?dp0%?/gi, dir) // cmd shim
+    .replace(/\$basedir|\$\{basedir\}/gi, dir); // sh shim
+  if (!/\.(exe|com)$/i.test(raw)) return null;
+  const abs = path.resolve(raw);
+  return fs.existsSync(abs) ? abs : null;
+}
+
+/**
+ * 决定「spawn 什么」（file + args）。与参数构造分开，便于单测直接断言。
+ *
+ * Windows 上 claude 是 npm 装的 shim，两层坑：
+ *   1. 裸名 `claude` → Node 不做 PATHEXT 解析 → ENOENT；指向 `claude.cmd` → Node ≥18.20/20.12/21.7
+ *      对 .cmd/.bat 无 shell 的 spawn 加固（CVE-2024-27980）→ 同步抛 EINVAL。所以必须解析。
+ *   2. 解析出来后**不能**照搬 pty.ts 的 `cmd.exe /d /c <shim>`：那条路只在无 detached 时成立。
+ *      本执行器带 `detached: true`（DETACHED_PROCESS），实测此时**只有直接子进程**的
+ *      stdout/stderr 还能进管道，孙进程全丢 —— 实测 cmd.exe / powershell.exe / `start /b /wait` /
+ *      `shell: true` 四种包装全部拿到空输出（对照组：同样参数下 `where.exe node` 走 cmd 包装
+ *      也是空，不 detached 则有输出；而原生 claude.exe 直接 spawn 则正常打印版本号）。
+ *      故 win32 上的正解是「让 claude 自己当直接子进程」：解析出 shim 背后的原生 exe 直接 spawn。
+ *   3. 解析不出原生目标（非 npm 模板的自定义包装）→ 退回 pty.ts 同款 cmd.exe /c 包装：
+ *      进程能起来，但如上所述输出拿不到；这是兜底，不是期望路径。
+ * 非 win32 保持原样（裸名交给内核按 PATH 解析），不改变 POSIX 行为。
+ */
+export function buildSpawnCommand(
+  bin: string,
+  args: string[],
+  plat: NodeJS.Platform = process.platform,
+): { file: string; args: string[] } {
+  if (plat !== 'win32') return { file: bin, args };
+  const resolved = resolveBin(bin, process.env as Record<string, string>) ?? bin;
+  const native = /\.(exe|com)$/i.test(resolved) ? resolved : resolveShimTarget(resolved);
+  if (native) return { file: native, args };
+  return { file: resolveCmdExe(), args: ['/d', '/c', resolved, ...args] };
+}
+
+/**
+ * `runs.resume_used` 的三态（列本身可空，不需要迁移）：
+ *   1    = 本次真的用了 `--resume`；
+ *   0    = resume 目标缺失（isResumeMissing 命中）→ 回退成 `--session-id` 重建过一次；
+ *   null = 其它情况 —— 尤其是**首次运行**（session_initialized=0，本来就没得 resume）。
+ * 渲染层的「会话已重建」只在 === 0 时亮，首跑若写 0 会误报。
+ */
+function resumeUsedValue(a: ActiveRun): number | null {
+  if (a.resumeAttempted) return 1;
+  return a.fallbackUsed ? 0 : null;
+}
+
 /** 解析一行 → 落库（payload 存原始行，渲染层自己再解析）→ 返回归一化事件。 */
 function recordLine(a: ActiveRun, line: string): NormalizedEvent | null {
   const ev = parseStreamLine(line);
@@ -154,7 +224,7 @@ function finish(a: ActiveRun, status: RunStatus, extra: FinishRunPatch = {}): vo
   // 终态必须先落到内存（active.delete 已完成），DB 写失败也不能让异常逃出事件回调。
   try {
     finishRun(a.run.id, status, {
-      resumeUsed: a.resumeAttempted ? 1 : 0,
+      resumeUsed: resumeUsedValue(a),
       exitCode: a.exitCode,
       sessionId: a.run.sessionId,
       ...extra,
@@ -187,9 +257,12 @@ function spawnOnce(a: ActiveRun, useResume: boolean): void {
   const env: NodeJS.ProcessEnv = { ...process.env };
   delete env.CLAUDECODE; // 从 Claude Code 会话内 spawn 会被嵌套守卫挡住
 
+  // win32 下解析出的是 shim 背后的原生 claude.exe（见 buildSpawnCommand），args 不变
+  const { file, args: spawnArgs } = buildSpawnCommand(deps.claudeBin(), args);
+
   let proc: RunProc;
   try {
-    proc = deps.spawn(deps.claudeBin(), args, {
+    proc = deps.spawn(file, spawnArgs, {
       cwd: deps.tasksDir(),
       // stdio[0] 必须是 ignore：claude 会等 stdin 最多 3 秒，用 pipe 且不关会一直挂着。
       stdio: ['ignore', 'pipe', 'pipe'],

@@ -203,7 +203,9 @@ function resolveShellEnv(): Record<string, string> {
 // 避免 node-pty 因 PATH 不完整找不到命令而直接退出。
 // 找不到时返回 null：node-pty 的 forkpty 在 macOS 上失败时静默 exit code=1
 // 拿不到 errno，不行的话让上层主动 throw 明确错误。
-function resolveBin(bin: string, env: Record<string, string>): string | null {
+// 导出给任务执行器（tasks/runner.ts）复用：Windows 上 claude 是 npm 的 shim，
+// 必须先把 bin 解析成真实路径才能判断后面该怎么 spawn。
+export function resolveBin(bin: string, env: Record<string, string>): string | null {
   if (path.isAbsolute(bin) || bin.includes(path.sep)) return bin;
   const pathEnv = env.PATH || process.env.PATH || '';
   for (const dir of pathEnv.split(path.delimiter)) {

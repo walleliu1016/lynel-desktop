@@ -134,7 +134,21 @@ export function updateTask(id: string, patch: TaskPatch): TaskRow {
 }
 
 export function deleteTask(id: string): void {
-  getDb().prepare('DELETE FROM tasks WHERE id = ?').run(id);
+  const db = getDb();
+  // 表间没有外键（PRAGMA foreign_key_list(runs) 为空），删任务不会级联；
+  // runs / run_events 又没有任何其它地方清理，不在这里一起删就会只增不减。
+  // UI 的二次确认写着「会同时删除它的运行历史」，这个函数必须让那句话成立。
+  // run_events 以 run_id 为键且没有 task_id，必须按该任务的 runs 逐个删（只碰它自己的行）。
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM run_events WHERE run_id IN (SELECT id FROM runs WHERE task_id = ?)').run(id);
+    db.prepare('DELETE FROM runs WHERE task_id = ?').run(id);
+    db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
 }
 
 export function setTaskSession(id: string, sessionId: string, initialized: boolean): void {
