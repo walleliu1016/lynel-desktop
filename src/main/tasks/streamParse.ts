@@ -59,16 +59,15 @@ export function normalizeToolResultContent(content: unknown): string {
   if (content == null) return '';
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
-    // 图片占位统一排在文本之前：占位只有 6 个字符，跟在长文本后面会被淹没。
-    const texts: string[] = [];
-    const placeholders: string[] = [];
+    // 单趟按原顺序拼接：块的位置关系是上游数据的一部分，归一化必须保序。
+    const parts: string[] = [];
     for (const b of content) {
       if (!b || typeof b !== 'object') continue;
       const block = b as Record<string, unknown>;
-      if (block.type === 'text' && typeof block.text === 'string') texts.push(block.text);
-      else if (block.type === 'image') placeholders.push('[图片]');
+      if (block.type === 'text' && typeof block.text === 'string') parts.push(block.text);
+      else if (block.type === 'image') parts.push('[图片]');
     }
-    return [...placeholders, ...texts].join('\n');
+    return parts.join('\n');
   }
   if (typeof content === 'object') return JSON.stringify(content);
   return String(content);

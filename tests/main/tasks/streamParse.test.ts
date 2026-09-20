@@ -278,6 +278,12 @@ describe('normalizeToolResultContent', () => {
     expect(normalizeToolResultContent(undefined)).toBe('');
     expect(normalizeToolResultContent(42)).toBe('42');
     expect(normalizeToolResultContent([])).toBe('');
-    expect(normalizeToolResultContent([{ type: 'text', text: 'a' }, { type: 'image' }])).toBe('[图片]\na');
+    expect(normalizeToolResultContent([{ type: 'text', text: 'a' }, { type: 'image' }])).toBe('a\n[图片]');
+  });
+
+  it('交错 block 保持原始顺序（回归守卫）', () => {
+    expect(
+      normalizeToolResultContent([{ type: 'text', text: 'a' }, { type: 'image' }, { type: 'text', text: 'b' }]),
+    ).toBe('a\n[图片]\nb');
   });
 });
