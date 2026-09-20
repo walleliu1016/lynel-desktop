@@ -31,6 +31,8 @@ function defaultSettings(): Settings {
     prevent_sleep: false,
     terminal: defaultTerminalConfig(),
     code: defaultCodeConfig(),
+    tasks_max_concurrency: 6,
+    tasks_dir: '',
     buddyEnabled: false,
     buddyRoleId: 'duck',
     buddyEye: '·',

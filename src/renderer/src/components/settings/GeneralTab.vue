@@ -47,6 +47,36 @@
     </div>
 
     <div class="form-group">
+      <label class="form-label">定时任务</label>
+      <div class="tasks-setting-rows">
+        <div class="tasks-setting-row">
+          <span class="tasks-setting-name">并发上限</span>
+          <input
+            class="form-input tasks-num"
+            type="number"
+            min="1"
+            max="64"
+            :value="cfg.tasks_max_concurrency"
+            @change="onConcurrencyChange"
+          />
+          <span class="form-hint">同时运行的 run 数上限，默认 6</span>
+        </div>
+        <div class="tasks-setting-row">
+          <span class="tasks-setting-name">任务目录</span>
+          <input
+            class="form-input"
+            :value="cfg.tasks_dir"
+            placeholder="留空使用 ~/.lynel-desktop/tasks/"
+            @input="onTasksDirInput"
+          />
+        </div>
+      </div>
+      <p class="form-hint">
+        所有定时任务共用此目录作为工作目录（要操作其他项目请在 prompt 里写绝对路径）。修改任务目录后需<b>重启应用</b>才会生效。
+      </p>
+    </div>
+
+    <div class="form-group">
       <label class="form-label">开关</label>
       <div class="switch-list">
         <label class="switch-row">
@@ -117,6 +147,19 @@ function onPathInput(k: AgentKind, e: Event) {
 
 onMounted(() => settings.load())
 function markDirty() { settings.markDirty() }
+
+/** 并发上限：清空 / 0 / 非整数一律不落盘（主进程读不到合法值时回退默认 6） */
+function onConcurrencyChange(e: Event) {
+  const n = Number((e.target as HTMLInputElement).value)
+  if (Number.isFinite(n) && n >= 1) {
+    cfg.value.tasks_max_concurrency = Math.min(64, Math.floor(n))
+  }
+  markDirty()
+}
+function onTasksDirInput(e: Event) {
+  cfg.value.tasks_dir = (e.target as HTMLInputElement).value
+  markDirty()
+}
 </script>
 
 <style scoped>
@@ -142,6 +185,13 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
 .agent-path-name.a-codex { color: var(--agent-codex-fg); }
 .agent-path-name.a-opencode { color: var(--agent-opencode-fg); }
 .agent-path-name.a-omp { color: var(--agent-omp-fg); }
+
+.tasks-setting-rows { display: flex; flex-direction: column; gap: 8px; }
+.tasks-setting-row { display: flex; align-items: center; gap: 10px; }
+.tasks-setting-row .form-input { flex: 1; min-width: 0; }
+.tasks-setting-row .form-hint { margin-top: 0; flex: none; }
+.tasks-setting-name { width: 108px; flex-shrink: 0; font-size: 13px; color: var(--text-primary); }
+.tasks-setting-row .tasks-num { flex: none; width: 88px; }
 
 .switch-list { display: flex; flex-direction: column; gap: 2px; }
 .switch-row {

@@ -57,6 +57,10 @@ export interface Settings {
   terminal: TerminalConfig
   /** 代码编辑器配置 */
   code: CodeConfig
+  /** 定时任务全局并发上限（同时运行的 run 数） */
+  tasks_max_concurrency: number
+  /** 定时任务的固定工作目录，留空 = ~/.lynel-desktop/tasks/ */
+  tasks_dir: string
   /** 是否启用 ASCII 电子宠物（buddy） */
   buddyEnabled: boolean
   /** buddy 物种 ID */
