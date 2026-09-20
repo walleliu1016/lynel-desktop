@@ -156,4 +156,15 @@ describe('flattenRunEvents 用真实 fixture', () => {
     const init = items.find((i) => i.kind === 'init') as Extract<StreamItem, { kind: 'init' }>;
     expect(init.failedMcpServers).toContain('tma1');
   });
+
+  // EventEnvelope[]（{ seq, ts, event }）是生产环境唯一使用的输入形状：openRun 走
+  // TasksRunEvents、tasks:runEvent 推送、Task 15 的 RunStreamView 都传信封。
+  // 必须用真实 parser 产出的 DTO 包一层，否则 flattenRunEvents 里运行时嗅探
+  // 'event' in e 的那支分支无人覆盖 —— 嗅探型代码正是会静默失效的那类。
+  it('EventEnvelope[] 输入（生产形状）与裸 DTO[] 折叠出相同的 item 序列', () => {
+    const enveloped = events.map((e, i) => ({ seq: i, ts: 0, event: e }));
+    expect(flattenRunEvents(enveloped).map((i) => i.kind)).toEqual(
+      flattenRunEvents(events).map((i) => i.kind),
+    );
+  });
 });
