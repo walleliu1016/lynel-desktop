@@ -286,6 +286,22 @@ export function appendEvent(
   db.prepare('UPDATE runs SET event_count = event_count + 1 WHERE id = ?').run(runId);
 }
 
+/** 清空某个 run 的全部事件并把 event_count 归零。
+ *  只给 runner 的 resume 回退用：重建前必须把第一趟已落库的 seq 0..N 删掉，
+ *  否则重建那趟从 seq=0 重新插入会全部撞 `PRIMARY KEY (run_id, seq)`。 */
+export function clearRunEvents(runId: string): void {
+  const db = getDb();
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM run_events WHERE run_id = ?').run(runId);
+    db.prepare('UPDATE runs SET event_count = 0 WHERE id = ?').run(runId);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
 export function listEventsRaw(runId: string, afterSeq = -1): RawEventRow[] {
   return getDb()
     .prepare(

@@ -10,7 +10,7 @@ import { resolveBin } from '../pty.js';
 import { ensureTasksDir } from './paths.js';
 import { RUN_TIMEOUT_MS } from './schedule.js';
 import {
-  appendEvent, finishRun, setTaskSession, touchTaskAfterRun,
+  appendEvent, clearRunEvents, finishRun, setTaskSession, touchTaskAfterRun,
   type FinishRunPatch, type RunRow, type RunStatus, type TaskRow,
 } from './store.js';
 import { isResumeMissing, parseStreamLine, type NormalizedEvent } from './streamParse.js';
@@ -246,9 +246,14 @@ function finish(a: ActiveRun, status: RunStatus, extra: FinishRunPatch = {}): vo
   const errorText =
     status === 'error' && !result && a.stderrTail.length > 0 ? a.stderrTail.join('\n') : null;
 
-  // 首次用 --session-id 成功跑完 → 把会话标记为「已建立」，之后走 --resume。
-  // 漏了这一步，下次会拿同一个 id 去「新建」，claude 报 Session ID already in use，上下文再也接不上。
-  if (status === 'done' && !a.resumeAttempted && a.task.sessionId) {
+  // 首次用 --session-id 起过进程 → 把会话标记为「已建立」，之后走 --resume。
+  // 判据是「claude 真的把会话建起来了」，**不是**「本次跑成功了」：只认 done 的话，
+  // 首跑只要以 error / timeout / interrupted 收场（用户点取消、30 分钟超时、error_max_turns、
+  // API 报错、App 中途退出）就永远不置位，下次又拿同一个 id 去「新建」，claude 报
+  // Session ID already in use → 任务从此永久失败且无自愈路径。
+  // 非回退路径上解析出过任何事件（含 stderr）就说明进程真的起来了、会话已落盘；
+  // 纯 spawn 失败等「一个事件都没有」的 never-started run 仍留在 0。
+  if (!a.resumeAttempted && a.task.sessionId && a.events.length > 0) {
     try {
       setTaskSession(a.task.id, a.task.sessionId, true);
     } catch {
@@ -265,7 +270,11 @@ function finish(a: ActiveRun, status: RunStatus, extra: FinishRunPatch = {}): vo
       ...extra,
       ...(errorText ? { error: errorText } : {}),
     });
-    if (status === 'done' || status === 'error') {
+    // 所有终态都回写 tasks.last_run_at / last_status（spec §5.3）：只写 done / error 会让
+    // 超时、被取消的任务在列表里一直挂着上一次的「成功」，「上次失败」筛选与详情页的
+    // st-* 分支对这两个状态永远不可达。runner 不产生 skipped（那是调度器「从未启动」的结论，
+    // 不经这里），故无需排除。
+    if (status !== 'skipped') {
       touchTaskAfterRun(a.task.id, deps.now(), status);
     }
   } catch {
@@ -367,6 +376,15 @@ function spawnOnce(a: ActiveRun, useResume: boolean): void {
       // 旧进程的 exitCode 也会一直挂到下一次 close 才被覆盖。
       a.pending = '';
       a.exitCode = null;
+      // 必须先把第一趟已落库的事件（seq 0..N）删掉再归零计数器：直接 a.seq = 0 会让重建这趟的
+      // 每一次 appendEvent 都撞 PRIMARY KEY (run_id, seq)，而 recordLine 的 catch 会吞掉异常、
+      // `a.seq += 1` 又在那个 try 里 —— 于是整趟重建一条事件都存不进去，run 报成功而流水永久空白
+      // （UI 只剩第一趟被放弃的 error 结果）。只归零 seq 而不删行同样不对：那是把两趟的流水混在一起。
+      try {
+        clearRunEvents(a.run.id);
+      } catch {
+        /* DB 不可用：这趟流水仍会断，但不影响任务本身继续跑 */
+      }
       a.seq = 0;
       spawnOnce(a, false);
       return;
@@ -425,6 +443,25 @@ export function cancelRun(runId: string): boolean {
   if (!a) return false;
   killTree(a, 'interrupted', { error: '用户取消' });
   return true;
+}
+
+/**
+ * 取消某个任务当前所有在跑的 run（删除任务前必调）。返回真正被取消的个数。
+ *
+ * 为什么必须做：`deleteTask` 会连带删掉该任务的 runs / run_events（早前的级联修复），
+ * 但内存里的 ActiveRun 和它的子进程并不知情 —— run 行没了，UI 再也给不出「取消」入口，
+ * `finishRun` 变成 0 行 UPDATE，而 `appendEvent` 还会继续往已删除的 run_id 里写
+ * （表间无外键）→ 永久孤儿行 + 一个用户看不见也杀不掉的 claude 进程。
+ *
+ * 先取名再逐个 cancelRun（内部按 id 重新查表）：某个 run 恰好在这两步之间跑完时自然跳过。
+ */
+export function cancelTaskRuns(taskId: string): number {
+  const ids = [...active.values()].filter((a) => a.task.id === taskId).map((a) => a.run.id);
+  let cancelled = 0;
+  for (const id of ids) {
+    if (cancelRun(id)) cancelled += 1;
+  }
+  return cancelled;
 }
 
 export async function killAllRuns(): Promise<void> {

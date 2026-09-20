@@ -172,6 +172,15 @@ export function initTasks(getMainWindow: () => BrowserWindow | null): void {
   });
 
   ipcMain.handle('tasks:delete', (_e, id: string) => {
+    // 先杀掉该任务在跑的 run，再删行：deleteTask 会连带删掉 runs / run_events，
+    // 但进程不懂数据库 —— 留着就成了 UI 永远看不见、也取消不了的 claude 进程
+    // （appendEvent 还会继续往已删除的 run_id 里写，无外键 → 永久孤儿行）。
+    try {
+      const n = runner.cancelTaskRuns(id);
+      if (n > 0) logger.warn(`[tasks] 删除任务 ${id} 前取消了 ${n} 个在跑的 run`);
+    } catch (err) {
+      logger.warn(`[tasks] 取消在跑的 run 失败，继续删除: ${String((err as Error)?.message ?? err)}`);
+    }
     deleteTask(id);
     send('tasks:changed', listTasks().map(toTaskDto));
   });
@@ -191,7 +200,8 @@ export function initTasks(getMainWindow: () => BrowserWindow | null): void {
     send('tasks:changed', listTasks().map(toTaskDto));
   });
 
-  // runTaskNow 对未知 id 会抛 —— 不吞掉，让 invoke 直接 reject，渲染层能展示原因
+  // runTaskNow 对未知 id 会抛 —— 不吞掉，让 invoke 直接 reject，渲染层能展示原因。
+  // 该 task 已有非终态 run 时不新建、直接返回那个 run 的 id（去重口径见 scheduler.runTaskNow）。
   ipcMain.handle('tasks:runNow', (_e, id: string) => scheduler.runTaskNow(id));
 
   ipcMain.handle('tasks:cancel', (_e, runId: string) => runner.cancelRun(runId));
