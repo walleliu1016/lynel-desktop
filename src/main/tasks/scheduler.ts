@@ -225,9 +225,21 @@ export function stopScheduler(): void {
   recovered = false;
 }
 
+/**
+ * 「立即执行」。与 tick 共用同一条单任务去重口径（`liveTaskIds`）：该 task 已有非终态 run 时
+ * **不新建**，直接把既有 run 的 id 返回。
+ *
+ * 为什么要去重：连点两下会起两个 claude 进程跑同一个 task —— session_initialized=0 时两个都拿
+ * `--session-id <同一个 UUID>`（后起的报 Session ID already in use），=1 时两个都 `--resume`
+ * 同一个 session id，**两个进程并发写同一个 jsonl**，正是设计 D11 要防的损坏。
+ * 这里选「返回既有 run 的 id」而非抛错：IPC 契约保持 total，渲染层照常刷新运行列表就能看到
+ * 那次正在进行中的 run（UI 侧没有可用的错误提示位，抛错只会变成 unhandled rejection）。
+ */
 export function runTaskNow(taskId: string): string {
   const task = getTask(taskId);
   if (!task) throw new Error(`任务不存在: ${taskId}`);
+  const live = listLiveRuns().find((r) => r.taskId === taskId);
+  if (live) return live.id;
   const run = createRun(taskId, 'manual');
   callbacks.onRunChanged(run.id);
   queue.push({ runId: run.id, enqueuedAt: deps.now() });
