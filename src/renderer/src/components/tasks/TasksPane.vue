@@ -17,6 +17,7 @@
       :runs="store.runs"
       :has-more="store.runsHasMore"
       :active-run="store.activeRun"
+      :events="store.events"
       @edit="openForm(store.activeTask)"
       @remove="onRemove"
       @run-now="store.runNow"

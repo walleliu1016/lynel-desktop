@@ -162,6 +162,27 @@ export function flattenRunEvents(events: NormalizedEventDto[] | EventEnvelope[])
   return out;
 }
 
+/** 下次运行文案（面向未来）：任务列表的第二行与详情页的「下次运行」共用。
+ *  不能复用 utils/time.ts 的 formatRelTime —— 那是「过去多久」的口径，
+ *  传未来时间戳进去只会得到「刚刚」；且它只接受 ISO 字符串。 */
+export function formatNextRun(ms: number): string {
+  const diff = ms - Date.now();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return '即将运行';
+  if (min < 60) return `${min} 分钟后`;
+  const d = new Date(ms);
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const dayOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((dayOf(d) - dayOf(new Date())) / 86400000);
+  if (days === 0) return `今天 ${hm}`;
+  if (days === 1) return `明天 ${hm}`;
+  if (days > 1 && days < 7) {
+    return `${['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()]} ${hm}`;
+  }
+  const md = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${md} ${hm}`;
+}
+
 /** 运行历史一行的摘要文案。 */
 export function runSummaryText(resultText: string | null, error: string | null, status: string): string {
   if (status === 'queued') return '排队中';
