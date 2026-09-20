@@ -23,6 +23,24 @@ describe('resolveTasksDir', () => {
   it('接受合法字符串并去掉首尾空白', () => {
     expect(resolveTasksDir('  /tmp/x  ')).toBe('/tmp/x');
   });
+
+  it('展开开头的 ~ / ~/（设置页占位符就是 ~/.lynel-desktop/tasks/）', () => {
+    expect(resolveTasksDir('~')).toBe(os.homedir());
+    expect(resolveTasksDir('~/.lynel-desktop/tasks')).toBe(
+      path.join(os.homedir(), '.lynel-desktop', 'tasks'),
+    );
+    expect(resolveTasksDir('  ~/x  ')).toBe(path.join(os.homedir(), 'x'));
+    if (process.platform === 'win32') {
+      expect(resolveTasksDir('~\\x')).toBe(path.join(os.homedir(), 'x'));
+    }
+  });
+
+  it('拒绝相对路径（会在 App 的 cwd 下凭空建目录），回退默认目录', () => {
+    expect(resolveTasksDir('tasks')).toBe(DEFAULT_TASKS_DIR);
+    expect(resolveTasksDir('./tasks')).toBe(DEFAULT_TASKS_DIR);
+    expect(resolveTasksDir('../tasks')).toBe(DEFAULT_TASKS_DIR);
+    expect(resolveTasksDir('~user/tasks')).toBe(DEFAULT_TASKS_DIR); // ~user 不认，按相对路径拒掉
+  });
 });
 
 describe('ensureTasksDir', () => {

@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseStreamText } from '../../../src/main/tasks/streamParse.js';
 import {
-  flattenRunEvents, toolSummary, type StreamItem,
+  flattenRunEvents, runSummaryText, toolSummary, type StreamItem,
 } from '../../../src/renderer/src/utils/tasks.js';
 
 const FIXTURE = path.join(__dirname, 'fixtures', 'stream-sample.jsonl');
@@ -166,5 +166,15 @@ describe('flattenRunEvents 用真实 fixture', () => {
     expect(flattenRunEvents(enveloped).map((i) => i.kind)).toEqual(
       flattenRunEvents(events).map((i) => i.kind),
     );
+  });
+});
+
+describe('runSummaryText', () => {
+  it('error 且没有 error 字段时回退到 resultText 首行（有 result 的失败只写 result_text）', () => {
+    // 主进程只在「没有 result 事件」时才写 runs.error；error_max_turns / API 报错这类
+    // 有 result 的失败，真正的原因只在 result_text 里。
+    expect(runSummaryText('超出最大轮次限制\n（细节见流水）', null, 'error')).toBe('超出最大轮次限制');
+    expect(runSummaryText(null, '用户取消', 'error')).toBe('用户取消');
+    expect(runSummaryText(null, null, 'error')).toBe('执行失败');
   });
 });

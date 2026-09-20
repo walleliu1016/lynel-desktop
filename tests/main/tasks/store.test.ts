@@ -134,6 +134,29 @@ describe('tasks CRUD', () => {
     deleteTask(t.id);
     expect(getTask(t.id)).toBeNull();
   });
+
+  it('deleteTask 级联删除该任务的 runs 与 run_events（表间无外键），且不碰别的任务', () => {
+    const t = createTask(base);
+    const other = createTask({ ...base, name: '另一个' });
+    const r1 = createRun(t.id, 'scheduled');
+    const r2 = createRun(t.id, 'manual');
+    const rOther = createRun(other.id, 'scheduled');
+    appendEvent(r1.id, 0, 'system', 'init', '{"a":1}');
+    appendEvent(r2.id, 0, 'stderr', null, 'x');
+    appendEvent(rOther.id, 0, 'stderr', null, '别的任务的行');
+
+    deleteTask(t.id);
+
+    expect(getTask(t.id)).toBeNull();
+    expect(getRun(r1.id)).toBeNull();
+    expect(getRun(r2.id)).toBeNull();
+    expect(listEventsRaw(r1.id)).toHaveLength(0);
+    expect(listEventsRaw(r2.id)).toHaveLength(0);
+    // 另一个任务的 run / run_events 必须原样活着
+    expect(getRun(rOther.id)).not.toBeNull();
+    expect(listEventsRaw(rOther.id)).toHaveLength(1);
+    expect(listRuns(other.id, { limit: 10 })).toHaveLength(1);
+  });
 });
 
 describe('runs 与 run_events', () => {

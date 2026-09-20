@@ -9,7 +9,8 @@ import {
   createTask, createRun, getRun, listEventsRaw, markRunRunning, getTask, setTaskSession,
 } from '../../../src/main/tasks/store.js';
 import {
-  setRunnerDeps, startRun, cancelRun, isRunning, buildSpawnArgs, activeRunCount, killAllRuns,
+  setRunnerDeps, startRun, cancelRun, isRunning, buildSpawnArgs, buildSpawnCommand,
+  activeRunCount, killAllRuns,
 } from '../../../src/main/tasks/runner.js';
 
 vi.mock('electron', () => ({ safeStorage: {} }));
@@ -85,6 +86,62 @@ describe('buildSpawnArgs', () => {
     expect(args).toContain('--resume');
     expect(args).not.toContain('--session-id');
     expect(args[args.indexOf('--resume') + 1]).toBe(task.sessionId);
+  });
+});
+
+describe('buildSpawnCommand', () => {
+  it('非 win32：原样返回裸命令（交给内核按 PATH 解析，不改 POSIX 行为）', () => {
+    const res = buildSpawnCommand('claude', ['-p', 'x'], 'linux');
+    expect(res).toEqual({ ok: true, file: 'claude', args: ['-p', 'x'] });
+  });
+
+  it('win32：从 npm shim 里解析出背后的原生 exe，args 不变', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'lynel-shim-'));
+    const exeDir = path.join(base, 'node_modules', '@anthropic-ai', 'claude-code', 'bin');
+    fs.mkdirSync(exeDir, { recursive: true });
+    const exe = path.join(exeDir, 'claude.exe');
+    fs.writeFileSync(exe, 'MZ');
+    // npm 生成的 cmd shim 就是 `"<shim 目录>\node_modules\...\claude.exe"   %*` 这个形状
+    const target = ['node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'].join(path.sep);
+    const shim = path.join(base, 'claude.cmd');
+    fs.writeFileSync(shim, `@"%dp0%${path.sep}${target}"   %*\r\n`);
+
+    const res = buildSpawnCommand(shim, ['-p', 'x'], 'win32');
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.file).toBe(exe);
+      expect(res.args).toEqual(['-p', 'x']);
+    }
+  });
+
+  it('win32：解析不出原生目标 → fail-fast，错误文案可照抄', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'lynel-shim-'));
+    // 自定义包装：认不出原生目标（目录里也没有 npm 全局安装的 claude.exe）
+    const shim = path.join(base, 'claude.cmd');
+    fs.writeFileSync(shim, '@echo off\r\nsome-wrapper %*\r\n');
+
+    const res = buildSpawnCommand(shim, ['-p', 'x'], 'win32');
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error).toContain('无法启动 claude');
+      expect(res.error).toContain('只找到');
+      expect(res.error).toContain('未启动任何进程');
+      expect(res.error).toContain('claude_path');
+    }
+  });
+
+  it('win32：有原生 exe 候选时把具体路径写进建议里', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'lynel-shim-'));
+    const exeDir = path.join(base, 'node_modules', '@anthropic-ai', 'claude-code', 'bin');
+    fs.mkdirSync(exeDir, { recursive: true });
+    const exe = path.join(exeDir, 'claude.exe');
+    fs.writeFileSync(exe, 'MZ');
+    const shim = path.join(base, 'claude.cmd');
+    fs.writeFileSync(shim, '@echo off\r\nwrapped %*\r\n');
+
+    const res = buildSpawnCommand(shim, [], 'win32');
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain(exe);
   });
 });
 
