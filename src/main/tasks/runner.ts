@@ -21,12 +21,15 @@ export interface RunnerDeps {
   spawn: typeof nodeSpawn;
   claudeBin(): string;
   now(): number;
+  /** 所有任务共用的工作目录。默认走真实设置（建目录 + 落初始 CLAUDE.md），测试注入 tmp 目录。 */
+  tasksDir(): string;
 }
 
 let deps: RunnerDeps = {
   spawn: nodeSpawn,
   claudeBin: () => 'claude',
   now: () => Date.now(),
+  tasksDir: () => ensureTasksDir(),
 };
 
 export function setRunnerDeps(patch: Partial<RunnerDeps>): void {
@@ -45,6 +48,8 @@ interface ActiveRun {
   stderrTail: string[];
   finished: boolean;
   resumeAttempted: boolean;
+  /** resume 目标缺失的「重建一次」是否已经用过。只允许一次，防止 1s 一轮的 spawn 风暴。 */
+  fallbackUsed: boolean;
   exitCode: number | null;
   run: RunRow;
   task: TaskRow;
@@ -185,7 +190,7 @@ function spawnOnce(a: ActiveRun, useResume: boolean): void {
   let proc: RunProc;
   try {
     proc = deps.spawn(deps.claudeBin(), args, {
-      cwd: ensureTasksDir(),
+      cwd: deps.tasksDir(),
       // stdio[0] 必须是 ignore：claude 会等 stdin 最多 3 秒，用 pipe 且不关会一直挂着。
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
@@ -209,12 +214,16 @@ function spawnOnce(a: ActiveRun, useResume: boolean): void {
     consumeStderr(a, typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
   });
 
+  // 回退会换掉 `a.proc`，但旧进程的监听器仍挂在事件循环上（同一 emitter 被复用时更直接）。
+  // 用 `a.proc === proc` 认「这还是当前进程吗」：旧进程迟到的 error 若走 finish()，
+  // 会把新进程的 run 判死、新进程随即变成孤儿。close 由 a.finished 兜住，error 没有。
   proc.on('error', (err: Error) => {
+    if (a.finished || a.proc !== proc) return;
     finish(a, 'error', { error: `进程错误: ${err.message}` });
   });
 
   proc.on('close', (code: number | null) => {
-    if (a.finished) return;
+    if (a.finished || a.proc !== proc) return;
     // 冲掉尾部残行（最后一行可能没有换行符）
     if (a.pending.trim()) {
       const ev = recordLine(a, a.pending);
@@ -223,13 +232,25 @@ function spawnOnce(a: ActiveRun, useResume: boolean): void {
     }
     a.exitCode = code;
 
-    if (isResumeMissing(a.events)) {
-      // R2 实测判据命中：resume 目标缺失 → 用 --session-id 重建一次。
+    if (!a.fallbackUsed && isResumeMissing(a.events)) {
+      // R2 实测判据命中：resume 目标缺失 → 用 --session-id 重建**一次**。
+      // 判据只是事件签名（不看 stderr、也不确认本次真的用了 --resume），
+      // 重建后的 run 若再吐出同一个早失败签名（session id 已存在、代理/鉴权早退），
+      // 没有闸门就会 1s 一轮地反复 spawn，直到 30 分钟定时器才收场。
+      a.fallbackUsed = true;
       // 注意：那个错误 result 里的 session_id 是新的随机 UUID，绝不能写回。
-      setTaskSession(a.task.id, a.task.sessionId ?? '', false);
+      try {
+        setTaskSession(a.task.id, a.task.sessionId ?? '', false);
+      } catch {
+        /* DB 不可用：标记失败只影响下次是否 resume，不改变本次结果 */
+      }
       a.task = { ...a.task, sessionInitialized: 0 };
       a.events = [];
       a.stderrTail = [];
+      // 只清了 events/stderrTail/seq 的话，纯空白的尾部残行会漏进新进程的 stdout 缓冲，
+      // 旧进程的 exitCode 也会一直挂到下一次 close 才被覆盖。
+      a.pending = '';
+      a.exitCode = null;
       a.seq = 0;
       spawnOnce(a, false);
       return;
@@ -267,6 +288,7 @@ export function startRun(run: RunRow, task: TaskRow, cb: RunnerCallbacks): void 
     stderrTail: [],
     finished: false,
     resumeAttempted: task.sessionInitialized === 1,
+    fallbackUsed: false,
     exitCode: null,
     run,
     task,

@@ -27,10 +27,11 @@ class FakeProc extends EventEmitter {
 }
 
 let proc: FakeProc;
+let dir: string;
 let spawnArgs: { bin: string; args: string[]; opts: Record<string, unknown> } | null = null;
 
 beforeEach(() => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lynel-tasks-runner-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lynel-tasks-runner-'));
   setDbFile(path.join(dir, 'tasks.db'));
   proc = new FakeProc();
   spawnArgs = null;
@@ -40,6 +41,8 @@ beforeEach(() => {
       return proc as never;
     }) as never,
     claudeBin: () => 'claude',
+    // 注入 tmp 目录：不注入的话 deps.tasksDir() 会真实 mkdir + 写 ~/.lynel-desktop/tasks/CLAUDE.md。
+    tasksDir: () => dir,
   });
 });
 afterEach(async () => {
@@ -105,7 +108,8 @@ describe('startRun 的进程参数', () => {
   it('cwd 是 tasksDir()（所有任务共用）', () => {
     const { task, run } = seed();
     startRun(run, task, { onEvent: () => {}, onFinish: () => {} });
-    expect(String(spawnArgs!.opts.cwd)).toContain('tasks');
+    // 精确比对注入值：用 toContain('tasks') 是空转的（tmp 目录名本身就含 tasks）。
+    expect(spawnArgs!.opts.cwd).toBe(dir);
   });
 });
 
@@ -282,6 +286,96 @@ describe('resume 回退（R2 实测判据）', () => {
     await vi.waitFor(() => expect(isRunning(r.id)).toBe(false), { timeout: 4000 });
     expect(spawned).toEqual(['resume']);
     expect(getRun(r.id)!.resumeUsed).toBe(1);
+  });
+
+  it('回退只做一次：重建后的 run 再命中同一判据也不再 spawn（防 spawn 风暴）', async () => {
+    const t = createTask({
+      name: 'n', prompt: 'p', sessionId: '11111111-1111-4111-8111-111111111111',
+      scheduleType: 'cron', scheduleExpr: '0 9 * * *', runAt: null, nextRunAt: null,
+    });
+    setTaskSession(t.id, '11111111-1111-4111-8111-111111111111', true);
+    const r = createRun(t.id, 'scheduled');
+    markRunRunning(r.id);
+
+    const spawned: string[] = [];
+    const procs: FakeProc[] = [];
+    setRunnerDeps({
+      spawn: ((_bin: string, args: string[]) => {
+        const p = new FakeProc();
+        procs.push(p);
+        spawned.push(args.includes('--resume') ? 'resume' : 'new');
+        // 前三代都吐同一个早失败签名（session id 已存在 / 代理鉴权早退都会长这样）。
+        // 第 4 代起静默：万一护栏失效，断言是干净的失败，而不是微任务链饿死事件循环。
+        if (procs.length <= 3) {
+          queueMicrotask(() => {
+            p.stdout.emit('data', Buffer.from(JSON.stringify({
+              type: 'result', subtype: 'error_during_execution', is_error: true,
+              num_turns: 0, total_cost_usd: 0, result: '',
+              session_id: '99999999-9999-4999-8999-999999999999',
+            }) + '\n'));
+            p.emit('close', 1);
+          });
+        }
+        return p as never;
+      }) as never,
+      claudeBin: () => 'claude',
+    });
+
+    startRun(r, getTask(t.id)!, { onEvent: () => {}, onFinish: () => {} });
+    await vi.waitFor(() => expect(isRunning(r.id)).toBe(false), { timeout: 4000 });
+    expect(spawned).toEqual(['resume', 'new']); // 出现第 3 个 spawn 就是风暴
+    expect(getRun(r.id)!.status).toBe('error');
+    expect(getRun(r.id)!.resumeUsed).toBe(0);
+  });
+
+  it('回退后旧进程迟到的 error 不会打死新进程的 run', async () => {
+    const t = createTask({
+      name: 'n', prompt: 'p', sessionId: '11111111-1111-4111-8111-111111111111',
+      scheduleType: 'cron', scheduleExpr: '0 9 * * *', runAt: null, nextRunAt: null,
+    });
+    setTaskSession(t.id, '11111111-1111-4111-8111-111111111111', true);
+    const r = createRun(t.id, 'scheduled');
+    markRunRunning(r.id);
+
+    const spawned: string[] = [];
+    const procs: FakeProc[] = [];
+    setRunnerDeps({
+      spawn: ((_bin: string, args: string[]) => {
+        // 每次都是**新**进程：共用同一个 emitter 掩盖不出「旧监听器没摘」。
+        const p = new FakeProc();
+        procs.push(p);
+        const isResume = args.includes('--resume');
+        spawned.push(isResume ? 'resume' : 'new');
+        if (isResume) {
+          queueMicrotask(() => {
+            p.stdout.emit('data', Buffer.from(JSON.stringify({
+              type: 'result', subtype: 'error_during_execution', is_error: true,
+              num_turns: 0, total_cost_usd: 0, result: '',
+            }) + '\n'));
+            p.emit('close', 1);
+          });
+        }
+        return p as never;
+      }) as never,
+      claudeBin: () => 'claude',
+    });
+
+    const finished: string[] = [];
+    startRun(r, getTask(t.id)!, { onEvent: () => {}, onFinish: (_id, s) => finished.push(s) });
+    await vi.waitFor(() => expect(spawned).toEqual(['resume', 'new']));
+
+    // 旧进程的 error 迟到：没有 `a.proc !== proc` 这道闸，它会 finish 掉新进程的 run
+    procs[0].emit('error', new Error('迟到的进程错误'));
+    expect(finished).toEqual([]);
+    expect(isRunning(r.id)).toBe(true);
+
+    procs[1].stdout.emit('data', Buffer.from(JSON.stringify({
+      type: 'result', subtype: 'success', is_error: false, result: '重建成功', num_turns: 1,
+    }) + '\n'));
+    procs[1].emit('close', 0);
+    await vi.waitFor(() => expect(isRunning(r.id)).toBe(false));
+    expect(finished).toEqual(['done']);
+    expect(getRun(r.id)!.status).toBe('done');
   });
 });
 
