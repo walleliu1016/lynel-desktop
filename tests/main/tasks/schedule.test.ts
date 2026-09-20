@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   presetToCron, cronToPreset, computeNextRun, describeSchedule,
+  isDue, CATCH_UP_MS, QUEUE_TIMEOUT_MS, RUN_TIMEOUT_MS,
   type Preset,
 } from '../../../src/main/tasks/schedule.js';
 
@@ -147,5 +148,45 @@ describe('describeSchedule', () => {
     const at = new Date('2026-09-20T14:30:00').getTime();
     expect(describeSchedule({ type: 'once', runAt: at })).toContain('09-20');
     expect(describeSchedule({ type: 'once', runAt: at })).toContain('14:30');
+  });
+});
+
+describe('常量', () => {
+  it('补跑窗口 60 分钟、排队上限 30 分钟、单次超时 30 分钟', () => {
+    expect(CATCH_UP_MS).toBe(60 * 60 * 1000);
+    expect(QUEUE_TIMEOUT_MS).toBe(30 * 60 * 1000);
+    expect(RUN_TIMEOUT_MS).toBe(30 * 60 * 1000);
+  });
+});
+
+describe('isDue', () => {
+  const now = 10_000_000;
+
+  it('nextRunAt 为空 → not_due（调用方负责计算并落库，不触发）', () => {
+    expect(isDue(null, now, CATCH_UP_MS)).toBe('not_due');
+  });
+
+  it('还没到点 → not_due', () => {
+    expect(isDue(now + 1, now, CATCH_UP_MS)).toBe('not_due');
+  });
+
+  it('正好到点 → due', () => {
+    expect(isDue(now, now, CATCH_UP_MS)).toBe('due');
+  });
+
+  it('窗口边界：59m59s 前到期 → due', () => {
+    expect(isDue(now - (CATCH_UP_MS - 1000), now, CATCH_UP_MS)).toBe('due');
+  });
+
+  it('窗口边界：正好 60m0s 前到期 → due（闭区间）', () => {
+    expect(isDue(now - CATCH_UP_MS, now, CATCH_UP_MS)).toBe('due');
+  });
+
+  it('窗口边界：60m0s+1ms 前到期 → missed', () => {
+    expect(isDue(now - CATCH_UP_MS - 1, now, CATCH_UP_MS)).toBe('missed');
+  });
+
+  it('关了一整夜（10 小时前）→ missed', () => {
+    expect(isDue(now - 10 * 60 * 60 * 1000, now, CATCH_UP_MS)).toBe('missed');
   });
 });

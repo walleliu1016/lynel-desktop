@@ -159,3 +159,21 @@ export function describeSchedule(s: Schedule): string {
       return (s.expression ?? '').trim();
   }
 }
+
+/** 错过的任务在窗口内仍然补跑；超过窗口就跳过、直接排下一次。
+ *  桌面应用关一整夜是常态，60 分钟比 cowagent 的 10 分钟宽。 */
+export const CATCH_UP_MS = 60 * 60 * 1000;
+
+/** 入队后超过这个时长仍未启动 → 标 skipped，避免「每天 9:00 的日报」拖到 11:00 才发。 */
+export const QUEUE_TIMEOUT_MS = 30 * 60 * 1000;
+
+/** 单次 run 的墙钟上限，到点 SIGTERM → 5s → SIGKILL。 */
+export const RUN_TIMEOUT_MS = 30 * 60 * 1000;
+
+export type DueState = 'not_due' | 'due' | 'missed';
+
+export function isDue(nextRunAt: number | null, now: number, catchUpMs: number): DueState {
+  if (nextRunAt == null) return 'not_due';
+  if (now < nextRunAt) return 'not_due';
+  return now - nextRunAt <= catchUpMs ? 'due' : 'missed';
+}
