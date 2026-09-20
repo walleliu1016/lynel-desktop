@@ -62,13 +62,18 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function saveTask(input: { name: string; prompt: string; schedule: ScheduleDto }, id?: string) {
+    // 保存后必须让 runs / activeRunId / events 归属「当前选中的任务」：
+    // 新建时当前选中切到新任务，更新时仍是被更新的那个任务，
+    // 两种情况都要重新 select，否则会残留上一个任务的运行历史。
+    let targetId: string | undefined = id;
     if (id) await TasksUpdate(id, input);
     else {
       const created = (await TasksCreate(input)) as TaskDto;
       activeTaskId.value = created.id;
+      targetId = created.id;
     }
     await load();
-    if (id && activeTaskId.value === id) await select(id);
+    if (targetId && activeTaskId.value === targetId) await select(targetId);
   }
 
   async function remove(id: string) {
