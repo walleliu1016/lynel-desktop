@@ -384,11 +384,15 @@ npm run dist:linux
 
 **会话模型**：一个任务一个会话（创建时 `randomUUID()`）。首次 `--session-id`，成功后 `setTaskSession(..., true)` 之后走 `--resume`（**漏了这步下次会拿同一个 id 去「新建」，claude 报 Session ID already in use，上下文再也接不上**）。resume 目标缺失（`isResumeMissing`：`error_during_execution` + `is_error` + `num_turns=0` + 全程无 assistant 事件）→ 用 `--session-id` 重建**一次**，`fallbackUsed` 闸门防止 1s 一轮的 spawn 风暴；**那个错误 `result` 里的 `session_id` 是新生成的随机 UUID，绝不能写回 `tasks.session_id`**，否则下次 resume 指向空会话、静默丢掉全部上下文。`runs.resume_used` 是**三态**：`1` 真用了 `--resume`、`0` 回退重建过、`null` 其余（尤其首跑）—— 渲染层只在 `=== 0` 时显示「会话已重建」，首跑写 0 会误报。
 
-**Windows 的 spawn 解析**（`runner.ts` 的 `buildSpawnCommand`）：win32 上 claude 是 npm 生成的 `.cmd` shim，裸名 `claude` 会 `ENOENT`（Node 不做 PATHEXT 解析），直接指向 `claude.cmd` 会 `EINVAL`（Node ≥18.20 / 20.12 / 21.7 对 `.cmd` / `.bat` 无 shell spawn 的加固，CVE-2024-27980）。**不能照搬 `pty.ts` 的 `cmd.exe /d /c <shim>`**：本执行器带 `detached: true`，实测此时**只有直接子进程**的 stdout / stderr 还能进管道 —— `cmd.exe` / `powershell.exe` / `start /b /wait` / `shell: true` 四种包装全部拿到空输出（对照组：原生 `.exe` 直接 spawn 正常打印）。故用 `pty.ts` 的 `resolveBin` 找到 shim 后读它文本、代入 `%dp0%` / `$basedir`，解析出背后的原生 `.exe`，**让 claude 自己当直接子进程**；解析不出（非 npm 模板的自定义包装、旧版 `cli.js` 形态、PATH 里根本没有）就返回 `ok:false`、**直接判失败、绝不 spawn**。套壳启动不是「降级」而是更坏的失败：进程照样起、claude 照样以 `bypassPermissions` 真实执行并产生副作用，但 stdout 全丢，run 记成「exit 0，无可解析的 result 事件」的 error，用户看到失败会重跑，副作用翻倍。非 win32 行为不变。
+**Windows 的 spawn 解析**（`runner.ts` 的 `buildSpawnCommand`）：win32 上 claude 是 npm 生成的 `.cmd` shim，裸名 `claude` 会 `ENOENT`（Node 不做 PATHEXT 解析），直接指向 `claude.cmd` 会 `EINVAL`（Node ≥18.20 / 20.12 / 21.7 对 `.cmd` / `.bat` 无 shell spawn 的加固，CVE-2024-27980）。故用 `pty.ts` 的 `resolveBin` 找到 shim 后读它文本、代入 `%dp0%` / `$basedir`，解析出背后的原生 `.exe`，**让 claude 自己当直接子进程**（不退回 `pty.ts` 同款 `cmd.exe /d /c <shim>` 套壳：多一层 cmd 就多一层引号 / 转义与输出转码，且杀树、判活的对象会变成 cmd 而不是 claude）；解析不出（非 npm 模板的自定义包装、旧版 `cli.js` 形态、PATH 里根本没有）就返回 `ok:false`、**直接判失败、绝不 spawn** —— 套壳命令本身能跑起来，但一条「明确失败 + 可照抄的 `claude_path` 建议」好过引入没人验证过的兜底路径。非 win32 行为不变。
+
+**spawn 选项：绝不能带 `detached`**（`runner.ts` 的 `spawnOnce`，踩过的坑）：win32 上 `DETACHED_PROCESS` 会让 `CREATE_NO_WINDOW` 失效（MSDN：二者同用时后者被忽略），claude 于是没有控制台 —— 它每起一个 shell（Bash 工具）Windows 就给那个 shell 分配一个**新控制台**，即用户看到的「跑任务时频繁的 cmd 闪窗」。实测（枚举可见顶层窗口做差集）`detached: true` 每次必现 `CASCADIA_HOSTING_WINDOW_CLASS :: cmd.exe`，去掉后为 0。同理，`killTree` 在 win32 上也**不走 tree-kill**（它是 `exec('taskkill ...')`，而 `exec` 默认 `windowsHide: false`，Electron 主进程没有控制台 → 每杀一次闪一次窗），改为自己 `spawn('taskkill.exe', [...], { windowsHide: true })`（命令与 tree-kill 的 win32 分支逐字相同），并经 `deps.killTree` 注入，单测不会起真进程。
+
+**result 卡片正文不重复渲染**（`utils/tasks.ts` 的 `flattenRunEvents` + `RunStreamView.vue`）：`result.result` 按定义就是「最后一条 assistant 消息的文本」，而那条消息在流里已作为 `text` 条目渲染过 —— 于是同一段话出现两次，且第二遍是纯文本（Markdown 表格与 `**` 原样显示）。现在折叠时把 `resultText` 与末尾连续的 `text` 串按「忽略空白后相等」比对，相等则置 `textRepeatsAbove`、渲染层只留状态头；不相等（典型是失败时 result 才携带的错误原因）才用 `<Markdown>` 渲染正文。
 
 **无头参数**：`-p <prompt> --output-format stream-json --verbose --permission-mode bypassPermissions` + `--session-id|--resume <sid>`。`--verbose` 必需，不带直接报错；`stdio: ['ignore','pipe','pipe']` 中 `stdio[0]` 必须是 `'ignore'`（claude 会等 stdin 最多 3 秒，用 `pipe` 且不关会永久卡住）；env 里 `delete CLAUDECODE`（否则从 Claude Code 会话内 spawn 会被「不能嵌套」守卫挡住）。
 
-**启动恢复**（只做一次）：`status='running'` 的 run → 标 `interrupted`（进程已不在），`status='queued'` 的 run → **重新入队**（不丢）；恢复失败时 `recovered` 不置位，由后续 tick 重试。**残留（已接受，见 spec §6.2）**：恢复只改行、不杀进程 —— App 被硬杀（`taskkill /F` / SIGKILL / 断电）时 `killAllRuns()` 没机会执行，那个 detached 的 claude 进程会活着继续跑（输出管道已断），启动恢复不会去杀它；不做 pid 持久化 + 启动扫杀，因为跨平台判活/杀树不可靠（pid 复用会误杀），代价大于收益。
+**启动恢复**（只做一次）：`status='running'` 的 run → 标 `interrupted`（进程已不在），`status='queued'` 的 run → **重新入队**（不丢）；恢复失败时 `recovered` 不置位，由后续 tick 重试。**残留（已接受，见 spec §6.2）**：恢复只改行、不杀进程 —— App 被硬杀（`taskkill /F` / SIGKILL / 断电）时 `killAllRuns()` 没机会执行，那个 claude 进程会活着继续跑（输出管道已断；非 detached 的子进程不随父进程退出而终止，故去掉 detached 后这条行为不变），启动恢复不会去杀它；不做 pid 持久化 + 启动扫杀，因为跨平台判活/杀树不可靠（pid 复用会误杀），代价大于收益。
 
 **会话初始化标记的判据**：`session_initialized` 只在「**claude 真的把会话建起来了**」时置位 —— 非回退路径上 `a.events.length > 0`（解析出过任何事件，含 stderr）即算，**不是**只认 `status === 'done'`。只认成功的话，首跑一旦以 `error` / `timeout` / `interrupted` 收场就永远停在 0，下次又拿同一个 UUID 去 `--session-id` 新建 → claude 报 `Session ID already in use` → 任务永久失败且无自愈路径。回退分支里的 `setTaskSession(..., false)` 是另一回事，保持不动。同理，终态的 `last_run_at` / `last_status` 回写**覆盖全部终态**（不止 `done` / `error`），否则超时与被取消的任务在列表里一直挂着上一次的「成功」。
 
@@ -443,7 +447,8 @@ npm run dist:linux
 - `src/main/tasks/db.ts` 是 `node:sqlite` 的唯一接触点（experimental API，便于将来换实现）；其它文件一律经 `store.ts` 读写，不直接 import `node:sqlite`。
 - 无头 `-p` 模式下 `stdio[0]` 必须是 `'ignore'`：claude 会等 stdin 最多 3 秒，用 `pipe` 且不关闭会**永久卡住**。
 - `claude -p --output-format stream-json` 必须同时带 `--verbose`，否则直接报错。
-- win32 上解析不出 claude 背后的原生 `.exe` 时**直接判失败、绝不套壳 spawn**：`detached: true` 下套壳拿不到任何 stdout，而 claude 仍会以 `bypassPermissions` 真实执行并产生副作用。
+- win32 上解析不出 claude 背后的原生 `.exe` 时**直接判失败、绝不套壳 spawn**：套壳起来后杀树 / 判活的对象是 cmd 而不是 claude，且多一层转义与输出转码。
+- 任务进程的 spawn **绝不带 `detached`**：win32 上 `DETACHED_PROCESS` 会让 `CREATE_NO_WINDOW` 失效，claude 每起一个 shell 就弹一个可见 cmd 窗口（用户报过的「频繁闪窗」）；杀进程树的 taskkill 也必须带 `windowsHide`。
 - resume 回退只允许一次，且失败 `result` 里的 `session_id`（新生成的随机 UUID）绝不能写回 `tasks.session_id`。
 
 ---
