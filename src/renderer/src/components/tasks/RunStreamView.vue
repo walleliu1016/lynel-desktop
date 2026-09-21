@@ -111,7 +111,11 @@
             </span>
             <span v-if="usageChips(item.summary.usage)" class="chip">{{ usageChips(item.summary.usage) }}</span>
           </div>
-          <div class="rt">{{ item.summary.resultText || '（无输出）' }}</div>
+          <!-- 正文与紧邻上方的助手正文一字不差时不重复渲染（result.result 就是最后一条
+               assistant 文本），只留这行状态头 —— 那里才是这张卡独有的信息。 -->
+          <div v-if="!item.textRepeatsAbove && item.summary.resultText" class="rt">
+            <Markdown :text="item.summary.resultText" />
+          </div>
         </div>
       </template>
 
@@ -378,6 +382,8 @@ onBeforeUnmount(() => {
 }
 .res .rh .big { font-weight: 600; font-size: var(--fs-body-sm); }
 .res .rt { font-size: var(--fs-body-sm); color: var(--text-primary); }
+/* Markdown 自带 8px 12px 内边距，嵌在卡片（已有 12px 14px）里会叠成双重缩进 */
+.res .rt :deep(.markdown-body) { padding: 0; }
 .chip {
   font-size: 10px; padding: 2px 7px; border-radius: var(--radius-pill);
   background: var(--bg-hover); color: var(--text-secondary);

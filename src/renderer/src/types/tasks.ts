@@ -112,4 +112,10 @@ export type StreamItem =
       delta?: { add: number; del: number };
     }
   | { kind: 'stderr'; text: string }
-  | { kind: 'result'; summary: ResultSummaryDto };
+  | {
+      kind: 'result';
+      summary: ResultSummaryDto;
+      /** summary.resultText 与紧邻上方的助手正文完全重复（result.result 本来就是最后一条 assistant
+       *  文本），渲染层据此不再把同一段话显示第二遍。见 utils/tasks.ts 的 trailingTextRun。 */
+      textRepeatsAbove: boolean;
+    };

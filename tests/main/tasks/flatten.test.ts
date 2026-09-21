@@ -169,6 +169,61 @@ describe('flattenRunEvents 用真实 fixture', () => {
   });
 });
 
+describe('result 卡片正文去重', () => {
+  /** StreamItem 里的 result 条目 */
+  type ResultItem = Extract<StreamItem, { kind: 'result' }>;
+  const resultOf = (items: StreamItem[]) => items.at(-1) as ResultItem;
+
+  function stream(...lines: unknown[]) {
+    return parseStreamText(lines.map((l) => JSON.stringify(l)).join('\n'));
+  }
+  const assistantText = (text: string) => ({
+    type: 'assistant', message: { id: 'm', role: 'assistant', content: [{ type: 'text', text }] },
+  });
+  const result = (r: string, isError = false) => ({
+    type: 'result', subtype: isError ? 'error_max_turns' : 'success', is_error: isError, result: r,
+  });
+
+  it('正文与紧邻上方的助手正文一字不差 → 判重（真实流的常态）', () => {
+    // 依据：本机真实 run 的 run_events 里，result.result 与最后一条 assistant text 逐字相同。
+    const items = flattenRunEvents(stream(assistantText('上海今天多云。'), result('上海今天多云。')));
+    expect(resultOf(items).textRepeatsAbove).toBe(true);
+  });
+
+  it('最后一条消息有多个 text block（拼接分隔符不可知）也判重', () => {
+    const items = flattenRunEvents(stream(
+      assistantText('第一段'),
+      assistantText('第二段'),
+      result('第一段\n第二段'),
+    ));
+    expect(resultOf(items).textRepeatsAbove).toBe(true);
+  });
+
+  it('末尾 text 串被工具调用打断 → 不判重（正文确实是卡片独有的信息）', () => {
+    const items = flattenRunEvents(stream(
+      assistantText('先看看文件'),
+      { type: 'assistant', message: { id: 'm2', role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'a.ts' } }] } },
+      result('先看看文件', true),
+    ));
+    expect(resultOf(items).textRepeatsAbove).toBe(false);
+  });
+
+  it('失败时正文是卡片独有的原因（上方没有这段文本）→ 不判重', () => {
+    const items = flattenRunEvents(stream(
+      assistantText('我打算这么做…'),
+      result('超出最大轮次限制', true),
+    ));
+    const r = resultOf(items);
+    expect(r.textRepeatsAbove).toBe(false);
+    expect(r.summary.resultText).toBe('超出最大轮次限制');
+  });
+
+  it('正文为空 → 不判重（避免「都为空」被当成重复）', () => {
+    const items = flattenRunEvents(stream(assistantText(''), result('')));
+    expect(resultOf(items).textRepeatsAbove).toBe(false);
+  });
+});
+
 describe('runSummaryText', () => {
   it('error 且没有 error 字段时回退到 resultText 首行（有 result 的失败只写 result_text）', () => {
     // 主进程只在「没有 result 事件」时才写 runs.error；error_max_turns / API 报错这类

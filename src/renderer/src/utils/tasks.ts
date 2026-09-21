@@ -77,6 +77,25 @@ function editDelta(input: Record<string, unknown>): { add: number; del: number }
   return { add: countLines(newS ?? ''), del: countLines(oldS ?? '') };
 }
 
+/** 末尾连续的一串 text 条目的正文（从后往前走，遇到非 text 就停）。
+ *  result.result 按定义就是「最后一条 assistant 消息的文本」，而那条消息在流里已经作为
+ *  text 条目渲染过了 —— 直接再渲染一遍就是同一段话出现两次。 */
+function trailingTextRun(out: StreamItem[]): string {
+  let i = out.length - 1;
+  let text = '';
+  while (i >= 0 && out[i].kind === 'text') {
+    text = (out[i] as Extract<StreamItem, { kind: 'text' }>).text + text;
+    i -= 1;
+  }
+  return text;
+}
+
+/** 判「同一段话」时忽略空白：最后一条消息若有多个 text block，在流里是拆成多行的，
+ *  拼接时的分隔符不可知（`\n` 还是空串取决于上游），比空白更严只会漏判。 */
+function squash(text: string): string {
+  return text.replace(/\s+/g, '');
+}
+
 export function flattenRunEvents(events: NormalizedEventDto[] | EventEnvelope[]): StreamItem[] {
   const list: NormalizedEventDto[] = (events as unknown[]).map((e) =>
     e && typeof e === 'object' && 'event' in (e as object)
@@ -151,9 +170,17 @@ export function flattenRunEvents(events: NormalizedEventDto[] | EventEnvelope[])
       case 'stderr':
         out.push({ kind: 'stderr', text: ev.text ?? '' });
         break;
-      case 'result':
-        if (ev.result) out.push({ kind: 'result', summary: ev.result });
+      case 'result': {
+        if (!ev.result) break;
+        const body = squash(ev.result.resultText);
+        out.push({
+          kind: 'result',
+          summary: ev.result,
+          // 内容为空时不判重（否则「都为空」会被当成重复，虽然渲染层对空文本本来也不显示正文）
+          textRepeatsAbove: body !== '' && body === squash(trailingTextRun(out)),
+        });
         break;
+      }
       default:
         break;
     }
