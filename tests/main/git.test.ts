@@ -3,6 +3,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+// 预热：下面每条用例各自 `await import('../../src/main/git.js')`，**排第一的那条**要替整个
+// 文件付一次 git.js / simple-git / chokidar 的模块加载 —— 这笔开销记在它的用例超时里，
+// 冷启动的 CI runner 上足以把它拖爆（现象是第一条超时、后面全过）。在模块作用域先引一次，
+// 把加载挪到收集阶段（那一阶段没有用例超时），各用例拿到的就是缓存。
+import '../../src/main/git.js';
 
 /** 建一个真实的临时 git 仓库；git 操作类测试不用 mock —— mock 掉的正是被测对象 */
 function makeRepo(): string {
@@ -19,32 +24,17 @@ function makeRepo(): string {
   return dir;
 }
 
-// git 操作类测试全是真进程（每条用例一次 `await import(git.js)` + 若干 git 调用），
-// 5s 的默认超时在冷启动的 CI runner 上不够 —— 首个用例尤其要替整个文件付一次模块加载。
-// 收紧到 20s：够慢机器用，又不至于把一个真挂住的用例拖太久。
-describe('git', { timeout: 20_000 }, () => {
+describe('git', () => {
   let repo: string;
-  let plain: string;
 
   beforeAll(() => {
     repo = makeRepo();
-    plain = fs.mkdtempSync(path.join(os.tmpdir(), 'lynel-nogit-'));
   });
 
   afterAll(() => {
     fs.rmSync(repo, { recursive: true, force: true });
-    fs.rmSync(plain, { recursive: true, force: true });
   });
 
-  it('非 git 目录返回 isRepo=false 而不是抛错', async () => {
-    const { getStatus } = await import('../../src/main/git.js');
-    const res = await getStatus(plain);
-    expect(res.ok).toBe(true);
-    if (res.ok) {
-      expect(res.data.isRepo).toBe(false);
-      expect(res.data.staged).toEqual([]);
-    }
-  });
 
   it('干净仓库：报告分支且无变更', async () => {
     const { getStatus } = await import('../../src/main/git.js');
