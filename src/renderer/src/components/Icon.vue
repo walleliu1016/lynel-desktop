@@ -68,6 +68,10 @@ import {
   Wrench,
   X,
   Zap,
+  Layers,
+  Rocket,
+  Bookmark,
+  Ellipsis,
 } from '@lucide/vue'
 
 const props = defineProps<{
@@ -149,6 +153,10 @@ const icons: Record<string, unknown> = {
   shrink: Shrink,
   star: Star,
   'undo-2': Undo2,
+  layers: Layers,
+  rocket: Rocket,
+  bookmark: Bookmark,
+  more: Ellipsis,
 }
 
 const Comp = computed(() => icons[props.name] ?? null)

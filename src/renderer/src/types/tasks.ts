@@ -6,9 +6,30 @@ export type ScheduleType = 'cron' | 'once';
 export type RunStatus =
   | 'queued' | 'running' | 'done' | 'error' | 'timeout' | 'skipped' | 'interrupted';
 
+export type IntervalUnit = 'minute' | 'hour' | 'day' | 'month';
+
+/** 生效区间（可选的起止时间戳）。不在 cron 里表达，由主进程交给 croner 的 startAt / stopAt。 */
+export interface ScheduleWindow {
+  startAt: number | null;
+  endAt: number | null;
+}
+
+/** 与主进程 schedule.ts 的 Schedule 一一对应。渲染层**不自己构造 cron**：
+ *  编辑时用 task.scheduleRaw 回填，预览/摘要由 tasks:preview 返回，避免两份模板逻辑漂移。 */
 export type ScheduleDto =
-  | { type: 'cron'; expression: string }
-  | { type: 'once'; runAt: number };
+  | ({ type: 'daily'; hour: number; minute: number; days: number[] } & ScheduleWindow)
+  | ({
+      type: 'interval';
+      n: number;
+      unit: IntervalUnit;
+      days: number[];
+      hour: number;
+      minute: number;
+      /** 仅 unit='month' 用：每 N 个月的几号 */
+      dayOfMonth: number;
+    } & ScheduleWindow)
+  | { type: 'once'; runAt: number }
+  | ({ type: 'cron'; expression: string } & ScheduleWindow);
 
 export interface TaskDto {
   id: string;
@@ -21,6 +42,8 @@ export interface TaskDto {
   scheduleType: ScheduleType;
   scheduleExpr: string | null;
   runAt: number | null;
+  scheduleStartAt: number | null;
+  scheduleEndAt: number | null;
   nextRunAt: number | null;
   lastRunAt: number | null;
   lastStatus: string | null;
@@ -119,3 +142,21 @@ export type StreamItem =
        *  文本），渲染层据此不再把同一段话显示第二遍。见 utils/tasks.ts 的 trailingTextRun。 */
       textRepeatsAbove: boolean;
     };
+
+/** 用户自建模板（主进程 templates.ts 落库，渲染层只展示）。 */
+export interface TaskTemplateDto {
+  id: string;
+  name: string;
+  icon: string;
+  blurb: string;
+  prompt: string;
+  schedule: ScheduleDto;
+  createdAt: number;
+}
+
+/** tasks:preview 的返回：接下来 3 次 + 人读摘要 + 非法原因。 */
+export interface PreviewResult {
+  nextRuns: number[];
+  summary: string;
+  error: string | null;
+}

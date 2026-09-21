@@ -1,92 +1,89 @@
-<!-- 任务详情右栏：头部操作 + 键值块 + 运行历史（倒序分页），运行历史下方挂当前 run 的流水。
-     不显示工作目录 / 项目（设计 D10：所有任务共用一个固定工作目录，该概念在 UI 里不存在）。 -->
+<!-- 任务详情：工具栏（名称 + 运行/历史切换 + 立即执行 + 溢出菜单）
+     → 摘要 chips → 主体（默认渲染最近一次运行的完整流水，不再是空白）。
+     运行历史不再平铺在下面，收进工具栏的分段，点历史行切回那一次运行。 -->
 <template>
   <div class="detail">
-    <div class="dhd">
-      <h3>{{ task.name }}</h3>
-      <button class="btn primary" @click="$emit('run-now', task.id)">
+    <div class="tbar">
+      <span class="sd" :class="task.lastStatus === 'error' ? 'err' : task.enabled ? 'on' : 'off'" />
+      <h3 :title="task.name">{{ task.name }}</h3>
+
+      <!-- 历史收进一个按钮 + 浮窗：不占正文的位置，也不覆盖当前这次运行的流水 -->
+      <div class="histwrap">
+        <button class="btn" :class="{ on: histOpen }" @click.stop="histOpen = !histOpen">
+          <Icon name="history" :size="13" />历史<span class="badge">{{ runBadge }}</span>
+        </button>
+        <div v-if="histOpen" class="histpop" @click.stop>
+          <div class="histpop-hd">运行历史</div>
+          <RunHistoryList
+            :runs="runs"
+            :active-run-id="activeRunId"
+            :has-more="hasMore"
+            :compact="true"
+            @open="$emit('open-run', $event)"
+            @load-more="$emit('load-more')"
+          />
+        </div>
+      </div>
+
+      <button class="btn primary tall" @click="$emit('run-now', task.id)">
         <Icon name="play" :size="14" />立即执行
       </button>
-      <button class="btn ghost" title="编辑" @click="$emit('edit', task)">
-        <Icon name="pencil" :size="14" />
-      </button>
-      <button class="btn ghost" title="删除" @click="$emit('remove', task.id)">
-        <Icon name="trash" :size="14" />
-      </button>
+      <div class="morewrap">
+        <button class="btn ghost icon" title="更多" @click.stop="menuOpen = !menuOpen">
+          <Icon name="more" :size="16" />
+        </button>
+        <div v-if="menuOpen" class="menu">
+          <button @click="pick('edit')"><Icon name="pencil" :size="13" />编辑任务</button>
+          <button @click="pick('copy')"><Icon name="copy" :size="13" />复制为新任务</button>
+          <div class="sep" />
+          <button class="danger" @click="pick('remove')"><Icon name="trash" :size="13" />删除任务</button>
+        </div>
+      </div>
     </div>
 
+    <div class="sumbar">
+      <span class="chip"><Icon name="history" :size="11" />{{ task.schedule }}</span>
+      <span class="chip">
+        <Icon name="clock" :size="11" />
+        {{ task.enabled ? nextText : '已停用' }}
+      </span>
+      <span class="chip">
+        上次 {{ task.lastRunAt ? statusLabel(task.lastStatus) : '还没跑过' }}
+        <template v-if="task.lastRunAt"> · {{ formatRelTime(new Date(task.lastRunAt).toISOString()) }}</template>
+      </span>
+      <span v-if="lastCost" class="chip">均价 <b>${{ lastCost }}</b></span>
+    </div>
+
+    <!-- 主体：当前这一次运行的完整流水 -->
     <div class="dbody">
-      <dl class="kv">
-        <dt>调度</dt>
-        <dd>{{ task.schedule }} <span class="chip mono">{{ rawExpr }}</span></dd>
-        <dt>状态</dt>
-        <dd>
-          <span class="sd" :class="task.enabled ? 'on' : 'off'" />
-          {{ task.enabled ? '已启用' : '已停用' }}
-        </dd>
-        <dt>下次运行</dt>
-        <dd>
-          <template v-if="task.enabled && task.nextRunAt">
-            {{ formatAbs(task.nextRunAt) }}
-            <span class="dim">（{{ formatNextRun(task.nextRunAt) }}）</span>
-          </template>
-          <span v-else class="dim">—</span>
-        </dd>
-        <dt>上次运行</dt>
-        <dd>
-          <template v-if="task.lastRunAt">
-            {{ formatAbs(task.lastRunAt) }}
-            <span :class="lastStatusClass(task)">{{ statusLabel(task.lastStatus) }}</span>
-          </template>
-          <span v-else class="dim">还没跑过</span>
-        </dd>
-        <dt>Prompt</dt>
-        <dd class="prompt mono">{{ task.prompt }}</dd>
-      </dl>
-
-      <div class="sep" />
-      <div class="subhd">运行历史</div>
-
-      <div class="runs">
-        <div
-          v-for="r in runs"
-          :key="r.id"
-          class="run"
-          :class="{ sel: r.id === activeRun?.id }"
-          @click="$emit('open-run', r.id)"
-        >
-          <span class="st" :class="'st-' + r.status">
-            <Icon :name="statusIcon(r.status)" :size="12" />{{ statusLabel(r.status) }}
-          </span>
-          <span class="tg">{{ r.trigger === 'manual' ? '手动' : '自动' }}</span>
-          <span class="wh">{{ formatAbs(r.startedAt ?? r.queuedAt) }}</span>
-          <span class="ms">{{ runSummaryText(r.resultText, r.error, r.status) }}</span>
-          <span class="rt">{{ metaText(r) }}</span>
-          <Icon name="chevron-right" :size="12" class="arrow" />
-        </div>
-        <div v-if="runs.length === 0" class="empty">还没跑过</div>
-      </div>
-      <div v-if="hasMore" class="more">
-        <button class="btn ghost" @click="$emit('load-more')">加载更早的运行记录</button>
-      </div>
-
       <RunStreamView
         v-if="activeRun"
         :run="activeRun"
         :events="events"
-        :task-label="task.name"
+        :is-latest="isLatest"
         @cancel="$emit('cancel', activeRun.id)"
-        @close="$emit('close-run')"
+        @latest="$emit('view-latest')"
       />
+      <div v-else class="blank">
+        <div class="ic"><Icon name="play" :size="20" /></div>
+        <h4>这个任务还没运行过</h4>
+        <p>点「立即执行」跑一次，结果会显示在这里。之后每次运行也会自动出现，不需要手动打开历史。</p>
+        <button class="btn primary tall" @click="$emit('run-now', task.id)">
+          <Icon name="play" :size="13" />立即执行
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Icon from '../Icon.vue'
 import RunStreamView from './RunStreamView.vue'
-import { formatDuration, formatNextRun, runSummaryText } from '../../utils/tasks'
+import RunHistoryList from './RunHistoryList.vue'
+import { formatNextRun, taskCostHint } from '../../utils/tasks'
+import { formatRelTime } from '../../utils/time'
+import { statusLabel } from '../../utils/taskStatus'
 import type { EventEnvelope, RunDto, TaskDto } from '../../types/tasks'
 
 const props = defineProps<{
@@ -94,136 +91,190 @@ const props = defineProps<{
   runs: RunDto[]
   hasMore: boolean
   activeRun: RunDto | null
+  activeRunId: string | null
   events: EventEnvelope[]
+  isLatest: boolean
+  /** 已加载的运行条数；还有更早的分页时带一个 + 后缀，避免谎报总数 */
+  runBadge: string
 }>()
-defineEmits<{
+const emit = defineEmits<{
   (e: 'edit', task: TaskDto): void
+  (e: 'copy', task: TaskDto): void
   (e: 'remove', id: string): void
   (e: 'run-now', id: string): void
   (e: 'load-more'): void
   (e: 'open-run', runId: string): void
+  (e: 'view-latest'): void
   (e: 'cancel', runId: string): void
-  /** 运行流水返回按钮：收起流水、回到运行历史 */
-  (e: 'close-run'): void
 }>()
 
-const LABELS: Record<string, string> = {
-  queued: '排队中', running: '运行中', done: '成功', error: '失败',
-  timeout: '超时', skipped: '已跳过', interrupted: '已中断',
-  // 单次任务的档期过了补救窗口：scheduler 写 lastStatus='missed' 但不更新 lastRunAt，
-  // 该状态会真的出现在「上次运行」行上。文案与 TaskList 的列表第二行保持一致。
-  missed: '已过期',
-}
-const ICONS: Record<string, string> = {
-  queued: 'clock', running: 'loader', done: 'check', error: 'warning',
-  timeout: 'clock', skipped: 'slash', interrupted: 'slash',
-}
+const menuOpen = ref(false)
+const histOpen = ref(false)
 
-/** 原始表达式：cron 取表达式原文，单次任务取格式化后的触发时间 */
-const rawExpr = computed(() =>
-  props.task.scheduleRaw.type === 'cron'
-    ? props.task.scheduleRaw.expression
-    : formatAbs(props.task.scheduleRaw.runAt),
+/** 点浮窗外面 / 按 Esc 关掉 —— 浮窗盖在流水上，不给关的话没法看被压住的那段 */
+function onDocClick() {
+  histOpen.value = false
+}
+function onKey(e: KeyboardEvent) {
+  if (e.key === 'Escape') histOpen.value = false
+}
+watch(histOpen, (open) => {
+  if (open) {
+    document.addEventListener('click', onDocClick)
+    document.addEventListener('keydown', onKey)
+  } else {
+    document.removeEventListener('click', onDocClick)
+    document.removeEventListener('keydown', onKey)
+  }
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick)
+  document.removeEventListener('keydown', onKey)
+})
+
+/** 选中某一次运行后浮窗自动收起（选择本身就是「切换当前展示」） */
+watch(
+  () => props.activeRunId,
+  () => {
+    histOpen.value = false
+  },
 )
 
-const statusLabel = (s: string | null) => (s ? LABELS[s] ?? s : '—')
-const statusIcon = (s: string) => ICONS[s] ?? 'clock'
-
-function lastStatusClass(t: TaskDto): string {
-  if (t.lastStatus === 'done') return 'st-done'
-  if (t.lastStatus && ['error', 'timeout', 'interrupted'].includes(t.lastStatus)) return 'st-error'
-  return 'dim'
+function pick(action: 'edit' | 'copy' | 'remove') {
+  menuOpen.value = false
+  if (action === 'edit') emit('edit', props.task)
+  else if (action === 'copy') emit('copy', props.task)
+  else emit('remove', props.task.id)
 }
 
-function formatAbs(ms: number): string {
-  const d = new Date(ms)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
-}
+const nextText = computed(() =>
+  props.task.nextRunAt == null ? '无下次运行' : `下次 ${formatNextRun(props.task.nextRunAt)}`)
 
-function metaText(r: RunDto): string {
-  if (r.status === 'queued' || r.status === 'running') return '—'
-  const bits: string[] = []
-  if (r.durationMs != null) bits.push(formatDuration(r.durationMs))
-  if (r.numTurns != null) bits.push(`${r.numTurns} 轮`)
-  if (r.totalCostUsd != null) bits.push(`$${r.totalCostUsd.toFixed(3)}`)
-  return bits.join(' · ') || '—'
-}
+const lastCost = computed(() => taskCostHint(props.runs[0]))
 </script>
 
 <style scoped>
-.detail { flex: 1; min-width: 0; overflow: hidden; display: flex; flex-direction: column; background: var(--bg-primary); }
-.dhd {
-  padding: 12px 16px; display: flex; align-items: center; gap: 8px;
-  border-bottom: 1px solid var(--border); background: var(--bg-panel);
-}
-.dhd h3 {
-  font-size: var(--fs-body); font-weight: 600; margin: 0; flex: 1;
-  color: var(--text-primary);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-/* 运行历史可能很长（Prompt 也可能多行），详情区要能滚 */
-.dbody { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; }
-
-.kv { display: grid; grid-template-columns: 76px 1fr; gap: 7px 12px; margin: 0; }
-.kv dt { color: var(--text-tertiary); font-size: var(--fs-caption); }
-.kv dd {
-  margin: 0; font-size: var(--fs-body-sm); color: var(--text-primary);
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-}
-/* Prompt 是长文本，不参与上面那条 flex 单行布局 */
-.kv dd.prompt { display: block; white-space: pre-wrap; word-break: break-word; color: var(--text-secondary); }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-.dim { color: var(--text-tertiary); }
-.chip {
-  font-size: 10px; padding: 2px 7px; border-radius: var(--radius-pill);
-  background: var(--bg-hover); color: var(--text-secondary);
-}
-.sep { height: 1px; background: var(--border); margin: 14px 0 12px; }
-.subhd {
-  font-size: 10px; letter-spacing: .6px; color: var(--text-tertiary);
-  text-transform: uppercase; margin-bottom: 8px;
+.detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-primary);
 }
 
-.sd { width: 6px; height: 6px; border-radius: 50%; flex: none; }
-.sd.on { background: var(--status-success); }
-.sd.off { background: var(--text-tertiary); opacity: .45; }
-
-.runs { border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-card); }
-.run {
-  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
-  font-size: var(--fs-caption); cursor: pointer;
+/* 工具栏：52px，标题 18px —— 把层级从「一行键值对」拉开 */
+.tbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  height: 52px;
+  padding: 0 18px;
+  background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
 }
-.run:last-child { border-bottom: none; }
-.run:hover { background: var(--bg-hover); }
-.run.sel { background: var(--bg-selected); }
-.run .st { display: inline-flex; align-items: center; gap: 5px; width: 74px; flex: none; }
-.run .tg { width: 34px; flex: none; color: var(--text-tertiary); }
-.run .wh { width: 116px; flex: none; color: var(--text-secondary); }
-.run .ms {
-  flex: 1; min-width: 0; color: var(--text-tertiary);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.tbar h3 {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: -.2px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.run .rt { flex: none; display: flex; gap: 10px; color: var(--text-secondary); }
-.run .arrow { color: var(--text-tertiary); flex: none; }
-.st-done { color: var(--status-success); }
-.st-error, .st-timeout { color: var(--status-error); }
-.st-running { color: var(--accent); }
-.st-queued, .st-skipped, .st-interrupted { color: var(--text-tertiary); }
-.more { padding: 10px; text-align: center; }
-.empty { padding: 18px 12px; text-align: center; color: var(--text-tertiary); }
+.sd { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.sd.on { background: var(--status-success); }
+.sd.off { background: var(--text-tertiary); opacity: .45; }
+.sd.err { background: var(--status-error); }
 
-/* 与 TaskList 同款的按钮（.btn 不是全局类） */
-.btn {
-  display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px;
-  border-radius: var(--radius-sm); font-size: var(--fs-caption);
-  border: 1px solid var(--border); background: var(--bg-card);
-  color: var(--text-secondary); cursor: pointer; font-family: inherit;
+/* 历史按钮 + 浮窗：浮窗绝对定位在按钮下方，压住一小块流水而不是整页 */
+.histwrap { position: relative; flex: none; }
+.histwrap .btn.on { border-color: var(--accent); color: var(--accent); }
+.histwrap .badge {
+  font-size: 10px;
+  padding: 0 5px;
+  min-width: 16px;
+  text-align: center;
+  border-radius: var(--radius-pill);
+  background: var(--bg-hover);
+  color: var(--text-tertiary);
 }
-.btn:hover { background: var(--bg-hover); }
-.btn.primary { background: var(--accent); color: var(--text-inverse); border-color: transparent; }
-.btn.primary:hover { background: var(--accent-deep); }
-.btn.ghost { border-color: transparent; background: transparent; padding: 5px 7px; }
-.btn.ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+.histwrap .btn.on .badge { background: var(--accent-soft-bg); color: var(--accent); }
+.histpop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: 470px;
+  max-width: 70vw;
+  max-height: 62vh;
+  overflow-y: auto;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-window);
+  padding-bottom: 6px;
+}
+.histpop-hd {
+  position: sticky;
+  top: 0;
+  padding: 9px 14px 7px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.morewrap { position: relative; flex: none; }
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 172px;
+  padding: 5px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+}
+.menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+}
+.menu button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.menu button.danger:hover { background: var(--status-error-soft); color: var(--status-error); }
+.menu .sep { height: 1px; background: var(--border); margin: 5px 3px; }
+
+.sumbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+/* 主体自身滚动：外层不滚，工具栏与摘要条才不会被滚走 */
+.dbody { flex: 1; min-height: 0; overflow-y: auto; }
+.stream { padding: 16px 20px 26px; }
 </style>

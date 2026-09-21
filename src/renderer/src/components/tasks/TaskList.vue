@@ -56,6 +56,10 @@
           <span class="meta">
             {{ t.schedule }}
             <span class="next">· {{ nextText(t) }}</span>
+            <!-- 上次失败才给 pill：成功的任务不该在列表里多一个彩色块抢注意力 -->
+            <span v-if="bad(t.lastStatus)" class="pill" :class="t.lastStatus!">
+              <Icon :name="statusIcon(t.lastStatus)" :size="11" />{{ statusLabel(t.lastStatus) }}
+            </span>
           </span>
         </div>
       </template>
@@ -70,6 +74,7 @@
 import { computed, ref } from 'vue'
 import Icon from '../Icon.vue'
 import { formatNextRun } from '../../utils/tasks'
+import { BAD_STATUSES, statusIcon, statusLabel } from '../../utils/taskStatus'
 import type { TaskDto } from '../../types/tasks'
 
 const props = defineProps<{ tasks: TaskDto[]; activeId: string | null; width: number }>()
@@ -87,7 +92,8 @@ const FILTERS: Array<{ value: FilterValue; label: string }> = [
   { value: 'disabled', label: '停用' },
   { value: 'failed', label: '上次失败' },
 ]
-const FAILED = new Set(['error', 'timeout', 'interrupted'])
+const FAILED = BAD_STATUSES
+const bad = (s: string | null) => !!s && BAD_STATUSES.has(s)
 
 const keyword = ref('')
 const filter = ref<FilterValue>('all')
@@ -155,15 +161,12 @@ async function batch(on: boolean) {
   gap: 8px;
   border-bottom: 1px solid var(--border);
 }
-.btn {
-  display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px;
-  border-radius: var(--radius-sm); font-size: var(--fs-caption);
-  border: 1px solid var(--border); background: var(--bg-card);
-  color: var(--text-secondary); cursor: pointer; font-family: inherit;
+/* 「新建任务」撑满整行：它是这一栏唯一的主操作，按内容宽度会右侧留一大片空白，
+   和下面的搜索 / 筛选行也对不齐 */
+.tlist-hd .btn.primary {
+  flex: 1;
+  justify-content: center;
 }
-.btn:hover { background: var(--bg-hover); }
-.btn.primary { background: var(--accent); color: var(--text-inverse); border-color: transparent; }
-.btn.primary:hover { background: var(--accent-deep); }
 .filters {
   padding: 8px 10px; display: flex; gap: 6px; align-items: center;
   border-bottom: 1px solid var(--border);
@@ -182,7 +185,7 @@ async function batch(on: boolean) {
   font-size: var(--fs-body-sm); font-weight: 500;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.trow .meta { grid-column: 2; font-size: var(--fs-caption); color: var(--text-secondary); }
+.trow .meta { grid-column: 2; font-size: var(--fs-caption); color: var(--text-secondary); flex-wrap: wrap; }
 .trow .next { color: var(--text-tertiary); }
 
 /* 启用/停用靠颜色区分，不用常驻开关 */

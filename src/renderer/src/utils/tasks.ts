@@ -2,7 +2,7 @@
 // 纯函数：把主进程归一化后的事件流折叠成可渲染的线性条目。
 // 不解析 NDJSON —— 那已经在主进程 streamParse 里做过（两个 bundle 无法共享代码）。
 import type {
-  EventEnvelope, NormalizedBlockDto, NormalizedEventDto, StreamItem,
+  EventEnvelope, NormalizedBlockDto, NormalizedEventDto, RunDto, StreamItem,
 } from '../types/tasks';
 
 function firstString(v: Record<string, unknown>): string {
@@ -187,6 +187,31 @@ export function flattenRunEvents(events: NormalizedEventDto[] | EventEnvelope[])
   }
 
   return out;
+}
+
+/** 详情摘要条的「均价」chip：取最近一次运行的单价，没有就整块不显示（不写 $0）。 */
+export function taskCostHint(latest: RunDto | undefined): string | null {
+  const v = latest?.totalCostUsd;
+  return typeof v === 'number' && v > 0 ? v.toFixed(3) : null;
+}
+
+// ===== 生效的天：主进程用 cron 约定（0=周日），UI 用 1=周一 … 7=周日 =====
+
+/** UI 顺序（周一到周日）。cron 的 0（周日）排在最后，符合中文习惯。 */
+export const UI_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+const UI_DAY_CN = ['一', '二', '三', '四', '五', '六', '日'];
+
+export const uiDayLabel = (d: number): string => UI_DAY_CN[d - 1] ?? '?';
+export const uiDayToCron = (d: number): number => d % 7;
+export const cronDayToUi = (d: number): number => (d === 0 ? 7 : d);
+
+/** 星期集合（cron 约定）→ 人读文案。全选 / 空都读作「每天」。 */
+export function daysLabel(days: number[] | undefined): string {
+  const ui = [...new Set((days ?? []).map(cronDayToUi))].sort((a, b) => a - b);
+  if (ui.length === 0 || ui.length === 7) return '每天';
+  if (ui.length === 5 && ui.join() === '1,2,3,4,5') return '工作日';
+  if (ui.length === 2 && ui.join() === '6,7') return '周末';
+  return ui.map((d) => `周${uiDayLabel(d)}`).join('、');
 }
 
 /** 下次运行文案（面向未来）：任务列表的第二行与详情页的「下次运行」共用。

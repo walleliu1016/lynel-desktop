@@ -19,9 +19,9 @@
         <Icon :name="statusIcon" :size="12" />{{ statusLabel }}
       </span>
     </div>
-    <div v-if="open && hasBody" class="open">
-      <div v-if="!hideInput" class="io"><pre>{{ inputText }}</pre></div>
-      <div v-if="item.output !== undefined && !hideOutput" class="io">
+    <div v-if="open" class="open">
+      <div class="io"><pre>{{ inputText }}</pre></div>
+      <div v-if="item.output !== undefined" class="io">
         <pre v-if="isDiff" v-html="diffHtml" />
         <pre v-else>{{ item.output }}</pre>
       </div>
@@ -35,11 +35,7 @@ import Icon from '../Icon.vue'
 import { hueColor } from '../../composables/useIdHue'
 import type { StreamItem } from '../../types/tasks'
 
-const props = defineProps<{
-  item: Extract<StreamItem, { kind: 'tool' }>
-  hideInput: boolean
-  hideOutput: boolean
-}>()
+const props = defineProps<{ item: Extract<StreamItem, { kind: 'tool' }> }>()
 
 const STATUS: Record<string, { icon: string; label: string }> = {
   ok: { icon: 'check', label: '成功' },
@@ -55,12 +51,6 @@ const statusIcon = computed(() => STATUS[props.item.status]?.icon ?? 'clock')
 const statusLabel = computed(() => STATUS[props.item.status]?.label ?? props.item.status)
 const inputText = computed(() => JSON.stringify(props.item.input, null, 2))
 const isDiff = computed(() => isDiffTool.value && typeof props.item.output === 'string')
-
-/** 展开了但两侧都不可见（工具入参关掉 + 还没有输出）→ 不留空盒子。
- *  running 的工具必然没有 output，这是实时运行时的常态。 */
-const hasBody = computed(
-  () => !props.hideInput || (props.item.output !== undefined && !props.hideOutput),
-)
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

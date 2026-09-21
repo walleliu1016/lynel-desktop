@@ -4,9 +4,12 @@ import { ref, computed } from 'vue';
 import {
   TasksList, TasksCreate, TasksUpdate, TasksDelete, TasksSetEnabled, TasksRunNow,
   TasksCancel, TasksRuns, TasksRun, TasksRunEvents, TasksPreview,
+  TasksTemplates, TasksSaveTemplate, TasksDeleteTemplate,
   OnTasksChanged, OnTasksRunChanged, OnTasksRunEvent,
 } from '../composables/useElectron';
-import type { EventEnvelope, NormalizedEventDto, RunDto, ScheduleDto, TaskDto } from '../types/tasks';
+import type {
+  EventEnvelope, NormalizedEventDto, PreviewResult, RunDto, ScheduleDto, TaskDto, TaskTemplateDto,
+} from '../types/tasks';
 
 const RUN_PAGE = 30;
 
@@ -19,6 +22,8 @@ export const useTasksStore = defineStore('tasks', () => {
   const events = ref<EventEnvelope[]>([]);
   const loading = ref(false);
   const loadError = ref<string | null>(null);
+  /** 用户自建模板（主进程落盘）。内置模板是渲染层的纯数据，见 utils/taskTemplates.ts */
+  const userTemplates = ref<TaskTemplateDto[]>([]);
   /** 运行流水是否开启底部自动跟随 */
   const followTail = ref(true);
 
@@ -51,6 +56,10 @@ export const useTasksStore = defineStore('tasks', () => {
     runs.value = [];
     runsHasMore.value = false;
     await loadRuns(false);
+    // 打开任务就有内容：默认把最近一次运行的完整流水拉出来。
+    // 之前这里停在空白，要用户自己去历史里点一行才看得到东西。
+    const latest = runs.value[0];
+    if (latest) await openRun(latest.id);
   }
 
   async function loadRuns(more: boolean) {
@@ -92,10 +101,17 @@ export const useTasksStore = defineStore('tasks', () => {
     await load();
   }
 
+  /** 「立即执行」。必须把视图切到**新建的那一次**运行上：
+   *  只刷新 runs 列表的话 activeRunId 还停在上一轮，流水照旧显示旧结果 ——
+   *  点了按钮像没反应。（runTaskNow 已有去重，返回的是既有 run 的 id 或新建的 id。） */
   async function runNow(id: string) {
-    await TasksRunNow(id);
-    if (activeTaskId.value !== id) await select(id);
-    else await loadRuns(false);
+    const runId = (await TasksRunNow(id)) as string | null;
+    if (activeTaskId.value !== id) {
+      await select(id); // select 内部会自动 openRun(runs[0])
+      return;
+    }
+    await loadRuns(false);
+    if (runId) await openRun(runId);
   }
 
   async function cancel(runId: string) {
@@ -116,9 +132,33 @@ export const useTasksStore = defineStore('tasks', () => {
     events.value = [];
   }
 
-  async function preview(schedule: ScheduleDto): Promise<number[]> {
-    const res = (await TasksPreview(schedule)) as { nextRuns: number[] };
-    return res.nextRuns;
+  async function preview(schedule: ScheduleDto): Promise<PreviewResult> {
+    return (await TasksPreview(schedule)) as PreviewResult;
+  }
+
+  // ---- 用户模板 ----
+  async function loadTemplates() {
+    try {
+      userTemplates.value = (await TasksTemplates()) as TaskTemplateDto[];
+    } catch {
+      // 模板读不出来只是少几个快捷入口，不该让整个任务面板报错
+      userTemplates.value = [];
+    }
+  }
+
+  async function saveTemplate(input: {
+    name: string; icon: string; blurb: string; prompt: string; schedule: ScheduleDto; createdAt?: number;
+  }): Promise<TaskTemplateDto> {
+    const t = (await TasksSaveTemplate({
+      name: input.name, icon: input.icon, blurb: input.blurb, prompt: input.prompt, schedule: input.schedule,
+    })) as TaskTemplateDto;
+    await loadTemplates();
+    return t;
+  }
+
+  async function deleteTemplate(id: string) {
+    await TasksDeleteTemplate(id);
+    await loadTemplates();
   }
 
   // ---- 主进程推送 ----
@@ -154,8 +194,8 @@ export const useTasksStore = defineStore('tasks', () => {
 
   return {
     tasks, activeTaskId, runs, runsHasMore, activeRunId, events, loading, loadError, followTail,
-    activeTask, activeRun,
+    userTemplates, activeTask, activeRun,
     load, select, loadRuns, saveTask, remove, setEnabled, runNow, cancel,
-    openRun, closeRun, preview, bindPush,
+    openRun, closeRun, preview, loadTemplates, saveTemplate, deleteTemplate, bindPush,
   };
 });

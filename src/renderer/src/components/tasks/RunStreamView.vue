@@ -1,36 +1,25 @@
 <!-- 运行流水：把一次 run 的完整 stream-json 事件流重放成人能读的线性视图。
-     结构照设计稿第 3 / 4 节：头部 → 按元素显隐开关 → 状态栏 → 事件体。
+     结构：运行头（状态 + 指标 chips）→ 事件体。**没有那四个过滤开关**，所有事件一律渲染。
      - 工具调用折叠成一行 StepCard（Edit / Write 例外，diff 是任务产出）
      - 思考 / 诊断输出默认折叠（空诊断输出直接给一行静态文案，不留展开后什么都没有的折叠块）
+     - **正文与终局结果永不自动折叠**：Markdown 默认 >800 字符 / >18 行会折成 details，
+       那会把「结果」藏起来（用户报过的「> show 29 lines」），故传 NO_FOLD 关掉
      - running 时底部自动跟随；用户手动上滚即停止跟随，滚回底部恢复
      事件折叠逻辑在 utils/tasks.ts 的 flattenRunEvents，本组件只负责渲染与开关。 -->
 <template>
   <div class="stream">
-    <div class="shd">
-      <span class="bk" @click="$emit('close')">
-        <Icon name="chevron-left" :size="14" />{{ taskLabel }}
+    <!-- 运行头：哪一次（时间 + 触发方式）+ 状态 + 指标 chips。历史里点进旧 run 时给「回到最新」。 -->
+    <div class="runhead" :class="barTone">
+      <span class="pill" :class="run.status">
+        <Icon :name="barIcon" :size="11" />{{ barLabel }}
       </span>
-      <span class="dim">/</span>
-      <span class="ttl">{{ startedText }} 的运行</span>
-    </div>
-
-    <!-- 按元素显隐开关（照 @fnclaude/renderer 的做法，切换即时重绘） -->
-    <div class="toggles">
-      <span class="tg" :class="{ on: show.thinking }" @click="show.thinking = !show.thinking">思考</span>
-      <span class="tg" :class="{ on: show.input }" @click="show.input = !show.input">工具入参</span>
-      <span class="tg" :class="{ on: show.output }" @click="show.output = !show.output">工具输出</span>
-      <span class="tg" :class="{ on: show.errorsOnly }" @click="show.errorsOnly = !show.errorsOnly">仅错误</span>
+      <span class="big">{{ startedText }}</span>
+      <span class="dim small">{{ run.trigger === 'manual' ? '手动' : '自动' }}</span>
       <span class="sp" />
-      <span class="cnt">{{ events.length }} 条事件 · {{ toolCount }} 个工具调用 · {{ errorCount }} 个失败</span>
-    </div>
-
-    <div class="sbar" :class="barTone">
-      <Icon :name="barIcon" :size="14" :class="'st-' + run.status" />
-      <span class="big" :class="'st-' + run.status">{{ barLabel }}</span>
-      <span class="muted">{{ barMeta }}</span>
-      <span v-if="run.status === 'running'" class="push">
-        <button class="btn" @click="$emit('cancel')">取消</button>
-      </span>
+      <span class="chip">{{ toolCount }} 个工具调用{{ errorCount ? ` · ${errorCount} 个失败` : '' }}</span>
+      <span v-for="c in barChips" :key="c" class="chip">{{ c }}</span>
+      <button v-if="run.status === 'running'" class="btn" @click="$emit('cancel')">取消</button>
+      <span v-else-if="!isLatest" class="link" @click="$emit('latest')">回到最新</span>
     </div>
 
     <div ref="bodyEl" class="sbody" @scroll="onScroll">
@@ -43,8 +32,6 @@
           <span>Claude Code {{ item.version }}</span>
           <span class="dim">·</span>
           <span>{{ item.model }}</span>
-          <span class="dim">·</span>
-          <span class="mono">{{ shortCwd(item.cwd) }}</span>
           <span class="dim">·</span>
           <span>{{ item.toolCount }} 个工具</span>
           <span v-for="m in item.failedMcpServers" :key="m" class="warnchip">
@@ -65,25 +52,23 @@
           <div v-if="expanded.has(item.at)" class="md-text">{{ item.text }}</div>
         </div>
 
-        <Markdown v-else-if="item.kind === 'text'" :text="item.text" class="md-text" />
+        <!-- 正文永不自动折叠：任务流水就是给人读结果的，「> show N lines」把结果藏起来等于没给 -->
+        <Markdown
+          v-else-if="item.kind === 'text'"
+          :text="item.text"
+          class="md-text"
+          :max-len="NO_FOLD"
+          :max-lines="NO_FOLD"
+        />
 
         <!-- 子代理（parent_tool_use_id 非 null → StreamItem.subagent）缩进成一组。
              不加标题：StreamItem 只带布尔标志、没有子代理类型，任何名字都是编造的。
              非子代理的 tool 走下一分支，DOM 与改动前逐字一致。 -->
         <div v-else-if="item.kind === 'tool' && item.subagent" class="subagent">
-          <ToolStepCard
-            :item="item"
-            :hide-input="!show.input"
-            :hide-output="!show.output"
-          />
+          <ToolStepCard :item="item" />
         </div>
 
-        <ToolStepCard
-          v-else-if="item.kind === 'tool'"
-          :item="item"
-          :hide-input="!show.input"
-          :hide-output="!show.output"
-        />
+        <ToolStepCard v-else-if="item.kind === 'tool'" :item="item" />
 
         <div v-else-if="item.kind === 'stderr'" class="fold-block">
           <div v-if="item.text" class="fold" @click="toggleFold(item.at)">
@@ -114,16 +99,13 @@
           <!-- 正文与紧邻上方的助手正文一字不差时不重复渲染（result.result 就是最后一条
                assistant 文本），只留这行状态头 —— 那里才是这张卡独有的信息。 -->
           <div v-if="!item.textRepeatsAbove && item.summary.resultText" class="rt">
-            <Markdown :text="item.summary.resultText" />
+            <Markdown :text="item.summary.resultText" :max-len="NO_FOLD" :max-lines="NO_FOLD" />
           </div>
         </div>
       </template>
 
       <div v-if="run.status === 'running'" class="follow-caret"><span class="caret" /></div>
-      <!-- 有事件但被开关滤空时不能报「还没有事件」，那会和顶部的计数自相矛盾 -->
-      <div v-if="items.length === 0" class="empty">
-        {{ all.length === 0 ? '这次运行还没有事件' : '当前开关下没有可显示的事件' }}
-      </div>
+      <div v-if="items.length === 0" class="empty">这次运行还没有事件</div>
     </div>
   </div>
 </template>
@@ -139,11 +121,11 @@ import type { EventEnvelope, RunDto, StreamItem } from '../../types/tasks'
 const props = defineProps<{
   run: RunDto
   events: EventEnvelope[]
-  taskLabel?: string
+  /** 当前展示的就是最近一次运行（false 时给「回到最新」入口） */
+  isLatest?: boolean
 }>()
-defineEmits<{ (e: 'cancel'): void; (e: 'close'): void }>()
+defineEmits<{ (e: 'cancel'): void; (e: 'latest'): void }>()
 
-const show = ref({ thinking: true, input: false, output: true, errorsOnly: false })
 /** 手动展开过的下标（思考 / 诊断输出默认折叠 —— 只有展开态需要记） */
 const expanded = ref<Set<number>>(new Set())
 const bodyEl = ref<HTMLElement | null>(null)
@@ -151,20 +133,14 @@ let following = true
 
 const all = computed(() => flattenRunEvents(props.events))
 
-/** 折叠态按「在 all 里的下标」记，不能用过滤后的下标：开关一关，
- *  下标整体前移，展开态会串到别的块上。at 随事件追加只增不改，是稳定标识。 */
-const items = computed<(StreamItem & { at: number })[]>(() => {
-  let list = all.value.map((item, at) => ({ ...item, at }))
-  if (!show.value.thinking) list = list.filter((i) => i.kind !== 'thinking')
-  // 「仅错误」= 只留失败项：失败的工具卡 + 失败的终局卡片，其余（成功的工具卡、正文、
-  // 思考、init、hook、stderr）一律滤掉。留着成功的终局卡片会把答案显出来，与标签语义不符。
-  if (show.value.errorsOnly) {
-    list = list.filter((i) =>
-      i.kind === 'tool' ? i.status === 'error' : i.kind === 'result' ? i.summary.isError : false,
-    )
-  }
-  return list
-})
+/** 传给 Markdown 的「永不折叠」阈值（它默认 >800 字符 / >18 行就折成 details） */
+const NO_FOLD = Number.MAX_SAFE_INTEGER
+
+/** 折叠态按「在 all 里的下标」记 —— at 随事件追加只增不改，是稳定标识。
+ *  全部事件一律渲染，不再有「思考 / 工具入参 / 工具输出 / 仅错误」四个过滤开关。 */
+const items = computed<(StreamItem & { at: number })[]>(() =>
+  all.value.map((item, at) => ({ ...item, at })),
+)
 
 const toolCount = computed(() => all.value.filter((i) => i.kind === 'tool').length)
 const errorCount = computed(
@@ -210,7 +186,10 @@ function syncTicker() {
   }
 }
 
-const barMeta = computed(() => {
+/** 指标 chips：轮次 / 耗时 / 费用 / 失败原因 / 会话重建提示。
+ *  resume_used 三态：1=走了 --resume，0=resume 目标缺失后回退重建，null=首次运行。
+ *  只有 0 才是「重建」，首跑不显示（写 0 会误报）。 */
+const barChips = computed(() => {
   const bits: string[] = []
   if (props.run.status === 'running' && props.run.startedAt != null) {
     bits.push(`已 ${formatDuration(now.value - props.run.startedAt)}`)
@@ -220,10 +199,8 @@ const barMeta = computed(() => {
   if (props.run.numTurns != null) bits.push(`${props.run.numTurns} 轮`)
   if (props.run.totalCostUsd != null) bits.push(`$${props.run.totalCostUsd.toFixed(3)}`)
   if (props.run.resultSubtype && props.run.status === 'error') bits.push(props.run.resultSubtype)
-  // resume_used 三态：1=走了 --resume，0=resume 目标缺失后回退重建，null=首次运行 / 不适用。
-  // 只有 0 才是「重建」，首跑不显示。
   if (props.run.resumeUsed === 0) bits.push('会话已重建')
-  return bits.join(' · ')
+  return bits
 })
 
 function toggleFold(at: number) {
@@ -231,11 +208,6 @@ function toggleFold(at: number) {
   if (next.has(at)) next.delete(at)
   else next.add(at)
   expanded.value = next
-}
-
-function shortCwd(cwd: string): string {
-  const parts = cwd.split(/[\\/]/).filter(Boolean)
-  return parts.length > 2 ? `…\\${parts.slice(-2).join('\\')}` : cwd
 }
 
 function usageChips(usage: Record<string, number>): string {
@@ -289,50 +261,25 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.stream { display: flex; flex-direction: column; background: var(--bg-primary); margin-top: 14px; }
-.shd {
-  padding: 10px 16px; display: flex; align-items: center; gap: 10px;
-  border-bottom: 1px solid var(--border); background: var(--bg-panel);
-  font-size: var(--fs-caption); color: var(--text-secondary);
+.stream { display: flex; flex-direction: column; background: var(--bg-primary); }
+.runhead {
+  padding: 11px 20px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-size: var(--fs-caption); border-bottom: 1px solid var(--border);
 }
-.shd .bk { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.shd .bk:hover { color: var(--text-primary); }
-.shd .ttl { color: var(--text-primary); font-size: var(--fs-body-sm); }
+.runhead.done { background: var(--status-success-soft); }
+.runhead.err { background: var(--status-error-soft); }
+.runhead.live { background: var(--accent-soft-bg); }
+.runhead.idle { background: var(--bg-panel); }
+.runhead .big { font-weight: 600; font-size: var(--fs-body); color: var(--text-primary); }
+.runhead .sp { flex: 1; }
+.runhead .link { color: var(--accent); cursor: pointer; }
+.runhead .link:hover { text-decoration: underline; }
 .dim { color: var(--text-tertiary); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
-.toggles {
-  display: flex; gap: 6px; align-items: center; padding: 7px 16px;
-  border-bottom: 1px solid var(--border); background: var(--bg-panel);
-}
-.tg {
-  padding: 3px 10px; border-radius: var(--radius-pill);
-  border: 1px solid var(--border); font-size: 11px; cursor: pointer;
-  color: var(--text-secondary); background: var(--bg-card);
-}
-.tg:hover { background: var(--bg-hover); }
-.tg.on {
-  background: var(--accent-soft-bg); border-color: var(--accent-soft-border);
-  color: var(--accent); font-weight: 500;
-}
-.toggles .sp { flex: 1; }
-.toggles .cnt { font-size: 11px; color: var(--text-tertiary); white-space: nowrap; }
-
-.sbar {
-  padding: 9px 16px; display: flex; align-items: center; gap: 10px;
-  font-size: var(--fs-caption); border-bottom: 1px solid var(--border);
-}
-.sbar.done { background: var(--status-success-soft); }
-.sbar.err { background: var(--status-error-soft); }
-.sbar.live { background: var(--accent-soft-bg); }
-.sbar.idle { background: var(--bg-panel); }
-.sbar .big { font-weight: 600; font-size: var(--fs-body-sm); }
-.sbar .muted { color: var(--text-secondary); }
-.sbar .push { margin-left: auto; }
-
 /* 事件体：自身带滚动条，底部自动跟随才有落点（外层 .dbody 也是滚动容器，
    不封住高度的话滚动条归外层，scrollTop 赋值无效、onScroll 也永远不触发）。 */
-.sbody { padding: 16px 20px; max-height: 60vh; overflow-y: auto; }
+.sbody { padding: 16px 20px 26px; }
 
 .meta-line {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -401,12 +348,4 @@ onBeforeUnmount(() => {
 .st-running { color: var(--accent); }
 .st-queued, .st-skipped, .st-interrupted { color: var(--text-tertiary); }
 
-/* 与 TaskList / TaskDetailPane 同款的按钮（.btn 不是全局类） */
-.btn {
-  display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px;
-  border-radius: var(--radius-sm); font-size: var(--fs-caption);
-  border: 1px solid var(--border); background: var(--bg-card);
-  color: var(--text-secondary); cursor: pointer; font-family: inherit;
-}
-.btn:hover { background: var(--bg-hover); }
 </style>

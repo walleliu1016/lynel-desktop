@@ -1,0 +1,206 @@
+/* 定时任务面板的共享类。
+   这些类（按钮 / 状态 pill / 指标 chip / 分段切换 / 周几选择器 / 空态）此前在 TaskList、
+   TaskDetailPane、TaskFormDialog、RunStreamView 四个组件里各写一份，已经漂移过
+   （同样的 .btn 有的 padding 是 5px 10px、有的是 7px 16px）。集中到这里，
+   组件里只管布局与业务样式。
+   只用 theme.css 的变量，不引入新颜色。 */
+
+/* ---- 按钮 ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-caption);
+  font-family: inherit;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--bg-hover); }
+.btn.primary {
+  background: var(--accent);
+  color: var(--text-inverse);
+  border-color: transparent;
+}
+.btn.primary:hover { background: var(--accent-deep); }
+.btn.primary:disabled { opacity: .5; cursor: not-allowed; }
+.btn.ghost { border-color: transparent; background: transparent; padding: 5px 7px; }
+.btn.ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+.btn.icon { padding: 5px; }
+.btn.tall { padding: 7px 16px; }
+
+/* ---- 状态 pill：图标 + 文案 + soft 底色（不只靠颜色传达状态） ---- */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.pill.done { background: var(--status-success-soft); color: var(--status-success); }
+.pill.error,
+.pill.timeout { background: var(--status-error-soft); color: var(--status-error); }
+.pill.running { background: var(--accent-soft-bg); color: var(--accent); }
+.pill.queued,
+.pill.skipped,
+.pill.interrupted { background: var(--bg-hover); color: var(--text-secondary); }
+
+/* ---- 指标 chip ---- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.chip b { font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+.micro {
+  font-size: 10px;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+/* ---- 分段切换 ---- */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-input);
+}
+.seg > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 11px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.seg > button:hover { color: var(--text-primary); }
+.seg > button.on {
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font-weight: 500;
+  box-shadow: var(--shadow-card);
+}
+.seg .badge {
+  font-size: 10px;
+  padding: 0 5px;
+  min-width: 16px;
+  text-align: center;
+  border-radius: var(--radius-pill);
+  background: var(--bg-hover);
+  color: var(--text-tertiary);
+}
+.seg > button.on .badge { background: var(--accent-soft-bg); color: var(--accent); }
+
+/* ---- 周几选择器：34×34 圆角方片，选中实心 accent ---- */
+.week { display: inline-flex; gap: 6px; }
+.wd {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--fs-body-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.wd:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-strong); }
+.wd.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-inverse);
+  font-weight: 600;
+  box-shadow: 0 1px 3px var(--accent-soft-bg);
+}
+.wd.on:hover { background: var(--accent-deep); }
+.presets { display: inline-flex; gap: 2px; }
+.preset {
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+}
+.preset:hover { background: var(--accent-soft-bg); }
+
+/* ---- 空态：图标 + 说明 + 动作，不留白 ---- */
+.blank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  height: 100%;
+  min-height: 300px;
+  text-align: center;
+  padding: 24px;
+}
+.blank .ic {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-hover);
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+}
+.blank h4 { margin: 0; font-size: var(--fs-body); font-weight: 600; }
+.blank p {
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--text-tertiary);
+  max-width: 320px;
+  line-height: 1.65;
+}
+
+/* ---- 表单控件 ---- */
+.inp {
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  outline: none;
+}
+.inp:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-soft-bg); }
+.inp::placeholder { color: var(--text-tertiary); }
+.inp:disabled { color: var(--text-tertiary); cursor: not-allowed; }
+textarea.inp { width: 100%; resize: vertical; min-height: 76px; line-height: 1.6; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.sp { flex: 1; }
+.dim { color: var(--text-tertiary); }
+.small { font-size: var(--fs-caption); }
