@@ -5,7 +5,7 @@
         <div class="dialog-head">
           <h3>添加机器人</h3>
           <button class="close" aria-label="关闭" @click="onClose">
-            <Icon name="x" :size="16" />
+            <Icon name="close" :size="16" />
           </button>
         </div>
 

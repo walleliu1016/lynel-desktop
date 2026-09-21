@@ -5,7 +5,7 @@
         <div class="dialog-head">
           <h3>{{ provider ? '编辑供应商' : '新增供应商' }}</h3>
           <button class="close" aria-label="关闭" @click="$emit('update:modelValue', false)">
-            <Icon name="x" :size="16" />
+            <Icon name="close" :size="16" />
           </button>
         </div>
 

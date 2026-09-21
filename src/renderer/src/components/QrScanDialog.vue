@@ -6,7 +6,7 @@
         <div class="dialog-head">
           <h3>扫码创建机器人</h3>
           <button class="close" aria-label="关闭" @click="onCancel">
-            <Icon name="x" :size="16" />
+            <Icon name="close" :size="16" />
           </button>
         </div>
 
@@ -18,11 +18,14 @@
         <div class="qr-area">
           <div v-if="status === 'pending'">
             <img v-if="qrDataUrl" :src="qrDataUrl" alt="企业微信扫码" class="qr-img" />
+            <p v-else class="qr-hint">正在获取二维码…</p>
             <p class="qr-hint">请用手机企业微信扫描二维码，确认后自动创建并绑定</p>
             <div class="qr-wait">
               <Icon name="loader" :size="14" class="spin" />
               <span>等待扫码...</span>
             </div>
+            <!-- 常驻的重新生成：否则正常等待期间整个面板没有任何可点的东西 -->
+            <button class="retry ghost" @click="start">重新生成</button>
           </div>
           <div v-else-if="status === 'timeout'" class="qr-state">
             <p>扫码超时，请重新生成。</p>
@@ -51,11 +54,13 @@
     <div class="qr-area">
       <div v-if="status === 'pending'">
         <img v-if="qrDataUrl" :src="qrDataUrl" alt="企业微信扫码" class="qr-img" />
+        <p v-else class="qr-hint">正在获取二维码…</p>
         <p class="qr-hint">请用手机企业微信扫描二维码，确认后自动创建并绑定</p>
         <div class="qr-wait">
           <Icon name="loader" :size="14" class="spin" />
           <span>等待扫码...</span>
         </div>
+        <button class="retry ghost" @click="start">重新生成</button>
       </div>
       <div v-else-if="status === 'timeout'" class="qr-state">
         <p>扫码超时，请重新生成。</p>
@@ -183,6 +188,14 @@ function onCancel() {
 .qr-wait { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-tertiary); margin-top: 6px; }
 .qr-wait .spin { animation: scan-spin 1s linear infinite; }
 .qr-state { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px 0; font-size: 12px; color: var(--text-secondary); }
+.qr-state .retry,
+.qr-wait + .retry { margin-top: 8px; }
+.retry.ghost {
+  border-color: var(--border);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+}
+.retry.ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
 .qr-state .retry {
   padding: 6px 14px; border-radius: var(--radius-md); border: 1px solid var(--accent);
   background: var(--accent); color: var(--text-inverse); cursor: pointer; font-size: 12px;

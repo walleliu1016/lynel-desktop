@@ -40,14 +40,15 @@ const html = computed(() => {
 </script>
 
 <style scoped>
+/* 不再给内部滚动条：外面已经有滚动容器（运行流水的 .sbody、Trace 详情面板），
+   嵌套滚动会让滚轮在内容中间"卡住"一次。
+   内容过长由上面的 fold（>800 字符 / >18 行折成 details）兜，不靠 max-height。 */
 .markdown-body {
   padding: 8px 12px;
   font-size: 13px;
   line-height: 1.55;
   color: var(--text-primary);
   word-break: break-word;
-  max-height: 460px;
-  overflow: auto;
 }
 .markdown-body :deep(h1),
 .markdown-body :deep(h2),
