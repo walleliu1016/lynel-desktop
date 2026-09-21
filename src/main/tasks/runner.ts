@@ -26,6 +26,39 @@ export interface RunnerDeps {
   now(): number;
   /** 所有任务共用的工作目录。默认走真实设置（建目录 + 落初始 CLAUDE.md），测试注入 tmp 目录。 */
   tasksDir(): string;
+  /** 杀整棵进程树（含 claude 自己起的 shell / node 子进程）。默认 defaultKillTree；测试注入空实现。 */
+  killTree(pid: number, done: () => void): void;
+}
+
+/**
+ * 杀整棵进程树。
+ *
+ * win32 上**不**直接用 tree-kill：它在 win32 的实现就是 `exec('taskkill /pid X /T /F')`，
+ * 而 `exec` 默认 `windowsHide: false`。Electron 主进程是 GUI 子系统进程（本身没有控制台），
+ * 于是每杀一次都会闪一个 cmd 窗口 —— 实测（无控制台父进程 + 可见顶层窗口差集）必现
+ * `CASCADIA_HOSTING_WINDOW_CLASS :: C:\Windows\system32\cmd.exe`。
+ * 这里自己 spawn taskkill 并带 windowsHide：命令与 tree-kill 的 win32 分支逐字相同，只是不再闪窗。
+ * 非 win32 仍交给 tree-kill（它用 ps 递归杀子进程）。
+ */
+function defaultKillTree(pid: number, done: () => void): void {
+  if (!pid) {
+    done();
+    return;
+  }
+  if (process.platform !== 'win32') {
+    kill(pid, done);
+    return;
+  }
+  try {
+    const p = nodeSpawn('taskkill.exe', ['/pid', String(pid), '/T', '/F'], {
+      windowsHide: true,
+      stdio: 'ignore',
+    });
+    p.on('close', () => done());
+    p.on('error', () => done());
+  } catch {
+    done();
+  }
 }
 
 let deps: RunnerDeps = {
@@ -33,6 +66,7 @@ let deps: RunnerDeps = {
   claudeBin: () => 'claude',
   now: () => Date.now(),
   tasksDir: () => ensureTasksDir(),
+  killTree: defaultKillTree,
 };
 
 export function setRunnerDeps(patch: Partial<RunnerDeps>): void {
@@ -136,17 +170,15 @@ export type SpawnCommand =
  *
  * Windows 上 claude 是 npm 装的 shim，两层坑：
  *   1. 裸名 `claude` → Node 不做 PATHEXT 解析 → ENOENT；指向 `claude.cmd` → Node ≥18.20/20.12/21.7
- *      对 .cmd/.bat 无 shell 的 spawn 加固（CVE-2024-27980）→ 同步抛 EINVAL。所以必须解析。
- *   2. 解析出来后**不能**照搬 pty.ts 的 `cmd.exe /d /c <shim>`：那条路只在无 detached 时成立。
- *      本执行器带 `detached: true`（DETACHED_PROCESS），实测此时**只有直接子进程**的
- *      stdout/stderr 还能进管道，孙进程全丢 —— 实测 cmd.exe / powershell.exe / `start /b /wait` /
- *      `shell: true` 四种包装全部拿到空输出（对照组：同样参数下 `where.exe node` 走 cmd 包装
- *      也是空，不 detached 则有输出；而原生 claude.exe 直接 spawn 则正常打印版本号）。
- *      故 win32 上的正解是「让 claude 自己当直接子进程」：解析出 shim 背后的原生 exe 直接 spawn。
+ *      对 .cmd/.bat 无 shell 的 spawn 加固（CVE-2024-27980）→ 同步抛 EINVAL。所以必须解析出背后的原生 exe。
+ *   2. 解析出来后仍**不**退回 `cmd.exe /d /c <shim>` 套壳：多一层 cmd 就多一层引号/转义与输出转码，
+ *      而且「直接子进程是谁」变得不直观 —— 杀树与判活要对着 cmd 而不是 claude 本身。
+ *      直接 spawn 原生 exe，让 claude 自己当直接子进程。
  *   3. 解析不出原生目标（非 npm 模板的自定义包装、旧版 cli.js 形态、PATH 里根本没有）→ **不 spawn**，
- *      返回 ok:false 交调用方判失败。套壳启动不是「降级」，而是更坏的失败：进程照样起来、
- *      claude 照样以 bypassPermissions 真实执行并产生副作用，但 stdout 全丢 → run 记成
- *      「exit 0，无可解析的 result 事件」的 error 且事件流为空，用户看到失败会重跑，副作用翻倍。
+ *      返回 ok:false 交调用方判失败。这条 fail-fast 原本是**被迫**的（当时 spawn 带 detached，
+ *      套壳拿不到任何 stdout，但 claude 仍会以 bypassPermissions 真实执行并产生副作用，run 记成
+ *      「exit 0，无可解析的 result 事件」，用户重跑等于副作用翻倍）。detached 去掉后套壳已能拿到输出，
+ *      但依然保留 fail-fast：宁可给一条明确失败 + 可照抄的 claude_path 建议，也不引入没人验证过的兜底路径。
  * 非 win32 保持原样（裸名交给内核按 PATH 解析），不改变 POSIX 行为。
  */
 export function buildSpawnCommand(
@@ -283,14 +315,14 @@ function finish(a: ActiveRun, status: RunStatus, extra: FinishRunPatch = {}): vo
   a.cb.onFinish(a.run.id, status);
 }
 
-function killTree(a: ActiveRun, status: RunStatus, extra: FinishRunPatch = {}): void {
+function killRun(a: ActiveRun, status: RunStatus, extra: FinishRunPatch = {}): void {
   try {
     a.proc?.kill();
   } catch {
     /* 已经退出 */
   }
-  // tree-kill 杀掉整棵树（win32 的 cmd.exe 包装层、npx/node 子进程不会残留成孤儿）。
-  kill(a.proc?.pid ?? 0, () => {
+  // 再杀整棵树：claude 自己会起 shell / node 子进程，只 kill 直接子进程会留下一堆孤儿。
+  deps.killTree(a.proc?.pid ?? 0, () => {
     /* 进程树已尽力；finish 不等待 */
   });
   finish(a, status, extra);
@@ -303,8 +335,8 @@ function spawnOnce(a: ActiveRun, useResume: boolean): void {
 
   // win32 下解析出的是 shim 背后的原生 claude.exe（见 buildSpawnCommand），args 不变。
   // ok:false = 解析不到原生目标：这里**直接判失败、不 spawn** —— 套壳启动虽然能把进程拉起来，
-  // 但在 detached 下拿不到任何输出（run 会记成「exit 0，无 result 事件」的 error），
-  // 而 claude 仍会以 bypassPermissions 真实执行并产生副作用，用户重跑等于副作用翻倍。
+  // 但「谁才是 claude」变得含糊（杀树 / 判活的对象是 cmd），且多一层转义与输出转码；
+  // 与其给一个没人验证过的兜底，不如明确失败、让用户按提示把 claude_path 指向原生 exe。
   const cmd = buildSpawnCommand(deps.claudeBin(), args);
   if (!cmd.ok) {
     finish(a, 'error', { error: cmd.error });
@@ -318,7 +350,11 @@ function spawnOnce(a: ActiveRun, useResume: boolean): void {
       cwd: deps.tasksDir(),
       // stdio[0] 必须是 ignore：claude 会等 stdin 最多 3 秒，用 pipe 且不关会一直挂着。
       stdio: ['ignore', 'pipe', 'pipe'],
-      detached: true,
+      // **绝不能加 detached**：win32 上 DETACHED_PROCESS 会让 CREATE_NO_WINDOW 失效
+      // （MSDN：CREATE_NO_WINDOW 与 DETACHED_PROCESS 同用时被忽略），claude 于是没有控制台；
+      // 它每起一个 shell（Bash 工具）Windows 就给那个 shell 分配一个新控制台 —— 那是可见窗口，
+      // 就是用户看到的「跑任务时频繁的 cmd 闪窗」。实测（可见顶层窗口差集）：detached=true 必现，
+      // 去掉后为 0。非 detached 的子进程不随父进程退出而终止，§17 的「残留进程」行为不变。
       windowsHide: true,
       env,
     }) as RunProc;
@@ -432,7 +468,7 @@ export function startRun(run: RunRow, task: TaskRow, cb: RunnerCallbacks): void 
 
   a.timer = setTimeout(() => {
     if (!active.has(run.id)) return;
-    killTree(a, 'timeout', { error: '超过 30 分钟上限，已终止' });
+    killRun(a, 'timeout', { error: '超过 30 分钟上限，已终止' });
   }, RUN_TIMEOUT_MS);
 
   spawnOnce(a, task.sessionInitialized === 1);
@@ -441,7 +477,7 @@ export function startRun(run: RunRow, task: TaskRow, cb: RunnerCallbacks): void 
 export function cancelRun(runId: string): boolean {
   const a = active.get(runId);
   if (!a) return false;
-  killTree(a, 'interrupted', { error: '用户取消' });
+  killRun(a, 'interrupted', { error: '用户取消' });
   return true;
 }
 
@@ -475,7 +511,7 @@ export async function killAllRuns(): Promise<void> {
           } catch {
             /* 已经退出 */
           }
-          kill(a.proc?.pid ?? 0, () => resolve());
+          deps.killTree(a.proc?.pid ?? 0, () => resolve());
           finish(a, 'interrupted', { error: 'App 退出时仍在运行' });
         }),
     ),

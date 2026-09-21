@@ -46,6 +46,8 @@ beforeEach(() => {
     claudeBin: () => (process.platform === 'win32' ? path.join(dir, 'claude.exe') : 'claude'),
     // 注入 tmp 目录：不注入的话 deps.tasksDir() 会真实 mkdir + 写 ~/.lynel-desktop/tasks/CLAUDE.md。
     tasksDir: () => dir,
+    // 杀树注入空实现：默认实现会在 win32 真的 spawn taskkill（虽然对着假 pid 无害），单测不该起真进程。
+    killTree: (_pid, done) => done(),
   });
 });
 afterEach(async () => {
@@ -151,7 +153,9 @@ describe('startRun 的进程参数', () => {
     startRun(run, task, { onEvent: () => {}, onFinish: () => {} });
     expect((spawnArgs!.opts.stdio as string[])[0]).toBe('ignore');
     expect(spawnArgs!.opts.windowsHide).toBe(true);
-    expect(spawnArgs!.opts.detached).toBe(true);
+    // detached 必须缺席：win32 上 DETACHED_PROCESS 会让 CREATE_NO_WINDOW 失效，
+    // claude 每起一个 shell 就新分配一个**可见**控制台 —— 用户看到的 cmd 闪窗。
+    expect(spawnArgs!.opts.detached).toBeFalsy();
   });
 
   it('剔除 CLAUDECODE（防嵌套守卫），保留其他 env', () => {
@@ -446,5 +450,14 @@ describe('取消', () => {
     expect(cancelRun(run.id)).toBe(true);
     expect(proc.killed).toBe(true);
     expect(cancelRun(run.id)).toBe(false);
+  });
+
+  it('cancelRun 把 pid 交给 deps.killTree 杀整棵树（win32 上是隐藏窗口的 taskkill）', () => {
+    const killed: number[] = [];
+    setRunnerDeps({ killTree: (pid, done) => { killed.push(pid); done(); } });
+    const { task, run } = seed();
+    startRun(run, task, { onEvent: () => {}, onFinish: () => {} });
+    cancelRun(run.id);
+    expect(killed).toEqual([proc.pid]);
   });
 });
