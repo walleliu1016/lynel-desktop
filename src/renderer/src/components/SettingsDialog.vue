@@ -10,13 +10,7 @@
       </div>
       <SettingsTabs v-model="active" layout="horizontal" />
       <div class="content">
-        <GeneralTab v-if="active === 'general'" />
-        <AppearanceTab v-else-if="active === 'appearance'" />
-        <BuddyTab v-else-if="active === 'buddy'" />
-        <CloudTab v-else-if="active === 'cloud'" />
-        <ProviderTab v-else-if="active === 'provider'" />
-        <BotManagement v-else-if="active === 'bot'" />
-        <UpdaterTab v-else-if="active === 'updater'" />
+        <SettingsContent :active="active" />
       </div>
       <div v-if="hookPort" class="foot">
         <span class="port-dot" />
@@ -32,13 +26,7 @@ import { ref, onMounted } from 'vue'
 import Icon from './Icon.vue'
 import SpringTransition from './SpringTransition.vue'
 import SettingsTabs, { type Tab } from './SettingsTabs.vue'
-import GeneralTab from './settings/GeneralTab.vue'
-import AppearanceTab from './settings/AppearanceTab.vue'
-import BuddyTab from './settings/BuddyTab.vue'
-import CloudTab from './settings/CloudTab.vue'
-import ProviderTab from './settings/ProviderTab.vue'
-import BotManagement from './settings/BotManagement.vue'
-import UpdaterTab from './settings/UpdaterTab.vue'
+import SettingsContent from './SettingsContent.vue'
 import { GetHookServerPort } from '../composables/useElectron'
 
 defineEmits<{ (e: 'close'): void }>()

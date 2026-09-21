@@ -4,13 +4,7 @@
       <SettingsTabs v-model="active" layout="vertical" />
     </nav>
     <main class="content">
-      <GeneralTab v-if="active === 'general'" />
-      <AppearanceTab v-else-if="active === 'appearance'" />
-      <BuddyTab v-else-if="active === 'buddy'" />
-      <CloudTab v-else-if="active === 'cloud'" />
-      <ProviderTab v-else-if="active === 'provider'" />
-      <BotManagement v-else-if="active === 'bot'" />
-      <UpdaterTab v-else-if="active === 'updater'" />
+      <SettingsContent :active="active" />
     </main>
   </div>
 </template>
@@ -18,13 +12,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import SettingsTabs, { type Tab } from './SettingsTabs.vue'
-import GeneralTab from './settings/GeneralTab.vue'
-import AppearanceTab from './settings/AppearanceTab.vue'
-import BuddyTab from './settings/BuddyTab.vue'
-import CloudTab from './settings/CloudTab.vue'
-import ProviderTab from './settings/ProviderTab.vue'
-import BotManagement from './settings/BotManagement.vue'
-import UpdaterTab from './settings/UpdaterTab.vue'
+import SettingsContent from './SettingsContent.vue'
 
 const props = defineProps<{ active?: Tab }>()
 const emit = defineEmits<{ (e: 'update:active', v: Tab): void }>()
