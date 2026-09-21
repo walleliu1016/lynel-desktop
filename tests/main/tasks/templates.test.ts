@@ -7,19 +7,26 @@ import path from 'node:path';
 vi.mock('electron', () => ({ safeStorage: {} }));
 
 let home: string;
-let prevHome: string | undefined;
+let prevEnv: { HOME: string | undefined; USERPROFILE: string | undefined };
 
-// templates.ts 走 os.homedir()，而 homedir 在 win32 上读 USERPROFILE。
-// 每个用例换一个临时 home，避免测试往真实的 ~/.lynel-desktop 里写文件。
+// templates.ts 走 os.homedir()：**win32 读 USERPROFILE、POSIX（mac/linux）读 HOME**。
+// 两个都要覆盖 —— 只改 USERPROFILE 的话在 CI 的 macOS runner 上根本没隔离，测试会去动
+// 真实的 ~/.lynel-desktop，表现是一串 ENOENT，本机还可能把用户已有的模板覆盖掉。
 beforeEach(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), 'lynel-tpl-'));
-  prevHome = process.env.USERPROFILE;
+  prevEnv = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+  process.env.HOME = home;
   process.env.USERPROFILE = home;
+  // 自检：homedir 必须真的落到临时目录。漏了这一步的话，平台差异只会表现成
+  // 「测试莫名 ENOENT」，而真正的后果是污染真实家目录 —— 宁可在这里直接失败。
+  expect(os.homedir()).toBe(home);
   vi.resetModules();
 });
 afterEach(() => {
-  if (prevHome === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = prevHome;
+  for (const [k, v] of Object.entries(prevEnv)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
 });
 
 const load = async () => import('../../../src/main/tasks/templates.js');

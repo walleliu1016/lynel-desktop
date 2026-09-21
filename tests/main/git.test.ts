@@ -19,7 +19,10 @@ function makeRepo(): string {
   return dir;
 }
 
-describe('git', () => {
+// git 操作类测试全是真进程（每条用例一次 `await import(git.js)` + 若干 git 调用），
+// 5s 的默认超时在冷启动的 CI runner 上不够 —— 首个用例尤其要替整个文件付一次模块加载。
+// 收紧到 20s：够慢机器用，又不至于把一个真挂住的用例拖太久。
+describe('git', { timeout: 20_000 }, () => {
   let repo: string;
   let plain: string;
 
