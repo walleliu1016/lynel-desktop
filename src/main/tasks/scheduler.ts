@@ -1,7 +1,7 @@
 // 30s 轮询 tick + 内存队列 + 并发闸门。状态只有 DB 一份真相，所以不用 per-task timer。
 import { getStore } from '../store.js';
 import {
-  CATCH_UP_MS, QUEUE_TIMEOUT_MS, computeNextRun, isDue, type Schedule,
+  CATCH_UP_MS, QUEUE_TIMEOUT_MS, computeNextRun, isDue, isWindowClosed, scheduleOf,
 } from './schedule.js';
 import {
   createRun, finishRun, getRun, getTask, listLiveRuns, listTasks, markRunRunning,
@@ -54,9 +54,6 @@ export function setSchedulerCallbacks(cb: SchedulerCallbacks): void {
   callbacks = cb;
 }
 
-/** 只在这三种终态通知（失败要看得见；成功不打扰）。 */
-const NOTIFY_STATUSES = new Set(['error', 'timeout', 'interrupted']);
-
 /** tick 会从 setInterval 与 runner 的 finish 回边进来，任何一步抛错都不能逃到事件循环。 */
 function guard(label: string, fn: () => void): void {
   try {
@@ -75,7 +72,9 @@ const runnerCallbacks = {
       const run = getRun(runId);
       if (!run) return;
       const task = getTask(run.taskId);
-      if (task && notify && NOTIFY_STATUSES.has(run.status)) notify(task, run);
+      // 所有终态都回报（含 done）：前台由右上角 toast 展示「任务名 / 执行时间 / 结果」，
+      // 后台由托盘气泡展示 —— 分流放在 index.ts，不在这里按成败取舍。
+      if (task && notify) notify(task, run);
     });
     // 独立 guard：通知回调炸了也要把队列放出去，否则排队的 run 要空等到下个 tick。
     guard('drain', () => drain());
@@ -91,12 +90,6 @@ interface QueuedRun {
 let timer: ReturnType<typeof setInterval> | null = null;
 let queue: QueuedRun[] = [];
 let recovered = false;
-
-function scheduleOf(task: TaskRow): Schedule {
-  return task.scheduleType === 'once'
-    ? { type: 'once', runAt: task.runAt ?? 0 }
-    : { type: 'cron', expression: task.scheduleExpr ?? '' };
-}
 
 function activeCount(): number {
   return listLiveRuns().filter((r) => r.status === 'running').length;
@@ -170,7 +163,15 @@ export function tick(now: number = deps.now()): void {
     const due = isDue(task.nextRunAt, now, CATCH_UP_MS);
 
     if (due === 'not_due' && task.nextRunAt == null) {
-      const next = computeNextRun(scheduleOf(task), now);
+      const s = scheduleOf(task);
+      // 生效区间已经过去 → 再也不会有下一次。不在这里停用的话，任务会一直挂在列表里
+      // 显示「—」并且每 30s 重算一次（computeNextRun 恒为 null）。
+      if (s.type !== 'once' && isWindowClosed(s, now)) {
+        updateTask(task.id, { enabled: false, lastStatus: 'missed' });
+        changed = true;
+        continue;
+      }
+      const next = computeNextRun(s, now);
       if (next != null) {
         updateTask(task.id, { nextRunAt: next });
         changed = true;

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const DEFAULT_DB_FILE = path.join(os.homedir(), '.lynel-desktop', 'tasks.db');
 
@@ -39,6 +39,14 @@ export function getDb(): DatabaseSync {
   migrate(opened);
   db = opened;
   return db;
+}
+
+/** 幂等加列：老库已有该列时是 no-op。`CREATE TABLE IF NOT EXISTS` 只对全新库生效，
+ *  已经存在的表加字段必须走 ALTER，否则老用户的库永远缺这一列。 */
+function addColumn(database: DatabaseSync, table: string, column: string, decl: string): void {
+  const cols = database.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[];
+  if (cols.some((c) => c.name === column)) return;
+  database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
 }
 
 export function migrate(database: DatabaseSync): void {
@@ -104,6 +112,11 @@ export function migrate(database: DatabaseSync): void {
       PRIMARY KEY (run_id, seq)
     )
   `);
+
+  // v2：调度新增「生效区间」（可选的起止时间）。startAt / stopAt 交给 croner 的
+  // startAt / stopAt 选项，不在 cron 表达式里表达（cron 本身没有日期边界的概念）。
+  addColumn(database, 'tasks', 'schedule_start_at', 'INTEGER');
+  addColumn(database, 'tasks', 'schedule_end_at', 'INTEGER');
 
   database.exec('CREATE INDEX IF NOT EXISTS idx_runs_task ON runs(task_id, queued_at DESC)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_tasks_next ON tasks(next_run_at)');

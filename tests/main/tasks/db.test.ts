@@ -3,6 +3,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { getDb, closeDb, setDbFile, migrate, SCHEMA_VERSION } from '../../../src/main/tasks/db.js';
 
 vi.mock('electron', () => ({ safeStorage: {} }));
@@ -57,6 +58,31 @@ describe('db', () => {
     closeDb();
     const rows = getDb().prepare('SELECT id FROM tasks').all();
     expect(rows).toHaveLength(1);
+  });
+
+  it('v1 老库升级：补出生效区间两列，且老行数据不丢', () => {
+    const f = tmpFile();
+    setDbFile(f);
+    // 先造一个 v1 形状的库（只有旧列），再走 migrate —— CREATE TABLE IF NOT EXISTS 不会加列，
+    // 必须靠 ALTER 补，否则老用户升级后一读 schedule_start_at 就报 no such column。
+    const raw = new DatabaseSync(f);
+    raw.exec(`CREATE TABLE tasks (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+      prompt TEXT NOT NULL, agent TEXT, session_id TEXT,
+      session_initialized INTEGER NOT NULL DEFAULT 0, schedule_type TEXT NOT NULL,
+      schedule_expr TEXT, run_at INTEGER, next_run_at INTEGER, last_run_at INTEGER,
+      last_status TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
+    raw.prepare("INSERT INTO tasks(id,name,prompt,schedule_type,schedule_expr,created_at,updated_at) VALUES('old','老任务','p','cron','0 9 * * *',1,1)").run();
+    raw.close();
+
+    const db = getDb();
+    const cols = (db.prepare('PRAGMA table_info(tasks)').all() as any[]).map((c) => c.name);
+    expect(cols).toContain('schedule_start_at');
+    expect(cols).toContain('schedule_end_at');
+    const old = db.prepare("SELECT name, schedule_expr, schedule_start_at FROM tasks WHERE id='old'").get() as any;
+    expect(old.name).toBe('老任务');
+    expect(old.schedule_expr).toBe('0 9 * * *');
+    expect(old.schedule_start_at).toBeNull();
   });
 
   it('run_events 主键 (run_id, seq) 约束生效', () => {

@@ -1,147 +1,267 @@
 // tests/main/tasks/schedule.test.ts
 import { describe, it, expect } from 'vitest';
 import {
-  presetToCron, cronToPreset, computeNextRun, describeSchedule,
-  isDue, CATCH_UP_MS, QUEUE_TIMEOUT_MS, RUN_TIMEOUT_MS,
-  type Preset,
+  scheduleToCron, cronToSchedule, scheduleOf, computeNextRun, describeSchedule,
+  isDue, isWindowClosed, ALL_DAYS, CATCH_UP_MS, QUEUE_TIMEOUT_MS, RUN_TIMEOUT_MS,
+  type Schedule,
 } from '../../../src/main/tasks/schedule.js';
 
-describe('presetToCron', () => {
-  it('每天 → M H * * *', () => {
-    expect(presetToCron({ kind: 'daily', hour: 9, minute: 0 })).toBe('0 9 * * *');
-    expect(presetToCron({ kind: 'daily', hour: 0, minute: 30 })).toBe('30 0 * * *');
+/** 无生效区间的默认窗口，省掉每条用例都写一遍 */
+const OPEN = { startAt: null, endAt: null };
+const ALL = [...ALL_DAYS];
+
+const daily = (hour: number, minute: number, days: number[] = ALL, w = OPEN): Schedule =>
+  ({ type: 'daily', hour, minute, days: [...days], ...w });
+const every = (
+  n: number,
+  unit: 'minute' | 'hour' | 'day' | 'month',
+  days: number[] = ALL,
+  hour = 0,
+  minute = 0,
+  dayOfMonth = 1,
+  w = OPEN,
+): Schedule => ({ type: 'interval', n, unit, days: [...days], hour, minute, dayOfMonth, ...w });
+const raw = (expression: string, w = OPEN): Schedule => ({ type: 'cron', expression, ...w });
+
+describe('scheduleToCron', () => {
+  it('每天：全选星期归一成 *，让「每天都跑」保持最简表达式', () => {
+    expect(scheduleToCron(daily(9, 0))).toBe('0 9 * * *');
+    expect(scheduleToCron(daily(0, 30))).toBe('30 0 * * *');
+    // 空数组与全选等价（表单「一天都没选」由渲染层拦，纯函数不当成非法）
+    expect(scheduleToCron(daily(9, 0, []))).toBe('0 9 * * *');
   });
 
-  it('每周 → M H * * 排序后的星期列表', () => {
-    expect(presetToCron({ kind: 'weekly', hour: 17, minute: 0, weekdays: [5] })).toBe('0 17 * * 5');
-    expect(presetToCron({ kind: 'weekly', hour: 9, minute: 30, weekdays: [5, 1, 3] })).toBe('30 9 * * 1,3,5');
-    expect(presetToCron({ kind: 'weekly', hour: 9, minute: 0, weekdays: [1, 2, 3, 4, 5] })).toBe('0 9 * * 1,2,3,4,5');
+  it('每天 + 生效的天：星期排序去重后落到 dow', () => {
+    expect(scheduleToCron(daily(9, 0, [1, 3, 5]))).toBe('0 9 * * 1,3,5');
+    expect(scheduleToCron(daily(9, 30, [5, 1, 3]))).toBe('30 9 * * 1,3,5');
+    expect(scheduleToCron(daily(9, 0, [1, 2, 3, 4, 5]))).toBe('0 9 * * 1,2,3,4,5');
+    expect(scheduleToCron(daily(8, 0, [0, 6]))).toBe('0 8 * * 0,6');
   });
 
-  it('每月 → M H D * *', () => {
-    expect(presetToCron({ kind: 'monthly', hour: 10, minute: 0, dayOfMonth: 1 })).toBe('0 10 1 * *');
-    expect(presetToCron({ kind: 'monthly', hour: 23, minute: 59, dayOfMonth: 31 })).toBe('59 23 31 * *');
+  it('按间隔·分钟：*/N * * * <dow>', () => {
+    expect(scheduleToCron(every(15, 'minute'))).toBe('*/15 * * * *');
+    expect(scheduleToCron(every(30, 'minute', [1, 2]))).toBe('*/30 * * * 1,2');
   });
 
-  it('每小时 → M * * * *', () => {
-    expect(presetToCron({ kind: 'hourly', minute: 5 })).toBe('5 * * * *');
+  it('按间隔·小时：0 */N * * <dow>', () => {
+    expect(scheduleToCron(every(6, 'hour'))).toBe('0 */6 * * *');
+    expect(scheduleToCron(every(2, 'hour', [1, 2]))).toBe('0 */2 * * 1,2');
   });
 
-  it('每 N 分钟 → */N * * * *', () => {
-    expect(presetToCron({ kind: 'everyNMinutes', everyMinutes: 15 })).toBe('*/15 * * * *');
-    expect(presetToCron({ kind: 'everyNMinutes', everyMinutes: 1 })).toBe('*/1 * * * *');
+  it('按间隔·天：M H */N * *（带小时分，日字段承担间隔）', () => {
+    expect(scheduleToCron(every(2, 'day', ALL, 9, 0))).toBe('0 9 */2 * *');
+    expect(scheduleToCron(every(3, 'day', ALL, 23, 59))).toBe('59 23 */3 * *');
   });
 
-  it('自定义直接返回表达式', () => {
-    expect(presetToCron({ kind: 'custom', expression: '0 0 1 1 *' })).toBe('0 0 1 1 *');
+  it('按间隔·月：M H D */N *（几号 + 几点）', () => {
+    expect(scheduleToCron(every(1, 'month', ALL, 10, 0, 1))).toBe('0 10 1 */1 *');
+    expect(scheduleToCron(every(3, 'month', ALL, 8, 30, 15))).toBe('30 8 15 */3 *');
   });
 
-  it('参数越界抛错（表单层要拦，但纯函数也要守住）', () => {
-    expect(() => presetToCron({ kind: 'daily', hour: 24, minute: 0 })).toThrow();
-    expect(() => presetToCron({ kind: 'daily', hour: 9, minute: 60 })).toThrow();
-    expect(() => presetToCron({ kind: 'weekly', hour: 9, minute: 0, weekdays: [] })).toThrow();
-    expect(() => presetToCron({ kind: 'weekly', hour: 9, minute: 0, weekdays: [7] })).toThrow();
-    expect(() => presetToCron({ kind: 'monthly', hour: 9, minute: 0, dayOfMonth: 0 })).toThrow();
-    expect(() => presetToCron({ kind: 'monthly', hour: 9, minute: 0, dayOfMonth: 32 })).toThrow();
-    expect(() => presetToCron({ kind: 'everyNMinutes', everyMinutes: 0 })).toThrow();
-    expect(() => presetToCron({ kind: 'everyNMinutes', everyMinutes: 60 })).toThrow();
-    expect(() => presetToCron({ kind: 'custom', expression: '  ' })).toThrow();
+  it('按间隔·天 / 月 + 限定星期直接抛错（cron 的 日/周 是 OR 语义，拼不出这个组合）', () => {
+    expect(() => scheduleToCron(every(2, 'day', [1]))).toThrow(/不能同时限定星期/);
+    expect(() => scheduleToCron(every(2, 'month', [1]))).toThrow(/不能同时限定星期/);
+  });
+
+  it('自定义 crontab 原样返回；空串抛错', () => {
+    expect(scheduleToCron(raw('0 0 1 1 *'))).toBe('0 0 1 1 *');
+    expect(() => scheduleToCron(raw('   '))).toThrow();
+  });
+
+  it('once 不走 cron，返回 null', () => {
+    expect(scheduleToCron({ type: 'once', runAt: 1000 })).toBeNull();
+  });
+
+  it('参数越界抛错（表单层要拦，纯函数也要守住）', () => {
+    expect(() => scheduleToCron(daily(24, 0))).toThrow();
+    expect(() => scheduleToCron(daily(9, 60))).toThrow();
+    expect(() => scheduleToCron(every(0, 'minute'))).toThrow();
+    expect(() => scheduleToCron(every(60, 'minute'))).toThrow();
+    expect(() => scheduleToCron(every(0, 'hour'))).toThrow();
+    expect(() => scheduleToCron(every(24, 'hour'))).toThrow();
+    expect(() => scheduleToCron(every(32, 'day', ALL, 9, 0))).toThrow();
+    expect(() => scheduleToCron(every(2, 'day', ALL, 24, 0))).toThrow();
+    expect(() => scheduleToCron(every(13, 'month', ALL, 9, 0, 1))).toThrow();
+    expect(() => scheduleToCron(every(1, 'month', ALL, 9, 0, 32))).toThrow();
   });
 });
 
-describe('cronToPreset', () => {
-  it('认识的模板精确反查回预设', () => {
-    expect(cronToPreset('0 9 * * *')).toEqual({ kind: 'daily', hour: 9, minute: 0 });
-    expect(cronToPreset('30 9 * * 1,3,5')).toEqual({ kind: 'weekly', hour: 9, minute: 30, weekdays: [1, 3, 5] });
-    expect(cronToPreset('0 10 1 * *')).toEqual({ kind: 'monthly', hour: 10, minute: 0, dayOfMonth: 1 });
-    expect(cronToPreset('5 * * * *')).toEqual({ kind: 'hourly', minute: 5 });
-    expect(cronToPreset('*/15 * * * *')).toEqual({ kind: 'everyNMinutes', everyMinutes: 15 });
+describe('cronToSchedule', () => {
+  const w = { startAt: 111, endAt: 222 };
+
+  it('认识的模板精确反查，并带回生效区间', () => {
+    expect(cronToSchedule('0 9 * * *')).toEqual({ type: 'daily', hour: 9, minute: 0, days: ALL, ...OPEN });
+    expect(cronToSchedule('30 9 * * 1,3,5')).toEqual({ type: 'daily', hour: 9, minute: 30, days: [1, 3, 5], ...OPEN });
+    expect(cronToSchedule('0 9 * * 1,2,3,4,5')).toEqual({ type: 'daily', hour: 9, minute: 0, days: [1, 2, 3, 4, 5], ...OPEN });
+    expect(cronToSchedule('*/15 * * * 1,2')).toEqual({ type: 'interval', n: 15, unit: 'minute', days: [1, 2], hour: 0, minute: 0, dayOfMonth: 1, ...OPEN });
+    expect(cronToSchedule('0 */6 * * 1,2')).toEqual({ type: 'interval', n: 6, unit: 'hour', days: [1, 2], hour: 0, minute: 0, dayOfMonth: 1, ...OPEN });
+    expect(cronToSchedule('0 9 */2 * *')).toEqual({ type: 'interval', n: 2, unit: 'day', days: ALL, hour: 9, minute: 0, dayOfMonth: 1, ...OPEN });
+    expect(cronToSchedule('0 10 1 */1 *')).toEqual({ type: 'interval', n: 1, unit: 'month', days: ALL, hour: 10, minute: 0, dayOfMonth: 1, ...OPEN });
+    expect(cronToSchedule('0 9 * * *', w.startAt, w.endAt)).toEqual({ type: 'daily', hour: 9, minute: 0, days: ALL, ...w });
   });
 
-  it('不认识的一律落 custom 并带回原表达式', () => {
-    expect(cronToPreset('0 0 1 1 *')).toEqual({ kind: 'custom', expression: '0 0 1 1 *' });
-    expect(cronToPreset('0 9 * * 1-5')).toEqual({ kind: 'custom', expression: '0 9 * * 1-5' });
-    expect(cronToPreset('0 9 1,15 * *')).toEqual({ kind: 'custom', expression: '0 9 1,15 * *' });
+  it('不认识的一律落 cron 并带回原表达式与区间', () => {
+    expect(cronToSchedule('0 0 1 1 *')).toEqual({ type: 'cron', expression: '0 0 1 1 *', ...OPEN });
+    // 范围与多值日字段都不猜（表单跳不回预设，但表达式原样保留）
+    expect(cronToSchedule('0 9 * * 1-5')).toEqual({ type: 'cron', expression: '0 9 * * 1-5', ...OPEN });
+    expect(cronToSchedule('0 9 1,15 * *')).toEqual({ type: 'cron', expression: '0 9 1,15 * *', ...OPEN });
+    // 重复星期不能静默去重（去重后与主进程 describeSchedule 口径不一致）
+    expect(cronToSchedule('0 9 * * 1,1').type).toBe('cron');
   });
 
   it('表达式两端的空白被归一化后再匹配', () => {
-    expect(cronToPreset('  0 9 * * *  ')).toEqual({ kind: 'daily', hour: 9, minute: 0 });
+    expect(cronToSchedule('  0 9 * * *  ')).toEqual({ type: 'daily', hour: 9, minute: 0, days: ALL, ...OPEN });
   });
 });
 
-describe('预设 ↔ cron 往返（覆盖全部模板）', () => {
-  const cases: Preset[] = [
-    { kind: 'daily', hour: 9, minute: 0 },
-    { kind: 'daily', hour: 0, minute: 0 },
-    { kind: 'daily', hour: 23, minute: 59 },
-    { kind: 'weekly', hour: 17, minute: 0, weekdays: [5] },
-    { kind: 'weekly', hour: 9, minute: 30, weekdays: [1, 3, 5] },
-    { kind: 'weekly', hour: 8, minute: 0, weekdays: [0, 6] },
-    { kind: 'weekly', hour: 9, minute: 0, weekdays: [1, 2, 3, 4, 5] },
-    { kind: 'monthly', hour: 10, minute: 0, dayOfMonth: 1 },
-    { kind: 'monthly', hour: 23, minute: 59, dayOfMonth: 31 },
-    { kind: 'monthly', hour: 0, minute: 0, dayOfMonth: 15 },
-    { kind: 'hourly', minute: 0 },
-    { kind: 'hourly', minute: 45 },
-    { kind: 'everyNMinutes', everyMinutes: 1 },
-    { kind: 'everyNMinutes', everyMinutes: 5 },
-    { kind: 'everyNMinutes', everyMinutes: 59 },
+describe('schedule ↔ cron 往返', () => {
+  const cases: Schedule[] = [
+    daily(9, 0),
+    daily(0, 0),
+    daily(23, 59),
+    daily(17, 0, [5]),
+    daily(9, 30, [1, 3, 5]),
+    daily(8, 0, [0, 6]),
+    daily(9, 0, [1, 2, 3, 4, 5]),
+    every(1, 'minute'),
+    every(15, 'minute'),
+    every(59, 'minute', [0, 6]),
+    every(1, 'hour'),
+    every(6, 'hour'),
+    every(23, 'hour', [1, 2]),
+    every(1, 'day', ALL, 9, 0),
+    every(2, 'day', ALL, 9, 0),
+    every(31, 'day', ALL, 23, 59),
+    every(1, 'month', ALL, 10, 0, 1),
+    every(3, 'month', ALL, 8, 30, 15),
+    every(12, 'month', ALL, 0, 0, 28),
   ];
 
-  it.each(cases)('cronToPreset(presetToCron($kind)) 回到原预设', (preset) => {
-    expect(cronToPreset(presetToCron(preset))).toEqual(preset);
+  it.each(cases)('cronToSchedule(scheduleToCron($type)) 回到原调度', (s) => {
+    expect(cronToSchedule(scheduleToCron(s)!)).toEqual(s);
   });
 
   it('所有生成的表达式都是 croner 认可的合法表达式', async () => {
     const { Cron } = await import('croner');
-    for (const preset of cases) {
-      const expr = presetToCron(preset);
+    for (const s of cases) {
+      const expr = scheduleToCron(s)!;
       expect(() => new Cron(expr), `非法表达式: ${expr}`).not.toThrow();
     }
   });
 });
 
 describe('computeNextRun', () => {
-  it('cron：从给定时刻往后算下一次', () => {
+  it('每天：从给定时刻往后算下一次', () => {
     const from = new Date('2026-09-18T08:00:00').getTime();
-    const next = computeNextRun({ type: 'cron', expression: '0 9 * * *' }, from)!;
+    const next = computeNextRun(daily(9, 0), from)!;
     expect(new Date(next).getHours()).toBe(9);
     expect(new Date(next).getDate()).toBe(18);
   });
 
-  it('cron：当天已过则顺延到明天', () => {
+  it('每天：当天已过则顺延到明天', () => {
     const from = new Date('2026-09-18T10:00:00').getTime();
-    const next = computeNextRun({ type: 'cron', expression: '0 9 * * *' }, from)!;
+    const next = computeNextRun(daily(9, 0), from)!;
     expect(new Date(next).getDate()).toBe(19);
     expect(new Date(next).getHours()).toBe(9);
   });
 
-  it('once：未来时间返回该时间戳', () => {
-    const from = 1000;
-    expect(computeNextRun({ type: 'once', runAt: 5000 }, from)).toBe(5000);
+  it('生效的天：只在选中的星期上触发', () => {
+    // 2026-09-18 是周五
+    const fri = new Date('2026-09-18T00:00:00').getTime();
+    const next = computeNextRun(daily(9, 0, [1]), fri)!;
+    expect(new Date(next).getDay()).toBe(1); // 周一
   });
 
-  it('once：已过去返回 null', () => {
+  it('生效区间：下一次不早于 startAt', () => {
+    const from = new Date('2026-09-18T00:00:00').getTime();
+    const startAt = new Date('2026-09-25T00:00:00').getTime();
+    const next = computeNextRun(daily(9, 0, ALL, { startAt, endAt: null }), from)!;
+    expect(next).toBeGreaterThanOrEqual(startAt);
+  });
+
+  it('生效区间：区间已过 → null（调用方据此停用任务）', () => {
+    const from = new Date('2026-09-18T00:00:00').getTime();
+    const endAt = new Date('2026-09-10T00:00:00').getTime();
+    expect(computeNextRun(daily(9, 0, ALL, { startAt: null, endAt }), from)).toBeNull();
+  });
+
+  it('生效区间：区间内正常排下一次', () => {
+    const from = new Date('2026-09-18T00:00:00').getTime();
+    const w = { startAt: null, endAt: new Date('2026-09-30T00:00:00').getTime() };
+    const next = computeNextRun(daily(9, 0, ALL, w), from)!;
+    expect(new Date(next).getTime()).toBeLessThanOrEqual(w.endAt!);
+  });
+
+  it('once：未来时间返回该时间戳，已过去返回 null', () => {
+    expect(computeNextRun({ type: 'once', runAt: 5000 }, 1000)).toBe(5000);
     expect(computeNextRun({ type: 'once', runAt: 100 }, 5000)).toBeNull();
   });
 
-  it('非法 cron 表达式返回 null，不抛异常', () => {
-    expect(computeNextRun({ type: 'cron', expression: 'not a cron' }, Date.now())).toBeNull();
-    expect(computeNextRun({ type: 'cron', expression: '' }, Date.now())).toBeNull();
+  it('非法 cron 表达式返回 null，不抛异常（tick 每 30s 调一次，抛错会停摆整个调度器）', () => {
+    expect(computeNextRun(raw('not a cron'), Date.now())).toBeNull();
+    expect(computeNextRun(raw(''), Date.now())).toBeNull();
+    expect(computeNextRun(daily(24, 0), Date.now())).toBeNull();
+  });
+});
+
+describe('isWindowClosed', () => {
+  it('endAt 已过 → true', () => {
+    expect(isWindowClosed(daily(9, 0, ALL, { startAt: null, endAt: 100 }), 200)).toBe(true);
+  });
+  it('endAt 未到 / 没设 → false', () => {
+    expect(isWindowClosed(daily(9, 0, ALL, { startAt: null, endAt: 300 }), 200)).toBe(false);
+    expect(isWindowClosed(daily(9, 0), 200)).toBe(false);
+  });
+  it('once 不走这个判断（由 runAt 自己决定）', () => {
+    expect(isWindowClosed({ type: 'once', runAt: 100 }, 200)).toBe(false);
+  });
+});
+
+describe('scheduleOf（任务行 → 调度）', () => {
+  const base = { scheduleType: 'cron', scheduleExpr: '0 9 * * 1,3,5', runAt: null, scheduleStartAt: null, scheduleEndAt: null };
+
+  it('cron 行还原成 daily / interval，而不是一律当成自定义表达式', () => {
+    expect(scheduleOf(base)).toEqual({ type: 'daily', hour: 9, minute: 0, days: [1, 3, 5], ...OPEN });
+  });
+
+  it('生效区间必须一起还原 —— 漏了这一处，表单编辑一次就把区间抹平', () => {
+    expect(scheduleOf({ ...base, scheduleStartAt: 111, scheduleEndAt: 222 }))
+      .toEqual({ type: 'daily', hour: 9, minute: 0, days: [1, 3, 5], startAt: 111, endAt: 222 });
+  });
+
+  it('once 行还原成 once', () => {
+    expect(scheduleOf({ ...base, scheduleType: 'once', scheduleExpr: null, runAt: 777 }))
+      .toEqual({ type: 'once', runAt: 777 });
+  });
+
+  it('表达式为空 / 缺列的老行不抛错', () => {
+    expect(scheduleOf({ scheduleType: 'cron', scheduleExpr: null, runAt: null, scheduleStartAt: null, scheduleEndAt: null }))
+      .toEqual({ type: 'cron', expression: '', ...OPEN });
   });
 });
 
 describe('describeSchedule', () => {
-  it('生成人类可读摘要', () => {
-    expect(describeSchedule({ type: 'cron', expression: '0 9 * * *' })).toBe('每天 09:00');
-    expect(describeSchedule({ type: 'cron', expression: '30 9 * * 1,3,5' })).toBe('每周一、三、五 09:30');
-    expect(describeSchedule({ type: 'cron', expression: '0 10 1 * *' })).toBe('每月 1 号 10:00');
-    expect(describeSchedule({ type: 'cron', expression: '5 * * * *' })).toBe('每小时第 5 分钟');
-    expect(describeSchedule({ type: 'cron', expression: '*/15 * * * *' })).toBe('每 15 分钟');
+  it('命中模板的表达式给可读摘要', () => {
+    expect(describeSchedule(raw('0 9 * * *'))).toBe('每天 09:00');
+    expect(describeSchedule(raw('0 9 * * 1,2,3,4,5'))).toBe('工作日 09:00');
+    expect(describeSchedule(raw('30 9 * * 1,3,5'))).toBe('周一、周三、周五 09:30');
+    expect(describeSchedule(raw('0 9 * * 0,6'))).toBe('周末 09:00');
+    expect(describeSchedule(raw('*/15 * * * *'))).toBe('每 15 分钟');
+    expect(describeSchedule(raw('0 */6 * * *'))).toBe('每 6 小时 · 每天');
+    expect(describeSchedule(raw('0 */6 * * 1,2'))).toBe('每 6 小时 · 周一、周二');
+    expect(describeSchedule(raw('0 9 */2 * *'))).toBe('每 2 天 09:00');
+    expect(describeSchedule(raw('0 10 1 */1 *'))).toBe('每 1 个月 1 号 10:00');
+    expect(describeSchedule(raw('30 8 15 */3 *'))).toBe('每 3 个月 15 号 08:30');
   });
 
   it('自定义表达式回显表达式本身', () => {
-    expect(describeSchedule({ type: 'cron', expression: '0 0 1 1 *' })).toBe('0 0 1 1 *');
+    expect(describeSchedule(raw('0 0 1 1 *'))).toBe('0 0 1 1 *');
+    expect(describeSchedule(raw('0 9 * * 1-5'))).toBe('0 9 * * 1-5');
+  });
+
+  it('生效区间以「（起 ~ 止）」后缀出现', () => {
+    const w = { startAt: new Date('2026-09-21T00:00:00').getTime(), endAt: new Date('2026-12-31T00:00:00').getTime() };
+    expect(describeSchedule(daily(9, 0, ALL, w))).toBe('每天 09:00（09-21 ~ 12-31）');
   });
 
   it('once 显示具体时间', () => {

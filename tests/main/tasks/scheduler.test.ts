@@ -68,6 +68,33 @@ describe('tick：到期判定', () => {
     expect(started).toHaveLength(0);
   });
 
+  it('生效区间已过 → 自动停用并标 missed，不再每 tick 重算', () => {
+    const t = createTask({
+      name: 'A', prompt: 'p', sessionId: '11111111-1111-4111-8111-111111111111',
+      scheduleType: 'cron', scheduleExpr: '0 9 * * *', runAt: null, nextRunAt: null,
+      // 区间在 NOW 之前就结束了，computeNextRun 恒为 null
+      scheduleStartAt: NOW - 20 * 86400_000, scheduleEndAt: NOW - 10 * 86400_000,
+    });
+    tick(NOW);
+    const after = getTask(t.id)!;
+    expect(after.enabled).toBe(0);
+    expect(after.lastStatus).toBe('missed');
+    expect(after.nextRunAt).toBeNull();
+    expect(started).toHaveLength(0);
+  });
+
+  it('生效区间还没开始 → 保持启用，下次运行排在区间内', () => {
+    const t = createTask({
+      name: 'A', prompt: 'p', sessionId: '11111111-1111-4111-8111-111111111111',
+      scheduleType: 'cron', scheduleExpr: '0 9 * * *', runAt: null, nextRunAt: null,
+      scheduleStartAt: NOW + 3 * 86400_000, scheduleEndAt: null,
+    });
+    tick(NOW);
+    const after = getTask(t.id)!;
+    expect(after.enabled).toBe(1);
+    expect(after.nextRunAt).toBeGreaterThanOrEqual(NOW + 3 * 86400_000);
+  });
+
   it('到点 → 建 queued run、推进 nextRunAt、启动执行', () => {
     const t = cronTask('A', '0 9 * * *', NOW);
     const before = listRuns(t.id, { limit: 10 }).length;

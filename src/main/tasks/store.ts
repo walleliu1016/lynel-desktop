@@ -17,6 +17,8 @@ export interface TaskRow {
   scheduleType: ScheduleType;
   scheduleExpr: string | null;
   runAt: number | null;
+  scheduleStartAt: number | null;
+  scheduleEndAt: number | null;
   nextRunAt: number | null;
   lastRunAt: number | null;
   lastStatus: string | null;
@@ -31,6 +33,8 @@ export type TaskPatch = Partial<{
   scheduleType: ScheduleType;
   scheduleExpr: string | null;
   runAt: number | null;
+  scheduleStartAt: number | null;
+  scheduleEndAt: number | null;
   nextRunAt: number | null;
   lastRunAt: number | null;
   lastStatus: string | null;
@@ -43,6 +47,8 @@ export interface CreateTaskInput {
   scheduleType: ScheduleType;
   scheduleExpr: string | null;
   runAt: number | null;
+  scheduleStartAt?: number | null;
+  scheduleEndAt?: number | null;
   nextRunAt: number | null;
   enabled?: boolean;
   agent?: string;
@@ -52,6 +58,7 @@ const TASK_COLUMNS = `
   id, name, enabled, prompt, agent, session_id AS sessionId,
   session_initialized AS sessionInitialized,
   schedule_type AS scheduleType, schedule_expr AS scheduleExpr, run_at AS runAt,
+  schedule_start_at AS scheduleStartAt, schedule_end_at AS scheduleEndAt,
   next_run_at AS nextRunAt, last_run_at AS lastRunAt, last_status AS lastStatus,
   created_at AS createdAt, updated_at AS updatedAt
 `;
@@ -67,8 +74,9 @@ export function createTask(input: CreateTaskInput): TaskRow {
     .prepare(
       `INSERT INTO tasks
        (id,name,enabled,prompt,agent,session_id,session_initialized,
-        schedule_type,schedule_expr,run_at,next_run_at,last_run_at,last_status,created_at,updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?)`,
+        schedule_type,schedule_expr,run_at,schedule_start_at,schedule_end_at,
+        next_run_at,last_run_at,last_status,created_at,updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?)`,
     )
     .run(
       id,
@@ -81,6 +89,8 @@ export function createTask(input: CreateTaskInput): TaskRow {
       input.scheduleType,
       input.scheduleExpr,
       input.runAt,
+      input.scheduleStartAt ?? null,
+      input.scheduleEndAt ?? null,
       input.nextRunAt,
       now,
       now,
@@ -109,6 +119,8 @@ const PATCH_COLUMN: Record<keyof TaskPatch, string> = {
   scheduleType: 'schedule_type',
   scheduleExpr: 'schedule_expr',
   runAt: 'run_at',
+  scheduleStartAt: 'schedule_start_at',
+  scheduleEndAt: 'schedule_end_at',
   nextRunAt: 'next_run_at',
   lastRunAt: 'last_run_at',
   lastStatus: 'last_status',
