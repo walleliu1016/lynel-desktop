@@ -203,9 +203,23 @@ describe('runs 与 run_events', () => {
 
   it('listRuns 按 queued_at 倒序分页，before 做游标', () => {
     const t = createTask(base);
-    const r1 = createRun(t.id, 'scheduled');
-    const r2 = createRun(t.id, 'scheduled');
-    const r3 = createRun(t.id, 'scheduled');
+    // queued_at 来自 Date.now()，游标又是严格 `queued_at < before`：同一毫秒内连建三个 run
+    // 会让排序出现并列，并列的那条会被游标整批跳过。真实节奏（手动点击 / 30s 一次的 tick）
+    // 撞不上，但测试建得太快 —— 快的机器（CI runner）上就偶发。这里把时钟钉住，
+    // 让三条的时间戳必定不同。
+    let clock = Date.now();
+    const spy = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 1000));
+    let r1, r2, r3;
+    try {
+      r1 = createRun(t.id, 'scheduled');
+      r2 = createRun(t.id, 'scheduled');
+      r3 = createRun(t.id, 'scheduled');
+    } finally {
+      spy.mockRestore();
+    }
+    // 前提断言：并列的话下面的分页断言会在快机器上偶发失败，先把这层钉死
+    expect(new Set([r1.queuedAt, r2.queuedAt, r3.queuedAt]).size).toBe(3);
+
     const page1 = listRuns(t.id, { limit: 2 });
     expect(page1.map((r) => r.id)).toEqual([r3.id, r2.id]);
     const page2 = listRuns(t.id, { limit: 2, before: page1[1].queuedAt });

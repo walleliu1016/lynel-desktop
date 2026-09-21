@@ -246,6 +246,14 @@ export function getRun(id: string): RunRow | null {
   return row(getDb().prepare(`SELECT ${RUN_COLUMNS} FROM runs WHERE id = ?`).get(id)) as RunRow | null;
 }
 
+/**
+ * 按 queuedAt 倒序分页，`before` 是上一页最后一条的 queuedAt。
+ *
+ * **前提：同一个任务的 queuedAt 互不相同。** 游标用的是严格 `<`，并列的那条会被整页跳过、
+ * 而且 `ORDER BY queued_at DESC` 对并列的排序是不定的。真实节奏下这不会发生（手动点击、
+ * 30s 一次的 tick，最小间隔也是秒级）；真要做到绝对安全就得把游标换成 (queued_at, id)
+ * 复合键 —— 那会改 IPC 契约，在撞不上的前提下不值得。测试里连建多条会撞上，所以那边钉了时钟。
+ */
 export function listRuns(taskId: string, opts: { limit: number; before?: number }): RunRow[] {
   const before = opts.before;
   const sql = before
