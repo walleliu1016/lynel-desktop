@@ -246,6 +246,9 @@ export const TasksRuns = (taskId: string, opts: { limit: number; before?: number
 export const TasksRun = (runId: string) => api().tasksRun(runId);
 export const TasksRunEvents = (runId: string, opts: { afterSeq?: number } = {}) => api().tasksRunEvents(runId, opts);
 export const TasksPreview = (schedule: unknown) => api().tasksPreview(schedule);
+export const TasksTemplates = () => api().tasksTemplates();
+export const TasksSaveTemplate = (input: unknown) => api().tasksSaveTemplate(input);
+export const TasksDeleteTemplate = (id: string) => api().tasksDeleteTemplate(id);
 
 export const OnTasksChanged = (cb: (tasks: unknown) => void) => EventsOn('tasks:changed', cb);
 export const OnTasksRunChanged = (cb: (run: unknown) => void) => EventsOn('tasks:runChanged', cb);

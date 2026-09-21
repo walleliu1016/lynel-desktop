@@ -65,10 +65,14 @@
             <span class="col-botid bot-id-text">{{ bot.botId }}</span>
             <span
               class="col-bound bot-bound"
+              :title="isTaskNotifyBot(bot.id) ? '这个机器人用于定时任务通知，不能绑定会话' : ''"
               @mouseenter="showBoundTip($event, bot.id)"
               @mouseleave="hideBoundTip"
             >
-              <template v-if="boundSessionId(bot.id)">
+              <span v-if="isTaskNotifyBot(bot.id)" class="task-tag">
+                <Icon name="alarm-clock" :size="11" />任务通知
+              </span>
+              <template v-else-if="boundSessionId(bot.id)">
                 <Icon name="corner-down-left" :size="11" />
                 {{ boundSessionLabel(bot.id) }}
               </template>
@@ -174,10 +178,12 @@ import BotAddDialog from '../BotAddDialog.vue'
 import type { BotItem, BotSource } from '../../types/bots'
 import { useBotsStore } from '../../stores/bots'
 import { useSessionsStore, sessionDisplayTitle } from '../../stores/sessions'
+import { useSettingsStore } from '../../stores/settings'
 import { pushToast } from '../../composables/useToast'
 
 const store = useBotsStore()
 const sessions = useSessionsStore()
+const settings = useSettingsStore()
 
 const SOURCE_OPTIONS: { value: BotSource; label: string }[] = [
   { value: 'wecom', label: '企业微信' },
@@ -203,6 +209,11 @@ const editValid = computed(() =>
 )
 
 /** 查找 bot 绑定的 sessionId */
+/** 这条是不是「设置 → 定时任务」里选中的通知机器人 */
+function isTaskNotifyBot(botId: string): boolean {
+  return !!botId && String(settings.cfg?.tasks_notify_bot ?? '') === botId;
+}
+
 function boundSessionId(botId: string): string | undefined {
   return sessions.botBindings[botId] || sessions.sessionBots[botId]
 }
@@ -438,6 +449,17 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin: 0; }
 .status-dot.online { background: var(--status-success); }
 .status-dot.offline { background: var(--text-tertiary); }
 
+.task-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft-bg);
+  color: var(--accent);
+  white-space: nowrap;
+}
 .bot-name { font-size: 13px; color: var(--text-primary); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .source-tag {
   font-size: 9px; color: var(--accent); background: var(--accent-soft-bg);

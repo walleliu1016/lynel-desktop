@@ -30,6 +30,103 @@ const CONTROL_COMMANDS: Record<string, string> = {
   '/help': '__help__',
 };
 
+/** 任务指令（带参数，所以不进上面那张精确匹配表） */
+const TASK_LIST_CMD = '/tasks';
+const TASK_RUN_CMD = '/run';
+
+/** 一个任务的展示信息（由 app.ts 从 tasks 模块取，通道不直接依赖 store） */
+export interface WeComTaskInfo {
+  id: string;
+  name: string;
+  enabled: boolean;
+  /** 人读调度摘要，如「每天 09:00」 */
+  schedule: string;
+  lastStatus: string | null;
+  nextRunAt: number | null;
+  /** 当前已有非终态 run 在跑 */
+  running: boolean;
+}
+
+/** 任务结果推送的载荷（与 tasks/index.ts 的 TaskResultPayload 同形） */
+export interface WeComTaskResult {
+  taskName: string;
+  status: string;
+  startedAt: number | null;
+  finishedAt: number | null;
+  durationMs: number | null;
+  /** 一行摘要（截断） */
+  text: string;
+  /** 完整结果正文；缺省时退回 text */
+  resultText?: string;
+}
+
+/** 任务桥接：列任务 / 触发一次。由 app.ts 注入（照 setSessionTitleResolver 的先例）。 */
+export interface WeComTaskBridge {
+  list(): WeComTaskInfo[];
+  /** 触发一次；任务不存在返回 null。deduped=true 表示已有运行在跑、返回的是既有 run。 */
+  run(taskId: string): { runId: string; deduped: boolean } | null;
+}
+
+const TASK_STATUS_CN: Record<string, string> = {
+  queued: '排队中', running: '运行中', done: '成功', error: '失败',
+  timeout: '超时', skipped: '已跳过', interrupted: '已中断', missed: '已过期',
+};
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  const m = Math.floor(ms / 60000);
+  const sec = String(Math.floor((ms % 60000) / 1000)).padStart(2, '0');
+  return `${m}m${sec}s`;
+}
+
+/**
+ * 企业微信 markdown 内容有字节上限（4096），中文一个字 3 字节，所以按**字节**截而不是按字符。
+ * 截断了要显式说明，不能悄悄少半段 —— 那正是「跟桌面看到的不一样」的来源。
+ */
+function clampBytes(s: string, max: number): { text: string; cut: boolean } {
+  if (Buffer.byteLength(s, 'utf8') <= max) return { text: s, cut: false };
+  let out = s.slice(0, max);
+  while (out.length > 0 && Buffer.byteLength(out, 'utf8') > max) out = out.slice(0, -1);
+  return { text: out, cut: true };
+}
+
+function shortTime(ms: number | null): string {
+  if (ms == null) return '—';
+  const d = new Date(ms);
+  return `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/** 任务指令解析。返回 null = 不是任务指令，继续走普通消息转发。 */
+export function parseTaskCommand(text: string): { kind: 'list' } | { kind: 'run'; arg: string } | null {
+  const t = text.trim();
+  if (t === TASK_LIST_CMD) return { kind: 'list' };
+  const m = /^\/run(?:\s+(\S.*))?$/.exec(t);
+  if (m) return { kind: 'run', arg: (m[1] ?? '').trim() };
+  return null;
+}
+
+/** 任务参数 → 任务。序号 → 完整 id → 名称全等 → 名称唯一前缀（与 resolveSessionArg 同口径）。 */
+export function resolveTaskArg(arg: string, all: WeComTaskInfo[]): { task: WeComTaskInfo } | { error: string } {
+  if (!arg) return { error: `请给出任务序号或名称，例如 \`/run 1\`。发送 ${TASK_LIST_CMD} 查看。` };
+  const idx = parseInt(arg, 10);
+  if (!isNaN(idx) && String(idx) === arg.trim() && idx >= 1 && idx <= all.length) {
+    return { task: all[idx - 1] };
+  }
+  const byId = all.find((t) => t.id === arg);
+  if (byId) return { task: byId };
+  const lower = arg.toLowerCase();
+  const exact = all.filter((t) => t.name.toLowerCase() === lower);
+  if (exact.length === 1) return { task: exact[0] };
+  const prefixed = all.filter((t) => t.name.toLowerCase().startsWith(lower));
+  if (prefixed.length === 1) return { task: prefixed[0] };
+  if (prefixed.length > 1) {
+    return { error: `有 ${prefixed.length} 个任务匹配「${arg}」，请用更完整的名称或序号。` };
+  }
+  return { error: `未找到匹配任务：${arg}。发送 ${TASK_LIST_CMD} 查看。` };
+}
+
 export interface WeComChannelConfig {
   enabled: boolean;
   chatId?: string;
@@ -185,6 +282,9 @@ export class WeComChannel implements OutputChannel, HookChannel {
   private cardEventHandler?: WeComCardEventHandler;
   private currentUserAccount: string = '';
   private sessionTitleResolver: ((sessionId: string) => string) | null = null;
+  private taskBridge: WeComTaskBridge | null = null;
+  /** 被指定为「任务通知」的那个机器人的配置 id（设置里的 tasks_notify_bot） */
+  private taskNotifyBotId: string | null = null;
   /** 是否推送 thinking 文本 */
   pushThinking = true;
   /** 是否推送工具调用事件 */
@@ -208,6 +308,73 @@ export class WeComChannel implements OutputChannel, HookChannel {
 
   setSessionTitleResolver(resolver: (sessionId: string) => string): void {
     this.sessionTitleResolver = resolver;
+  }
+
+  /** 注入定时任务桥接（列任务 / 触发一次）。未注入时 /tasks 与 /run 退回普通消息转发。 */
+  setTaskBridge(bridge: WeComTaskBridge): void {
+    this.taskBridge = bridge;
+  }
+
+  /**
+   * 告诉通道「哪个机器人被指定为任务通知」。
+   *
+   * 它与普通机器人的区别只在**入站**：普通机器人没绑会话时会回「当前没有绑定会话」，
+   * 而任务通知机器人压根不参与会话转发 —— 用户给它发消息应该得到任务侧的说明，
+   * 而不是那句误导的绑定提示。出站（推送任务结果）走 pushTaskResult，与这个开关无关。
+   */
+  setTaskNotifyBotId(botConfigId: string | null): void {
+    this.taskNotifyBotId = botConfigId || null;
+  }
+
+  /** 入站消息该转发给哪个会话（bot 绑定 → 持久化映射 → 兜底）。无绑定返回 undefined。 */
+  private resolveBoundSessionId(chatId: string): string | undefined {
+    if (this.currentBotId) {
+      for (const [sid, bid] of this.sessionBotMap) {
+        if (bid === this.currentBotId) return sid;
+      }
+    }
+    const mapping = getMapping(chatId);
+    if (mapping) return mapping.sessionId;
+    return this.chatIdToSession.get(chatId) || this.lastActiveSession.get(chatId);
+  }
+
+  /**
+   * 把一次任务运行的结果推给「任务通知机器人」。
+   *
+   * `botConfigId` 是机器人列表里那一条的 id（设置里的 tasks_notify_bot）。空 = 用户没开推送，
+   * 静默返回。目标会话取该 bot 的 chatId，留空回退当前登录账号（= 推给自己）。
+   *
+   * 与「机器人」页的关系：**只借它的凭据发消息**，不等同于会话绑定 —— 任务推送既不读
+   * sessionBotMap 也不往里写，所以选中它不会把任何会话绑上去。
+   */
+  async pushTaskResult(botConfigId: string, p: WeComTaskResult): Promise<void> {
+    if (!botConfigId) return;
+    const entry = this.botPool.get(botConfigId);
+    if (!entry) {
+      logger.warn(`[wecom-channel] 任务通知机器人 ${botConfigId} 不在连接池里（可能已删除），跳过推送`);
+      return;
+    }
+    const chatId = entry.config.chatId || this.currentUserAccount;
+    if (!chatId) {
+      logger.warn('[wecom-channel] 任务通知机器人没有可用会话，跳过推送');
+      return;
+    }
+    await this.ensureBotWebSocket(botConfigId);
+    const state = p.status === 'done' ? '完成' : '未成功';
+    const dur = p.durationMs != null ? formatDuration(p.durationMs) : '—';
+    // 正文用**完整**结果（不是一行摘要）：桌面上看到什么，这里就推什么
+    const { text: body, cut } = clampBytes(p.resultText?.trim() || p.text || '—', 3400);
+    const md = [
+      `**[Lynel Desktop] ${p.taskName} · ${state}**`,
+      '',
+      `- 时间：${shortTime(p.finishedAt ?? p.startedAt)}`,
+      `- 耗时：${dur}`,
+      `- 状态：${TASK_STATUS_CN[p.status] ?? p.status}`,
+      '',
+      body,
+      ...(cut ? ['', '_（内容过长，已截断；完整结果见 Lynel Desktop）_'] : []),
+    ].join('\n');
+    await this.sendWeComReply(chatId, md, botConfigId);
   }
 
   setCurrentUserAccount(account: string): void {
@@ -1065,11 +1232,42 @@ export class WeComChannel implements OutputChannel, HookChannel {
     // 去除末尾换行，确保 session.send 始终追加 \r
     text = text.replace(/[\r\n]+$/, '');
 
+    // 任务通知机器人：先把任务指令接住（这部分对所有机器人本来也成立），
+    // 但**没绑会话时不要再回那句「请先绑定会话」** —— 它本来就不参与会话转发，
+    // 那句话会把用户引到错误的方向。改成说明它的用途。
+    if (this.taskNotifyBotId && this.currentBotId === this.taskNotifyBotId) {
+      const taskCmd = this.taskBridge ? parseTaskCommand(text) : null;
+      if (taskCmd) {
+        void this.handleTaskCommand(chatId, taskCmd);
+        return;
+      }
+      if (!this.resolveBoundSessionId(chatId)) {
+        logger.info('[wecom-channel] 任务通知机器人收到非任务消息（未绑会话），回任务说明');
+        this.sendWeComReply(
+          chatId,
+          '这是任务通知机器人，只响应 `/tasks`（列出任务）与 `/run <序号或名称>`（立即执行）。\n'
+          + '任务跑完的结果也会推到这里。',
+        ).catch((err) => logger.error('[wecom-channel] 任务机器人说明发送失败:', err));
+        return;
+      }
+      // 绑了会话就按普通消息继续往下走（同一个人可能两种用法都要）
+    }
+
     // 控制指令拦截：/interrupt、/escape 等 → 发送原始控制字符到 PTY
     const controlChar = CONTROL_COMMANDS[text];
     if (controlChar) {
       void this.handleControlCommand(chatId, body, text, controlChar);
       return;
+    }
+
+    // 任务指令：/tasks 列任务、/run <序号|名称> 触发一次。
+    // 未注入桥接时 taskBridge 为 null，`/tasks` 会被当成普通文本转发给 Claude。
+    if (this.taskBridge) {
+      const taskCmd = parseTaskCommand(text);
+      if (taskCmd) {
+        void this.handleTaskCommand(chatId, taskCmd);
+        return;
+      }
     }
 
     // 所有消息直接转发给 Claude，不再拦截 / 命令
@@ -1098,22 +1296,7 @@ export class WeComChannel implements OutputChannel, HookChannel {
       return;
     }
 
-    // 多 bot 模式：通过 currentBotId 反查绑定的 session
-    let sessionId: string | undefined;
-    if (this.currentBotId) {
-      for (const [sid, bid] of this.sessionBotMap) {
-        if (bid === this.currentBotId) {
-          sessionId = sid;
-          break;
-        }
-      }
-    }
-    // 兜底：用持久化映射 / chatIdToSession（兼容旧路由）
-    if (!sessionId) {
-      const mapping = getMapping(chatId);
-      if (mapping) sessionId = mapping.sessionId;
-      else sessionId = this.chatIdToSession.get(chatId) || this.lastActiveSession.get(chatId);
-    }
+    const sessionId = this.resolveBoundSessionId(chatId);
     if (!sessionId) {
       logger.info('[wecom-channel] no active session for inbound message');
       this.sendWeComReply(chatId, '当前没有绑定会话，请先通过 Lynel Desktop 为当前机器人绑定一个会话。').catch((err) =>
@@ -1143,6 +1326,75 @@ export class WeComChannel implements OutputChannel, HookChannel {
   private forwardWecomPrompt(sessionId: string, text: string): void {
     this.wecomOriginatedTexts.set(sessionId, { text, at: Date.now() });
     session.sendSafe(sessionId, text);
+  }
+
+  /**
+   * 任务指令：`/tasks` 列表、`/run <序号|名称>` 触发一次。
+   *
+   * 触发走的是与桌面「立即执行」同一个入口（scheduler.runTaskNow），所以单任务去重口径一致：
+   * 该任务已有非终态 run 时不新建，回执里说明是既有那次。
+   */
+  private async handleTaskCommand(
+    chatId: string,
+    cmd: { kind: 'list' } | { kind: 'run'; arg: string },
+  ): Promise<void> {
+    if (!this.taskBridge) {
+      logger.warn('[wecom-channel] 收到任务指令但 taskBridge 未注入，忽略');
+      return;
+    }
+    logger.info(`[wecom-channel] 任务指令 kind=${cmd.kind} chatId=${chatId}`);
+    try {
+      const all = this.taskBridge.list();
+      if (all.length === 0) {
+        await this.sendWeComReply(chatId, '还没有定时任务，请先在 Lynel Desktop 的任务页新建。');
+        return;
+      }
+
+      if (cmd.kind === 'list') {
+        const rows = all.map((t, i) => {
+          const state = t.running
+            ? '运行中'
+            : t.lastStatus
+              ? (TASK_STATUS_CN[t.lastStatus] ?? t.lastStatus)
+              : '还没跑过';
+          const next = !t.enabled ? '已停用' : t.nextRunAt != null ? `下次 ${shortTime(t.nextRunAt)}` : '—';
+          return `| ${i + 1} | ${t.name} | ${t.schedule} | ${state} · ${next} |`;
+        });
+        const md = [
+          '**Lynel Desktop** · 任务列表',
+          '',
+          '| # | 任务 | 调度 | 状态 |',
+          '|---|------|------|------|',
+          ...rows,
+          '',
+          `回复 \`${TASK_RUN_CMD} <序号或名称>\` 立即执行某个任务。`,
+        ].join('\n');
+        await this.sendWeComReply(chatId, md);
+        return;
+      }
+
+      const resolved = resolveTaskArg(cmd.arg, all);
+      if ('error' in resolved) {
+        await this.sendWeComReply(chatId, resolved.error);
+        return;
+      }
+      const task = resolved.task;
+      const idx = all.indexOf(task) + 1;
+      const res = this.taskBridge.run(task.id);
+      if (!res) {
+        await this.sendWeComReply(chatId, `任务 ${task.name} 已不存在，请发送 ${TASK_LIST_CMD} 刷新。`);
+        return;
+      }
+      if (res.deduped) {
+        await this.sendWeComReply(chatId, `#${idx} ${task.name} 已有一次运行在进行中，未重复触发。`);
+        return;
+      }
+      const off = task.enabled ? '' : '（该任务当前已停用）';
+      await this.sendWeComReply(chatId, `已触发 #${idx} ${task.name}${off}，可在 Lynel Desktop 的任务页查看运行流水。`);
+    } catch (err) {
+      logger.error('[wecom-channel] task command failed:', err);
+      await this.sendWeComReply(chatId, `执行失败：${errMessage(err)}`).catch(() => {});
+    }
   }
 
   /** 处理企业微信控制指令，发送原始控制字符到 PTY */
@@ -1223,6 +1475,8 @@ export class WeComChannel implements OutputChannel, HookChannel {
       '| `/ctrl-d` | 发送 Ctrl+D（EOF） |',
       '| `/ctrl-z` | 发送 Ctrl+Z（SIGTSTP） |',
       '| `/screenshot` | 截取当前终端画面 |',
+      '| `/tasks` | 列出所有定时任务 |',
+      '| `/run <序号或名称>` | 立即执行某个定时任务 |',
       '| `/help` | 显示本帮助 |',
       '',
       '## 常见操作',

@@ -75,11 +75,12 @@
           <button
             class="bot-select"
             :disabled="!isBotAvailable(b.id)"
-            :title="getBotBoundSessionName(b.id) ? `已绑定到 ${getBotBoundSessionName(b.id)}` : ''"
+            :title="isTaskNotifyBot(b.id) ? '这个机器人用于定时任务通知，不能绑定会话' : (getBotBoundSessionName(b.id) ? `已绑定到 ${getBotBoundSessionName(b.id)}` : '')"
             @click="onSelectBot(b.id)"
           >
             <span class="bot-name">{{ b.name || b.botId }}</span>
-            <span v-if="getBotBoundSessionName(b.id)" class="bound-inline">（已绑定 {{ getBotBoundSessionName(b.id) }}）</span>
+            <span v-if="isTaskNotifyBot(b.id)" class="bound-inline">（任务通知专用）</span>
+            <span v-else-if="getBotBoundSessionName(b.id)" class="bound-inline">（已绑定 {{ getBotBoundSessionName(b.id) }}）</span>
           </button>
           <button
             v-if="b.id === currentBotId"
@@ -116,6 +117,7 @@ import FavoriteStar from './FavoriteStar.vue'
 import Icon from './Icon.vue'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
 import { useBotsStore } from '../stores/bots'
+import { useSettingsStore } from '../stores/settings'
 import { useFavoritesStore, toFavorite } from '../stores/favorites'
 import { pushToast } from '../composables/useToast'
 
@@ -127,6 +129,7 @@ const emit = defineEmits<{ (e: 'select'): void }>()
 
 const sessions = useSessionsStore()
 const botsStore = useBotsStore()
+const settings = useSettingsStore()
 const favorites = useFavoritesStore()
 const showTip = ref(false)
 const itemEl = ref<HTMLElement | null>(null)
@@ -306,7 +309,13 @@ function getBotBoundSessionName(botId: string): string | undefined {
   return sessions.getBotBoundSessionName(botId)
 }
 
+/** 任务通知机器人不给会话用：它要给所有任务推结果，被会话抢走就没得推了 */
+function isTaskNotifyBot(botId: string): boolean {
+  return !!botId && String(settings.cfg?.tasks_notify_bot ?? '') === botId
+}
+
 function isBotAvailable(botId: string): boolean {
+  if (isTaskNotifyBot(botId)) return false
   const sessionId = sessions.botBindings[botId] || sessions.sessionBots[botId]
   return !sessionId || sessionId === props.meta.id
 }

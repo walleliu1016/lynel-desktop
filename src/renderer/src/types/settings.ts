@@ -59,6 +59,8 @@ export interface Settings {
   code: CodeConfig
   /** 定时任务全局并发上限（同时运行的 run 数） */
   tasks_max_concurrency: number
+  /** 「任务通知机器人」：引用机器人列表里某一个的 id；空 = 不推送 */
+  tasks_notify_bot: string
   /** 定时任务的固定工作目录，留空 = ~/.lynel-desktop/tasks/ */
   tasks_dir: string
   /** 是否启用 ASCII 电子宠物（buddy） */

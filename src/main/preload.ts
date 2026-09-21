@@ -212,6 +212,9 @@ const api = {
   tasksRun: (runId: string) => ipcRenderer.invoke('tasks:run', runId),
   tasksRunEvents: (runId: string, opts: unknown) => ipcRenderer.invoke('tasks:runEvents', runId, opts),
   tasksPreview: (schedule: unknown) => ipcRenderer.invoke('tasks:preview', schedule),
+  tasksTemplates: () => ipcRenderer.invoke('tasks:templates'),
+  tasksSaveTemplate: (input: unknown) => ipcRenderer.invoke('tasks:saveTemplate', input),
+  tasksDeleteTemplate: (id: string) => ipcRenderer.invoke('tasks:deleteTemplate', id),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

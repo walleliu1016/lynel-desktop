@@ -5,7 +5,7 @@
 //   Linux:   app.setBadgeCount + 系统通知
 // 通知点击后会激活主窗口并切到对应 session tab。
 
-import { app, BrowserWindow, Notification, type Notification as NotificationType } from 'electron';
+import { app, BrowserWindow, Notification, Tray, type Notification as NotificationType } from 'electron';
 import path from 'node:path';
 import { getLogger } from './log.js';
 import { getBus } from './events.js';
@@ -51,6 +51,8 @@ export type PendingChangeHandler = (count: number, entries: AttentionPendingEntr
 class WindowAttention {
   private pending = new Map<string, AttentionPendingEntry>();
   private win: BrowserWindow | null = null;
+  /** 托盘实例（index.ts 建好后注入）。后台弹任务结果要用它的 displayBalloon。 */
+  private tray: Tray | null = null;
   private onPendingChange: PendingChangeHandler | null = null;
   private dockBouncedThisBurst = false;
   /** 上一次 pending 非空时的快照，用于判断"从 0 变非 0"（触发 dock bounce） */
@@ -58,6 +60,10 @@ class WindowAttention {
 
   attachToWindow(win: BrowserWindow): void {
     this.win = win;
+  }
+
+  attachTray(tray: Tray): void {
+    this.tray = tray;
   }
 
   setOnPendingChange(cb: PendingChangeHandler): void {
@@ -99,7 +105,8 @@ class WindowAttention {
     return `${toolName} 待审批`;
   }
 
-  private isForeground(): boolean {
+  /** 窗口可见 && 未最小化 && 有焦点。定时任务用它决定「应用内 toast」还是「托盘气泡」。 */
+  isForeground(): boolean {
     const w = this.win;
     if (!w || w.isDestroyed()) return false;
     return w.isVisible() && !w.isMinimized() && w.isFocused();
@@ -161,11 +168,26 @@ class WindowAttention {
     }
   }
 
-  /** 任务失败通知（定时任务用）。成功不打扰用户。 */
-  notifyTaskFailure(taskName: string, body: string): void {
-    this.show(`${APP_DISPLAY_NAME} · 任务失败`, `${taskName}\n${body}`, () =>
-      this.focusMainWindow(),
-    );
+  /**
+   * 任务结果的系统侧提示（**只在窗口不在前台时调用** —— 前台由渲染层的右上角 toast 负责，
+   * 两边都弹会重复）。
+   *
+   * win32 用托盘气泡（贴着托盘图标出现，用户视线本来就在那儿）；macOS / Linux 没有
+   * displayBalloon，退回系统通知。
+   */
+  showTaskPopup(title: string, body: string, onClick?: () => void): void {
+    if (PLATFORM === 'win32' && this.tray) {
+      try {
+        this.tray.displayBalloon({ title, content: body, iconType: 'info', noSound: false });
+        // displayBalloon 没有 click 回调。气泡本身不带交互，想看详情就点托盘图标
+        // （onTrayActivate → focusMainWindow），所以 onclick 只对系统通知那条路径有意义。
+        void onClick;
+        return;
+      } catch (err) {
+        logger.warn('displayBalloon failed，退回系统通知:', err);
+      }
+    }
+    this.show(title, body, onClick);
   }
 
   private showNotification(entry: AttentionPendingEntry): void {

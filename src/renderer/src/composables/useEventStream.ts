@@ -1,6 +1,9 @@
 import { onMounted, onBeforeUnmount, watch } from 'vue'
 import { EventsOn } from './useElectron'
 import { useSessionsStore, sessionDisplayTitle } from '../stores/sessions'
+import { useTasksStore } from '../stores/tasks'
+import { formatDuration } from '../utils/tasks'
+import { statusLabel } from '../utils/taskStatus'
 import { useTabsStore } from '../stores/tabs'
 import { useRecentStore } from '../stores/recent'
 import { pushToast, type ToastLevel } from './useToast'
@@ -10,6 +13,7 @@ export function useEventStream() {
   const sessions = useSessionsStore()
   const tabs = useTabsStore()
   const recent = useRecentStore()
+  const tasks = useTasksStore()
   const cleanups: Array<() => void> = []
   let hookCleanup: (() => void) | null = null
 
@@ -167,6 +171,29 @@ export function useEventStream() {
       { immediate: true }
     )
 
+    // 定时任务跑完：主进程判断「窗口在前台」时才发这条（后台走托盘气泡），
+    // 所以这里只负责弹右上角 toast —— 不会和托盘那条重复。
+    cleanups.push(EventsOn('tasks:finished', (payload: TaskFinishedPayload) => {
+      const p = payload ?? ({} as TaskFinishedPayload)
+      if (!p.taskName) return
+      const level: ToastLevel = p.status === 'done' ? 'info' : p.status === 'skipped' ? 'warn' : 'error'
+      pushToast({
+        level,
+        source: String(p.taskName),
+        message: [whenText(p), durText(p), statusLabel(p.status), String(p.text ?? '')]
+          .filter(Boolean)
+          .join(' · '),
+        // 失败留久一点（成功 6s 够看一眼，失败可能要说原因）
+        duration: p.status === 'done' ? 6000 : 12000,
+        onClick: () => void gotoTasksRun(p.taskId, p.runId),
+      })
+    }))
+
+    // 托盘气泡被点 / 托盘菜单跳转：只切过去，不再弹一次 toast
+    cleanups.push(EventsOn('tasks:open', (payload: { taskId?: string; runId?: string }) => {
+      if (payload?.taskId) void gotoTasksRun(payload.taskId, payload.runId)
+    }))
+
     // 通知 / 托盘点击：恢复 + 聚焦主窗口 + 切到对应 session tab
     cleanups.push(EventsOn('attention:focus-session', (payload: string) => {
       try {
@@ -184,10 +211,49 @@ export function useEventStream() {
     }))
   })
 
+  /** 跳到某个任务的某一次运行（toast 点击 / 托盘跳转共用）。 */
+  async function gotoTasksRun(taskId?: string, runId?: string) {
+    if (!taskId) return
+    tabs.openTasks()
+    try {
+      await tasks.select(taskId)
+      // select 会先自动打开最近一次；这里再切到指定那次（同一次时是幂等的）
+      if (runId) await tasks.openRun(runId)
+    } catch (e) {
+      console.error('[tasks] 跳转运行失败:', e)
+    }
+  }
+
   onBeforeUnmount(() => {
     hookCleanup?.()
     cleanups.forEach((fn) => fn())
   })
 
   return { sessions }
+}
+
+interface TaskFinishedPayload {
+  taskId?: string
+  runId?: string
+  taskName?: string
+  status?: string
+  startedAt?: number | null
+  finishedAt?: number | null
+  durationMs?: number | null
+  text?: string
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+/** 执行时间：优先用结束时刻，退回开始时刻 */
+function whenText(p: TaskFinishedPayload): string {
+  const ms = p.finishedAt ?? p.startedAt
+  if (!ms) return ''
+  const d = new Date(ms)
+  return `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
+
+/** 执行耗时 */
+function durText(p: TaskFinishedPayload): string {
+  return typeof p.durationMs === 'number' ? formatDuration(p.durationMs) : ''
 }

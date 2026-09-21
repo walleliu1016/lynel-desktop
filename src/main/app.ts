@@ -41,7 +41,10 @@ import { notifyExternal, errMessage } from './channels/notify-error.js';
 import { OutputBatcher } from './output-batcher.js';
 import { consumeInputForExitDetect, type EscapePhase } from './exit-detect.js';
 import { initUpdater } from './updater/index.js';
-import { initTasks, tasksShutdown } from './tasks/index.js';
+import { initTasks, tasksShutdown, setTaskResultSink } from './tasks/index.js';
+import { getTask, listLiveRuns, listTasks } from './tasks/store.js';
+import { describeSchedule, scheduleOf } from './tasks/schedule.js';
+import { runTaskNow as schedulerRunTaskNow } from './tasks/scheduler.js';
 import { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
 import { readFavoriteSessions, addFavorite as writeFavorite, removeFavorite as dropFavorite, mergeFavoriteTitles } from './favorites.js';
 import { readCodexModelProvider, mergeOmpModelsYml, mergeCodexConfigToml, mergeOpencodeConfig, applyClaudeEnv, migrateActiveProviders, AGENT_KINDS } from './providers-apply.js';
@@ -361,6 +364,19 @@ function clearTerminatedFlag(sessionId: string): void {
 export class App {
   private window: BrowserWindow | null = null;
   private settingsStore = getStore('settings');
+
+  /** 把「哪个机器人是任务通知机器人」同步给通道（改设置后立即生效） */
+  private syncTaskNotifyBotId(): void {
+    let botId = '';
+    try {
+      const v = this.settingsStore.get('tasks_notify_bot', '');
+      if (typeof v === 'string') botId = v.trim();
+    } catch {
+      /* 读不到设置就当没配 */
+    }
+    this.wecomChannel.setTaskNotifyBotId(botId || null);
+  }
+
   private instanceStore = getStore('instance');
   private providersStore = getStore('providers');
   private hookServer: HookServer | null = null;
@@ -486,6 +502,48 @@ export class App {
       this.ptyOutBatcher.clear(id);
       // 会话删除时一并关掉它的项目终端，否则 shell PTY 会泄漏成孤儿进程
       closeShell(id);
+    });
+    // 企业微信侧的任务指令：/tasks 列任务、/run <序号|名称> 触发一次。
+    // 触发复用 scheduler.runTaskNow —— 与桌面「立即执行」是同一条去重口径，
+    // 否则手机上连发两次会起两个 claude 并发写同一个 jsonl。
+    // 任务结果的对外出口：机器人列表里选中的那一个（设置 tasks_notify_bot）。
+    // 每次推送前重读设置 —— 改完设置立即生效，不用重启。
+    // 任务模块不认识通道，通道也不认识任务，接线只在这里。
+    setTaskResultSink((p) => {
+      let botId = '';
+      try {
+        const v = this.settingsStore.get('tasks_notify_bot', '');
+        if (typeof v === 'string') botId = v.trim();
+      } catch {
+        /* 读不到设置就当没配 */
+      }
+      if (!botId) return;
+      void this.wecomChannel.pushTaskResult(botId, p).catch((err) => {
+        console.error('[app] 任务结果推送失败:', err);
+      });
+    });
+    // 让通道知道哪个机器人是任务通知机器人：它收到消息时给任务侧说明，
+    // 而不是「请先绑定会话」那句误导提示。设置改动时重新同步。
+    this.syncTaskNotifyBotId();
+    this.wecomChannel.setTaskBridge({
+      list: () => {
+        const live = new Set(listLiveRuns().map((r) => r.taskId));
+        return listTasks().map((t) => ({
+          id: t.id,
+          name: t.name,
+          enabled: t.enabled === 1,
+          schedule: describeSchedule(scheduleOf(t)),
+          lastStatus: t.lastStatus,
+          nextRunAt: t.nextRunAt,
+          running: live.has(t.id),
+        }));
+      },
+      run: (taskId: string) => {
+        if (!getTask(taskId)) return null;
+        // 先查一次用于回执文案：runTaskNow 返回的 id 无法区分「新建」与「复用既有」
+        const existing = listLiveRuns().some((r) => r.taskId === taskId);
+        return { runId: schedulerRunTaskNow(taskId), deduped: existing };
+      },
     });
     this.wecomChannel.setSessionTitleResolver((sessionId: string) => {
       const list = this.withRecentLock(() => readRecentSessions());
@@ -1616,6 +1674,7 @@ export class App {
       this.settingsStore.set(cfg);
       this.applyAutoSettings();
       this.applyPushSettings();
+      this.syncTaskNotifyBotId();
       if (cloudChanged) {
         this.applyCloudSettings();
       }
@@ -1915,6 +1974,12 @@ export class App {
       return { ok: true };
     });
     ipcMain.handle('app:bindSessionBot', (_event, sessionId: string, botId: string | null) => {
+      // 任务通知机器人不能同时被会话占用：一个 bot 一条连接，会话会把它抢去转发消息，
+      // 任务结果就没人推了。渲染层已经把它置灰，这里再兜一道 —— 旧界面 / 并发操作都可能绕过去。
+      const notifyBot = String(this.settingsStore.get('tasks_notify_bot', '') ?? '').trim();
+      if (botId && notifyBot && botId === notifyBot) {
+        return { ok: false, error: '这个机器人已用于任务通知，不能再绑定会话' };
+      }
       this.withRecentLock(() => {
         const list = readRecentSessions();
         const record = list.find((r) => r.sessionId === sessionId);

@@ -33,6 +33,8 @@ function defaultSettings(): Settings {
     code: defaultCodeConfig(),
     tasks_max_concurrency: 6,
     tasks_dir: '',
+    /** 「任务通知机器人」：引用机器人列表里某一个的 id。空 = 不推送 */
+    tasks_notify_bot: '',
     buddyEnabled: false,
     buddyRoleId: 'duck',
     buddyEye: '·',

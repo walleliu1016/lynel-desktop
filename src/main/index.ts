@@ -151,6 +151,9 @@ function createTray(): void {
   windowAttention.setOnPendingChange((_count, entries) => {
     rebuildTrayMenu(entries);
   });
+
+  // attention 需要托盘实例才能在后台用 displayBalloon 弹任务结果
+  windowAttention.attachTray(tray);
 }
 
 const gotTheLock = app.requestSingleInstanceLock();
