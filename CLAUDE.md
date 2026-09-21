@@ -179,7 +179,7 @@ npm run dist:linux
 - `src/main/channels/registry.ts` 的 `ChannelDispatcher` 注册多个 channel，逐个 dispatch 并隔离错误；支持事件级分发。
 - 现有通道：
   - `sse-channel.ts`：向订阅了 session 的 Express Response 写 `text/event-stream`。
-  - `wecom-channel.ts`：动态加载 `@wecom/wecom-openclaw-plugin`，将阶段数据发送到企业微信；处理 PermissionRequest 模板卡片推送与 `#allow/#deny` 命令；支持控制指令（`/interrupt`、`/ctrl-c`、`/escape`、`/ctrl-d`、`/ctrl-z`、`/screenshot`）。
+  - `wecom-channel.ts`：动态加载 `@wecom/wecom-openclaw-plugin`，将阶段数据发送到企业微信；处理 PermissionRequest 模板卡片推送与 `#allow/#deny` 命令；支持控制指令（`/interrupt`、`/ctrl-c`、`/escape`、`/ctrl-d`、`/ctrl-z`、`/screenshot`）。另有**定时任务指令** `/tasks` 与 `/run <序号|名称>`，经 `setTaskBridge` 注入（通道不直接依赖 tasks store），触发走的是与桌面「立即执行」同一个 `scheduler.runTaskNow`（去重口径一致，否则手机上连发两次会起两个 claude 写同一个 jsonl）。
   - `localfile-channel.ts`：将阶段事件写入本地 JSONL/JSON 文件，过滤流式 text/thinking 碎片。
   - `state-channel.ts`：把 `LynelEnvelope` + `HookEventLike` 映射为 session 状态（idle/running/awaiting_permission/done）和活动（thinking/working/streaming/idle/awaiting_permission），通过回调驱动前端 UI 更新（会话状态展示与状态点）。
   - `desktop-socket.ts`：Socket.IO 云端上行通道，支持 `desktop:auth`、`desktop:session:sync`、`desktop:envelope:push`、`desktop:hook:batch`、`desktop:hook:permission`、`desktop:hook:abort` 事件。
@@ -255,11 +255,13 @@ npm run dist:linux
 | `/ctrl-d` | `\x04` | Ctrl+D / EOF |
 | `/ctrl-z` | `\x1a` | Ctrl+Z / SIGTSTP |
 | `/screenshot` | `__screenshot__`（哨兵） | 截取当前终端画面（`renderBufferToPng` 渲染 PTY buffer → PNG 发送） |
+| `/tasks` | 前缀指令（`parseTaskCommand`） | 列出所有定时任务（序号 / 名称 / 调度 / 状态 + 下次运行） |
+| `/run <序号或名称>` | 前缀指令 | 立即执行某个定时任务；`resolveTaskArg` 依次按 序号 → 完整 id → 名称全等 → 名称唯一前缀 消歧，歧义时报错不猜 |
 | `/help` | `__help__`（哨兵） | 发送 markdown 帮助 |
 
 **处理流程：**
 
-1. **入口拦截**（入站消息）：`extractInboundText()` 提取文本（text / mixed）→ 剥离 `@botname` 前缀 → 去末尾换行 → `CONTROL_COMMANDS[text]` 命中则进 `handleControlCommand()` 并 `return`（不命中才走普通文本转发）。指令要求整条消息精确匹配，带多余字符不触发。
+1. **入口拦截**（入站消息）：`extractInboundText()` 提取文本（text / mixed）→ 剥离 `@botname` 前缀 → 去末尾换行 → `CONTROL_COMMANDS[text]` 命中则进 `handleControlCommand()` 并 `return` → 未命中再试 `parseTaskCommand()`（`/tasks`、`/run <参数>`，**带参数所以不进上面那张精确匹配表**）→ 都没命中才走普通文本转发。控制指令要求整条消息精确匹配，带多余字符不触发。`taskBridge` 未注入时任务指令会退回普通转发。
 2. **分发**：`handleControlCommand()` → `__screenshot__` → `handleScreenshot`；`__help__` → `handleHelp`；其余 → 解析目标会话 → `session.writeInput(sessionId, controlChar)`（原始字节，**不追加 `\r`**）→ 回执「已发送 xxx」。
 3. **目标会话解析**（与普通消息一致的三级路由）：引用消息头部（`**project** · 会话#N · xxxxxxxx` / `会话#N`，经 `resolveSessionArg` 依次 序号 → 精确 ID → 前缀唯一匹配）→ bot 绑定反查（`currentBotId` → `sessionBotMap`）→ 兜底（`getMapping` / `chatIdToSession` / `lastActiveSession`）。无目标 → 回「当前没有绑定会话，无法发送控制指令。」
 4. **截图特例**：`session.getBuffer()` 取终端原始缓冲 → `renderBufferToPng` → 走 bot 的 `wsClient.uploadMedia` + `sendMediaMessage` 发 PNG。
@@ -370,13 +372,20 @@ npm run dist:linux
 
 **模块划分**（`src/main/tasks/`）：
 - `paths.ts`：唯一工作目录 `tasksDir()`（读设置 `tasks_dir`，空则回退 `~/.lynel-desktop/tasks/`）+ `ensureTasksDir()`（`mkdir -p` + 落初始 `CLAUDE.md`，已存在不覆盖）。默认值**不要**指向安装目录：macOS 会破坏 `.app` 签名、electron-updater 升级会原地替换导致数据丢失、asar 内只读。
-- `db.ts`：**`node:sqlite` 的唯一接触点**（open / `PRAGMA journal_mode=WAL` / migration / close；`setDbFile()` 供测试切库）。库文件 `~/.lynel-desktop/tasks.db`。
+- `db.ts`：**`node:sqlite` 的唯一接触点**（open / `PRAGMA journal_mode=WAL` / migration / close；`setDbFile()` 供测试切库）。库文件 `~/.lynel-desktop/tasks.db`。schema **v2** 加了 `schedule_start_at` / `schedule_end_at`（生效区间）—— 必须走 `addColumn()` 的 `PRAGMA table_info` + `ALTER TABLE`，`CREATE TABLE IF NOT EXISTS` 只对全新库生效，老用户的库不加列就会 no such column。
 - `store.ts`：纯 CRUD + run 状态机，无业务逻辑。四张表 `tasks` / `runs` / `run_events` + `meta`(schema_version)。**`tasks` 表没有 `workdir` 字段**（cwd 是常量）；`run_events.payload` 存**原始 JSONL 行**（写入侧零解析，CLI 升级不丢字段，解析只在读取侧）；`deleteTask` 手动级联删 runs / run_events —— 表间没有外键（`runs.task_id` 未声明 REFERENCES），不删就只增不减。
-- `schedule.ts`：**纯函数**（不碰 DB、不碰时钟，时间一律由调用方传入）：`presetToCron` / `cronToPreset` / `computeNextRun`（只用 `croner` 的 `nextRun()`，不用它自带的 timer）/ `describeSchedule` / `isDue`，以及三个时间常量 `CATCH_UP_MS`(60min) / `QUEUE_TIMEOUT_MS`(30min) / `RUN_TIMEOUT_MS`(30min)。
+- `schedule.ts`：**纯函数**（不碰 DB、不碰时钟，时间一律由调用方传入）。调度模型是「一个 cron 表达式 + 可选的生效区间」：
+  - `Schedule` = `daily`（`M H * * <dow>`）| `interval`（分钟 `*/N * * * <dow>`、小时 `0 */N * * <dow>`、天 `M H */N * *`、月 `M H <几号> */N *`）| `once`（`run_at`）| `cron`（原样）。
+  - `scheduleToCron` / `cronToSchedule` 互转；`scheduleOf(row)` 从任务行还原（scheduler / IPC / 表单回填共用，**别再各写一份** —— 漏一处就会把生效区间抹平）；`computeNextRun` 用 `croner` 的 `nextRun()` + `startAt`/`stopAt` 选项（生效区间不进表达式，cron 没有日期边界）；`describeSchedule` 出人读摘要；`isWindowClosed` 供 scheduler 停用过期任务。
+  - **两处硬约束**：①「每天 / 按间隔·分钟 / 按间隔·小时」的星期落 cron 的 dow 字段（唯一星期来源，语义精确）；「按间隔·天 / 月」的 dow 会与 日/月 字段构成 **OR** 语义（实测 croner 同样：`0 9 */2 * 1` 在「每 2 天」**或**「周一」都触发），拼不出「每 2 天的周一」，故这两档**拒绝**受限星期并抛错。② `computeNextRun` 必须吞掉 `scheduleToCron` 抛的错（空的 / 越界表达式）返回 null：它由 30s 一次的 tick 调用，抛一次整个调度器停摆。
+  - 常量：`CATCH_UP_MS`(60min) / `QUEUE_TIMEOUT_MS`(30min) / `RUN_TIMEOUT_MS`(30min)。
 - `streamParse.ts`：**纯函数**，NDJSON 行 → 归一化事件（`parseStreamLine`）：`tool_result.content` 三态归一化、`usage` 白名单（原始 usage 含嵌套对象与字符串字段，直接 `Object.entries` 会渲染出一堆 `[object Object]`）、空 thinking block 过滤、`isResumeMissing`。**解析只在主进程做一次**（主 / 渲染是两个 bundle，不能互 import），`tasks:runEvents` IPC 返回的是归一化后的事件对象，渲染层只做折叠。
 - `runner.ts`：单次 run 的生命周期（spawn / 逐行消费 / 落库 / 推送 / 超时 kill / resume 回退）。**不建 run 记录**（调用方已建好 `queued`）。stdout 手写按 `\n` 切行（不用 `readline`：它会自作主张解析且不保序）；stderr 也进流（`type='stderr'`）并留尾部 20 行作为「无 result 事件」时的 error 文本；**成败以 `result` 事件的 `subtype` / `is_error` 判，exit code 只兜底**（存在 `subtype=success` + exit 0 但实际失败的场景）；没有 `result` 事件则无论 exit code 一律判 error。
 - `scheduler.ts`：模块级单例，30s tick + 内存队列 + 并发闸门（`tasks_max_concurrency`，默认 6）。tick 顺序：取启用任务 → `isDue`（`not_due` / `due` / `missed`；超 60min 补跑窗的 `missed` 直接推进 `nextRunAt`，`once` 类型标 `missed` 且 `enabled=0`）→ **单任务去重**（该 task 已有非终态 run 就跳过，不建 run 也不推进时间）→ 建 `queued` run + **先落库再入队**（崩溃恢复靠它）→ `drain()`。出队时 `now - enqueuedAt > 30min` 标 `skipped`；`markRunRunning` 必须**先写 running 再 start** —— 并发闸门数的是 running，不写会一口气把整个队列放出去。`nextRunAt` 为空时**只补算落库、不触发**（安全网，避免首次启动炸一堆）；正常情况下它在创建 / 编辑任务时就算好落库，表单预览和列表的「下次运行」直接可见。
-- `index.ts`：`initTasks(getMainWindow)`（照 `updater/index.ts` 的先例）+ `tasksShutdown()` + **12 个 IPC handler**（list / get / create / update / delete / setEnabled / runNow / cancel / runs / run / runEvents / preview）+ 三个推送（`tasks:changed` / `tasks:runChanged` / `tasks:runEvent`）。claude 路径每次调用重读设置（`claude_path`，回退 `spec.command`）。失败（`error` / `timeout` / `interrupted`）走 `windowAttention.notifyTaskFailure` 弹系统通知，成功不打扰。
+- `templates.ts`：用户自建模板，存 `~/.lynel-desktop/task-templates.json`（**不开新表**：模板是纯预填数据，不参与调度与状态机，放进 tasks.db 就得为它做迁移）。写盘先临时文件再 `rename`；文件缺失 / 损坏 / 条目形状不对一律逐条过滤当空列表 —— 模板读不出来只是少几个快捷入口，不该让任务面板打不开。内置模板在渲染层（`utils/taskTemplates.ts`，纯数据）。
+- `index.ts`：`initTasks(getMainWindow)`（照 `updater/index.ts` 的先例）+ `tasksShutdown()` + **15 个 IPC handler**（list / get / create / update / delete / setEnabled / runNow / cancel / runs / run / runEvents / preview / templates / saveTemplate / deleteTemplate）+ 三个推送（`tasks:changed` / `tasks:runChanged` / `tasks:runEvent`）。`tasks:preview` 同时回 `{ nextRuns, summary, error }` —— **渲染层因此不再需要第二份「预设 ↔ cron」模板逻辑**。claude 路径每次调用重读设置（`claude_path`，回退 `spec.command`）。
+
+**任务结果的提示按「窗口在不在前台」分流**（`notifyTaskFinished` 是唯一判定点，两边都弹会重复）：前台（`windowAttention.isForeground()` = 可见 && 未最小化 && 有焦点）→ IPC `tasks:finished` → 渲染层右上角 toast（复用 `ToastCenter`，展示任务名 / 执行时间 / 结果，点击跳到那次运行）；后台 → 托盘气泡 `displayBalloon`（win32）/ 系统通知（mac/Linux 没有 displayBalloon）。**所有终态都提示，含成功**（早期版本只挑 `error` / `timeout` / `interrupted`，`NOTIFY_STATUSES` 过滤已删）。两个已知限制：`displayBalloon` 没有 click 回调（要跳转得点托盘图标），且它在 Win11 上与系统通知外观几乎一致。
 
 **启动顺序**（`app.ts` 的 `registerIpcHandlers()`）：`ensureTasksDir()` → **`jsonl.setExcludedProjects([tasksDir()])`** → `initTasks()`。退出时 `tasksShutdown()`（停 tick → `killTree` 在跑的 run 并标 `interrupted` → 关库）。
 
@@ -400,7 +409,11 @@ npm run dist:linux
 
 **「立即执行」也走去重**：`runTaskNow` 先查 `listLiveRuns()`，该任务已有非终态 run 时**直接返回那个 run 的 id、不新建**（连点两下否则会起两个 claude 并发写同一 jsonl）；删除任务前先 `cancelTaskRuns(taskId)` 杀掉在跑的进程，再 `deleteTask`（级联删行的同时把进程留住 = UI 看不见也取消不了的孤儿 + 永久孤儿 `run_events`）。
 
-**渲染层**：`components/tasks/{TasksPane,TaskList,TaskDetailPane,TaskFormDialog,RunStreamView,ToolStepCard}.vue` + `stores/tasks.ts` + `utils/tasks.ts` + `types/tasks.ts`。`flattenRunEvents(events)` 是纯函数：按 `message.id` 分组（C1：assistant 是「一个 content block 一行」，同一 id 跨多行，不能按行边界切消息）、`tool_use.id` ↔ `tool_result.tool_use_id` 配对、StepCard 摘要映射、子代理按 `parent_tool_use_id` 缩进。**预设 ↔ cron 的模板逻辑在 `schedule.ts` 与 `TaskFormDialog.vue` 里各有一份**（前端不能 import 主进程模块，`buildExpr` / `detectPreset` 对应 `presetToCron` / `cronToPreset`，两边都含区间校验）；改模板要同步改两处。
+**渲染层**：`components/tasks/{TasksPane,TaskList,TaskDetailPane,TaskFormDialog,RunHistoryList,RunStreamView,ToolStepCard}.vue` + `stores/tasks.ts` + `utils/{tasks,taskStatus,taskTemplates}.ts` + `types/tasks.ts`，共享类在 `styles/tasks.css`（`.btn` / `.pill` / `.chip` / `.seg` / `.week` / `.blank` 曾在四个组件里各写一份，已漂移过，别再抄回去）。`flattenRunEvents(events)` 是纯函数：按 `message.id` 分组（C1：assistant 是「一个 content block 一行」，同一 id 跨多行，不能按行边界切消息）、`tool_use.id` ↔ `tool_result.tool_use_id` 配对、StepCard 摘要映射、子代理按 `parent_tool_use_id` 缩进；`result.resultText` 与上方助手正文按「忽略空白后相等」判重（`textRepeatsAbove`），是同一段话就不重复渲染。
+
+**详情页结构**：工具栏（名称 + `运行 / 历史·N` 分段 + 立即执行 + `⋯` 溢出菜单）→ 摘要 chips → 主体二选一（`stores/tasks.ts` 的 `detailView`）。**`select()` 会自动 `openRun(runs[0].id)`** —— 打开任务就有内容，之前停在空白要用户自己去历史里点一行。历史是 `RunHistoryList` 的时间轴（节点 + 连接线），不再平铺在详情下方。
+
+**表单**：新建 / 复制是两栏（左栏模板可搜索 + 分组「最近使用 / 我的模板 / 内置」），编辑是单栏（内容已在，套模板会覆盖用户改动）。执行频率 3 种模式 + 自定义 crontab，**cron 表达式一律由主进程构造**；渲染层只做「UI 星期(1–7) ↔ cron 星期(0–6)」的映射（`uiDayToCron` / `cronDayToUi`）与 `daysLabel` 文案。星期用 34×34 圆角方片 + 工作日/周末/全选快捷。
 
 **测试设施**：根 `vitest.config.ts` 存在**只为**把 `node:sqlite` alias 到 `tests/helpers/node-sqlite.ts` —— vitest 2.1.9 的 vite-node 把内置模块白名单写死成 `node:test`，不认识 `node:sqlite`，会把裸 id `sqlite` 丢给 Vite 解析而失败。生产代码仍直接 `import 'node:sqlite'`。`flattenRunEvents` 是渲染层纯函数，但测试放 `tests/main/tasks/flatten.test.ts`（不依赖 Vue / 浏览器，可用真实 fixture 驱动「解析 → 折叠」整条链路），这是有意打破 `tests/main/` 镜像 `src/main/` 的约定。
 
