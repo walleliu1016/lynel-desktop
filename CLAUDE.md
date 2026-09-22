@@ -55,7 +55,8 @@ npm run dist:linux
 注意：
 - `npm run test:smoke` 引用的 `scripts/smoke-test.ts` 不存在，该命令无法执行。
 - 仓库根目录同时存在 `package-lock.json` 和 `pnpm-lock.yaml`；`package.json` 中有 `pnpm.onlyBuiltDependencies` 配置。
-- 根目录和 `src/renderer/` 是两个独立的 npm 项目，渲染进程有独立的 `package.json` 和 `vitest`/`@playwright/test` 依赖，但其 `test` 脚本目前是占位符（`echo "no tests yet" && exit 0`）。
+- 根目录和 `src/renderer/` 是两个独立的 npm 项目，渲染进程有独立的 `package.json` 和 `vitest`/`@playwright/test` 依赖。渲染层测试用 `cd src/renderer && npx vitest run`（jsdom + `@vue/test-utils`，`src/renderer/vitest.config.ts`）—— 注意 `npm run test:main` **只跑** `tests/main`，不含渲染层。
+- 渲染层测试（`cd src/renderer && npx vitest run`）与主进程测试（`npm run test:main`）是两套，改渲染层时两个都要跑；`npx vue-tsc --noEmit` 也在 `src/renderer` 下执行。
 - `tests/main/` 目录镜像 `src/main/` 结构，测试文件命名对应源文件。
 
 ---
@@ -272,7 +273,13 @@ npm run dist:linux
 - 布局结构：左侧栏（280px，可折叠为 44px） | 中间内容区（flex:1）。**没有右侧 Trace 侧栏**。
   - 左侧栏（`HomeView.vue`）：顶部收起按钮 + 云状态；入口按钮（首页 / DeepSeek Harness / 搜索）；中部 SessionList；底部（账户 / 使用指南 / 设置）。
   - 中间内容区：GlobalTabs（首页 / 会话 / 设置 / 使用指南 / Harness）+ `.content`。
-  - 会话标签页内是「**终端 / Trace**」两个子页（`activeSubTab` + `subTabBySession` 按会话记忆）。Trace 不再是固定侧栏，而是每会话独立的全屏子页。
+  - 会话标签页内是「**终端 / Trace / 文件**」三个子页（`activeSubTab` + `subTabBySession` 按会话记忆）。Trace 不再是固定侧栏，而是每会话独立的全屏子页。
+- **终端子页左右分屏**：点终端输出里的文件路径不再跳「文件」子页，而是在终端右侧开出文件编辑分屏（左终端 / 右编辑器，中间可拖宽，右栏可收起）。触发入口是 `HomeView.onTerminalOpenFile` → `files.openInSplit()`；展开态存在 `stores/files.ts` 的 `splitOpen`，与文件现场一起**按会话**记忆；宽度是全局 localStorage `lynel:editor-split-width`（默认 480，钳制 320–动态上限，保证左侧终端至少 400px）。
+- **编辑器区只有一个实例**：`FileEditorPanel`（= `FileTabs` + 互斥的 `CodeEditor` / `CodeDiffView`）挂在「分屏右栏」或「CodeView」两处之一，由 `HomeView` 的 `hostInSplit` 同一个条件驱动 `v-if` 互斥。**不能让两个实例并存** —— `CodeEditor` 用 `file:///${relPath}` 建 Monaco model，Monaco 对同一 URI 只允许一个 model，第二个实例直接抛 `Cannot add model because it already exists!`。分屏右栏那一侧必须用 `v-if`（不能只靠子页的 `v-show`），因为切到 Trace / 文件子页时终端子页只是被 `v-show` 隐藏。
+- **切换瞬间也只有一个实例，靠的是 `CodeEditor` 里的一处时序**：宿主互换时 `.sub-pane` 的补丁顺序会「先挂新 `CodeEditor`、后卸 `CodeView` 里的 `FileEditorPanel`」，但 `CodeEditor.vue` 的 `switchModel()` 在 `await nextTick()` 之后才 `createModel`，而旧实例的 `model.dispose()` 是同步执行的（在同一个 flush 内）—— 所以新的 `createModel` 总在旧 model 消失之后跑。**改 `CodeEditor` 里那处 `nextTick` / `dispose` 时序前，必须先回来确认这条不变量还成立**，否则会出现两个 model 争同一 URI 的短暂窗口。
+- 已知代价：宿主切换（终端子页 ↔ 文件子页、展开 / 收起分屏）会重建 Monaco 编辑器，**撤销栈丢失**；文件内容不丢（草稿在 `stores/files.ts` 的 `drafts`）。
+- `styles/code.css` 的 `.code-workspace-theme` 是 `.code-view` 与 `EditorSplitPane` 共用的变量重映射类（把 UI 变量映射到 `--term-*`）。新增代码工作区容器时**必须挂这个类**，否则编辑器 / Git 面板配色会回退成 UI 面板色。
+- `composables/useResizablePanel.ts` 是拖宽面板的唯一实现（`CodeView` 文件树 / `GitPanel` 变更列表 / `EditorSplitPane` 右栏共用）。`handle` 表示手柄所在边：`'right'` 是面板在左、向右拖变宽；`'left'` 是面板在右、向右拖变窄。
 - TracePane：`src/renderer/src/components/trace/TracePane.vue`，会话子页的全屏面板
   - 顶部工具栏：请求数、总费用、刷新按钮、图过滤（model/errorsOnly）
   - 左侧请求缩略列表（240px，v2 分页 + 摘要索引）：状态点 · #seq · model · tokens · 延迟
@@ -485,6 +492,8 @@ npm run dist:linux
 - `docs/superpowers/plans/2026-08-09-multi-agent-ui.md` —— 多 Agent 前端 UI 实施计划。
 - `docs/superpowers/specs/2026-09-18-tasks-scheduler-design.md` —— 定时任务设计文档（调度 / SQLite 存储 / 流水渲染）。
 - `docs/superpowers/plans/2026-09-18-tasks-scheduler.md` —— 定时任务实施计划。
+- `docs/superpowers/specs/2026-09-22-terminal-file-split-design.md` —— 终端侧边文件编辑分屏设计文档。
+- `docs/superpowers/plans/2026-09-22-terminal-file-split.md` —— 终端侧边文件编辑分屏实施计划。
 
 ---
 
