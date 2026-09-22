@@ -61,7 +61,7 @@ const emit = defineEmits<{
   (e: 'data', data: string): void
   (e: 'starting'): void
   (e: 'ready'): void
-  /** 点击 workdir 内文件路径：请求在「文件」编辑器打开该 relPath */
+  /** 点击 workdir 内文件路径：请求在终端侧的分屏编辑器（文件面板）打开该 relPath */
   (e: 'open-file', payload: { sessionId: string; workdir: string; relPath: string }): void
 }>()
 
@@ -303,7 +303,7 @@ async function initializeTerminal() {
   }))
   // 文件路径可点击：http(s) 由上方 WebLinksAddon 打开浏览器。
   // 本地路径（含相对路径，以会话 workdir 为基准）：workdir 内文件交给父级在
-  // 「文件」编辑器打开 tab（emit open-file），目录 / workdir 外文件走系统默认方式
+  // 终端侧的分屏编辑器打开 tab（emit open-file），目录 / workdir 外文件走系统默认方式
   term.registerLinkProvider(new FileLinkProvider(term, props.workdir, (relPath) => {
     emit('open-file', { sessionId: props.sessionId, workdir: props.workdir, relPath })
   }))

@@ -68,7 +68,7 @@ async function onReset(c: { hash: string; shortHash: string }, mode: 'soft' | 'm
 }
 
 // ---------- 左右分栏宽度（localStorage 持久化，200–640px） ----------
-const { width: changesWidth, dragging, onResizeStart } = useResizablePanel({
+const { width: changesWidth, onResizeStart } = useResizablePanel({
   storageKey: 'lynel:git-changes-width',
   defaultWidth: 320,
   min: 200,

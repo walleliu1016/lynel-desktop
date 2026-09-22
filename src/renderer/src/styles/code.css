@@ -1,6 +1,8 @@
-/* 代码工作区配色跟随终端主题：把 UI 变量重映射为 --term-*（html 上全局可用）。
-   放在全局样式表而非组件的 scoped style —— 「文件」子页的 CodeView 与
-   「终端」子页的分屏右栏是两个组件，都要挂这个类。 */
+/* 代码工作区配色跟随终端主题：把 UI 变量重映射为 --term-*。
+   注意：这些变量**只对该类的子树生效**（html 上并没有全局生效）—— 所以每个
+   代码工作区宿主的根节点都必须自己挂上 `.code-workspace-theme`：「文件」子页的
+   CodeView 与「终端」子页的分屏右栏是两个组件，各挂一次。
+   放在全局样式表而非某一个组件的 scoped style，就是为了两个宿主共用同一份定义。 */
 .code-workspace-theme {
   --bg-panel: var(--term-bg);
   --text-primary: var(--term-fg);

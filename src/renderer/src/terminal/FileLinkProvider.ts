@@ -31,7 +31,7 @@ export class FileLinkProvider implements ILinkProvider {
   constructor(
     private readonly _terminal: Terminal,
     private readonly _workdir: string,
-    /** workdir 内文件被点击时回调（渲染层在「文件」编辑器打开该 relPath） */
+    /** workdir 内文件被点击时回调（渲染层在终端侧的分屏编辑器打开该 relPath） */
     private readonly _onOpenWorkdirFile: (relPath: string) => void,
   ) {}
 

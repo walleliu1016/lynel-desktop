@@ -1,10 +1,23 @@
 // 验证可拖宽面板 composable：上下限钳制、反向手柄、动态上限、持久化
-import { mount } from '@vue/test-utils'
-import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
+import { mount, type VueWrapper } from '@vue/test-utils'
+import { describe, expect, it, beforeEach, afterEach } from 'vitest'
 import { defineComponent, nextTick, shallowRef } from 'vue'
 import { useResizablePanel, type ResizablePanelOptions } from './useResizablePanel'
 
 const KEY = 'lynel:test-panel-width'
+
+/** 当前挂载的组件，供 afterEach 统一卸载 */
+let current: VueWrapper | null = null
+
+/** 每个用例结束后必须真卸载：清理逻辑在 `onBeforeUnmount` 里（撤 document 上的
+ *  mousemove / mouseup 并还原 body.userSelect），不跑它就会把监听和样式残留到下一个
+ *  用例 —— 靠「后挂载的实例先响应」侥幸通过，一旦新增断言 localStorage / body 样式的
+ *  用例就会以难解的方式挂掉。 */
+function unmountCurrent() {
+  const w = current
+  current = null
+  w?.unmount()
+}
 
 /** composable 里用了 onBeforeUnmount，必须在组件上下文里调用 */
 function mountPanel(opts: Partial<ResizablePanelOptions> = {}) {
@@ -24,12 +37,16 @@ function mountPanel(opts: Partial<ResizablePanelOptions> = {}) {
       return () => null
     },
   }))
+  current = wrapper
   return { wrapper, api }
 }
 
 describe('useResizablePanel', () => {
   beforeEach(() => { localStorage.clear(); document.body.style.userSelect = '' })
-  afterEach(() => { document.body.style.userSelect = '' })
+  afterEach(() => {
+    unmountCurrent()
+    document.body.style.userSelect = ''
+  })
 
   it('无持久化值时用 defaultWidth', () => {
     const { api } = mountPanel()
@@ -140,9 +157,9 @@ describe('useResizablePanel', () => {
   })
 
   it('卸载时清理监听（拖拽中卸载不报错）', () => {
-    const { wrapper, api } = mountPanel()
+    const { api } = mountPanel()
     api.value!.onResizeStart(new MouseEvent('mousedown', { clientX: 100 }))
-    expect(() => wrapper.unmount()).not.toThrow()
+    expect(() => unmountCurrent()).not.toThrow()
     expect(api.value!.dragging.value).toBe(false)
     expect(document.body.style.userSelect).toBe('')
   })

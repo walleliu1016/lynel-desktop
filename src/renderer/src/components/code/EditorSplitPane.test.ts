@@ -1,5 +1,5 @@
 // 验证分屏右栏：头部标签、收起/跳转事件、拖宽钳制（保证左侧终端至少 400px）
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
@@ -28,43 +28,71 @@ vi.mock('../Icon.vue', () => ({
   default: { name: 'IconStub', props: ['name', 'size'], template: '<span :data-icon="name" />' },
 }))
 
+/** 建过的 observer 实例，供「卸载时断开」用例取用 */
+let observers: ResizeObserverStub[] = []
+
 class ResizeObserverStub {
   observe = vi.fn()
   disconnect = vi.fn()
   unobserve = vi.fn()
+  constructor() {
+    observers.push(this)
+  }
 }
 
 const WIDTH_KEY = 'lynel:editor-split-width'
+
+/** 当前挂载的右栏，供 afterEach 统一卸载 */
+let current: VueWrapper | null = null
+
+/** 必须真卸载而不是只清 body.innerHTML：`document.body.innerHTML = ''` 不会跑
+ *  onBeforeUnmount，ResizeObserver 不会 disconnect、拖拽挂在 document 上的
+ *  mousemove / mouseup 也会活到下一个用例（靠「最新的实例监听者胜出」侥幸通过）。 */
+function unmountCurrent() {
+  const w = current
+  current = null
+  w?.unmount()
+}
 
 /** 用固定容器宽度模拟真实分屏容器（jsdom 的 clientWidth 恒为 0）。
  *  宽度必须在挂载**之前**生效 —— 组件 onMounted 里的 clamp() 要读它。
  *
  *  不能只写在 attachTo 的容器上：VTU 会在该容器与组件根节点之间再插一层自己的
  *  挂载点 div（见 @vue/test-utils 的 `const el = document.createElement('div')`），
- *  组件的 `rootEl.parentElement` 是那一层，量不到写在容器上的宽度。故改从
- *  `Element.prototype` 上把这个只读 getter 打掉，无论父节点是哪一层都报同一宽度。 */
+ *  组件的 `rootEl.parentElement` 是那一层，量不到写在容器上的宽度。故从
+ *  `Element.prototype` 上把这个只读 getter 打掉。
+ *
+ *  且必须按 `this` 区分元素：只让「包含分屏根节点的容器」报出模拟宽度，其余元素
+ *  （尤其 `document.body` 和 `.editor-split` 自己）一律 0。否则把 dynamicMax 改成量
+ *  自身（上限 = 自身宽 - 404，自激振荡，是真 bug）或量 body 也能蒙混过关。 */
 let restoreClientWidth: (() => void) | null = null
 
 function mountPane(containerWidth: number) {
   restoreClientWidth?.()
-  const spy = vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(containerWidth)
+  const spy = vi.spyOn(Element.prototype, 'clientWidth', 'get').mockImplementation(function (this: Element) {
+    return this !== document.body && !!this.querySelector('.editor-split') ? containerWidth : 0
+  })
   // 只卸这一处 spy：不用 vi.restoreAllMocks()，否则 useElectron 那层 mock 的
   // 实现（FileChanged 返回一个清理函数等）也会被一起清空
   restoreClientWidth = () => spy.mockRestore()
   const container = document.createElement('div')
   document.body.appendChild(container)
-  return mount(EditorSplitPane, { attachTo: container })
+  const wrapper = mount(EditorSplitPane, { attachTo: container })
+  current = wrapper
+  return wrapper
 }
 
 describe('EditorSplitPane', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.clear()
+    observers = []
     vi.stubGlobal('ResizeObserver', ResizeObserverStub)
     document.body.style.userSelect = ''
   })
 
   afterEach(() => {
+    unmountCurrent()
     restoreClientWidth?.()
     restoreClientWidth = null
     document.body.innerHTML = ''
@@ -148,6 +176,14 @@ describe('EditorSplitPane', () => {
     // 同步读 style 只会读到挂载时的旧值 680，用例就不再能区分新旧行为了
     await nextTick()
     expect((wrapper.element as HTMLElement).style.width).toBe('680px')
+  })
+
+  it('卸载时断开 ResizeObserver', () => {
+    mountPane(1200)
+    const ro = observers[observers.length - 1]
+    expect(ro.disconnect).not.toHaveBeenCalled()
+    unmountCurrent()
+    expect(ro.disconnect).toHaveBeenCalled()
   })
 
   it('拖拽结束写入 localStorage', async () => {
