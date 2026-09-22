@@ -21,6 +21,15 @@
       <div class="exited-text">Claude 进程已退出</div>
       <button class="exited-btn" @click="reconnect">重新进入</button>
     </div>
+    <div
+      v-if="startupError"
+      data-testid="terminal-startup-error"
+      class="terminal-failed"
+    >
+      <div class="failed-title">启动失败</div>
+      <div class="failed-text">{{ startupError }}</div>
+      <button class="exited-btn" data-testid="startup-retry-btn" @click="retryStartup">重试</button>
+    </div>
   </div>
   <Teleport to="body">
     <div v-if="ctxOpen" class="term-ctx-overlay" @click="closeTermCtx" @contextmenu.prevent="closeTermCtx">
@@ -68,6 +77,8 @@ const emit = defineEmits<{
 const terminalEl = ref<HTMLElement | null>(null)
 const loading = ref(true)
 const exited = ref(false)
+/** 启动失败信息（主进程 startup-error sentinel 或本地 IPC 异常）；非空时展示「错误 + 重试」覆盖层 */
+const startupError = ref('')
 const spinnerEl = ref<HTMLElement | null>(null)
 let spinnerRaf = 0
 
@@ -378,6 +389,16 @@ async function initializeTerminal() {
       exited.value = true
       return
     }
+    // 主进程启动失败的结构化信号：展示失败覆盖层（带重试），不写入终端缓冲
+    if (line.startsWith('{"type":"startup-error"')) {
+      try {
+        startupError.value = JSON.parse(line).message || '启动终端失败'
+      } catch {
+        startupError.value = '启动终端失败'
+      }
+      revealTerminal()
+      return
+    }
     term?.write(line)
     // 删除/回退键容易导致 xterm.js canvas renderer 残留旧字符；
     // 刷新光标所在行，强制重绘确保显示与 PTY 状态一致。
@@ -391,12 +412,19 @@ async function initializeTerminal() {
   // fallback 真正兜底：30s 内无可见内容则强制 reveal
   fallbackTimer = setTimeout(() => revealTerminal(), 30000)
 
+  await startPtyFlow()
+}
+
+/** fit → IPC 拉起 PTY 的启动流程；失败设 startupError 展示重试覆盖层。重试时也走这里。 */
+async function startPtyFlow(): Promise<void> {
+  const t = term
+  if (!t) return
   try {
     emit('starting')
     await fitWithRetry()
     await new Promise((resolve) => requestAnimationFrame(resolve))
     forceViewportSync()
-    const ptyExisted = await OpenSessionTerminalSized(props.sessionId, props.workdir, term.cols, term.rows)
+    const ptyExisted = await OpenSessionTerminalSized(props.sessionId, props.workdir, t.cols, t.rows)
     ptyConnected = true
 
     // 强制刷新以触发 onRender（此时 ptyConnected 已为 true，可以正确检查 buffer）
@@ -416,9 +444,17 @@ async function initializeTerminal() {
       if (bufferHasVisibleContent()) revealTerminal()
     }
   } catch (e: any) {
+    startupError.value = e?.message || String(e)
     revealTerminal()
-    term?.writeln(`\r\n启动 Claude 失败：${e?.message || e}`)
   }
+}
+
+/** 失败覆盖层的重试：清错误 → 重新拉起 PTY（主进程 in-flight 去重，重复点击安全） */
+async function retryStartup(): Promise<void> {
+  startupError.value = ''
+  if (fallbackTimer) clearTimeout(fallbackTimer)
+  fallbackTimer = setTimeout(() => revealTerminal(), 30000)
+  await startPtyFlow()
 }
 
 async function fitWithRetry(maxAttempts = 10): Promise<void> {
@@ -632,6 +668,37 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .exited-btn:hover { background: var(--accent-deep); }
+
+/* 启动失败覆盖层：上错误信息、下重试按钮（布局同 terminal-exited） */
+.terminal-failed {
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 24px;
+  background: var(--bg-terminal-loading);
+}
+
+.failed-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--status-error);
+}
+
+.failed-text {
+  max-width: 80%;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  text-align: center;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+}
 
 .xterm-container :deep(.xterm-viewport)::-webkit-scrollbar {
   width: 8px;

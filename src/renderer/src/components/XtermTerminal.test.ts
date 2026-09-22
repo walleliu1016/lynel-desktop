@@ -165,4 +165,49 @@ describe('XtermTerminal', () => {
     expect(fitMocks[0]).toHaveBeenCalled()
     expect(ResizeTerminal).toHaveBeenCalledWith('sid-1', 120, 30)
   })
+
+  it('startup-error sentinel 展示「错误 + 重试」覆盖层，点重试重新拉起并收起', async () => {
+    const wrapper = mount(XtermTerminal, {
+      props: { sessionId: 'sid-1', workdir: '/tmp', visible: true },
+    })
+    const terminalEl = wrapper.find('.xterm-container').element as HTMLElement
+    Object.defineProperty(terminalEl, 'clientWidth', { value: 1000, configurable: true })
+    Object.defineProperty(terminalEl, 'clientHeight', { value: 500, configurable: true })
+    await wrapper.vm.$nextTick()
+    await flushAsync()
+
+    // 主进程启动失败：经 session:sid-1 通道发结构化 sentinel
+    eventHandlers.get('session:sid-1')?.('{"type":"startup-error","message":"probe 超时 (8000ms)"}')
+    await wrapper.vm.$nextTick()
+
+    const errOverlay = wrapper.find('[data-testid="terminal-startup-error"]')
+    expect(errOverlay.exists()).toBe(true)
+    expect(errOverlay.text()).toContain('probe 超时 (8000ms)')
+    expect(wrapper.find('[data-testid="terminal-loading"]').exists()).toBe(false)
+
+    const callsBefore = vi.mocked(OpenSessionTerminalSized).mock.calls.length
+    await wrapper.find('[data-testid="startup-retry-btn"]').trigger('click')
+    await wrapper.vm.$nextTick()
+    // 重试：错误覆盖层收起，IPC 再次发起
+    expect(wrapper.find('[data-testid="terminal-startup-error"]').exists()).toBe(false)
+    await flushAsync()
+    expect(vi.mocked(OpenSessionTerminalSized).mock.calls.length).toBe(callsBefore + 1)
+  })
+
+  it('IPC 启动拒绝时同样展示失败覆盖层', async () => {
+    vi.mocked(OpenSessionTerminalSized).mockRejectedValueOnce(new Error('无法获得有效的终端尺寸'))
+    const wrapper = mount(XtermTerminal, {
+      props: { sessionId: 'sid-1', workdir: '/tmp', visible: true },
+    })
+    const terminalEl = wrapper.find('.xterm-container').element as HTMLElement
+    Object.defineProperty(terminalEl, 'clientWidth', { value: 1000, configurable: true })
+    Object.defineProperty(terminalEl, 'clientHeight', { value: 500, configurable: true })
+    await wrapper.vm.$nextTick()
+    await flushAsync()
+
+    const errOverlay = wrapper.find('[data-testid="terminal-startup-error"]')
+    expect(errOverlay.exists()).toBe(true)
+    expect(errOverlay.text()).toContain('无法获得有效的终端尺寸')
+    expect(wrapper.find('[data-testid="terminal-loading"]').exists()).toBe(false)
+  })
 })
