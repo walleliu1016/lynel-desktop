@@ -16,6 +16,7 @@ vi.mock('../../composables/useElectron', () => ({
   FileWatch: vi.fn(() => Promise.resolve()),
   FileUnwatch: vi.fn(() => Promise.resolve()),
   FileChanged: vi.fn(() => vi.fn()),
+  GitChanged: vi.fn(() => vi.fn()),
 }))
 
 vi.mock('./FileTree.vue', () => ({ default: { name: 'FileTreeStub', template: '<div class="tree-stub" />' } }))

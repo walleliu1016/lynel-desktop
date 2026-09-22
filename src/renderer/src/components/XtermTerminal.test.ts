@@ -47,6 +47,9 @@ vi.mock('@xterm/xterm', () => ({
       resize: vi.fn(),
       focus: vi.fn(),
       dispose: vi.fn(),
+      // FileLinkProvider 在 initializeTerminal 里注册；缺失会让挂载抛 TypeError
+      // （jsdom 下没有真实 xterm，mock 必须补齐这个 API）
+      registerLinkProvider: vi.fn(),
       buffer: {
         active: {
           length: 1,
