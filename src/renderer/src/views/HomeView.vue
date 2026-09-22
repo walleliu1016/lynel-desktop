@@ -197,22 +197,31 @@
                   <Icon name="folder-tree" :size="13" /> 文件
                 </button>
               </div>
-              <div v-show="activeSubTab === 'terminal'" class="sub-pane">
-                <SessionTabContent
-                  v-for="tab in sessionTabs"
-                  :key="tab.payload?.sessionId as string"
-                  v-show="activeSessionId === tab.payload?.sessionId"
-                  :session-id="tab.payload?.sessionId as string"
-                  :workdir="tab.payload?.workdir as string"
-                  :visible="activeSessionId === tab.payload?.sessionId"
-                  @open-file="onTerminalOpenFile"
+              <div v-show="activeSubTab === 'terminal'" class="sub-pane" :class="{ 'has-split': hostInSplit }">
+                <!-- 包一层是为了给终端留 flex 容器：分屏时 .sub-pane 变成横向 flex，
+                     终端必须能被压缩（min-width: 0），否则 xterm 不会 resize -->
+                <div class="terminal-side">
+                  <SessionTabContent
+                    v-for="tab in sessionTabs"
+                    :key="tab.payload?.sessionId as string"
+                    v-show="activeSessionId === tab.payload?.sessionId"
+                    :session-id="tab.payload?.sessionId as string"
+                    :workdir="tab.payload?.workdir as string"
+                    :visible="activeSessionId === tab.payload?.sessionId"
+                    @open-file="onTerminalOpenFile"
+                  />
+                </div>
+                <EditorSplitPane
+                  v-if="hostInSplit"
+                  @collapse="files.splitOpen = false"
+                  @open-in-files="setSubTab('code')"
                 />
               </div>
               <div v-show="activeSubTab === 'trace'" class="sub-pane">
                 <TracePane />
               </div>
               <div v-show="activeSubTab === 'code'" class="sub-pane">
-                <CodeView :visible="activeSubTab === 'code'" />
+                <CodeView :visible="activeSubTab === 'code'" :editor-in-split="hostInSplit" />
               </div>
             </template>
             <div v-else class="empty"><div class="empty-text">未选择会话</div></div>
@@ -302,6 +311,7 @@ import AgentBadge from '../components/AgentBadge.vue'
 import TracePane from '../components/trace/TracePane.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
 import CodeView from '../components/code/CodeView.vue'
+import EditorSplitPane from '../components/code/EditorSplitPane.vue'
 import WelcomeTab from '../components/WelcomeTab.vue'
 import SessionTabContent from '../components/SessionTabContent.vue'
 import SettingsTab from '../components/SettingsTab.vue'
@@ -357,6 +367,16 @@ function setSubTab(tab: 'terminal' | 'trace' | 'code') {
   if (!sid) return
   subTabBySession.value = { ...subTabBySession.value, [sid]: tab }
 }
+
+/** 编辑器区是否由分屏右栏承载。必须用**同一个**条件驱动两处互斥渲染（分屏右栏 v-if、
+ *  CodeView 的 editorInSplit），否则会出现两个 CodeEditor 实例并存 ——
+ *  Monaco 对同一个 model URI 只允许一个 model，第二个会直接抛错。
+ *
+ *  刻意**不**带 `openFiles.length > 0`：用户当面关掉最后一个文件 tab 时，右栏保留空态
+ *  （FileEditorPanel 显示「从左侧文件树选择文件」），不自动收起 —— 否则布局会在用户
+ *  手下突然跳变。只有「切走会话再切回」才不恢复空右栏，那条由 stores/files.ts 的
+ *  setSession 恢复守卫（`saved.splitOpen && saved.openFiles.length > 0`）负责。 */
+const hostInSplit = computed(() => activeSubTab.value === 'terminal' && files.splitOpen)
 const settingsActiveTab = ref<SettingsTabKey>('general')
 const showCloseDialog = ref(false)
 const pendingCloseTabId = ref<string | null>(null)
@@ -591,15 +611,14 @@ async function onSelectSession(id: string) {
   // 非 wasActive 时 trace 加载由 activeSessionId watch 统一处理
 }
 
-/** 终端里点击 workdir 内文件路径：在「文件」编辑器打开 tab，并切到文件子页 */
+/** 终端里点击 workdir 内文件路径：在右侧分屏打开，终端保持可见 */
 async function onTerminalOpenFile(p: { sessionId: string; workdir: string; relPath: string }) {
   if (!p.sessionId || !p.workdir || !p.relPath) return
   // 只有当前激活会话的终端可点击；不一致时忽略（防错位切 store）
   if (activeSessionId.value !== p.sessionId) return
   try {
     await files.setSession(p.sessionId, p.workdir)
-    await files.openFile(p.relPath)
-    setSubTab('code')
+    await files.openInSplit(p.relPath)
   } catch (e: any) {
     pushToast({ level: 'error', source: 'file', message: `打开文件失败：${e?.message ?? e}` })
   }
@@ -1266,6 +1285,14 @@ watch(
 .sub-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
 .sub-tab.active { background: var(--accent-soft-bg); color: var(--accent); font-weight: 600; }
 .sub-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.sub-pane.has-split { flex-direction: row; }
+.terminal-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
 /* DeepSeek Harness：iframe 始终挂载，非激活时透明垫底（不 display:none，避免冻结重载） */
 .dsh-frame-wrap {
   position: absolute;
