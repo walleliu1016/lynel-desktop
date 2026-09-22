@@ -58,17 +58,17 @@ function appendBuffer(s: ShellSession, data: string): void {
 }
 
 /** 启动或复用会话 shell。已有进程时回放缓冲，避免前端 xterm 重建后白屏。 */
-export function ensure(
+export async function ensure(
   sessionId: string,
   workDir: string,
   cols: number,
   rows: number,
-): { ok: true; replay: string } | { ok: false; error: string } {
+): Promise<{ ok: true; replay: string } | { ok: false; error: string }> {
   const existing = shells.get(sessionId);
   if (existing) return { ok: true, replay: existing.buffer };
 
   try {
-    const proc = startPty(
+    const proc = await startPty(
       workDir,
       '',
       pickShell(),

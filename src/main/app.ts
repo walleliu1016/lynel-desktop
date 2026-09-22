@@ -1333,7 +1333,7 @@ export class App {
     const pathKey = `${spec.kind}_path` as 'claude_path' | 'codex_path' | 'opencode_path' | 'omp_path';
     const agentBin = (this.settingsStore.get(pathKey, '') as string) || spec.command;
     // probe 是 claude 专属的 spawn 前 --version 探测（消除 macOS forkpty 静默失败），通用 binary 会误判
-    const proc = startPty(workDir, realId, agentBin, isClaude ? PtyMode.New : PtyMode.Auto, envOverride, { cols: 80, rows: 24 }, allArgs, { probe: spec.probe ?? false, agentLabel: spec.label });
+    const proc = await startPty(workDir, realId, agentBin, isClaude ? PtyMode.New : PtyMode.Auto, envOverride, { cols: 80, rows: 24 }, allArgs, { probe: spec.probe ?? false, agentLabel: spec.label });
     const s = session.newSession(realId, workDir);
     s.process = proc;
     s.state = 'running';
@@ -2492,7 +2492,34 @@ export class App {
     getLogger().info(`[app:rebind] sid=${oldId.slice(0, 8)} -> ${newId.slice(0, 8)} workDir=${workDir}`);
   }
 
+  /** openTerminal 的 in-flight 去重表：key=session id */
+  private openTerminalPending = new Map<string, Promise<boolean>>();
+
+  /**
+   * 打开/恢复会话终端（幂等入口）。
+   * HomeView 点击会话与 XtermTerminal 组件挂载会对同一 session 先后双发 open IPC
+   * （间隔 ~0.1-0.6s）。第一次调用在 startProxy + startPty 的 await 窗口内
+   * `s.process` 尚未 set，第二次会穿透 `if (s.process)` 防重 → spawn 两个同 sid 的
+   * claude：后者 setProcess 覆盖前者留下表外孤儿，两者并发写坏同一 jsonl，
+   * 且 wirePty 双注册导致输出混流。这里以 in-flight Promise 去重，第二次调用
+   * 复用第一次的结果。
+   */
   private openTerminal(id: string, workDir: string, size: PtySize = { cols: 80, rows: 24 }): Promise<boolean> {
+    const pending = this.openTerminalPending.get(id);
+    if (pending) {
+      getLogger().info(`[app:openSessionTerminal] in-flight dedupe sid=${id}`);
+      return pending;
+    }
+    const p = this.openTerminalOnce(id, workDir, size);
+    this.openTerminalPending.set(id, p);
+    void p.then(
+      () => this.openTerminalPending.delete(id),
+      () => this.openTerminalPending.delete(id),
+    );
+    return p;
+  }
+
+  private openTerminalOnce(id: string, workDir: string, size: PtySize = { cols: 80, rows: 24 }): Promise<boolean> {
     if (!session.lookup(id)) session.register(session.newSession(id, workDir));
     const s = session.lookup(id)!;
     if (s.process) {
@@ -2514,7 +2541,7 @@ export class App {
     const upstream = resolveUpstream(spec);
     // PTY spawn 完成后立即 resolve，让前端隐藏 loading；proxy 启动失败不阻塞 PTY
     return new Promise<boolean>((resolvePty) => {
-      startProxy(workDir, id, (env) => this.dispatcher.dispatch(env), spec.format, upstream, spec.kind).then((proxy) => {
+      startProxy(workDir, id, (env) => this.dispatcher.dispatch(env), spec.format, upstream, spec.kind).then(async (proxy) => {
         this.apiProxies.push(proxy);
         const proxyUrl = `http://127.0.0.1:${proxy.port}`;
         const hookUrl = this.hookServer ? `http://127.0.0.1:${this.hookServer.getPort()}/hook` : undefined;
@@ -2545,7 +2572,7 @@ export class App {
           // 按 agent 类型读对应可执行路径设置（claude_path/codex_path/opencode_path/omp_path），留空用 spec.command
           const pathKey = `${spec.kind}_path` as 'claude_path' | 'codex_path' | 'opencode_path' | 'omp_path';
           const agentBin = (this.settingsStore.get(pathKey, '') as string) || spec.command;
-          const proc = startPty(workDir, id, agentBin, mode, envOverride, size, args, { probe: spec.probe ?? false, agentLabel: spec.label });
+          const proc = await startPty(workDir, id, agentBin, mode, envOverride, size, args, { probe: spec.probe ?? false, agentLabel: spec.label });
           session.setProcess(id, proc, size);
           const ls = session.lookup(id);
           if (ls) ls.settingsFile = tmpFile || undefined;
@@ -2561,17 +2588,18 @@ export class App {
           resolvePty(false);
         } catch (err: any) {
           getLogger().error(`[app:openSessionTerminal] startPty failed for sid=${id}: ${err.message}`);
-          getBus().emit(`session:${id}`, `\r\n启动终端失败：${err.message}\r\n`);
+          // 结构化失败信号：XtermTerminal 识别后展示「错误 + 重试」覆盖层（不再往终端写纯文本）
+          getBus().emit(`session:${id}`, JSON.stringify({ type: 'startup-error', message: err.message }));
           notifyExternal({ source: 'session:start', level: 'error', message: `启动 ${spec.label} 终端失败 (${id.slice(0, 8)}): ${errMessage(err)}` });
           this.setSessionState(id, 'done');
           resolvePty(false);
         }
       }).catch((err: any) => {
         getLogger().error(`[app:openSessionTerminal] proxy failed for sid=${id}: ${err?.message ?? err}`);
-        getBus().emit(`session:${id}`, `\r\n启动终端失败：${err?.message ?? err}\r\n`);
+        getBus().emit(`session:${id}`, JSON.stringify({ type: 'startup-error', message: String(err?.message ?? err) }));
         notifyExternal({ source: 'session:start', level: 'error', message: `启动 API 代理失败 (${id.slice(0, 8)}): ${errMessage(err)}` });
         this.setSessionState(id, 'done');
-        // proxy 启动失败也 resolve，让前端能继续（终端内会显示错误）
+        // proxy 启动失败也 resolve，让前端能继续（前端会展示失败覆盖层）
         resolvePty(false);
       });
     });

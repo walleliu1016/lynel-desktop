@@ -24,7 +24,7 @@ describe('shell', () => {
   it('ensure 对未知会话返回 ok=false 以外的合法结构', async () => {
     const { ensure } = await import('../../src/main/shell.js');
     // workDir 传一个不存在的目录：spawn 应失败并返回结构化错误，而不是抛异常
-    const res = ensure('nonexistent-session', '/definitely/not/a/real/dir/lynel', 80, 24);
+    const res = await ensure('nonexistent-session', '/definitely/not/a/real/dir/lynel', 80, 24);
     // 判别联合不变量：ok 为真时必有 replay，为假时必有 error
     expect('replay' in res).toBe(res.ok);
   });
@@ -39,7 +39,7 @@ describe('shell', () => {
     const onData = (data: string) => chunks.push(data);
     getBus().on(`shell:${sid}`, onData);
 
-    const res = mod.ensure(sid, process.cwd(), 80, 24);
+    const res = await mod.ensure(sid, process.cwd(), 80, 24);
     expect(res.ok).toBe(true);
 
     const isWin = process.platform === 'win32';
@@ -56,8 +56,8 @@ describe('shell', () => {
 
   it.skipIf(isCI)('rebind 迁移会话 key，且目标已存在时不泄漏', { timeout: 30000 }, async () => {
     const mod = await import('../../src/main/shell.js');
-    expect(mod.ensure('rb-a', process.cwd(), 80, 24).ok).toBe(true);
-    expect(mod.ensure('rb-b', process.cwd(), 80, 24).ok).toBe(true);
+    expect((await mod.ensure('rb-a', process.cwd(), 80, 24)).ok).toBe(true);
+    expect((await mod.ensure('rb-b', process.cwd(), 80, 24)).ok).toBe(true);
     expect(mod.size()).toBe(2);
 
     mod.rebind('rb-a', 'rb-c');

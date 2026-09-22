@@ -2,7 +2,7 @@ import * as pty from 'node-pty';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
-import { execFile, execFileSync } from 'node:child_process';
+import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { getLogger } from './log.js';
 
 export enum PtyMode {
@@ -232,7 +232,28 @@ function statBin(bin: string): boolean | 'unknown' {
 }
 
 /**
- * Spawn 前 sync 探测一次 bin 是否可执行。
+ * 探测超时后杀整棵进程树。
+ *
+ * execFileSync 的 timeout 只杀直接子进程：win32 上直接子进程是 cmd.exe，
+ * 背后的 claude.exe（cmd.exe → claude.cmd → claude.exe）会成为孤儿长期驻留
+ * （实测存活数天、各占 ~127MB）。必须拿到 pid 后用 taskkill /T 连树一起杀。
+ */
+function killProbeTree(pid: number): void {
+  if (process.platform === 'win32') {
+    try {
+      const p = spawn('taskkill.exe', ['/pid', String(pid), '/T', '/F'], {
+        windowsHide: true,
+        stdio: 'ignore',
+      });
+      p.on('error', () => { /* 进程可能已退出 */ });
+    } catch { /* 同上 */ }
+  } else {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* 已退出 */ }
+  }
+}
+
+/**
+ * Spawn 前异步探测一次 bin 是否可执行。
  *
  * 核心动机：node-pty 在 macOS 用 forkpty(3)，子进程 exec 失败时直接 exit(1)，
  * 父进程只拿到 onExit=1，**没有 ENOENT/EACCES/EPERM 等 errno**——forkpty 之后
@@ -241,48 +262,90 @@ function statBin(bin: string): boolean | 'unknown' {
  * ccglass 用 child_process.spawn + stdio:inherit，子进程能在 exit 前把 ENOENT
  * 写到 stderr。
  *
- * 这里用 execFileSync 同步探测：拿到明确 errno 就立即 throw，让上层走 toast
+ * 这里用 spawn 探测：拿到明确 errno 就立即 throw，让上层走 toast
  * + log 给用户可读诊断；探测成功只多 ~100ms 启动延迟，性价比高。
+ * 用异步 spawn 而非 execFileSync 的原因见 killProbeTree：后者 timeout 杀不到孙进程。
  *
  * Windows 上 `claude` 通常是 `.cmd` shim（Node 不直接支持），用 `cmd.exe /c` 包一层。
  */
-function probeBin(resolvedBin: string, env: Record<string, string>, label: string, bin: string): void {
+// probe 成功结果缓存（按 resolvedBin）：进程级一次成功、终身跳过；失败不缓存。
+const probeOkCache = new Set<string>();
+
+async function probeBin(resolvedBin: string, env: Record<string, string>, label: string, bin: string): Promise<void> {
   const logger = getLogger();
   const PLATFORM = process.platform;
   const isWin = PLATFORM === 'win32';
-  const runOnce = (timeout: number): void => {
-    if (isWin) {
-      // Windows: claude 在 PATH 里通常是 claude.cmd shim；execFileSync 不支持
+  const runOnce = (timeout: number): Promise<void> =>
+    new Promise((resolve, reject) => {
+      // Windows: claude 在 PATH 里通常是 claude.cmd shim；spawn 不支持
       // .cmd/.bat/.ps1，需要经 cmd.exe 调用
-      execFileSync('cmd.exe', ['/d', '/c', resolvedBin, '--version'], {
-        stdio: 'ignore',
-        timeout,
-        windowsHide: true,
-        env,
+      const file = isWin ? 'cmd.exe' : resolvedBin;
+      const args = isWin ? ['/d', '/c', resolvedBin, '--version'] : ['--version'];
+      let child: ChildProcess;
+      try {
+        child = spawn(file, args, { stdio: 'ignore', windowsHide: true, env });
+      } catch (err) {
+        reject(err);
+        return;
+      }
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        if (child.pid != null) killProbeTree(child.pid);
+        const e: any = new Error(`probe 超时 (${timeout}ms) bin=${resolvedBin}`);
+        e.code = 'ETIMEDOUT';
+        reject(e);
+      }, timeout);
+      child.on('error', (err: any) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(err); // ENOENT / EACCES 等 spawn 错误，code 原样透传
       });
-    } else {
-      execFileSync(resolvedBin, ['--version'], {
-        stdio: 'ignore',
-        timeout,
-        env,
+      child.on('exit', (code, signal) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        const e: any = new Error(`probe 退出异常 code=${code} signal=${signal ?? 'none'} bin=${resolvedBin}`);
+        reject(e);
       });
-    }
-  };
+    });
+  // 成功缓存：同一 bin 探测成功过就跳过。失败不缓存，用户修复（chmod/重装）后重试仍会探测。
+  // 没有这层缓存时，每次开会话都要白付一次 --version 的启动成本（实测主进程上下文 3~8s）。
+  if (probeOkCache.has(resolvedBin)) return;
   try {
-    runOnce(3000);
+    await runOnce(8000);
+    probeOkCache.add(resolvedBin);
   } catch (firstErr: any) {
-    // 首次失败（常见 ETIMEDOUT：冷启动慢 / claude 初始化检查更新）自动重试一次，
-    // 避免"首次打开终端报错、重开又成功"的间歇性问题。
+    if (firstErr?.code === 'ETIMEDOUT') {
+      // 超时 ≠ binary 坏：--version 慢（冷启动 / Defender 扫描 cmd 链 / 主进程高负载）
+      // 时有发生，实测独立进程 0.8s、主进程内 3s+ 甚至 8s+。
+      // probe 的本职是拿 ENOENT/EACCES 这类结构性 errno（macOS forkpty 静默失败），
+      // 拿不到就放行，让真正的 PTY spawn 暴露问题 —— binary 真挂了会有 exit 诊断，
+      // 不该让用户连会话都开不了。
+      logger.warn(`[pty] probe 超时，放行交给 PTY spawn bin=${resolvedBin} timeout=8000ms`);
+      return;
+    }
+    // 其余失败（ENOENT / 非零退出等）自动重试一次，避免间歇性误报。
     logger.warn(`[pty] probe 首次失败，自动重试一次 bin=${resolvedBin} code=${firstErr?.code} msg=${firstErr?.message}`);
     try {
-      runOnce(8000);
+      await runOnce(8000);
+      probeOkCache.add(resolvedBin);
     } catch (err: any) {
+      if (err?.code === 'ETIMEDOUT') {
+        logger.warn(`[pty] probe 重试超时，放行交给 PTY spawn bin=${resolvedBin}`);
+        return;
+      }
       const code = err?.code || 'UNKNOWN';
       const msg = err?.message || String(err);
       // ENOENT: 命令在 PATH 里找不到（resolveBin 已尽量解析，但可能 darwin shell env 解析失败）
       // EACCES: 文件存在但无执行权限（macOS Gatekeeper 隔离、chmod -x）
       // EPERM: macOS sandbox / 系统完整性保护拒绝
-      // ETIMEDOUT: 探测 timeout，binary 可能挂在 --version（罕见但需要让用户知道）
       logger.error(`[pty] probe 失败 bin=${resolvedBin} code=${code}: ${msg}`);
       const hint = formatProbeFailureHint(code, resolvedBin, PLATFORM, label, bin);
       throw new Error(`${label} 可执行文件探测失败 (${code}): ${msg}${hint ? `\n${hint}` : ''}`);
@@ -309,9 +372,7 @@ function formatProbeFailureHint(code: string, resolvedBin: string, platform: str
         : '  终端执行 `chmod +x ' + resolvedBin + '` 给执行权限',
     ].join('\n');
   }
-  if (code === 'ETIMEDOUT') {
-    return `可能原因：${label} --version 响应超过 3s；binary 可能在尝试连网络，请检查上游可达性`;
-  }
+  // ETIMEDOUT 不会走到这里：probeBin 对超时直接放行（超时 ≠ binary 坏）
   return '';
 }
 
@@ -392,7 +453,7 @@ function buildCommand(
 
 export interface StartOptions {
   /**
-   * Spawn 前 sync 探测一次（execFileSync --version），把 forkpty 静默失败转成带
+   * Spawn 前异步探测一次（spawn --version），把 forkpty 静默失败转成带
    * errno 的明确 throw。**仅当 spawn 的是 claude**（对话用的 binary）才开启。
    * 通用 spawn 应保持 false：探测用 --version 是 claude 专属，cmd.exe / sh 等会失败。
    * macOS forkpty 失败只 onExit=1 拿不到 errno，故此开关专门用来消除 macOS 偶发失败。
@@ -409,7 +470,7 @@ export interface StartOptions {
   raw?: boolean;
 }
 
-export function start(
+export async function start(
   cwd: string,
   sessionId: string,
   bin: string,
@@ -418,7 +479,7 @@ export function start(
   size: PtySize = { cols: 80, rows: 24 },
   extraArgs: string[] = [],
   opts: StartOptions = {},
-): PtyProcess {
+): Promise<PtyProcess> {
   const logger = getLogger();
   const darwinEnv = resolveShellEnv();
   const resolvedBin = resolveBin(bin, darwinEnv);
@@ -440,12 +501,12 @@ export function start(
     throw new Error(msg);
   }
 
-  // spawn 前 sync 探测：execFileSync 能拿到 ENOENT/EACCES/EPERM 等 errno，
+  // spawn 前异步探测：spawn 能拿到 ENOENT/EACCES/EPERM 等 errno，
   // 而 node-pty 在 macOS forkpty 失败时只能在 exit code=1 静默退出（无 errno）。
   // 仅在 spawn 的是 claude（opts.probe=true）时运行，避免对通用 binary（cmd.exe /
   // /bin/sh 等）误判：--version 是 claude 专属，cmd.exe 不认会 exit 1。
   if (opts.probe) {
-    probeBin(resolvedBin, { ...process.env, ...darwinEnv, ...env } as { [key: string]: string }, label, bin);
+    await probeBin(resolvedBin, { ...process.env, ...darwinEnv, ...env } as { [key: string]: string }, label, bin);
   }
 
   // raw：交互式 shell 直通 spawn，不经 cmd.exe /c 包装，也不带 --session-id/--resume

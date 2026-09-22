@@ -11,7 +11,7 @@ describe('pty', () => {
     const { start, PtyMode } = await import('../../src/main/pty.js');
     const isWin = process.platform === 'win32';
     const bin = isWin ? 'cmd.exe' : '/bin/sh';
-    const proc = start(
+    const proc = await start(
       process.cwd(),
       '',
       bin,
@@ -43,7 +43,7 @@ describe('pty', () => {
     const bin = isWin ? 'powershell.exe' : '/bin/sh';
     const marker = 'LYNEL_RAW_OK';
 
-    const proc = start(
+    const proc = await start(
       process.cwd(),
       'fake-session-id',
       bin,
