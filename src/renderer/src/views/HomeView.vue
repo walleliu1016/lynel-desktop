@@ -70,18 +70,47 @@
               :key="f.sessionId"
               class="fav-pane-row"
               :class="{ active: f.sessionId === activeSessionId }"
-              :title="favTitle(f)"
               @click="onOpenFavorite(f.sessionId)"
             >
               <AgentBadge :agent="f.agent" size="sm" />
-              <span class="fav-pane-text">{{ favTitle(f) }}</span>
-              <button class="fav-pane-del" title="取消收藏" @click.stop="onRemoveFav(f.sessionId)">
-                <Icon name="star" :size="12" :fill="true" />
-              </button>
+              <span class="fav-pane-body">
+                <span class="fav-pane-text" :title="favTitle(f)">{{ favTitle(f) }}</span>
+                <!-- 目录常显（两行）：hover 才出现会让整列行高抖动，扫列表时下面的行跟着晃 -->
+                <span class="fav-pane-dir" :title="f.workdir"><bdi>{{ f.workdir }}</bdi></span>
+              </span>
+              <span class="fav-pane-acts">
+                <button
+                  class="fav-pane-act"
+                  aria-label="以该目录新开会话"
+                  @click.stop="onNewSessionFromFav(f)"
+                  @mouseenter="showActHint($event, '以该目录新开会话')"
+                  @mouseleave="hideActHint"
+                >
+                  <Icon name="plus" :size="13" />
+                </button>
+                <button
+                  class="fav-pane-act is-del"
+                  aria-label="取消收藏"
+                  @click.stop="onRemoveFav(f.sessionId)"
+                  @mouseenter="showActHint($event, '取消收藏')"
+                  @mouseleave="hideActHint"
+                >
+                  <Icon name="star" :size="12" :fill="true" />
+                </button>
+              </span>
             </div>
           </div>
           <div v-else class="fav-pane-empty">暂无收藏，可 hover 会话行星标收藏</div>
         </div>
+        <!-- 收藏行两个图标按钮的文字提示：收藏区是滚动容器（overflow 会裁掉 absolute 子元素），
+             故 Teleport 到 body 用 fixed 定位，出现在按钮右侧 -->
+        <Teleport to="body">
+          <div
+            v-if="actHint"
+            class="fav-act-hint"
+            :style="{ top: actHint.top + 'px', left: actHint.left + 'px' }"
+          >{{ actHint.text }}</div>
+        </Teleport>
         <!-- 折叠态：搜索仅图标，点击展开侧栏并进入搜索 -->
         <button v-if="sidebarCollapsed" class="home-entry search-entry tooltip-wrap" aria-label="搜索" @click="onCollapsedSearch">
           <Icon name="search" :size="16" />
@@ -754,6 +783,30 @@ function favTitle(f: FavoriteSession): string {
   })
 }
 
+/** 收藏夹「新开会话」：以该收藏会话的目录起一个全新空会话（不传 prompt，进去自己敲）。
+    与「打开收藏会话」的区别是不 adopt 旧 PTY、不带旧 sessionId，走的是 onCreate 的新建链路。 */
+async function onNewSessionFromFav(f: FavoriteSession) {
+  // 早期收藏记录可能没有 workdir；留空会被主进程归一化成默认主目录，静默开错地方
+  if (!f.workdir) {
+    pushToast({ level: 'error', source: 'session', message: '该收藏没有记录目录，无法新开会话' })
+    return
+  }
+  await onCreate(f.workdir, '', [], undefined, f.agent)
+}
+
+/** 收藏行图标按钮的悬浮提示（按钮无文字，靠它说明动作） */
+const actHint = ref<{ top: number; left: number; text: string } | null>(null)
+
+function showActHint(e: MouseEvent, text: string) {
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  // 侧栏恒在窗口左侧，右侧留白足够，不需要反向避让
+  actHint.value = { top: r.top + r.height / 2, left: r.right + 8, text }
+}
+
+function hideActHint() {
+  actHint.value = null
+}
+
 /** 收藏夹取消收藏 */
 async function onRemoveFav(sid: string) {
   try {
@@ -1193,8 +1246,10 @@ watch(
   display: flex;
   flex-direction: column;
 }
+/* 行改两行（标题 + 目录）后单行高度约翻倍，上限从 240 抬到 320；
+   但不设死值：矮窗口下按 38vh 收缩，避免收藏多时把下面的会话列表挤没。 */
 .fav-pane-items {
-  max-height: 240px; overflow-y: auto; overflow-x: hidden;
+  max-height: min(320px, 38vh); overflow-y: auto; overflow-x: hidden;
   padding: 6px;
   display: flex; flex-direction: column; gap: 2px;
 }
@@ -1205,18 +1260,48 @@ watch(
 }
 .fav-pane-row:hover { background: var(--session-item-hover-bg); }
 .fav-pane-row.active { background: var(--session-item-active-bg); }
+.fav-pane-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .fav-pane-text {
-  flex: 1; min-width: 0;
   font-size: var(--fs-body); color: var(--text-primary); font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.fav-pane-del {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; border: none; background: transparent;
-  color: var(--accent); border-radius: 4px; cursor: pointer; opacity: 0;
-  transition: opacity 0.12s;
+/* 目录左省略：同一父目录下的路径前缀全一样，截尾等于什么都没说。
+   rtl + <bdi>（模板里包裹）让省略号落在左侧，同时保持路径本身从左到右。 */
+.fav-pane-dir {
+  font-size: 11px; color: var(--text-tertiary);
+  font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  direction: rtl; text-align: left;
 }
-.fav-pane-row:hover .fav-pane-del { opacity: 1; }
+.fav-pane-dir bdi { direction: ltr; unicode-bidi: embed; }
+/* 行操作（新开会话 / 取消收藏）：hover 行才浮现。
+   按钮做成有底有边的贴片 —— 光秃秃的灰图标在 hover 底色上读不出「这里能点」。 */
+.fav-pane-acts { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.fav-pane-act {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px; cursor: pointer; padding: 0;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+}
+.fav-pane-row:hover .fav-pane-act { opacity: 1; }
+.fav-pane-act:hover {
+  background: var(--accent-soft-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* 已收藏用 accent 星标标识（沿用原样式），贴片本身与「新开会话」同款，靠图标颜色区分 */
+.fav-pane-act.is-del { color: var(--accent); }
+
+.fav-act-hint {
+  position: fixed; z-index: 1002;
+  transform: translateY(-50%);
+  background: var(--tooltip-bg); color: var(--tooltip-color);
+  font-size: 11px; line-height: 1; padding: 6px 8px; border-radius: 6px;
+  white-space: nowrap; pointer-events: none;
+}
 .fav-pane-empty { padding: 12px; text-align: center; font-size: 12px; color: var(--text-tertiary); }
 .layout { flex: 1; display: flex; min-height: 0; gap: 0; background: transparent; }
 .left {
