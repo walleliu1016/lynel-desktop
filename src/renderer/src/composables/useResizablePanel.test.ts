@@ -54,6 +54,12 @@ describe('useResizablePanel', () => {
     expect(api.value!.width.value).toBe(300)
   })
 
+  it('localStorage 值低于下限时回退 defaultWidth（下限不靠 clamp 收敛）', () => {
+    localStorage.setItem(KEY, '100')
+    const { api } = mountPanel()
+    expect(api.value!.width.value).toBe(300)
+  })
+
   it("handle:'right' 向右拖变宽", () => {
     const { api } = mountPanel()
     api.value!.onResizeStart(new MouseEvent('mousedown', { clientX: 100 }))

@@ -34,8 +34,9 @@ export function useResizablePanel(opts: ResizablePanelOptions): ResizablePanel {
   function loadWidth(): number {
     try {
       const v = Number(localStorage.getItem(opts.storageKey))
-      // 越界值（如上次拖到 900 后换了更窄的窗口）不丢弃，交给 clamp 收敛，
-      // 直接回退 defaultWidth 会让用户的宽度偏好整个丢失
+      // 高于当前上限的值（如上次拖到 900、后来换了更窄的窗口）交给 clampTo 收敛，
+      // 不直接回退 defaultWidth —— 那会把用户的宽度偏好整个丢掉；
+      // 低于下限的值（min 被调大过，或存储被写坏）与 NaN 一律回退 defaultWidth
       if (Number.isFinite(v) && v >= opts.min) return clampTo(v)
     } catch {}
     return opts.defaultWidth
