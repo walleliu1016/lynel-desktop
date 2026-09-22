@@ -1,0 +1,29 @@
+/* 代码工作区配色跟随终端主题：把 UI 变量重映射为 --term-*（html 上全局可用）。
+   放在全局样式表而非组件的 scoped style —— 「文件」子页的 CodeView 与
+   「终端」子页的分屏右栏是两个组件，都要挂这个类。 */
+.code-workspace-theme {
+  --bg-panel: var(--term-bg);
+  --text-primary: var(--term-fg);
+  --text-secondary: var(--term-fg);
+  --text-tertiary: var(--term-fg);
+  --bg-hover: var(--code-hover);
+  --tab-hover-bg: var(--code-hover);
+  --accent-soft-bg: var(--term-selection);
+  --accent: var(--term-fg);
+  --border: var(--code-border);
+  --border-strong: var(--code-border);
+  --bg-input: var(--term-bg);
+  --border-focus: var(--code-border);
+  --status-warn: var(--term-yellow);
+  --status-warn-soft: var(--code-hover);
+  --status-warn-border: var(--code-border);
+  --status-error: var(--term-red);
+  --status-error-soft: var(--code-hover);
+  /* GitPanel 用到的两个变量需在此补齐：
+     - theme.css 未定义 --status-ok（只有 --status-success），不补则「ahead / 已暂存」的
+       绿色会失效退化为继承色；
+     - --accent 在上方已被重映射为 --term-fg，而全局 --text-inverse 是白色，
+       提交按钮会变成白字浅底；把 inverse 重映射为终端背景色才是「反色」的本意。 */
+  --status-ok: var(--term-green);
+  --text-inverse: var(--term-bg);
+}

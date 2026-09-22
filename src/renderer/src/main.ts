@@ -7,6 +7,7 @@ import './styles/reset.css'
 import './styles/base.css'
 import './styles/theme.css'
 import './styles/tasks.css'
+import './styles/code.css'
 
 import { initTheme } from './composables/useTheme'
 // 主题在 app 挂载前同步应用，避免闪烁；useTheme 内部解析 system 并监听变化
