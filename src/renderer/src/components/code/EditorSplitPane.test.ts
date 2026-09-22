@@ -140,6 +140,16 @@ describe('EditorSplitPane', () => {
     expect((wrapper.element as HTMLElement).style.width).toBe('320px')
   })
 
+  it('容器量到 0 宽（祖先 v-show 隐藏）时不钳制，保留恢复的宽度', async () => {
+    // 必须与「过窄」区分开：0 宽 = 量不到（不设上限），不是「容器只有 0px」
+    localStorage.setItem(WIDTH_KEY, '680')
+    const wrapper = mountPane(0)
+    // 必须等一个 tick：旧守卫下 onMounted 的 clamp() 会同步把 ref 改成 320，
+    // 同步读 style 只会读到挂载时的旧值 680，用例就不再能区分新旧行为了
+    await nextTick()
+    expect((wrapper.element as HTMLElement).style.width).toBe('680px')
+  })
+
   it('拖拽结束写入 localStorage', async () => {
     const wrapper = mountPane(1200)
     wrapper.find('.split-handle').trigger('mousedown', { clientX: 600 })

@@ -25,10 +25,18 @@ const TERMINAL_MIN_WIDTH = 400
 const MIN_WIDTH = 320
 
 /** 右栏宽度上限：容器宽 - 终端最小宽 - 手柄宽。
- *  容器量不到时（setup 阶段元素还没挂载）返回 Infinity，交给挂载后的 clamp 收敛。 */
+ *  容器量不到时返回 Infinity（不设上限），交给挂载后的 clamp 收敛。
+ *
+ *  「量不到」有**两种**，少判一种会丢用户宽度：
+ *  ① setup 阶段元素还没挂载 → parentElement 为 null；
+ *  ② 祖先处于 v-show 的 `display:none`（切到设置 / 首页等其它 tab 时整块隐藏）→
+ *     元素在、但 clientWidth 为 0。
+ *  ②若不设防，上限会算成 max(320, -404) = 320，`onMounted` / ResizeObserver 的 clamp()
+ *  立刻把刚恢复的用户宽度压到 320；而 clampTo 只按当前值收敛（不会回弹），localStorage
+ *  又只在 mouseup 落盘 —— 切一圈 tab 回来宽度就永久变成 320。 */
 function dynamicMax(): number {
   const container = rootEl.value?.parentElement
-  if (!container) return Number.POSITIVE_INFINITY
+  if (!container || container.clientWidth === 0) return Number.POSITIVE_INFINITY
   return Math.max(MIN_WIDTH, container.clientWidth - TERMINAL_MIN_WIDTH - HANDLE_WIDTH)
 }
 
