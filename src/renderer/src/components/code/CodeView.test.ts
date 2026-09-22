@@ -92,4 +92,11 @@ describe('CodeView', () => {
     const wrapper = mount(CodeView)
     expect((wrapper.find('.tree-panel').element as HTMLElement).style.width).toBe('450px')
   })
+
+  it('editorInSplit 为 true 时不渲染编辑器区（编辑器已由分屏承载）', () => {
+    useFilesStore().collapsed = false
+    const wrapper = mount(CodeView, { props: { editorInSplit: true } })
+    expect(wrapper.find('.tree-panel').exists()).toBe(true)
+    expect(wrapper.find('.editor-panel').exists()).toBe(false)
+  })
 })
