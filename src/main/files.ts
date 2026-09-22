@@ -2,8 +2,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ipcMain } from 'electron';
-import chokidar from 'chokidar';
-import type { FSWatcher } from 'chokidar';
 import { getBus } from './events.js';
 
 export const MAX_TEXT_SIZE = 1024 * 1024; // 1MB，超过视为大文件只读
@@ -94,8 +92,8 @@ export async function deleteEntry(filePath: string): Promise<void> {
   else await fs.promises.unlink(filePath);
 }
 
-// —— 以下为文件服务 IPC + chokidar 监听 ——
-const watchers = new Map<string, FSWatcher>();
+// —— 以下为文件服务 IPC + 目录监听 ——
+const watchers = new Map<string, fs.FSWatcher>();
 const watcherTimers = new Map<string, NodeJS.Timeout>();
 
 export function registerFilesIpc(): void {
@@ -138,27 +136,42 @@ export function registerFilesIpc(): void {
 
 export function startWatch(workDir: string): void {
   if (watchers.has(workDir)) return;
-  const w = chokidar.watch(workDir, {
-    ignoreInitial: true,
-    ignored: (p: string) => isIgnored(path.basename(p)),
-  });
-  w.on('all', (_event, p: string) => {
-    const rel = path.relative(workDir, p).replace(/\\/g, '/');
-    // 150ms 合帧，避免高频写入打爆 IPC
-    const t = watcherTimers.get(workDir);
-    if (t) clearTimeout(t);
-    watcherTimers.set(workDir, setTimeout(() => {
-      getBus().emit('file:changed', { workDir, relPath: rel });
-    }, 150));
-  });
-  // 监听 chokidar 异步错误（EMFILE/ENOSPC/权限等），避免走向主进程未捕获异常路径
+  // 原生 recursive watch（Windows: ReadDirectoryChangesW 树模式 / macOS: FSEvents /
+  // Linux: Node>=20.13 inotify 聚合）：整树一个句柄。
+  // 不用 chokidar 的原因：它会给树内每个路径各建一个 fs.watch（单仓库实测 ~4000 句柄），
+  // 几千个内核 watch 队列叠加 dev 高频写盘会打爆 IOCP（实测主进程 CPU 161% 空转、句柄每秒 +180）。
+  let w: fs.FSWatcher;
+  try {
+    w = fs.watch(workDir, { recursive: true, persistent: true }, (_event, filename) => {
+      let rel = '';
+      if (filename != null && filename !== '') {
+        rel = String(filename).replace(/\\/g, '/');
+        // 递归 watch 在内核层无法排除子树（node_modules/.git 的事件仍会投递），
+        // 按路径分段跑同一 isIgnored：任一段命中即丢弃，与 chokidar ignored 的子树剪枝等价。
+        // filename 为 null 时不做过滤、保守触发（Windows/macOS 均有此情况）。
+        if (rel.split('/').some((seg) => isIgnored(seg))) return;
+      }
+      // 150ms 合帧，避免高频写入打爆 IPC；窗口内只报最后一条 rel（与原实现一致）
+      const t = watcherTimers.get(workDir);
+      if (t) clearTimeout(t);
+      watcherTimers.set(workDir, setTimeout(() => {
+        watcherTimers.delete(workDir);
+        getBus().emit('file:changed', { workDir, relPath: rel });
+      }, 150));
+    });
+  } catch (err) {
+    // 极老运行时（Linux Node<20.13）recursive 同步抛 ERR_FEATURE_UNAVAILABLE_ON_PLATFORM
+    console.error('[files:watch]', err);
+    return;
+  }
+  // 监听异步错误（EMFILE/ENOSPC/递归缓冲溢出等），避免走向主进程未捕获异常路径
   w.on('error', (err) => console.error('[files:watch]', err));
   watchers.set(workDir, w);
 }
 
 export async function stopWatch(workDir: string): Promise<void> {
   const w = watchers.get(workDir);
-  if (w) { await w.close(); watchers.delete(workDir); }
+  if (w) { w.close(); watchers.delete(workDir); }
   const t = watcherTimers.get(workDir);
   if (t) { clearTimeout(t); watcherTimers.delete(workDir); }
 }
