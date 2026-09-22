@@ -17,12 +17,14 @@ export interface OpenFile {
   savedVersion: number // 打开/保存时自增，用于区分本地改动与外部变更
 }
 
-/** 按会话记忆的工作区现场（tab / 草稿 / 激活文件 / 展开态） */
+/** 按会话记忆的工作区现场（tab / 草稿 / 激活文件 / 展开态 / 分屏展开态） */
 export interface SessionWorkspace {
   openFiles: OpenFile[]
   drafts: Record<string, string>
   activeRelPath: string | null
   expanded: string[]
+  /** 终端子页右侧的文件编辑分屏是否展开 */
+  splitOpen: boolean
 }
 
 export const useFilesStore = defineStore('files', () => {
@@ -50,6 +52,9 @@ export const useFilesStore = defineStore('files', () => {
   const activeView = ref<'file' | 'diff'>('file')
   /** 是否在编辑器里显示行内 blame（由 FileTabs 上的开关控制，跨文件保持） */
   const blameEnabled = ref(false)
+  /** 终端子页右侧的「文件编辑分屏」是否展开。与文件 tab 组一起按会话记忆：
+   *  切回会话时右栏仍是上次那组文件，语义连贯。 */
+  const splitOpen = ref(false)
 
   // 每个会话独立记忆的工作区现场。切换会话即时还原。
   const sessionState = ref<Record<string, SessionWorkspace>>({})
@@ -69,6 +74,7 @@ export const useFilesStore = defineStore('files', () => {
           drafts: { ...drafts.value },
           activeRelPath: activeRelPath.value,
           expanded: [...expanded.value],
+          splitOpen: splitOpen.value,
         },
       }
     }
@@ -88,11 +94,14 @@ export const useFilesStore = defineStore('files', () => {
       drafts.value = { ...saved.drafts }
       activeRelPath.value = saved.activeRelPath
       expanded.value = new Set(saved.expanded)
+      // 展开态跟着文件 tab 组记忆，但没有任何 tab 时不恢复（否则是个空右栏）
+      splitOpen.value = saved.splitOpen && saved.openFiles.length > 0
     } else {
       openFiles.value = []
       drafts.value = {}
       activeRelPath.value = null
       expanded.value = new Set()
+      splitOpen.value = false
     }
     // 4. 挂载新目录 watcher + 拉取根目录；恢复的展开目录内容需重新惰性拉取
     if (wd) {
@@ -167,6 +176,13 @@ export const useFilesStore = defineStore('files', () => {
     }]
     activeRelPath.value = relPath
     activeView.value = 'file'
+  }
+
+  /** 在分屏右栏打开文件（终端里点路径的入口）：打开文件并展开右栏。
+   *  与 openFile 分开，是因为文件树 / git 面板走的是「文件」子页，不该把分屏也拉出来。 */
+  async function openInSplit(relPath: string) {
+    await openFile(relPath)
+    splitOpen.value = true
   }
 
   /** 写草稿（整体 spread 更新） */
@@ -297,8 +313,9 @@ export const useFilesStore = defineStore('files', () => {
 
   return {
     workDir, currentSessionId, tree, expanded, openFiles, drafts, activeRelPath, collapsed, rootCreateRequest,
+    splitOpen,
     diffRequest, activeView, blameEnabled, openDiff, closeDiff, activateFile,
-    setSession, forgetSession, loadDir, toggleExpand, openFile, closeFile, saveFile, reloadFile,
+    setSession, forgetSession, loadDir, toggleExpand, openFile, openInSplit, closeFile, saveFile, reloadFile,
     setDraft, clearDraft,
     createEntry, renameEntry, deleteEntry,
     cleanupWatcher: () => { fileChangedCleanup?.(); fileChangedCleanup = null },
