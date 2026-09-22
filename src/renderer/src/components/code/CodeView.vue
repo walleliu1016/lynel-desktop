@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import Icon from '../Icon.vue'
 import FileTree from './FileTree.vue'
 import FileTabs from './FileTabs.vue'
@@ -8,6 +8,7 @@ import CodeDiffView from './CodeDiffView.vue'
 import BottomPanel from './BottomPanel.vue'
 import { useFilesStore } from '../../stores/files'
 import { useGitStore } from '../../stores/git'
+import { useResizablePanel } from '../../composables/useResizablePanel'
 
 /** 「文件」子页当前是否可见。由 HomeView 传入 —— CodeView 被 v-show 常挂载，
  *  自身感知不到子页切换，而底部面板的终端要据此决定是否启动。 */
@@ -38,54 +39,12 @@ const showDiff = computed(() => store.activeView === 'diff' && !!store.diffReque
 const showEditor = computed(() => !showDiff.value)
 
 // ---------- 文件树面板宽度（localStorage 持久化，240–600px） ----------
-const WIDTH_KEY = 'lynel:code-tree-width'
-const MIN_WIDTH = 240
-const MAX_WIDTH = 600
-const DEFAULT_WIDTH = 300
-
-function loadWidth(): number {
-  try {
-    const v = Number(localStorage.getItem(WIDTH_KEY))
-    if (Number.isFinite(v) && v >= MIN_WIDTH && v <= MAX_WIDTH) return v
-  } catch {}
-  return DEFAULT_WIDTH
-}
-
-const width = ref<number>(loadWidth())
-
-// ---------- 拖宽（树面板右边缘手柄） ----------
-const dragging = ref(false)
-let startX = 0
-let startWidth = 0
-
-function onResizeStart(e: MouseEvent) {
-  e.preventDefault()
-  startX = e.clientX
-  startWidth = width.value
-  dragging.value = true
-  document.body.style.userSelect = 'none'
-  document.addEventListener('mousemove', onResizeMove)
-  document.addEventListener('mouseup', onResizeEnd)
-}
-
-function onResizeMove(e: MouseEvent) {
-  if (!dragging.value) return
-  width.value = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth + (e.clientX - startX)))
-}
-
-function onResizeEnd() {
-  if (!dragging.value) return
-  dragging.value = false
-  document.body.style.userSelect = ''
-  document.removeEventListener('mousemove', onResizeMove)
-  document.removeEventListener('mouseup', onResizeEnd)
-  try {
-    localStorage.setItem(WIDTH_KEY, String(width.value))
-  } catch {}
-}
-
-onBeforeUnmount(() => {
-  if (dragging.value) onResizeEnd()
+const { width, dragging, onResizeStart } = useResizablePanel({
+  storageKey: 'lynel:code-tree-width',
+  defaultWidth: 300,
+  min: 240,
+  max: 600,
+  handle: 'right',
 })
 
 // ---------- 工具条动作 ----------

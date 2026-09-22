@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, ref } from 'vue'
 import Icon from '../Icon.vue'
 import { useGitStore } from '../../stores/git'
 import { useFilesStore } from '../../stores/files'
 import type { GitBranchInfo, GitFileChange, GitStashEntry } from '../../composables/useElectron'
 import { formatRelTime } from '../../utils/time'
+import { useResizablePanel } from '../../composables/useResizablePanel'
 
 const git = useGitStore()
 const files = useFilesStore()
@@ -67,55 +68,12 @@ async function onReset(c: { hash: string; shortHash: string }, mode: 'soft' | 'm
 }
 
 // ---------- 左右分栏宽度（localStorage 持久化，200–640px） ----------
-const CHANGES_WIDTH_KEY = 'lynel:git-changes-width'
-const MIN_CHANGES = 200
-const MAX_CHANGES = 640
-const DEFAULT_CHANGES = 320
-
-function loadChangesWidth(): number {
-  try {
-    const v = Number(localStorage.getItem(CHANGES_WIDTH_KEY))
-    if (Number.isFinite(v) && v >= MIN_CHANGES && v <= MAX_CHANGES) return v
-  } catch {}
-  return DEFAULT_CHANGES
-}
-
-const changesWidth = ref(loadChangesWidth())
-const dragging = ref(false)
-let dragStartX = 0
-let dragStartWidth = 0
-
-function onResizeStart(e: MouseEvent) {
-  e.preventDefault()
-  dragStartX = e.clientX
-  dragStartWidth = changesWidth.value
-  dragging.value = true
-  document.body.style.userSelect = 'none'
-  document.addEventListener('mousemove', onResizeMove)
-  document.addEventListener('mouseup', onResizeEnd)
-}
-
-function onResizeMove(e: MouseEvent) {
-  if (!dragging.value) return
-  changesWidth.value = Math.min(
-    MAX_CHANGES,
-    Math.max(MIN_CHANGES, dragStartWidth + (e.clientX - dragStartX)),
-  )
-}
-
-function onResizeEnd() {
-  if (!dragging.value) return
-  dragging.value = false
-  document.body.style.userSelect = ''
-  document.removeEventListener('mousemove', onResizeMove)
-  document.removeEventListener('mouseup', onResizeEnd)
-  try {
-    localStorage.setItem(CHANGES_WIDTH_KEY, String(changesWidth.value))
-  } catch {}
-}
-
-onBeforeUnmount(() => {
-  if (dragging.value) onResizeEnd()
+const { width: changesWidth, dragging, onResizeStart } = useResizablePanel({
+  storageKey: 'lynel:git-changes-width',
+  defaultWidth: 320,
+  min: 200,
+  max: 640,
+  handle: 'right',
 })
 
 function onStage(f: GitFileChange) {
