@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>草图 · 终端侧边文件编辑分屏</title>
+<style>
+:root{
+  --bg-primary:#1C1C1E; --bg-panel:#2C2C2E; --bg-input:#2C2C2E;
+  --bg-terminal:#202024; --bg-hover:#3A3A3C; --bg-titlebar:#242426;
+  --accent:#0A84FF; --accent-soft-bg:rgba(10,132,255,.16);
+  --text-primary:#F5F5F7; --text-secondary:#98989D; --text-tertiary:#6E6E73; --text-inverse:#FFFFFF;
+  --border:rgba(255,255,255,.12); --border-strong:rgba(255,255,255,.20);
+  --radius-sm:8px; --radius-md:10px; --radius-pill:999px;
+  --fs-caption:12px; --fs-body-sm:13px; --fs-body:14px;
+  /* 终端主题（apiproxy/CodeView 共用的那套 --term-*） */
+  --term-bg:#1e1e1e; --term-fg:#d4d4d4; --term-selection:#264f78;
+  --term-bright-black:#6a6a6a; --term-yellow:#dcdcaa; --term-green:#6A9955; --term-red:#f44747;
+  --code-border:#2a2a2a; --code-hover:#2a2d2e;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font:13px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  background:#111;color:var(--text-primary);height:100vh;overflow:hidden;
+}
+
+/* ============ 演示控制条（不属于真实 UI） ============ */
+.controls{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:99;
+  display:flex;gap:6px;align-items:center;padding:6px 10px;
+  background:rgba(20,20,22,.94);border:1px solid var(--border-strong);
+  border-radius:var(--radius-pill);box-shadow:0 8px 28px rgba(0,0,0,.5);
+  font-size:12px;color:var(--text-secondary);backdrop-filter:blur(12px);
+}
+.controls b{color:var(--text-primary);font-weight:600;margin-right:2px}
+.controls button{
+  padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-pill);
+  background:transparent;color:var(--text-secondary);font:inherit;cursor:pointer;
+}
+.controls button:hover{background:var(--bg-hover);color:var(--text-primary)}
+.controls button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.controls .sep{width:1px;height:16px;background:var(--border);margin:0 2px}
+
+/* ============ 应用外壳 ============ */
+.app{display:flex;flex-direction:column;height:100vh;background:var(--bg-primary)}
+.titlebar{height:34px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--bg-titlebar);border-bottom:1px solid var(--border);font-size:12px;color:var(--text-secondary)}
+.dots{display:flex;gap:6px}.dots i{width:11px;height:11px;border-radius:50%;display:block}
+.dots i:nth-child(1){background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:nth-child(3){background:#28c840}
+.body{flex:1;display:flex;min-height:0}
+
+/* 左栏 */
+.sidebar{width:280px;flex-shrink:0;display:flex;flex-direction:column;background:var(--bg-panel);border-right:1px solid var(--border)}
+.side-top{padding:10px;display:flex;flex-direction:column;gap:4px;border-bottom:1px solid var(--border)}
+.side-btn{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--radius-sm);color:var(--text-secondary);font-size:13px;cursor:default}
+.side-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+.side-btn.active{background:var(--accent-soft-bg);color:var(--accent)}
+.side-list{flex:1;overflow:hidden;padding:8px 6px;display:flex;flex-direction:column;gap:2px}
+.side-title{padding:6px 10px 4px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-tertiary)}
+.sess{padding:7px 10px;border-radius:var(--radius-sm);font-size:12px;cursor:default}
+.sess:hover{background:var(--bg-hover)}
+.sess.active{background:var(--accent-soft-bg);box-shadow:inset 2px 0 0 var(--accent)}
+.sess .t{color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sess .m{color:var(--text-tertiary);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side-foot{padding:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:2px}
+
+/* 中间内容区 */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.globaltabs{height:38px;flex-shrink:0;display:flex;align-items:flex-end;gap:2px;padding:0 8px;background:var(--bg-primary);border-bottom:1px solid var(--border)}
+.gtab{padding:7px 12px;border-radius:8px 8px 0 0;font-size:12px;color:var(--text-secondary);cursor:default}
+.gtab:hover{background:var(--bg-hover)}
+.gtab.active{background:var(--bg-panel);color:var(--text-primary);border:1px solid var(--border);border-bottom-color:transparent;margin-bottom:-1px}
+.content{flex:1;min-height:0;display:flex;flex-direction:column}
+
+/* 子页 tab 条 */
+.subtabs{height:34px;flex-shrink:0;display:flex;align-items:center;gap:2px;padding:0 8px;background:var(--bg-panel);border-bottom:1px solid var(--border)}
+.stab{display:flex;align-items:center;gap:6px;padding:5px 11px;border:none;border-radius:var(--radius-sm);background:transparent;color:var(--text-secondary);font:inherit;font-size:12px;cursor:pointer}
+.stab:hover{background:var(--bg-hover);color:var(--text-primary)}
+.stab.active{background:var(--accent-soft-bg);color:var(--accent)}
+.stab .ico{font-size:12px;line-height:1}
+
+/* ============ 分屏 ============ */
+.subpane{flex:1;min-height:0;display:flex}
+.subpane.has-split{flex-direction:row}
+.terminal-side{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;background:var(--bg-terminal)}
+
+.term-wrap{flex:1;min-height:0;overflow:auto;padding:8px 10px;font:12px/1.55 "Cascadia Mono",Consolas,"Courier New",monospace;color:var(--term-fg);background:var(--bg-terminal);white-space:pre-wrap}
+.term-wrap .dim{color:var(--term-bright-black)}
+.term-wrap .grn{color:var(--term-green)}
+.term-wrap .yel{color:var(--term-yellow)}
+.term-wrap .red{color:var(--term-red)}
+.term-wrap .cur{display:inline-block;width:7px;height:14px;background:var(--term-fg);vertical-align:-2px;animation:blink 1.05s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* 可点击的路径 */
+.path{color:#9cdcfe;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;cursor:pointer;border-radius:3px;padding:0 1px}
+.path:hover{background:var(--term-selection);text-decoration-style:solid}
+
+.split-handle{flex:0 0 4px;width:4px;cursor:col-resize;background:transparent;position:relative;z-index:6}
+.split-handle:hover,.split-handle.dragging{background:var(--accent)}
+
+/* 右侧编辑器分栏 */
+.editor-split{flex-shrink:0;display:flex;flex-direction:column;min-width:0;width:480px;background:var(--term-bg);border-left:1px solid var(--code-border)}
+.split-head{height:32px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 6px 0 10px;background:var(--term-bg);border-bottom:1px solid var(--code-border);color:var(--term-fg);font-size:12px}
+.split-head .name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.split-head .spacer{flex:1}
+.hbtn{height:24px;display:inline-flex;align-items:center;gap:5px;padding:0 8px;border:1px solid var(--code-border);border-radius:var(--radius-sm);background:transparent;color:var(--term-fg);font:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
+.hbtn:hover{background:var(--code-hover)}
+.hbtn.icon{width:24px;justify-content:center;padding:0;border-color:transparent}
+
+/* 文件 tab 条 */
+.filetabs{height:33px;flex-shrink:0;display:flex;align-items:stretch;background:var(--term-bg);border-bottom:1px solid var(--code-border);overflow:hidden}
+.ftab{display:flex;align-items:center;gap:6px;padding:0 8px 0 12px;font-size:12px;color:var(--term-fg);opacity:.6;border-right:1px solid var(--code-border);cursor:pointer;white-space:nowrap}
+.ftab:hover{background:var(--code-hover);opacity:1}
+.ftab.active{opacity:1;background:var(--code-hover);box-shadow:inset 0 2px 0 var(--accent)}
+.ftab .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0}
+.ftab .x{opacity:.5;font-size:13px;line-height:1}
+.ftab .x:hover{opacity:1}
+
+/* 编辑器 */
+.editor-host{flex:1;min-height:0;overflow:auto;font:12px/1.6 "Cascadia Mono",Consolas,"Courier New",monospace;background:var(--term-bg);color:var(--term-fg)}
+.code-line{display:flex;white-space:pre;padding:0 8px 0 0}
+.code-line:hover{background:var(--code-hover)}
+.ln{flex-shrink:0;width:44px;text-align:right;padding-right:14px;color:var(--term-bright-black);user-select:none}
+.code{white-space:pre}
+.k{color:#569cd6}.s{color:#ce9178}.c{color:var(--term-green)}.f{color:var(--term-yellow)}.n{color:#b5cea8}
+.blame{font-style:italic;opacity:.45;margin-left:2em}
+.editor-empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--term-bright-black);font-size:12px}
+
+/* ============ 「文件」子页（保留原样） ============ */
+.codeview{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--term-bg)}
+.cv-main{flex:1;min-height:0;display:flex}
+.tree-panel{width:300px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--code-border);background:var(--term-bg)}
+.panel-toolbar{height:32px;flex-shrink:0;display:flex;align-items:center;gap:2px;padding:0 6px;border-bottom:1px solid var(--code-border)}
+.tool-btn{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:none;border-radius:7px;background:transparent;color:var(--term-fg);opacity:.7;cursor:pointer}
+.tool-btn:hover{background:var(--code-hover);opacity:1}
+.toolbar-dir{margin-left:6px;font-size:11px;color:var(--term-bright-black);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toolbar-spacer{flex:1}
+.tree-list{flex:1;overflow:auto;padding:4px 0;font-size:12px;color:var(--term-fg)}
+.tree-row{display:flex;align-items:center;gap:6px;padding:3px 8px;white-space:nowrap;cursor:default}
+.tree-row:hover{background:var(--code-hover)}
+.tree-row.active{background:var(--term-selection)}
+.tree-row .ind{flex-shrink:0}
+.cv-editor{flex:1;min-width:0;display:flex;flex-direction:column}
+.bottom-panel{height:190px;flex-shrink:0;border-top:1px solid var(--code-border);background:var(--term-bg);display:flex;flex-direction:column}
+.bp-tabs{height:30px;flex-shrink:0;display:flex;align-items:center;gap:2px;padding:0 8px;border-bottom:1px solid var(--code-border)}
+.bp-tab{padding:4px 10px;border-radius:6px;font-size:12px;color:var(--term-fg);opacity:.6;cursor:pointer}
+.bp-tab.active{opacity:1;background:var(--code-hover)}
+.bp-body{flex:1;min-height:0;overflow:auto;font:12px/1.6 "Cascadia Mono",Consolas,monospace;padding:8px 10px;color:var(--term-fg);opacity:.75;white-space:pre-wrap}
+.gitrow{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--term-fg);padding:2px 0}
+.gitrow .st{width:14px;color:var(--term-yellow)}
+.gitrow .st.m{color:var(--accent)}
+
+.hidden{display:none !important}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="titlebar">
+    <span class="dots"><i></i><i></i><i></i></span>
+    <span>Lynel Desktop</span>
+  </div>
+
+  <div class="body">
+    <!-- 左栏 -->
+    <aside class="sidebar">
+      <div class="side-top">
+        <div class="side-btn">▤ 首页</div>
+        <div class="side-btn active">◉ 任务</div>
+        <div class="side-btn">☆ 收藏夹</div>
+        <div class="side-btn">⌕ 搜索</div>
+      </div>
+      <div class="side-list">
+        <div class="side-title">最近会话</div>
+        <div class="sess active">
+          <div class="t">修掉 listRuns 分页用例的时序依赖</div>
+          <div class="m">lynel-desktop · 2 分钟前</div>
+        </div>
+        <div class="sess">
+          <div class="t">定时任务重设计与新的不变量</div>
+          <div class="m">lynel-desktop · 1 小时前</div>
+        </div>
+        <div class="sess">
+          <div class="t">wecom 卡片多问题逐题发送</div>
+          <div class="m">lynel-desktop · 昨天</div>
+        </div>
+      </div>
+      <div class="side-foot">
+        <div class="side-btn">👤 账户</div>
+        <div class="side-btn">? 使用指南</div>
+        <div class="side-btn">⚙ 设置</div>
+      </div>
+    </aside>
+
+    <!-- 内容区 -->
+    <div class="main">
+      <div class="globaltabs">
+        <div class="gtab">首页</div>
+        <div class="gtab active">会话 · 修掉 listRuns 分页用例</div>
+        <div class="gtab">设置</div>
+      </div>
+
+      <div class="content">
+        <div class="subtabs">
+          <button class="stab active" data-sub="terminal" onclick="setSub('terminal')">
+            <span class="ico">▶</span> 终端
+          </button>
+          <button class="stab" data-sub="trace" onclick="setSub('trace')">
+            <span class="ico">◈</span> Trace
+          </button>
+          <button class="stab" data-sub="code" onclick="setSub('code')">
+            <span class="ico">▤</span> 文件
+          </button>
+        </div>
+
+        <div class="content-pane" id="pane-terminal" style="flex:1;min-height:0;display:flex;flex-direction:column">
+          <div class="subpane" id="subpane">
+            <!-- 左：终端 -->
+            <div class="terminal-side">
+              <div class="term-wrap" id="term">
+<span class="dim">> 跑一下 main 的测试看看</span>
+
+<span class="grn">●</span> 我先看下测试文件，然后跑 <span class="path" onclick="openPath('src/main/tasks/store.ts')">src/main/tasks/store.ts</span> 相关的用例。
+
+<span class="dim">Read</span>(<span class="path" onclick="openPath('src/main/tasks/runner.ts')">src/main/tasks/runner.ts</span>)
+<span class="grn">  ⎿  Read 168 lines</span>
+
+发现 <span class="path" onclick="openPath('src/main/tasks/schedule.ts')">src/main/tasks/schedule.ts</span> 里 computeNextRun
+没吞掉 scheduleToCron 抛的错，改掉：
+
+<span class="dim">Edit</span>(<span class="path" onclick="openPath('src/main/tasks/schedule.ts')">src/main/tasks/schedule.ts</span>)
+<span class="grn">  ⎿  Updated file</span>
+
+<span class="yel">●</span> 已改完。改动在 <span class="path" onclick="openPath('src/main/tasks/schedule.ts')">src/main/tasks/schedule.ts</span>
+和 <span class="path" onclick="openPath('src/main/tasks/runner.ts')">src/main/tasks/runner.ts</span>，要我跑测试吗？
+
+<span class="dim">> </span><span class="cur"></span>
+              </div>
+            </div>
+
+            <!-- 拖拽手柄 + 右：编辑器（由 hostInSplit 控制 v-if） -->
+            <div class="split-handle" id="handle" title="拖拽调整宽度" onmousedown="startDrag(event)"></div>
+            <div class="editor-split" id="editorSplit">
+              <div class="split-head">
+                <span class="name" id="headName">src/main/tasks/schedule.ts</span>
+                <span class="spacer"></span>
+                <button class="hbtn" onclick="setSub('code')" title="跳到「文件」子页，可用文件树与 Git 面板">在文件中打开</button>
+                <button class="hbtn icon" onclick="collapseSplit()" title="收起右栏">✕</button>
+              </div>
+              <div class="filetabs" id="fileTabs"></div>
+              <div class="editor-host" id="editorHost"></div>
+            </div>
+          </div>
+          <div style="height:30px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 10px;border-top:1px solid var(--border);background:var(--bg-terminal);font-size:11px;color:var(--term-bright-black)">
+            <span>⇢ 终端保持运行，cols 随分屏自动 resize</span>
+            <span style="flex:1"></span>
+            <button class="hbtn" id="reopenBtn" onclick="expandSplit()" style="display:none">◧ 打开文件编辑分屏</button>
+          </div>
+        </div>
+
+        <div class="content-pane hidden" id="pane-trace" style="flex:1;min-height:0;display:flex;flex-direction:column">
+          <div class="term-wrap" style="background:var(--bg-terminal)">
+<span class="dim">Trace（原样保留，不分屏）</span>
+
+<span class="grn">#412</span>  claude-sonnet-4-6   12.4k ↑ / 318 ↓   $0.041   2.31s
+<span class="grn">#411</span>  claude-sonnet-4-6   11.9k ↑ / 892 ↓   $0.052   4.87s
+<span class="yel">#410</span>  claude-sonnet-4-6   10.2k ↑ / 204 ↓   $0.028   1.92s   <span class="red">error</span>
+          </div>
+        </div>
+
+        <!-- 「文件」子页：本次完全不动 -->
+        <div class="content-pane hidden" id="pane-code" style="flex:1;min-height:0;display:flex;flex-direction:column">
+          <div class="codeview">
+            <div class="cv-main">
+              <aside class="tree-panel">
+                <div class="panel-toolbar">
+                  <button class="tool-btn">⟳</button>
+                  <button class="tool-btn">+</button>
+                  <span class="toolbar-dir">lynel-desktop</span>
+                  <span class="toolbar-spacer"></span>
+                  <button class="tool-btn">▤</button>
+                </div>
+                <div class="tree-list">
+                  <div class="tree-row"><span class="ind">▾</span> 📁 src</div>
+                  <div class="tree-row"><span class="ind" style="width:18px"></span><span class="ind">▾</span> 📁 main</div>
+                  <div class="tree-row"><span class="ind" style="width:36px"></span><span class="ind">▾</span> 📁 tasks</div>
+                  <div class="tree-row active"><span class="ind" style="width:54px"></span> 📄 schedule.ts</div>
+                  <div class="tree-row"><span class="ind" style="width:54px"></span> 📄 runner.ts</div>
+                  <div class="tree-row"><span class="ind" style="width:54px"></span> 📄 store.ts</div>
+                  <div class="tree-row"><span class="ind" style="width:54px"></span> 📄 db.ts</div>
+                  <div class="tree-row"><span class="ind" style="width:36px"></span> 📄 app.ts</div>
+                  <div class="tree-row"><span class="ind" style="width:36px"></span> ▸ 📁 channels</div>
+                </div>
+              </aside>
+              <section class="cv-editor">
+                <div class="filetabs" id="fileTabs2"></div>
+                <div class="editor-host" id="editorHost2"></div>
+              </section>
+            </div>
+            <div class="bottom-panel">
+              <div class="bp-tabs">
+                <span class="bp-tab active">Git</span>
+                <span class="bp-tab">终端</span>
+              </div>
+              <div class="bp-body">
+                <div class="gitrow"><span class="st m">M</span> src/main/tasks/schedule.ts</div>
+                <div class="gitrow"><span class="st m">M</span> src/main/tasks/runner.ts</div>
+                <div class="gitrow"><span class="st">?</span> docs/superpowers/specs/2026-09-22-terminal-file-split-design.md</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <b>草图控制</b>
+  <button onclick="setSub('terminal')" id="ctlTerm">终端（分屏）</button>
+  <button onclick="setSub('trace')" id="ctlTrace">Trace</button>
+  <button onclick="setSub('code')" id="ctlCode">文件子页</button>
+  <span class="sep"></span>
+  <button onclick="toggleSplit()" id="ctlSplit">收起 / 展开右栏</button>
+  <span class="sep"></span>
+  <span>拖动中间那条蓝色手柄试试</span>
+</div>
+
+<script>
+// ---------------- 假数据 ----------------
+const FILES = {
+  'src/main/tasks/schedule.ts': { label: 'schedule.ts', lines: [
+    ['c', '// 纯函数：不碰 DB、不碰时钟，时间一律由调用方传入'],
+    ['', ''],
+    ['k', 'export function scheduleToCron(s: Schedule): string {'],
+    ['p', '  return SCHEDULE_CRON[s.kind](s)'],
+    ['p', '}'],
+    ['', ''],
+    ['k', 'export function computeNextRun(row: TaskRow, now: number) {'],
+    ['c', '  // 必须吞掉 scheduleToCron 抛的错：它由 30s 一次的 tick 调用，'],
+    ['c', '  // 抛一次整个调度器停摆'],
+    ['k', '  try'],
+    ['p', '    return new Cron(scheduleOf(row)).nextRun()?.getTime() ?? null'],
+    ['p', '  } catch (e) {'],
+    ['k', '    return null'],
+    ['p', '  }'],
+    ['p', '}'],
+  ], blame: 10 },
+  'src/main/tasks/runner.ts': { label: 'runner.ts', lines: [
+    ['c', '// 单次 run 的生命周期（spawn / 逐行消费 / 落库 / 超时 kill）'],
+    ['k', 'export interface RunContext { runId: string; taskId: string }'],
+    ['', ''],
+    ['c', '// win32 上 claude 是 npm 生成的 .cmd shim，裸名会 ENOENT'],
+    ['k', 'function buildSpawnCommand(claudePath: string): SpawnPlan {'],
+    ['k', '  if (process.platform !== '], ['s', "'win32'"],
+    ['p', ') {'],
+    ['p', '    return { ok: true, command: claudePath }'],
+    ['p', '  }'],
+    ['k', '  const shim = '], ['f', 'resolveBin(claudePath)'],
+    ['k', '  if (!shim) return { ok: false, reason: '], ['s', "'ENOENT'"],
+    ['p', ' }'],
+    ['k', '  return '], ['f', 'parseShim(shim)'],
+    ['p', '}'],
+  ] },
+  'src/main/tasks/store.ts': { label: 'store.ts', lines: [
+    ['c', '// 纯 CRUD + run 状态机，无业务逻辑'],
+    ['k', 'export function deleteTask(id: string) {'],
+    ['c', '  // 手动级联删 runs / run_events —— 表间没有外键'],
+    ['p', "  db.prepare('DELETE FROM runs WHERE task_id = ?').run(id)"],
+    ['p', "  db.prepare('DELETE FROM tasks WHERE id = ?').run(id)"],
+    ['p', '}'],
+  ] },
+}
+
+let openTabs = ['src/main/tasks/schedule.ts', 'src/main/tasks/runner.ts']
+let activeTab = 'src/main/tasks/schedule.ts'
+let splitOpen = true
+
+// ---------------- 渲染 ----------------
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')}
+
+function renderTabs(){
+  const html = openTabs.map(p=>{
+    const f = FILES[p]
+    const dirty = p === 'src/main/tasks/runner.ts'
+    return `<div class="ftab ${p===activeTab?'active':''}" onclick="activate('${p}')" title="${p}">
+      ${dirty?'<span class="dot"></span>':''}<span>${f.label}</span><span class="x">✕</span></div>`
+  }).join('')
+  document.getElementById('fileTabs').innerHTML = html
+  const h2 = document.getElementById('fileTabs2')
+  if (h2) h2.innerHTML = html
+}
+
+function renderEditor(hostId){
+  const el = document.getElementById(hostId)
+  if(!el) return
+  const f = FILES[activeTab]
+  if(!f){ el.innerHTML = '<div class="editor-empty">从左侧文件树选择文件</div>'; return }
+  el.innerHTML = f.lines.map((l,i)=>{
+    const num = i+1
+    const isBlame = f.blame === num
+    let seg = ''
+    if(l[0]==='') seg = ''
+    else if(l[0]==='p') seg = `<span>${esc(l[1])}</span>`
+    else seg = `<span class="${l[0]}">${esc(l[1])}</span>`
+    const blame = isBlame ? '<span class="blame">　walleliu1016 · 2 小时前 · 31b77e2</span>' : ''
+    return `<div class="code-line"><span class="ln">${num}</span><span class="code">${seg}${blame}</span></div>`
+  }).join('')
+}
+
+function renderEmpty(hostId){
+  const el = document.getElementById(hostId)
+  if(el) el.innerHTML = '<div class="editor-empty">从左侧文件树选择文件</div>'
+}
+
+function renderAll(){
+  renderTabs()
+  if(activeTab){ renderEditor('editorHost'); renderEditor('editorHost2') }
+  else { renderEmpty('editorHost'); renderEmpty('editorHost2') }
+  document.getElementById('headName').textContent = activeTab ? activeTab : '未打开文件'
+}
+
+function activate(p){ activeTab = p; renderAll() }
+
+// ---------------- 分屏 ----------------
+function applySplit(){
+  const sp = document.getElementById('subpane')
+  const ed = document.getElementById('editorSplit')
+  const hd = document.getElementById('handle')
+  const btn = document.getElementById('reopenBtn')
+  const on = splitOpen && !document.getElementById('pane-terminal').classList.contains('hidden')
+  sp.classList.toggle('has-split', on)
+  ed.classList.toggle('hidden', !on)
+  hd.classList.toggle('hidden', !on)
+  btn.style.display = splitOpen ? 'none' : ''
+  if(on) clampWidth()
+}
+function collapseSplit(){ splitOpen = false; applySplit() }
+function expandSplit(){ splitOpen = true; applySplit() }
+function toggleSplit(){ splitOpen = !splitOpen; applySplit() }
+
+// 宽度：默认 480，钳制 [320, 容器宽 - 400 - 4]
+const HANDLE_W = 4, TERM_MIN = 400, MIN_W = 320
+let width = 480
+function dynamicMax(){
+  const c = document.getElementById('subpane').clientWidth
+  return Math.max(MIN_W, c - TERM_MIN - HANDLE_W)
+}
+function clampWidth(){
+  width = Math.min(dynamicMax(), Math.max(MIN_W, width))
+  document.getElementById('editorSplit').style.width = width + 'px'
+}
+
+let startX = 0, startW = 0, dragging = false
+function startDrag(e){
+  e.preventDefault()
+  startX = e.clientX; startW = width; dragging = true
+  document.getElementById('handle').classList.add('dragging')
+  document.body.style.userSelect = 'none'
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+function onMove(e){
+  if(!dragging) return
+  // 手柄在右栏左侧：向右拖 = 右栏变窄
+  width = Math.min(dynamicMax(), Math.max(MIN_W, startW - (e.clientX - startX)))
+  document.getElementById('editorSplit').style.width = width + 'px'
+}
+function onUp(){
+  if(!dragging) return
+  dragging = false
+  document.getElementById('handle').classList.remove('dragging')
+  document.body.style.userSelect = ''
+  document.removeEventListener('mousemove', onMove)
+  document.removeEventListener('mouseup', onUp)
+}
+window.addEventListener('resize', () => { if(splitOpen) clampWidth() })
+
+// ---------------- 点终端路径 ----------------
+function openPath(p){
+  if(!FILES[p]) return
+  if(!openTabs.includes(p)) openTabs.push(p)
+  activeTab = p
+  splitOpen = true
+  setSub('terminal', true)
+  renderAll()
+  applySplit()
+}
+
+// ---------------- 子页 ----------------
+function setSub(which, silent){
+  document.getElementById('pane-terminal').classList.toggle('hidden', which!=='terminal')
+  document.getElementById('pane-trace').classList.toggle('hidden', which!=='trace')
+  document.getElementById('pane-code').classList.toggle('hidden', which!=='code')
+  document.querySelectorAll('.stab').forEach(b=>b.classList.toggle('active', b.dataset.sub===which))
+  document.getElementById('ctlTerm').classList.toggle('on', which==='terminal')
+  document.getElementById('ctlTrace').classList.toggle('on', which==='trace')
+  document.getElementById('ctlCode').classList.toggle('on', which==='code')
+  applySplit()
+}
+
+renderAll()
+setSub('terminal')
+</script>
+</body>
+</html>
