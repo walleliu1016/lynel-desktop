@@ -505,8 +505,16 @@ export async function start(
   // 而 node-pty 在 macOS forkpty 失败时只能在 exit code=1 静默退出（无 errno）。
   // 仅在 spawn 的是 claude（opts.probe=true）时运行，避免对通用 binary（cmd.exe /
   // /bin/sh 等）误判：--version 是 claude 专属，cmd.exe 不认会 exit 1。
+  //
+  // fire-and-forget：不 await —— 主进程上下文 --version 实测 3~8s+，等着它会把
+  // 真正的会话启动拖慢这么久（超时前会话根本起不来）。probe 本职是补诊断
+  // （ENOENT/EACCES 的可执行提示），失败只记日志；真正的启动失败由下方
+  // pty.spawn 的异常 + onExit 的 PtyExitInfo 兜底展示给用户。
   if (opts.probe) {
-    await probeBin(resolvedBin, { ...process.env, ...darwinEnv, ...env } as { [key: string]: string }, label, bin);
+    void probeBin(resolvedBin, { ...process.env, ...darwinEnv, ...env } as { [key: string]: string }, label, bin)
+      .catch((err) => {
+        logger.warn(`[pty] probe 失败（不阻塞启动） bin=${resolvedBin}: ${err?.message || err}`);
+      });
   }
 
   // raw：交互式 shell 直通 spawn，不经 cmd.exe /c 包装，也不带 --session-id/--resume
