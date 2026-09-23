@@ -87,6 +87,15 @@ npm run dist:linux
 
 ### 2. 主进程结构
 - `src/main/app.ts`：组装 store、events、log、auth、jsonl、session、hookserver、channels、apiproxy、permission-broker、updater、attention、exit-detect、output-batcher，注册所有 IPC handler。Session 生命周期编排（`createSessionInternal`、`adoptSession`、`openSessionTerminal`）在此实现。
+- `src/main/jsonl.ts`：扫描 `~/.claude/projects/` 的会话 jsonl（产出 `SessionMeta`），chokidar 监听项目列表变化；`setExcludedProjects` 支持排除目录（任务工作目录必须排除，见第 17 节）。
+- `src/main/session-meta.ts`：`RecentSessionRecord` 定义 + `mergeRecentAgentField` 纯函数（recents 的 agent 字段合并进 jsonl meta）；`terminated` 标志记录用户在终端里主动 `/exit`，openTerminal 据此改走 PtyMode.New 而非 `--resume`（见第 3 节）。
+- `src/main/favorites.ts`：收藏夹持久化（`~/.lynel-desktop/favorite-sessions.json`），文件缺失/损坏一律空数组不阻塞启动；渲染层对应 `stores/favorites.ts` + `FavoriteStar.vue`，收藏项支持以该目录新开会话。
+- `src/main/auth-persistence.ts`：登录态加密持久化（`safeStorage` 加密 JWT 存 electron-store）+ 启动分流 `decideRestore`（云关+有用户名→首页 / 云开+有 JWT→自动登录 / 否则表单）。
+- `src/main/providers-apply.ts`：供应商激活写入的纯函数集合（按 agentKind 生成 claude settings env / codex config 覆盖 / opencode·omp env），不依赖 App 实例。
+- `src/main/dsh-cookie.ts`：用 dsh 启动 token 换 cookie，以 `SameSite=None` 写入 Electron session，让 harness iframe 能通过 dsh web 鉴权（跨站上下文存不下 `SameSite=Strict` cookie）。
+- `src/main/wecom-scan.ts`：企业微信扫码添加 bot（生成二维码 + 轮询结果，`scanGen` 代际计数隔离并发轮询）；渲染层对应 `QrScanDialog.vue`。
+- `src/main/terminal-screenshot.ts`：终端缓冲渲染 PNG（`@napi-rs/canvas` 懒加载，原生绑定缺失时降级报错），供 WeCom `/screenshot` 指令使用。
+- `src/main/workdir.ts`：`normalizeWorkdir` —— 空白工作目录回退用户主目录。
 - `src/main/session.ts`：模块级 session 注册表（`Map<string, Session>`），提供 `newSession`/`register`/`lookup`/`remove`/`list`/`send`/`writeInput`/`resize`/`close`/`rebind`/`setProcess`/`setState`/`touch`/`appendBuffer`/`getBuffer` 等函数。**没有 `SessionManager` 类**。
 - `src/main/pty.ts`：基于 `node-pty` 启动交互式 Claude，包含 `PtyMode` 枚举、darwin shell-env 解析/缓存、`probeBin` 预探测、`PtyExitInfo` 诊断等。
 - `src/main/hookserver.ts`：Express HTTP server，接收 Claude hooks。端点：`/hook`（Claude hook POST）、`/api/send`（外部发送消息）、`/api/sessions/:id/calls/stream`（SSE 流）。**不再有 `/api/sessions/{id}/calls` 和 `/api/calls/{seq}` 端点**（trace 数据已改为 IPC 方式）。
@@ -105,7 +114,7 @@ npm run dist:linux
 - `src/main/protocol/`：`LynelEnvelope` 协议定义（`envelope.ts`、`events.ts`、`usage.ts`）。
 - `src/main/archive/`：归档写入（blobs、happy.jsonl、raw archive、用量摘要）。
 - `src/main/git.ts`：Git 面板的唯一入口，用 `simple-git` 包装系统 git CLI（与 VSCode 同理：不重新实现 git）。覆盖状态 / 暂存 / 提交 / 远程操作、按 revision 取文件、提交历史图、单个提交详情、分支、stash、blame、reset。`.git` 目录用 chokidar 监听，500ms 合帧后推 `git:changed`。
-- `src/main/files.ts`：代码工作区的文件操作（列目录 / 读 / 写 / 新建 / 重命名 / 删除）+ 工作区 chokidar watcher（推 `file:changed`）。
+- `src/main/files.ts`：代码工作区的文件操作（列目录 / 读 / 写 / 新建 / 重命名 / 删除）+ 工作区 watcher（推 `file:changed`）。**不用 chokidar**：它给树内每个路径各建一个 `fs.watch`（单仓库 ~4000 句柄），改用原生 `fs.watch(workDir, { recursive: true })`，忽略逻辑按路径分段跑 `isIgnored` 等价子树剪枝。
 - `src/main/shell.ts`：项目终端（每会话一个交互式 shell PTY）。复用 `pty.ts` 的 `raw` 直通模式绕开 win32 的 `cmd.exe /c` 包装（多一层 cmd 会让 Ctrl+C 语义变形），输出经**独立**的 `OutputBatcher` 以 `shell:<sid>` 事件推送 —— 与 Claude PTY 的 `session:<sid>` 通道分离，复用会串流。
 - `src/main/tasks/`：定时任务（`claude -p` 无头执行 + cron 调度 + SQLite 存事件流），自洽子系统，不接 apiproxy / Trace / 云通道，见第 17 节。
 
@@ -128,6 +137,11 @@ npm run dist:linux
   - `Resume`：`--resume <sid>`，jsonl 已存在的 sid 必须用它，否则 Claude 会 DEAD。
   - `Auto`：不带 flag，保留兼容性（一般不用）。
 - PTY 启动前会做 darwin shell-env 解析（缓存到 `~/.lynel-desktop/darwin-env.json`），以及 `probeBin` 预探测（`claude --version`）。
+- **启动链三条硬约束**（0.0.32 修复）：
+  1. `probeBin` 用异步 spawn + 超时树杀（`execFileSync` 超时只杀得到 cmd.exe，背后的 claude 成孤儿）；**超时不判失败而是放行**交给 PTY spawn 暴露问题（主进程上下文探测可达 3~8s+，超时 ≠ binary 坏），成功结果按 bin 缓存（`probeOkCache`，失败不缓存）。
+  2. `openTerminal` 有 in-flight 去重表（key=session id）：渲染层「列表点击 + xterm 挂载」会对同一 session 双发 open IPC，`s.process` 尚未设置的窗口内会双 spawn，产生表外孤儿 claude 并并发写坏同一 jsonl。
+  3. 启动失败发 `{"type":"startup-error"}` 结构化信号，`XtermTerminal.vue` 识别后展示「错误 + 重试」覆盖层，**不再往终端写纯文本**；proxy 启动失败同样 resolve 让前端继续。
+- **关闭不泄漏 conhost**：win32 上关闭会话必须杀掉 ConPTY 拉起的 headless conhost（跟着 PTY 句柄走），否则每次开关会话泄漏一个孤儿进程。
 
 ### 4. PTY 输入与 xterm.js 渲染（关键）
 - 向交互式 Claude PTY 发送用户消息必须是裸文本，并以回车结束；没有回车 Claude 不会执行。
@@ -478,6 +492,8 @@ npm run dist:linux
 
 - `README.md` —— 项目总览、完整数据流、目录结构。
 - `docs/usage.md` —— 使用指南（安装、配置、企业微信集成、截图等）。
+- `docs/user-guide.md` —— 面向最终用户的完整用户指南。
+- `docs/macos-signing.md` —— macOS 签名 / 公证方案记录（待落地 build.yml）。
 - `docs/channel.md` —— 通道架构设计。
 - `docs/hook.md` —— Hook 系统设计。
 - `docs/envelope-format.md` —— LynelEnvelope 协议格式。
