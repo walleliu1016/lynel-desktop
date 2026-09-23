@@ -566,11 +566,20 @@ export async function start(
     resize: (cols, rows) => proc.resize(cols, rows),
     kill: (signal) => {
       if (os.platform() === 'win32') {
-        // Windows 下进程树为 cmd.exe → claude.exe，必须递归终止整个树
+        // 顺序必须是「先 proc.kill()、后 taskkill」，反了会泄漏 headless conhost：
+        // node-pty native 在 shell 退出的回调里会 remove_pty_baton 摘掉 HPCON，
+        // 而 ClosePseudoConsole 只在 PtyKill 按 baton 找到 handle 时才调 ——
+        // 先 taskkill 杀掉 shell 再 proc.kill()，PtyKill 找不到 handle 直接跳过，
+        // ConPTY 的 conhost（`--headless --width …`）就永远挂着。
+        // proc.kill() 先行时 shell 还活着，ClosePseudoConsole 正常执行；
+        // 随后的 taskkill /T 只是兜底杀整棵树（node-pty 的 console-list agent
+        // 竞争失败时 fallback 只杀 innerPid，claude 等子孙会变孤儿）。
+        try {
+          proc.kill();
+        } catch { /* terminal 可能已关闭 */ }
         try {
           execFileSync('taskkill', ['/F', '/T', '/PID', String(proc.pid)], { stdio: 'ignore', timeout: 3000 });
         } catch { /* 进程可能已退出 */ }
-        proc.kill();
       } else {
         proc.kill(signal);
       }
