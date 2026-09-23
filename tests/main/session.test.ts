@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { newSession, register, lookup, send, sendSafe, rebind } from '../../src/main/session.js';
+import { newSession, register, lookup, send, sendSafe, rebind, remove, setOnRemove } from '../../src/main/session.js';
 
 describe('session', () => {
   it('registers and lookups session', () => {
@@ -76,5 +76,27 @@ describe('session rebind (/clear 迁移)', () => {
 
   it('returns undefined for missing session', () => {
     expect(rebind('ghost', 'new', '/wd')).toBeUndefined();
+  });
+});
+
+describe('session remove（删除会话的清理链）', () => {
+  it('remove 触发 onRemove 回调并从注册表删除', () => {
+    const cb = vi.fn();
+    setOnRemove(cb);
+    const s = newSession('rm-1', '/wd');
+    register(s);
+    expect(lookup('rm-1')).toBeDefined();
+
+    remove('rm-1');
+    // onRemove 是清理链的唯一入口（clearSessionMappings + ptyOutBatcher + closeShell），
+    // 回调必须被触发，否则残留死会话指针
+    expect(cb).toHaveBeenCalledWith('rm-1');
+    expect(lookup('rm-1')).toBeUndefined();
+
+    setOnRemove(null as any); // 还原，避免泄漏到其他用例
+  });
+
+  it('remove 不存在的 id 不抛异常', () => {
+    expect(() => remove('never-existed')).not.toThrow();
   });
 });

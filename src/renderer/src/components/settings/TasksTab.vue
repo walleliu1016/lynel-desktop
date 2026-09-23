@@ -42,7 +42,7 @@
             {{ boundSub }}
           </div>
         </div>
-        <button class="act-btn" @click="showPicker = true">
+        <button class="act-btn" @click="openPicker">
           {{ boundId ? '更换' : '选择机器人' }}
         </button>
         <button v-if="boundId" class="act-btn" @click="clear">清除</button>
@@ -69,7 +69,8 @@
             v-for="b in bots.bots"
             :key="b.id"
             class="picker-row"
-            :class="{ on: b.id === boundId }"
+            :class="{ on: b.id === boundId, denied: !!sessionOf(b.id) }"
+            :title="sessionOf(b.id) ? `已绑定会话 ${sessionOf(b.id)}，请先解绑` : ''"
             @click="pick(b.id)"
           >
             <Icon name="bot" :size="14" />
@@ -82,10 +83,11 @@
             <Icon v-if="b.id === boundId" name="check" :size="13" class="picker-ok" />
           </button>
           <div v-if="bots.bots.length === 0" class="picker-empty">还没有机器人，先新建一个</div>
+          <div v-if="pickError" class="picker-error">{{ pickError }}</div>
         </div>
         <div class="picker-note">
           带 <Icon name="corner-down-left" :size="11" /> 的表示它已经绑定了某个会话 ——
-          那种机器人给会话转发消息的同时也能收任务指令，选它不会改变已有的会话绑定。
+          通知机器人与会话绑定互斥，请先解绑再选。
         </div>
         <div class="picker-ft">
           <button class="act-btn" @click="showPicker = false; showCreate = true">
@@ -117,6 +119,8 @@ const cfg = computed(() => settings.cfg as any)
 
 const showCreate = ref(false)
 const showPicker = ref(false)
+/** 拒选时的提示（选了已绑会话的机器人） */
+const pickError = ref('')
 /** 机器人列表是否已加载完 —— 没加载完前不能断言「已失效」 */
 const botsReady = ref(false)
 
@@ -150,7 +154,19 @@ function sessionOf(botId: string): string {
   return sessions.getBotBoundSessionName(botId) ?? ''
 }
 
+function openPicker() {
+  pickError.value = ''
+  showPicker.value = true
+}
+
 function pick(botId: string) {
+  // 互斥是双向的：bindSessionBot 拒绑任务通知 bot，这里也拒选已绑会话的 bot ——
+  // 否则造出双身份（既转发会话又推任务），BotManagement 的「任务通知」标签还会把真实绑定藏起来
+  const boundSession = sessionOf(botId)
+  if (boundSession) {
+    pickError.value = `「${bots.bots.find((b) => b.id === botId)?.name || botId}」已绑定会话 ${boundSession}，请先解绑再选`
+    return
+  }
   cfg.value.tasks_notify_bot = botId
   settings.markDirty()
   showPicker.value = false
@@ -308,6 +324,16 @@ h2 { font-size: 16px; color: var(--text-primary); font-weight: 600; margin-botto
   white-space: nowrap;
 }
 .picker-empty { padding: 24px; text-align: center; font-size: 12px; color: var(--text-tertiary); }
+.picker-error {
+  padding: 8px 10px;
+  margin-top: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--status-error-soft);
+  color: var(--status-error);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.picker-row.denied { opacity: .55; cursor: not-allowed; }
 .picker-note {
   padding: 10px 18px;
   border-top: 1px solid var(--border);

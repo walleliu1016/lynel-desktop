@@ -466,6 +466,35 @@ export class WeComChannel implements OutputChannel, HookChannel {
     this.sessionBotMap.set(sessionId, botId);
   }
 
+  /** sessionId 被 rebind（/clear、/resume）后迁移绑定：sessionBotMap 与路由兜底表
+   *  都从旧 id 搬到新 id。漏掉这步会导致出站全部丢失（getBotForSession 查旧 id）、
+   *  入站按旧 id 命中死会话。未绑定时是 no-op。 */
+  rebindSessionBot(oldId: string, newId: string): void {
+    if (oldId === newId) return;
+    const botId = this.sessionBotMap.get(oldId);
+    if (botId) {
+      this.sessionBotMap.delete(oldId);
+      this.sessionBotMap.set(newId, botId);
+    }
+    // 路由兜底表（内存两份 + 持久化 mappings）跟着迁，键不变、值换 id
+    for (const map of [this.chatIdToSession, this.lastActiveSession]) {
+      for (const [chatId, sid] of map) {
+        if (sid === oldId) map.set(chatId, newId);
+      }
+    }
+    const all = (routingStore.store as any) || {};
+    const mappings = all.mappings || {};
+    for (const [chatId, entry] of Object.entries(mappings)) {
+      const e = entry as WeComRoutingEntry;
+      if (e.sessionId === oldId) setMapping(chatId, newId, e.workDir);
+    }
+    const originated = this.wecomOriginatedTexts.get(oldId);
+    if (originated) {
+      this.wecomOriginatedTexts.delete(oldId);
+      this.wecomOriginatedTexts.set(newId, originated);
+    }
+  }
+
   clearSessionBot(sessionId: string): void {
     this.sessionBotMap.delete(sessionId);
     this.clearSessionMappings(sessionId);
@@ -1308,13 +1337,22 @@ export class WeComChannel implements OutputChannel, HookChannel {
     const s = session.lookup(sessionId);
     if (!s || !s.process) {
       logger.info(`[wecom-channel] session ${sessionId.slice(0, 8)}... not found or no process`);
-      this.sendWeComReplyWithHeader(chatId, `会话 ${sessionId.slice(0, 8)}... 不存在或未启动，请重新绑定。`, sessionId).catch((err) =>
+      // 分开说：会话没了才需要重新绑定；进程只是没起（在 Lynel 里打开终端即可），
+      // 说"请重新绑定"会让用户白跑一趟机器人页。
+      const tip = s
+        ? `会话 ${sessionId.slice(0, 8)}... 尚未启动，请先在 Lynel Desktop 打开该会话的终端。`
+        : `会话 ${sessionId.slice(0, 8)}... 已不存在（可能被删除），请重新绑定。`;
+      this.sendWeComReplyWithHeader(chatId, tip, sessionId).catch((err) =>
         logger.error('[wecom-channel] failed to send reply:', err),
       );
       return;
     }
 
     logger.info(`[wecom-channel] inbound message from ${chatId}, forward to session ${sessionId.slice(0, 8)}...`);
+    // 入站也记一份路由：出站按 effectiveChatId 记、入站按 body.chatid 记，
+    // 两个 key 可能不同（config.chatId 为空时出站回退 currentUserAccount）。
+    // 只记出站的 key 会让入站 chatid 查不到兜底，路由链退化。
+    this.recordRouting(chatId, sessionId);
     try {
       this.forwardWecomPrompt(sessionId, text);
     } catch (err) {

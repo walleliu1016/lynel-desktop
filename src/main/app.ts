@@ -45,7 +45,7 @@ import { initTasks, tasksShutdown, setTaskResultSink } from './tasks/index.js';
 import { getTask, listLiveRuns, listTasks } from './tasks/store.js';
 import { describeSchedule, scheduleOf } from './tasks/schedule.js';
 import { runTaskNow as schedulerRunTaskNow } from './tasks/scheduler.js';
-import { mergeRecentAgentField, type RecentSessionRecord } from './session-meta.js';
+import { mergeRecentAgentField, rebindRecentList, validateSessionBotBind, type RecentSessionRecord } from './session-meta.js';
 import { readFavoriteSessions, addFavorite as writeFavorite, removeFavorite as dropFavorite, mergeFavoriteTitles } from './favorites.js';
 import { readCodexModelProvider, mergeOmpModelsYml, mergeCodexConfigToml, mergeOpencodeConfig, applyClaudeEnv, migrateActiveProviders, AGENT_KINDS } from './providers-apply.js';
 import { loadStoredAuth, saveStoredAuth, clearStoredAuth, clearStoredUser, decideRestore, writeCredentialFile, clearCredentialFile } from './auth-persistence.js';
@@ -427,6 +427,16 @@ export class App {
     this.dispatcher.registerHook(this.stateChannel);
     this.dispatcher.registerHook(this.wecomChannel);
     this.dispatcher.registerHook(this.desktopSocket);
+    // onRemove 是会话清理链的唯一入口（session.remove 触发）：
+    // 绑定 + 路由兜底 + 合帧缓冲 + 项目终端全清。注册在构造函数而非 init()，
+    // 保证 registerIpcHandlers 任何时刻触发 remove 都不会漏（曾因只注册在 init
+    // 且 remove 无人调用，清理链整体成死代码，删除会话残留死会话指针）。
+    session.setOnRemove((id) => {
+      this.wecomChannel.clearSessionBot(id);
+      this.ptyOutBatcher.clear(id);
+      // 会话删除时一并关掉它的项目终端，否则 shell PTY 会泄漏成孤儿进程
+      closeShell(id);
+    });
   }
 
   setWindow(win: BrowserWindow): void {
@@ -496,12 +506,6 @@ export class App {
     // 预热 macOS shell env 缓存（异步，不阻塞 init）
     void preloadShellEnv().catch((err) => {
       getLogger().warn(`[app] preload shell env failed: ${err?.message || err}`);
-    });
-    session.setOnRemove((id) => {
-      this.wecomChannel.clearSessionMappings(id);
-      this.ptyOutBatcher.clear(id);
-      // 会话删除时一并关掉它的项目终端，否则 shell PTY 会泄漏成孤儿进程
-      closeShell(id);
     });
     // 企业微信侧的任务指令：/tasks 列任务、/run <序号|名称> 触发一次。
     // 触发复用 scheduler.runTaskNow —— 与桌面「立即执行」是同一条去重口径，
@@ -1889,6 +1893,10 @@ export class App {
       this.debouncedSendCloudSessionSnapshot();
     }));
     ipcMain.handle('app:removeRecentSession', (_event, sessionId: string) => {
+      // 删除 = 彻底清除：session.remove 先 kill 进程再触发 onRemove 清理链
+      // （wecom 绑定 + 路由兜底 + 合帧缓冲 + 项目终端）。只 filter recents 会让
+      // sessionBotMap / chatIdToSession 残留死会话指针，入站消息路由到已删会话。
+      session.remove(sessionId);
       removeRecentSession(sessionId);
       this.debouncedSendCloudSessionSnapshot();
     });
@@ -1974,14 +1982,18 @@ export class App {
       return { ok: true };
     });
     ipcMain.handle('app:bindSessionBot', (_event, sessionId: string, botId: string | null) => {
-      // 任务通知机器人不能同时被会话占用：一个 bot 一条连接，会话会把它抢去转发消息，
-      // 任务结果就没人推了。渲染层已经把它置灰，这里再兜一道 —— 旧界面 / 并发操作都可能绕过去。
+      // 主进程强制 bot↔session 1:1 + 任务通知互斥（纯函数，有单测）。
+      // 渲染层只把已占用的 bot 置灰，依赖异步列表、存在过期窗口，必须在这儿兜住。
       const notifyBot = String(this.settingsStore.get('tasks_notify_bot', '') ?? '').trim();
-      if (botId && notifyBot && botId === notifyBot) {
-        return { ok: false, error: '这个机器人已用于任务通知，不能再绑定会话' };
-      }
-      this.withRecentLock(() => {
+      // 校验与写入放同一把锁，避免校验通过后、写入前列表被并发改动
+      const check = this.withRecentLock(() => {
         const list = readRecentSessions();
+        const bindings: Record<string, string> = {};
+        for (const r of list) {
+          if (r.botId) bindings[r.botId] = r.sessionId;
+        }
+        const v = validateSessionBotBind({ sessionId, botId, bindings, notifyBotId: notifyBot });
+        if (!v.ok) return v;
         const record = list.find((r) => r.sessionId === sessionId);
         if (record) {
           record.botId = botId ?? undefined;
@@ -1993,7 +2005,9 @@ export class App {
           });
         }
         writeRecentSessions(list);
+        return { ok: true as const };
       });
+      if (!check.ok) return check;
       if (botId) {
         this.wecomChannel.setSessionBot(sessionId, botId);
         // 绑定 bot 时如果会话已运行，也推送启动通知
@@ -2436,6 +2450,8 @@ export class App {
     }
     // 项目终端跟着用户走：/clear 换了 sessionId，但用户不该看到终端被重置
     rebindShell(oldId, newId);
+    // 企微绑定跟着会话走：sessionBotMap 与路由兜底表迁到新 id，否则出站全丢、入站命中死 id
+    this.wecomChannel.rebindSessionBot(oldId, newId);
     const proc = s.process;
     // 清掉旧 wirePty 监听，用新 id 重绑（闭包里的 buffer/emit 归一到新 id）
     this.ptyCleanups.get(oldId)?.();
@@ -2449,40 +2465,12 @@ export class App {
     for (const p of this.apiProxies) {
       if (p.sessionId === oldId) p.setSessionID(newId);
     }
-    // recent：/clear 前的旧会话保留为历史（state=done），新会话置顶。
-    // 之前用新记录替换旧记录，多次 /clear 后历史列表只剩最新一条，旧会话被抹掉。
-    // resume 模式：目标是已存在的历史会话，必须保留其标题/字段（清空会永久丢失 userTitle）。
+    // recent：/clear 前的旧会话保留为历史（state=done 且让出 botId），新会话置顶。
+    // 变换逻辑在 session-meta.rebindRecentList（纯函数，有单测）——
+    // 旧记录若保留 botId 会同 bot 双记录，listBotBindings 与 sessionBotMap 读取顺序相反互相打架。
     this.withRecentLock(() => {
       const list = readRecentSessions();
-      const oldRec = list.find((r) => r.sessionId === oldId);
-      // 旧会话的 PTY 进程已迁移到新会话，标记为结束；标题/字段保留，用户仍可回看或 resume
-      if (oldRec) oldRec.state = 'done';
-      const filtered = list.filter((r) => r.sessionId !== newId);
-      const project = workDir.split(/[\\/]/).filter(Boolean).pop() || workDir;
-      let newRec: RecentSessionRecord;
-      if (mode === 'resume') {
-        // /resume：复用目标会话现有记录，仅更新 workdir/lastOpenedAt/state 并置顶
-        const existing = list.find((r) => r.sessionId === newId);
-        newRec = existing
-          ? { ...existing, workdir: workDir, project: existing.project || project, lastOpenedAt: Date.now(), state: 'running', agent: oldRec?.agent }
-          : { sessionId: newId, workdir: workDir, project, aiTitle: '', firstPrompt: '', lastOpenedAt: Date.now(), state: 'running', botId: oldRec?.botId, agent: oldRec?.agent };
-      } else {
-        // /clear：新会话不继承旧标题，/clear 后是全新对话，应显示自己的标题。
-        // 之前继承 aiTitle/userTitle 会经 mergeRecentTitles/refreshAiTitles 永久锁定旧标题，
-        // 且继承链会把最初会话的标题一路传播给之后所有 /clear 会话。
-        newRec = {
-          sessionId: newId,
-          workdir: workDir,
-          project: oldRec?.project || project,
-          aiTitle: '',
-          firstPrompt: '',
-          lastOpenedAt: Date.now(),
-          state: 'running',
-          botId: oldRec?.botId,
-          agent: oldRec?.agent,
-        };
-      }
-      writeRecentSessions([newRec, ...filtered].slice(0, MAX_RECENT_SESSIONS));
+      writeRecentSessions(rebindRecentList(list, oldId, newId, workDir, mode).slice(0, MAX_RECENT_SESSIONS));
     });
     // cloud 同步：旧会话关闭；新会话 /clear 为创建，/resume 为重新打开
     this.syncCloudSession(oldId, workDir, 'ended', 'closed');
