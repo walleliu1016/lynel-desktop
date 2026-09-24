@@ -1,16 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import FileTabs from './FileTabs.vue'
 import CodeEditor from './CodeEditor.vue'
 import CodeDiffView from './CodeDiffView.vue'
 import { useFilesStore } from '../../stores/files'
 
-/** 编辑器区：文件 tab 条 + 互斥的「编辑器 / diff」两个视图。
- *  宿主有两处 —— 「文件」子页的 CodeView 与「终端」子页的分屏右栏。
- *  两处用同一个条件互斥渲染（HomeView 的 hostInSplit），保证同一时刻全应用
- *  只有一个实例：CodeEditor 用 `file:///${relPath}` 建 Monaco model，而 Monaco
- *  对同一 URI 只允许一个 model，两个实例会直接抛
- *  `Cannot add model because it already exists!`。 */
+/** 编辑器区：互斥的「编辑器 / diff」两个视图。
+ *  全应用唯一挂载点（CodeView 内）。FileTabs 已上移到右栏顶部行
+ *  （RightWorkspacePane），Monaco 同 URI 单 model 不变量由
+ *  「结构上只有一个宿主」保证 —— 不得再新增第二处 FileEditorPanel 挂载。 */
 const store = useFilesStore()
 
 /** 编辑器区显示 diff 还是文件。必须**恰好一个**为真 —— 用互斥的 computed 表达，
@@ -23,8 +20,6 @@ const showEditor = computed(() => !showDiff.value)
 
 <template>
   <section class="editor-panel">
-    <!-- tab 栏常驻：diff 是并列的一个 tab，不能因为看 diff 就把文件 tab 藏掉 -->
-    <FileTabs />
     <!-- 用 v-show 而非 v-if：保留两个组件实例，避免 Monaco 反复重建 -->
     <div v-show="showEditor" class="editor-slot">
       <CodeEditor />

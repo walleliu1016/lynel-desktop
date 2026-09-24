@@ -1,7 +1,7 @@
-// 验证 CodeView 子页容器：展开态渲染树面板+编辑器面板，折叠态仅收起树面板、编辑器常驻，拖宽钳制与持久化
+// 验证 CodeView 子页容器：展开态渲染树面板+编辑器面板，折叠态仅收起树面板、编辑器常驻，
+// 文件树固定 300px（无拖拽 handle），编辑器区始终渲染（editorInSplit 已删除）
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import CodeView from './CodeView.vue'
 import { useFilesStore } from '../../stores/files'
@@ -20,11 +20,8 @@ vi.mock('../../composables/useElectron', () => ({
 }))
 
 vi.mock('./FileTree.vue', () => ({ default: { name: 'FileTreeStub', template: '<div class="tree-stub" />' } }))
-vi.mock('./FileTabs.vue', () => ({ default: { name: 'FileTabsStub', template: '<div class="tabs-stub" />' } }))
 vi.mock('./CodeEditor.vue', () => ({ default: { name: 'CodeEditorStub', template: '<div class="editor-stub" />' } }))
 vi.mock('../Icon.vue', () => ({ default: { name: 'IconStub', props: ['name', 'size'], template: '<span :data-icon="name" />' } }))
-
-const WIDTH_KEY = 'lynel:code-tree-width'
 
 describe('CodeView', () => {
   beforeEach(() => {
@@ -45,58 +42,28 @@ describe('CodeView', () => {
     expect(wrapper.find('.tree-collapsed').exists()).toBe(false)
   })
 
-  it('折叠态仅收起文件树面板，编辑器面板仍渲染', () => {
+  it('折叠态仅收起文件树面板，编辑器面板仍渲染，且不渲染任何展开按钮（竖条已删，展开走「文件」tab）', () => {
     useFilesStore().collapsed = true
     const wrapper = mount(CodeView)
     expect(wrapper.find('.tree-panel').exists()).toBe(false)
-    expect(wrapper.find('.tree-collapsed').exists()).toBe(true)
+    expect(wrapper.find('.tree-collapsed').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="展开文件树"]').exists()).toBe(false)
     expect(wrapper.find('.editor-panel').exists()).toBe(true)
-    expect(wrapper.find('.tabs-stub').exists()).toBe(true)
     expect(wrapper.find('.editor-stub').exists()).toBe(true)
   })
 
-  it('拖宽超上限时宽度钳制到 600px', async () => {
+  it('文件树固定 300px：不再有拖拽 handle，也不写内联宽度', () => {
     useFilesStore().collapsed = false
     const wrapper = mount(CodeView)
-    const panel = wrapper.find('.tree-panel')
-    wrapper.find('.resize-handle').trigger('mousedown', { clientX: 100 })
-    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 100000 }))
-    await nextTick()
-    expect((panel.element as HTMLElement).style.width).toBe('600px')
+    // 只查文件树自己的手柄：BottomPanel/GitPanel 仍有各自的合法拖宽 handle
+    expect(wrapper.find('.tree-panel .resize-handle').exists()).toBe(false)
+    expect((wrapper.find('.tree-panel').element as HTMLElement).style.width).toBe('')
   })
 
-  it('拖宽超下限时宽度钳制到 240px', async () => {
+  it('不再接收 editorInSplit：编辑器区始终渲染', () => {
     useFilesStore().collapsed = false
-    const wrapper = mount(CodeView)
-    const panel = wrapper.find('.tree-panel')
-    wrapper.find('.resize-handle').trigger('mousedown', { clientX: 100 })
-    document.dispatchEvent(new MouseEvent('mousemove', { clientX: -100000 }))
-    await nextTick()
-    expect((panel.element as HTMLElement).style.width).toBe('240px')
-  })
-
-  it('拖宽结束写入 localStorage 持久化', async () => {
-    useFilesStore().collapsed = false
-    const wrapper = mount(CodeView)
-    wrapper.find('.resize-handle').trigger('mousedown', { clientX: 100 })
-    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 350 }))
-    document.dispatchEvent(new MouseEvent('mouseup'))
-    await nextTick()
-    expect((wrapper.find('.tree-panel').element as HTMLElement).style.width).toBe('550px')
-    expect(localStorage.getItem(WIDTH_KEY)).toBe('550')
-  })
-
-  it('挂载时读取 localStorage 预存宽度', () => {
-    useFilesStore().collapsed = false
-    localStorage.setItem(WIDTH_KEY, '450')
-    const wrapper = mount(CodeView)
-    expect((wrapper.find('.tree-panel').element as HTMLElement).style.width).toBe('450px')
-  })
-
-  it('editorInSplit 为 true 时不渲染编辑器区（编辑器已由分屏承载）', () => {
-    useFilesStore().collapsed = false
-    const wrapper = mount(CodeView, { props: { editorInSplit: true } })
-    expect(wrapper.find('.tree-panel').exists()).toBe(true)
-    expect(wrapper.find('.editor-panel').exists()).toBe(false)
+    const wrapper = mount(CodeView, { props: { editorInSplit: true } as any })
+    expect(wrapper.find('.editor-panel').exists()).toBe(true)
+    expect(wrapper.find('.editor-stub').exists()).toBe(true)
   })
 })

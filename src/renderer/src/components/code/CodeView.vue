@@ -6,16 +6,12 @@ import FileEditorPanel from './FileEditorPanel.vue'
 import BottomPanel from './BottomPanel.vue'
 import { useFilesStore } from '../../stores/files'
 import { useGitStore } from '../../stores/git'
-import { useResizablePanel } from '../../composables/useResizablePanel'
 
-/** 「文件」子页当前是否可见。由 HomeView 传入 —— CodeView 被 v-show 常挂载，
- *  自身感知不到子页切换，而底部面板的终端要据此决定是否启动。 */
+/** 右栏是否可见（由 HomeView 传 splitOpen）。CodeView 被 v-show 常挂载，
+ *  自身感知不到展开/收起，底部面板的终端要据此决定是否启动。 */
 const props = withDefaults(defineProps<{
   visible?: boolean
-  /** 编辑器已由终端子页的分屏右栏承载：本组件不再渲染编辑器区，
-   *  保证同一时刻全应用只有一个 CodeEditor 实例（Monaco model URI 唯一）。 */
-  editorInSplit?: boolean
-}>(), { visible: true, editorInSplit: false })
+}>(), { visible: true })
 
 const store = useFilesStore()
 const gitStore = useGitStore()
@@ -34,15 +30,6 @@ const dirName = computed(() => {
   return wd.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? wd
 })
 
-// ---------- 文件树面板宽度（localStorage 持久化，240–600px） ----------
-const { width, dragging, onResizeStart } = useResizablePanel({
-  storageKey: 'lynel:code-tree-width',
-  defaultWidth: 300,
-  min: 240,
-  max: 600,
-  handle: 'right',
-})
-
 // ---------- 工具条动作 ----------
 function onRefresh() {
   const dirs = new Set([''])
@@ -57,16 +44,14 @@ function onNewFile() {
 function onCollapse() {
   store.collapsed = true
 }
-
-function onExpand() {
-  store.collapsed = false
-}
+// 树重新展开的唯一入口是右栏顶部行的「文件」标识 tab（RightWorkspacePane 翻转本 store），
+// 这里不提供第二个展开按钮（左缘竖条 .tree-collapsed 已删）
 </script>
 
 <template>
-  <div class="code-view code-workspace-theme" :class="{ dragging }">
+  <div class="code-view code-workspace-theme">
     <div class="main-row">
-      <aside v-if="!store.collapsed" class="tree-panel" :style="{ width: width + 'px' }">
+      <aside v-if="!store.collapsed" class="tree-panel">
         <div class="panel-toolbar">
           <button class="tool-btn" title="刷新文件树" aria-label="刷新文件树" @click="onRefresh">
             <Icon name="refresh-cw" :size="14" />
@@ -81,12 +66,9 @@ function onExpand() {
           </button>
         </div>
         <FileTree :rel-path="''" :depth="0" />
-        <div class="resize-handle" title="拖拽调整宽度" @mousedown.prevent="onResizeStart" />
       </aside>
-      <button v-else type="button" class="tree-collapsed" title="展开文件树" aria-label="展开文件树" @click="onExpand">
-        <Icon name="panel-left-open" :size="16" />
-      </button>
-      <FileEditorPanel v-if="!props.editorInSplit" />
+      <!-- 树折叠态：不渲染任何竖条/展开按钮，编辑器区占满 main-row；展开走右栏「文件」tab -->
+      <FileEditorPanel />
     </div>
     <BottomPanel
       :session-id="store.currentSessionId"
@@ -105,7 +87,6 @@ function onExpand() {
   background: var(--bg-panel);
   overflow: hidden;
 }
-.code-view.dragging { cursor: col-resize; }
 .main-row {
   flex: 1;
   min-height: 0;
@@ -113,6 +94,7 @@ function onExpand() {
 }
 .tree-panel {
   position: relative;
+  width: 300px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -154,31 +136,4 @@ function onExpand() {
   font-size: var(--fs-caption);
   color: var(--term-bright-black);
 }
-.resize-handle {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 4px;
-  cursor: col-resize;
-  z-index: 5;
-  background: transparent;
-}
-.resize-handle:hover { background: var(--accent); }
-.tree-collapsed {
-  width: 32px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  padding: 0;
-  font: inherit;
-  color: var(--text-secondary);
-  cursor: pointer;
-  border-right: 1px solid var(--border);
-  transition: color 0.12s, background 0.12s;
-}
-.tree-collapsed:hover { color: var(--text-primary); background: var(--bg-hover); }
 </style>

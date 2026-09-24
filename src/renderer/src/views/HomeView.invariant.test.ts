@@ -1,37 +1,41 @@
-// 单编辑器实例的「单闸门」不变量守卫。
+// 右栏单宿主不变量（源码级，脆是设计的一部分）。
 //
-// 全应用同一时刻只允许一个 CodeEditor 实例：它用 `file:///${relPath}` 建 Monaco model，
-// 而 Monaco 对同一 URI 只允许一个 model，第二个实例会直接抛
-// `Cannot add model because it already exists!`。互斥完全靠 HomeView 里**同一个** computed
-// `hostInSplit`：分屏右栏用它 v-if 挂载，「文件」子页的 CodeView 用它做 :editor-in-split。
-//
-// 这条断言**刻意**做成源码级文本匹配 —— 脆弱是设计的一部分：把右栏改成 v-show、或另写
-// 一个条件，类型检查与现有组件测试都不会报错（VTU 各自挂载组件，看不见两个宿主共存），
-// 而这几行恰恰是那个改动必然要碰的地方 —— 在这里当场失败，好过运行时白屏。
+// Monaco 对同一 model URI 只允许一个 model，第二个 FileEditorPanel 实例会直接抛
+// `Cannot add model because it already exists!`。改造后宿主唯一：HomeView 挂
+// RightWorkspacePane（内部 → CodeView → FileEditorPanel），旧的 hostInSplit 双宿主
+// 闸门与 EditorSplitPane 已删除。这里做源码级文本匹配：类型检查与组件测试
+// （各自挂载、看不见全局）都发现不了「又加了第二个挂载点」，这几行能。
 import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-// 刻意不用 `new URL('./HomeView.vue', import.meta.url)`：Vite 会把这个字面量模式当成
-// 资源 URL 引用改写掉（改成一个非 file 协议的 URL），readFileSync 收到就报
-// 「The URL must be of scheme file」。
-const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'HomeView.vue'), 'utf8')
+const here = dirname(fileURLToPath(import.meta.url))
+const read = (p: string) => readFileSync(p, 'utf8')
+const homeSrc = read(join(here, 'HomeView.vue'))
+// 刻意不用 new URL(...)：Vite 会把字面量模式当资源 URL 改写（见同文件旧版注释）
+const rendererSrc = resolve(here, '..')
+const codeViewSrc = read(join(rendererSrc, 'components', 'code', 'CodeView.vue'))
+const fedSrc = read(join(rendererSrc, 'components', 'code', 'FileEditorPanel.vue'))
 
-describe('HomeView 分屏单闸门不变量', () => {
-  it('分屏右栏与 CodeView 由同一个 hostInSplit 互斥', () => {
-    // 右栏必须用 v-if 挂载：换成 v-show 后，终端子页被隐藏时右栏仍然在世，
-    // 就会与 CodeView 里的 CodeEditor 并存 → Monaco URI 冲突。
-    expect(
-      src.includes('v-if="hostInSplit"'),
-      '分屏右栏的挂载条件必须是 v-if="hostInSplit"（v-show 会让它与 CodeView 的 CodeEditor 同时在世）',
-    ).toBe(true)
-    expect(
-      src.includes(':editor-in-split="hostInSplit"'),
-      'CodeView 必须传 :editor-in-split="hostInSplit"，否则编辑器会在两个宿主里各渲染一次',
-    ).toBe(true)
-    // 闸门只能有一个定义：复制成两份（如给右栏单独算一个）就不再互斥
-    const defs = src.match(/const\s+hostInSplit\b/g) ?? []
-    expect(defs.length, `hostInSplit 必须恰好定义一次，实际匹配到 ${defs.length} 次`).toBe(1)
+describe('右栏单宿主不变量', () => {
+  it('HomeView 挂唯一右栏，旧分屏闸门已删净', () => {
+    expect(homeSrc.includes('RightWorkspacePane'), 'HomeView 必须挂 RightWorkspacePane').toBe(true)
+    expect(homeSrc.includes('hostInSplit'), 'hostInSplit 双宿主闸门必须已删除').toBe(false)
+    expect(homeSrc.includes('EditorSplitPane'), '旧分屏组件必须已删除').toBe(false)
+    expect(homeSrc.includes("setSubTab('code')"), '「文件」不再是子页').toBe(false)
+    // 右栏收起必须是 CSS 隐藏：RightWorkspacePane 上不许出现 v-if
+    const rp = homeSrc.match(/<RightWorkspacePane[^>]*>/)?.[0] ?? ''
+    expect(rp.includes('v-if'), 'RightWorkspacePane 禁止 v-if（收起会卸载、丢底部终端缓冲）').toBe(false)
+    // 旧的面板图标展开入口（sub-expand）已删：展开走右栏收起态的 expand-rail 图标
+    expect(homeSrc.includes('sub-expand'), 'sub-expand 图标入口必须已删除').toBe(false)
+  })
+
+  it('FileEditorPanel 全应用只有一个挂载点，且不再内含 FileTabs', () => {
+    const inCodeView = codeViewSrc.match(/<FileEditorPanel\b/g)?.length ?? 0
+    expect(inCodeView, `CodeView 内 FileEditorPanel 挂载数应为 1，实际 ${inCodeView}`).toBe(1)
+    expect(homeSrc.includes('<FileEditorPanel'), 'HomeView 不得直接挂 FileEditorPanel').toBe(false)
+    expect(codeViewSrc.includes('editorInSplit'), 'editorInSplit 双宿主条件必须已删除').toBe(false)
+    expect(fedSrc.includes('<FileTabs'), 'FileTabs 必须已上移到右栏顶部行').toBe(false)
   })
 })

@@ -24,7 +24,8 @@ export interface ResizablePanel {
 
 /**
  * 可拖宽面板的三段式鼠标逻辑 + 宽度持久化。
- * CodeView（文件树宽）、GitPanel（变更列表宽）、EditorSplitPane（分屏右栏宽）共用。
+ * GitPanel（变更列表宽）、RightWorkspacePane（会话右栏宽）共用。
+ * （CodeView 文件树已改固定宽、EditorSplitPane 已删除。）
  * 必须在组件 setup 里调用：内部用 onBeforeUnmount 兜底清理监听。
  */
 export function useResizablePanel(opts: ResizablePanelOptions): ResizablePanel {

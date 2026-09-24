@@ -285,16 +285,15 @@ npm run dist:linux
 ### 11. 两栏布局与每会话子页（Two-Panel Layout）
 
 - 布局结构：左侧栏（280px，可折叠为 44px） | 中间内容区（flex:1）。**没有右侧 Trace 侧栏**。
-  - 左侧栏（`HomeView.vue`）：顶部收起按钮 + 云状态；入口按钮（首页 / DeepSeek Harness / 搜索）；中部 SessionList；底部（账户 / 使用指南 / 设置）。
-  - 中间内容区：GlobalTabs（首页 / 会话 / 设置 / 使用指南 / Harness）+ `.content`。
-  - 会话标签页内是「**终端 / Trace / 文件**」三个子页（`activeSubTab` + `subTabBySession` 按会话记忆）。Trace 不再是固定侧栏，而是每会话独立的全屏子页。
-- **终端子页左右分屏**：点终端输出里的 **workdir 内**文件路径不再跳「文件」子页，而是在终端右侧开出文件编辑分屏（左终端 / 右编辑器，中间可拖宽，右栏可收起）。目录与 workdir 外的路径仍走系统默认程序，由 `terminal/FileLinkProvider.ts` 分流，只有 workdir 内文件才 emit 到 `HomeView.onTerminalOpenFile` → `files.openInSplit()`。展开态存在 `stores/files.ts` 的 `splitOpen`；宽度是全局 localStorage `lynel:editor-split-width`（默认 480，钳制 320–动态上限，保证左侧终端至少 400px）。
-  - 展开态**与文件现场一起按会话记忆**，恢复时有守卫：`saved.splitOpen && saved.openFiles.length > 0` —— 上次开着右栏但文件都被关掉了的会话，切回来不再恢复空右栏。注意这与「运行中关掉最后一个 tab」不同：后者右栏**保持展开**并显示编辑器空态（见下条 `hostInSplit` 的说明），只有切走再切回才不恢复。
-- **编辑器区只有一个实例**：`FileEditorPanel`（= `FileTabs` + 互斥的 `CodeEditor` / `CodeDiffView`）挂在「分屏右栏」或「CodeView」两处之一，由 `HomeView` 的 `hostInSplit` 同一个条件驱动 `v-if` 互斥。**不能让两个实例并存** —— `CodeEditor` 用 `file:///${relPath}` 建 Monaco model，Monaco 对同一 URI 只允许一个 model，第二个实例直接抛 `Cannot add model because it already exists!`。分屏右栏那一侧必须用 `v-if`（不能只靠子页的 `v-show`），因为切到 Trace / 文件子页时终端子页只是被 `v-show` 隐藏。
-- **切换瞬间也只有一个实例，靠的是 `CodeEditor.vue` 里的两处时序**：宿主互换时 `.sub-pane` 的补丁顺序会「先挂新 `CodeEditor`、后卸 `CodeView` 里的 `FileEditorPanel`」。之所以不冲突，是因为 (1) **调用方**在 `onMounted`（`CodeEditor.vue:272`）与 `watch(activeRelPath)`（`:207`）里先 `await nextTick()` 才调 `switchModel()`，而 `onMounted` 本身就是 post-flush 回调，`switchModel()` 内部还要再经 `ensureMonaco` / `ensureEditor` / `languageForPath` / `installTextMate` 等 await 才 `createModel()`（`:176`）；(2) 旧实例的 `model.dispose()` 在 `onBeforeUnmount`（`:280`）里**同步**执行。两者叠加 → 新的 `createModel` 总在旧 model 消失之后跑。**改动这两处 `nextTick` / `dispose` 时序前，必须先回来确认这条不变量还成立**，否则会出现两个 model 争同一 URI 的短暂窗口。
-- 已知代价：宿主切换（终端子页 ↔ 文件子页、展开 / 收起分屏）会重建 Monaco 编辑器，**撤销栈丢失**；文件内容不丢（草稿在 `stores/files.ts` 的 `drafts`）。
-- `styles/code.css` 的 `.code-workspace-theme` 是 `.code-view` 与 `EditorSplitPane` 共用的变量重映射类（把 UI 变量映射到 `--term-*`）。新增代码工作区容器时**必须挂这个类**，否则编辑器 / Git 面板配色会回退成 UI 面板色。
-- `composables/useResizablePanel.ts` 是**代码工作区**拖宽面板的实现（`CodeView` 文件树 / `GitPanel` 变更列表 / `EditorSplitPane` 右栏共用），这三处不要再各写一份。**但它不是全仓唯一**：任务面板的 `components/tasks/TasksPane.vue`（`lynel:tasks-list-width`）与 `components/code/BottomPanel.vue`（垂直拖高）各有一份自己的拖拽实现 —— 将来若统一，把它们一并收编，别以为改这一个就够。`handle` 表示手柄所在边：`'right'` 是面板在左、向右拖变宽；`'left'` 是面板在右、向右拖变窄。
+  - 左侧栏（`HomeView.vue`）：顶部收起按钮 + 云状态；入口按钮（首页 / DeepSeek Harness / 搜索 / 任务 / 收藏夹）；中部 SessionList；底部（账户 / 使用指南 / 设置）。
+  - 中间内容区：GlobalTabs（首页 / 会话 / 设置 / 使用指南 / Harness / 任务）+ `.content`。
+  - 会话标签页内左侧是「**终端 / Trace**」两个子页（`activeSubTab` + `subTabBySession` 按会话记忆，类型只有 `'terminal' | 'trace'`）；**「文件」不是子页**。Trace 不再是固定侧栏，而是每会话独立的全屏子页。
+  - **会话右栏（`RightWorkspacePane.vue`）**：会话内容区右半、从内容区顶部起整高铺到底的文件工作区折叠栏。顶部行 `.right-head`（与左侧 sub-tabs 同行同高 34px）= 固定「文件」标识 tab（`folder-tree` 图标 + 文字）+ `FileTabs` + 全屏/收起按钮；主体 = `CodeView`（文件树 + 编辑器 + 底部 `BottomPanel` Git / 终端）。展开态 `stores/files.ts` 的 `splitOpen` 按会话记忆（恢复守卫 `saved.splitOpen && saved.openFiles.length > 0`，无文件 tab 不恢复空右栏；「运行中关掉最后一个 tab」右栏保持展开显示空态，切走再切回才不恢复）；宽度全局 `lynel:right-panel-width`（首展开 = 容器 50%，min 320，max = 容器−400−4，存 px）；全屏态 `rightFullscreen`（HomeView 内瞬态，收起 / 切会话重置）。**收起时完全隐藏顶部行，右缘只留一个展开图标按钮**（`panel-right-open`，与收起的 `panel-right-close` 对应）→ `requestExpand`（500ms 防抖，窗口内吞掉 expand，防「点收起没反应再点一次」被翻回）→ `expand` emit → `files.splitOpen = true`；早期「顶部行常显当展开热区」的交互已删（第二击落在顶部行会把刚收起的又展开）。**文件树折叠态 `files.collapsed` 按会话记忆**（`SessionWorkspace.collapsed`，`setSession` 保存/恢复）——首次进入默认展开，之后以该会话上一次状态为准；无现场的新会话重置为展开（不继承别的会话的折叠残留）；右栏收起/展开**不干预**它。收起态 aside 不写内联宽度（absolute 脱流贴右缘，终端铺满），主体 `CodeView` 用 `v-show` 隐藏（**禁止 v-if** —— 底部项目终端 xterm / shell PTY 缓冲随挂载存活）。
+- **终端里点路径 → 右栏**：点终端输出里的 **workdir 内**文件路径走右栏，终端保持可见。目录与 workdir 外的路径仍走系统默认程序，由 `terminal/FileLinkProvider.ts` 分流，只有 workdir 内文件才 emit 到 `HomeView.onTerminalOpenFile` → `files.openInSplit()`（打开文件并把收起的右栏拉出来 → `splitOpen = true`）。旧 `EditorSplitPane`（终端子页左右分屏，宽度 key `lynel:editor-split-width`）及其测试已删除，路径点击统一走右栏。
+- **编辑器区只有一个实例**：`FileEditorPanel`（= 互斥的 `CodeEditor` / `CodeDiffView` 两个 `v-show` 视图）全应用唯一挂载点在 `CodeView`（右栏内），由结构保证，**不得再新增第二处挂载** —— `CodeEditor` 用 `file:///${relPath}` 建 Monaco model，Monaco 对同一 URI 只允许一个 model，第二个实例直接抛 `Cannot add model because it already exists!`。`FileTabs` 位于右栏顶部行（不在 `FileEditorPanel` 内）。源码级守卫见 `src/renderer/src/views/HomeView.invariant.test.ts`（右栏单宿主不变量：HomeView 挂 `RightWorkspacePane`、无 `hostInSplit` / `EditorSplitPane` / `setSubTab('code')` / `sub-expand`、`RightWorkspacePane` 上不许 `v-if`、`FileEditorPanel` 唯一挂载在 `CodeView` 且其内无 `FileTabs`）。
+- 已知代价（已随单宿主化消除）：过去「终端子页 ↔ 文件子页」的宿主切换会重建 Monaco 编辑器、丢撤销栈；现在右栏主体 `v-show` 常挂载，展开 / 收起、切子页均不重建编辑器，撤销栈保持。文件内容不丢（草稿在 `stores/files.ts` 的 `drafts`）。
+- `styles/code.css` 的 `.code-workspace-theme` 是代码工作区的变量重映射类（把 UI 变量映射到 `--term-*`），现由 `CodeView` 根节点挂载（右栏顶部行 `.right-head` 刻意不挂，对齐左侧 sub-tabs 的 UI 配色）。新增代码工作区容器时**必须挂这个类**，否则编辑器 / Git 面板配色会回退成 UI 面板色。
+- `composables/useResizablePanel.ts` 是**代码工作区**拖宽面板的实现（`GitPanel` 变更列表 / `RightWorkspacePane` 右栏共用；`CodeView` 文件树已改固定 300px，不再拖宽），这两处不要再各写一份。**但它不是全仓唯一**：任务面板的 `components/tasks/TasksPane.vue`（`lynel:tasks-list-width`）与 `components/code/BottomPanel.vue`（垂直拖高）各有一份自己的拖拽实现 —— 将来若统一，把它们一并收编，别以为改这一个就够。`handle` 表示手柄所在边：`'right'` 是面板在左、向右拖变宽；`'left'` 是面板在右、向右拖变窄。
 - TracePane：`src/renderer/src/components/trace/TracePane.vue`，会话子页的全屏面板
   - 顶部工具栏：请求数、总费用、刷新按钮、图过滤（model/errorsOnly）
   - 左侧请求缩略列表（240px，v2 分页 + 摘要索引）：状态点 · #seq · model · tokens · 延迟
@@ -309,7 +308,7 @@ npm run dist:linux
   - 图过滤（model/errorsOnly）变化时自动重新加载首页
   - 会话切换统一走 `trace.setSession(wd, id)` + `trace.load()`（HomeView `watch(activeSessionId)`），覆盖 SessionList 点击 / GlobalTabs 切换 / 最近会话打开 / 新建会话
 - DeepSeek Harness：独立 tab，iframe 面板（`.dsh-frame-wrap`），始终挂载、非激活时 opacity:0 垫底（避免冻结重载）
-- 已删除：`TraceSidebar.vue`、`TraceOverlay.vue`、`TraceTab.vue`、`TraceHeader.vue`、`RequestList.vue`、右侧 Workspace 面板
+- 已删除：`TraceSidebar.vue`、`TraceOverlay.vue`、`TraceTab.vue`、`TraceHeader.vue`、`RequestList.vue`、右侧 Workspace 面板、`EditorSplitPane.vue`（及其测试）、`hostInSplit` 双宿主闸门、「文件」子页
 - 关键不变量：摘要索引 `<sessionDir>/_summaries.jsonl` 与 raw exchange `<seq>.json` 同目录，前者轻量全量读取（5000 条仅 ~1MB），后者仅详情时按需读取
 
 ### 12. 在线升级（Updater）
@@ -359,9 +358,9 @@ npm run dist:linux
 
 ### 16. Git 面板与文件工作区
 
-**布局**：「文件」子页（`CodeView.vue`）= 左侧文件树（可拖宽）| 编辑器区；编辑器区底部是横跨全宽的 `BottomPanel`，含「Git / 终端」两个标签（`v-show` 常驻 —— 切走再切回不能丢 xterm buffer 或重建 PTY）。
+**布局**：会话右栏内的文件工作区（`CodeView.vue`，宿主 `RightWorkspacePane`）= 左侧文件树（固定 300px，可整体折叠）| 编辑器区；编辑器区底部是横跨全宽的 `BottomPanel`，含「Git / 终端」两个标签（`v-show` 常驻 —— 切走再切回不能丢 xterm buffer 或重建 PTY；**默认折叠**，`lynel:code-bottom-collapsed` 缺省即折叠，点整条展开）。
 
-**编辑器区**：`FileTabs` + 两个 `v-show` 的 slot，由 `stores/files.ts` 的 `activeView`（`'file' | 'diff'`）决定显示 `CodeEditor` 还是 `CodeDiffView`。两者显隐用**互斥的 computed**（`showDiff` 与 `showEditor = !showDiff`）控制 —— 各自独立判断时，`activeView` 一旦取到意外值（如热更新后 store 实例陈旧、缺字段）会两个 `v-show` 同时为假，编辑器区整块空白。
+**编辑器区**：`FileEditorPanel`（挂在 `CodeView` 内）= 两个 `v-show` 的 slot（`FileTabs` 已上移到右栏顶部行），由 `stores/files.ts` 的 `activeView`（`'file' | 'diff'`）决定显示 `CodeEditor` 还是 `CodeDiffView`。两者显隐用**互斥的 computed**（`showDiff` 与 `showEditor = !showDiff`）控制 —— 各自独立判断时，`activeView` 一旦取到意外值（如热更新后 store 实例陈旧、缺字段）会两个 `v-show` 同时为假，编辑器区整块空白。
 
 **diff 是并列的 tab，不是覆盖层**：
 - `diffRequest = { relPath, left, right, label }`，`right === 'WORKTREE'` 表示右侧取工作区文件内容。
@@ -374,13 +373,13 @@ npm run dist:linux
 
 **单个提交详情**（`commitDetail`）：`git show --first-parent --name-status`。合并提交默认不输出文件列表（合并 diff 为空），`--first-parent` 让它相对第一父比较，点开才有内容。
 
-**blame**（`blameFile`）：`git blame --porcelain` 的元信息（author / author-time / summary）**只在某个 commit 首次出现时输出**，之后引用同一 commit 的块只有块首行。必须按 hash 缓存元信息，否则后续行会**静默继承上一个 commit 的作者**。前端只给**光标所在行**挂行尾 `after` 装饰（GitLens 的默认形态），不给整文件打注解。
+**blame**（`blameFile`，主进程能力保留）：`git blame --porcelain` 的元信息（author / author-time / summary）**只在某个 commit 首次出现时输出**，之后引用同一 commit 的块只有块首行。必须按 hash 缓存元信息，否则后续行会**静默继承上一个 commit 的作者**。渲染层的行内 blame 已整套删除（FileTabs 开关、CodeEditor 行尾装饰、`files.ts` 的 `blameEnabled`、`useElectron` 的 `GitBlame` 封装），前端不再有 blame UI；`blameFile` 主进程接口与 `tests/main/git.test.ts` 的覆盖仍在。
 
 **reset**（`resetTo`）：soft / mixed / hard 三种模式，`hard` 不可逆 —— 二次确认的责任在前端（`GitPanel.vue` 的 `onReset`），文案要如实写明各模式的波及面。
 
 **退出清理**：git watcher 挂在 `git.ts` 的**模块级 Map** 上（不归 App 实例管），所以 `App.shutdown()` 必须显式调 `closeAllGitWatchers()`；文件 watcher 由 `watchCleanup` 覆盖。会话关闭时 watcher 不通过 `setOnRemove` 释放，而是跟着「当前会话切换」走（`setSession` → `GitUnwatch(旧目录)`）—— 前提是 watcher 只服务当前会话。
 
-`src/renderer/src/utils/time.ts` 的 `formatRelTime` 被提交历史与 blame 共用，不要各写一份。
+`src/renderer/src/utils/time.ts` 的 `formatRelTime` 被提交历史（`GitPanel`）与任务详情（`TaskDetailPane`）共用，不要各写一份。
 
 **编辑器语言与语法高亮**：
 - `monaco/languages.ts` 的 `languageForPath()` 从 `monaco.languages.getLanguages()` 构建「扩展名 / 文件名 → 语言 id」索引，**不要手写映射表**：手写的覆盖不全（原先只有 10 条扩展名）、会随 Monaco 升级漂移，而且原先由 `CodeEditor` 与 `CodeDiffView` 各写一份，已经漂移过一次（diff 那份漏了 yaml）。纯匹配逻辑在 `monaco/langIndex.ts`，与 `setup.ts` 解耦（setup 顶部有 `?worker` 资源 import，node 下跑单测会炸），可直接单测。

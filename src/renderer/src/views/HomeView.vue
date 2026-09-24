@@ -213,45 +213,45 @@
               @open-recent="onOpenRecent"
             />
           </div>
-          <div v-show="tabsStore.activeType === 'session'" class="content-pane session-content">
+          <div
+            v-show="tabsStore.activeType === 'session'"
+            class="content-pane session-content"
+            :class="{ 'right-maximized': rightFullscreen }"
+          >
             <template v-if="sessionTabs.length > 0">
-              <div class="sub-tabs">
-                <button class="sub-tab" :class="{ active: activeSubTab === 'terminal' }" @click="setSubTab('terminal')">
-                  <Icon name="terminal" :size="13" /> 终端
-                </button>
-                <button class="sub-tab" :class="{ active: activeSubTab === 'trace' }" @click="setSubTab('trace')">
-                  <Icon name="activity" :size="13" /> Trace
-                </button>
-                <button class="sub-tab" :class="{ active: activeSubTab === 'code' }" @click="setSubTab('code')">
-                  <Icon name="folder-tree" :size="13" /> 文件
-                </button>
-              </div>
-              <div v-show="activeSubTab === 'terminal'" class="sub-pane" :class="{ 'has-split': hostInSplit }">
-                <!-- 包一层是为了给终端留 flex 容器：分屏时 .sub-pane 变成横向 flex，
-                     终端必须能被压缩（min-width: 0），否则 xterm 不会 resize -->
-                <div class="terminal-side">
-                  <SessionTabContent
-                    v-for="tab in sessionTabs"
-                    :key="tab.payload?.sessionId as string"
-                    v-show="activeSessionId === tab.payload?.sessionId"
-                    :session-id="tab.payload?.sessionId as string"
-                    :workdir="tab.payload?.workdir as string"
-                    :visible="activeSessionId === tab.payload?.sessionId"
-                    @open-file="onTerminalOpenFile"
-                  />
+              <div class="session-left">
+                <div class="sub-tabs">
+                  <button class="sub-tab" :class="{ active: activeSubTab === 'terminal' }" @click="setSubTab('terminal')">
+                    <Icon name="terminal" :size="13" /> 终端
+                  </button>
+                  <button class="sub-tab" :class="{ active: activeSubTab === 'trace' }" @click="setSubTab('trace')">
+                    <Icon name="activity" :size="13" /> Trace
+                  </button>
                 </div>
-                <EditorSplitPane
-                  v-if="hostInSplit"
-                  @collapse="files.splitOpen = false"
-                  @open-in-files="setSubTab('code')"
-                />
+                <div v-show="activeSubTab === 'terminal'" class="sub-pane">
+                  <div class="terminal-side">
+                    <SessionTabContent
+                      v-for="tab in sessionTabs"
+                      :key="tab.payload?.sessionId as string"
+                      v-show="activeSessionId === tab.payload?.sessionId"
+                      :session-id="tab.payload?.sessionId as string"
+                      :workdir="tab.payload?.workdir as string"
+                      :visible="activeSessionId === tab.payload?.sessionId"
+                      @open-file="onTerminalOpenFile"
+                    />
+                  </div>
+                </div>
+                <div v-show="activeSubTab === 'trace'" class="sub-pane">
+                  <TracePane />
+                </div>
               </div>
-              <div v-show="activeSubTab === 'trace'" class="sub-pane">
-                <TracePane />
-              </div>
-              <div v-show="activeSubTab === 'code'" class="sub-pane">
-                <CodeView :visible="activeSubTab === 'code'" :editor-in-split="hostInSplit" />
-              </div>
+              <RightWorkspacePane
+                :visible="files.splitOpen"
+                :maximized="rightFullscreen"
+                @collapse="onCollapseRight"
+                @toggle-fullscreen="rightFullscreen = !rightFullscreen"
+                @expand="files.splitOpen = true"
+              />
             </template>
             <div v-else class="empty"><div class="empty-text">未选择会话</div></div>
           </div>
@@ -339,8 +339,7 @@ import SessionList from '../components/SessionList.vue'
 import AgentBadge from '../components/AgentBadge.vue'
 import TracePane from '../components/trace/TracePane.vue'
 import WorkspacePanel from '../components/WorkspacePanel.vue'
-import CodeView from '../components/code/CodeView.vue'
-import EditorSplitPane from '../components/code/EditorSplitPane.vue'
+import RightWorkspacePane from '../components/code/RightWorkspacePane.vue'
 import WelcomeTab from '../components/WelcomeTab.vue'
 import SessionTabContent from '../components/SessionTabContent.vue'
 import SettingsTab from '../components/SettingsTab.vue'
@@ -384,28 +383,30 @@ const username = ref('')
 const version = ref('')
 const sidebarCollapsed = ref(false)
 const workspaceCollapsed = ref(true)
-// 每个会话各自的 终端/Trace 选中态（按 sessionId 记录），切回会话时保留
-const subTabBySession = ref<Record<string, 'terminal' | 'trace' | 'code'>>({})
-const activeSubTab = computed<'terminal' | 'trace' | 'code'>(() => {
+// 每个会话各自的 终端/Trace 选中态（按 sessionId 记录），切回会话时保留。
+// 「文件」不再是子页 —— 它是会话右栏（files.splitOpen），与本映射无关。
+const subTabBySession = ref<Record<string, 'terminal' | 'trace'>>({})
+const activeSubTab = computed<'terminal' | 'trace'>(() => {
   const sid = activeSessionId.value
   return (sid && subTabBySession.value[sid]) || 'terminal'
 })
 
-function setSubTab(tab: 'terminal' | 'trace' | 'code') {
+function setSubTab(tab: 'terminal' | 'trace') {
   const sid = activeSessionId.value
   if (!sid) return
   subTabBySession.value = { ...subTabBySession.value, [sid]: tab }
 }
 
-/** 编辑器区是否由分屏右栏承载。必须用**同一个**条件驱动两处互斥渲染（分屏右栏 v-if、
- *  CodeView 的 editorInSplit），否则会出现两个 CodeEditor 实例并存 ——
- *  Monaco 对同一个 model URI 只允许一个 model，第二个会直接抛错。
- *
- *  刻意**不**带 `openFiles.length > 0`：用户当面关掉最后一个文件 tab 时，右栏保留空态
- *  （FileEditorPanel 显示「从左侧文件树选择文件」），不自动收起 —— 否则布局会在用户
- *  手下突然跳变。只有「切走会话再切回」才不恢复空右栏，那条由 stores/files.ts 的
- *  setSession 恢复守卫（`saved.splitOpen && saved.openFiles.length > 0`）负责。 */
-const hostInSplit = computed(() => activeSubTab.value === 'terminal' && files.splitOpen)
+/** 右栏全屏铺满态（左半隐藏）。瞬态：切会话 / 收起即重置，不持久化；
+ *  宽度本身由 RightWorkspacePane 的 localStorage 存量恢复，全屏期间不改宽度。 */
+const rightFullscreen = ref(false)
+// 右栏收起（任意路径：头部 ×、会话现场恢复守卫、setSession 清场）→ 一并退出全屏
+watch(() => files.splitOpen, (open) => { if (!open) rightFullscreen.value = false })
+
+function onCollapseRight() {
+  files.splitOpen = false
+  rightFullscreen.value = false
+}
 const settingsActiveTab = ref<SettingsTabKey>('general')
 const showCloseDialog = ref(false)
 const pendingCloseTabId = ref<string | null>(null)
@@ -509,6 +510,7 @@ const sessionTabs = computed(() => tabsStore.tabs.filter((t) => t.type === 'sess
 // 去掉 newId === trace.sessionId 的早退：即使切回已加载过的会话也重新拉取，
 // 保证 resume / 重开后 trace 始终是最新数据。
 watch(activeSessionId, (newId) => {
+  rightFullscreen.value = false
   if (!newId) return
   const wd = activeSessionWorkdir.value
   if (!wd) return
@@ -1370,7 +1372,18 @@ watch(
 .sub-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
 .sub-tab.active { background: var(--accent-soft-bg); color: var(--accent); font-weight: 600; }
 .sub-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.sub-pane.has-split { flex-direction: row; }
+/* 会话内容区：左右分栏（左 = 标签行 + 终端/Trace，右 = 文件工作区折叠栏），
+   分割从标签行开始、贯通整高 */
+.session-content { flex-direction: row; position: relative; }
+.session-left {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 全屏：右栏铺满，左半整体隐藏（右栏仍挂载，终端现场不丢） */
+.session-content.right-maximized .session-left { display: none; }
 .terminal-side {
   flex: 1;
   min-width: 0;

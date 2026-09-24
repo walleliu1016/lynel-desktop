@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>草图：文件折叠到右边（标签行起对半）</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1b1e24;
+    --panel2: #20242c;
+    --border: #2c313a;
+    --text: #d7dce4;
+    --dim: #8b93a1;
+    --accent: #4c8dff;
+    --term-bg: #101216;
+    --code-bg: #16181d;
+    --green: #4ec9b0;
+    --orange: #ce9178;
+    --purple: #c586c0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0e11; color: var(--text); font: 13px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif; padding: 24px; }
+  h1 { font-size: 16px; margin-bottom: 4px; }
+  .hint { color: var(--dim); font-size: 12px; margin-bottom: 16px; }
+  .hint b { color: var(--accent); font-weight: 600; }
+
+  .app {
+    width: 100%;
+    height: 660px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ===== 内容区：左右对半，右栏从标签行开始 ===== */
+  .content { flex: 1; display: flex; min-height: 0; }
+
+  .left { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  /* 左侧标签行（终端 / Trace + 展开按钮） */
+  .sub-tabs {
+    height: 38px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    user-select: none;
+  }
+  .sub-tab {
+    height: 28px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--dim);
+    font: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .sub-tab:hover { color: var(--text); background: var(--panel2); }
+  .sub-tab.active { color: var(--text); background: var(--panel2); box-shadow: inset 0 -2px 0 var(--accent); }
+  .spacer { flex: 1; }
+  .expand-btn {
+    height: 28px;
+    padding: 0 9px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--dim);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .expand-btn:hover { color: var(--text); border-color: var(--accent); }
+  .expand-btn.on { color: var(--accent); border-color: var(--accent); }
+  .expand-btn { padding: 0 9px; }
+
+  /* 右栏顶部行最左的「文件」标识 tab（代表文件树/右栏身份） */
+  .ws-label-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 14px;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--code-bg);
+    border-right: 1px solid var(--border);
+    box-shadow: inset 0 -2px 0 var(--accent);
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: default;
+    user-select: none;
+  }
+
+  .left-pane { flex: 1; min-height: 0; display: none; }
+  .left-pane.show { display: flex; }
+
+  /* 终端 mock */
+  .terminal { flex: 1; background: var(--term-bg); padding: 14px 16px; font: 12.5px/1.7 "Cascadia Code", Consolas, monospace; color: #c9d1d9; overflow: auto; }
+  .terminal .prompt { color: var(--green); }
+  .terminal .file-link { color: var(--accent); text-decoration: underline; cursor: pointer; }
+  .terminal .file-link:hover { background: rgba(76,141,255,.15); }
+  .terminal .dim { color: var(--dim); }
+
+  /* Trace mock */
+  .trace { flex: 1; display: flex; min-height: 0; background: var(--bg); }
+  .trace-list { width: 200px; border-right: 1px solid var(--border); overflow: auto; padding: 8px; flex-shrink: 0; }
+  .trace-item { padding: 6px 8px; border-radius: 5px; display: flex; gap: 8px; align-items: center; color: var(--dim); font-size: 12px; cursor: pointer; }
+  .trace-item:hover { background: var(--panel2); }
+  .trace-item.active { background: var(--panel2); color: var(--text); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  .dot.err { background: #e5534b; }
+  .trace-detail { flex: 1; padding: 16px; color: var(--dim); }
+
+  /* 分割手柄：贯通整高（含标签行） */
+  .split-handle {
+    width: 5px;
+    cursor: col-resize;
+    background: transparent;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 5;
+  }
+  .split-handle:hover, .split-handle.dragging { background: var(--accent); }
+
+  /* ===== 右侧文件栏：从标签行高度开始 ===== */
+  .right {
+    width: 50%;
+    min-width: 320px;
+    background: var(--code-bg);
+    border-left: 1px solid var(--border);
+    display: none;
+    flex-direction: column;
+  }
+  .right.open { display: flex; }
+
+  /* 右栏顶部行 = 文件 tab 行，与 终端/Trace 标签同行同高 */
+  .file-tabs {
+    height: 38px;
+    display: flex;
+    align-items: stretch;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  /* 全屏态：右栏铺满，左半隐藏 */
+  .right.full { width: 100% !important; min-width: 0; }
+  .content.fullscreen .left { display: none; }
+  .content.fullscreen .split-handle { display: none !important; }
+  .file-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    font-size: 12px;
+    color: var(--dim);
+    border-right: 1px solid var(--border);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .file-tab:hover { color: var(--text); }
+  .file-tab.active { background: var(--code-bg); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+  .file-tab .x { opacity: .5; font-size: 13px; }
+  .file-tab .x:hover { opacity: 1; }
+  .file-tabs .head-label {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    color: var(--dim);
+    font-size: 12px;
+    white-space: nowrap;
+    border-right: 1px solid var(--border);
+  }
+  .file-tabs .spacer { flex: 1; min-width: 8px; }
+  .collapse-btn {
+    align-self: center;
+    height: 26px;
+    margin-right: 8px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--dim);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .collapse-btn + .collapse-btn { margin-left: -2px; }
+  .collapse-btn:hover { color: var(--text); border-color: var(--accent); }
+  .collapse-btn.on { color: var(--accent); border-color: var(--accent); }
+
+  /* 右栏主体：树 | 编辑器 */
+  .ws { flex: 1; display: flex; min-height: 0; }
+  .tree {
+    width: 190px;
+    min-width: 140px;
+    border-right: 1px solid var(--border);
+    background: var(--panel);
+    overflow: auto;
+    padding: 8px 4px;
+    font-size: 12.5px;
+  }
+  .tree-dir { color: var(--dim); padding: 3px 8px; cursor: pointer; user-select: none; }
+  .tree-file { padding: 3px 8px 3px 22px; color: var(--text); cursor: pointer; border-radius: 4px; white-space: nowrap; }
+  .tree-file:hover { background: var(--panel2); }
+  .tree-file.active { background: rgba(76,141,255,.18); color: #fff; }
+  .ext-ts { color: #4c8dff; }
+  .ext-vue { color: #42b883; }
+  .ext-css { color: #c586c0; }
+
+  .editor-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .editor {
+    flex: 1;
+    overflow: auto;
+    padding: 12px 0;
+    font: 12.5px/1.75 "Cascadia Code", Consolas, monospace;
+    counter-reset: ln;
+    min-height: 0;
+  }
+  .editor .row { display: flex; white-space: pre; }
+  .editor .row::before {
+    counter-increment: ln;
+    content: counter(ln);
+    width: 44px;
+    flex-shrink: 0;
+    text-align: right;
+    padding-right: 16px;
+    color: #4b525e;
+  }
+  .k { color: var(--purple); }
+  .s { color: var(--orange); }
+  .c { color: #6a9955; }
+  .f { color: #9cdcfe; }
+
+  /* 底部面板 Git/终端（默认折叠，只露 tab 行） */
+  .bottom {
+    height: 30px;
+    min-height: 30px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    flex-shrink: 0;
+  }
+  .bottom.open { height: 150px; min-height: 80px; }
+  .bottom-tabs { height: 30px; min-height: 30px; display: flex; align-items: center; gap: 4px; padding: 0 8px; border-bottom: 1px solid transparent; }
+  .bottom.open .bottom-tabs { border-bottom-color: var(--border); }
+  .btab { height: 24px; padding: 0 10px; border: none; border-radius: 4px; background: transparent; color: var(--dim); font: inherit; font-size: 12px; cursor: pointer; }
+  .btab.active { background: var(--panel2); color: var(--text); }
+  .bottom-toggle { margin-left: auto; height: 22px; width: 24px; border: none; background: transparent; color: var(--dim); cursor: pointer; border-radius: 4px; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
+  .bottom-toggle:hover { background: var(--panel2); color: var(--text); }
+  .bottom-body { flex: 1; overflow: auto; padding: 8px 12px; font-size: 12px; display: none; }
+  .bottom.open .bottom-body.show { display: block; }
+  .git-row { display: flex; gap: 10px; padding: 4px 0; color: var(--dim); align-items: center; }
+  .git-row .staged { color: var(--green); }
+  .git-row .modified { color: #e5c07b; }
+  .git-row .file { color: var(--text); flex: 1; }
+  .git-input { width: 70%; margin: 6px 0 10px; padding: 5px 8px; background: var(--code-bg); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font: inherit; }
+  .shell { font: 12px/1.8 "Cascadia Code", Consolas, monospace; color: #c9d1d9; }
+  .shell .prompt { color: var(--green); }
+
+  .collapsed-note {
+    position: absolute;
+    right: 10px;
+    top: 48px;
+    color: var(--dim);
+    font-size: 11px;
+    background: var(--panel);
+    border: 1px dashed var(--border);
+    padding: 6px 10px;
+    border-radius: 6px;
+    display: none;
+    z-index: 9;
+  }
+  .collapsed-note.show { display: block; }
+
+  .legend { margin-top: 14px; color: var(--dim); font-size: 12px; display: flex; gap: 24px; flex-wrap: wrap; }
+  .legend span b { color: var(--text); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>草图 v2：文件工作区折叠到右边（从标签行起对半）</h1>
+<p class="hint">
+  与 v1 的区别：<b>对半不只切内容区</b>——右栏顶部（文件 tab 行）与 终端/Trace 标签<b>同一行、同高</b>，分割线贯通整高。
+  可点交互：<b>① 收起态：顶部行最右的展开按钮（面板图标）</b> → 点击展开右栏（展开后该按钮隐藏，由右栏的「收起」接管）；
+  展开后右半边顶部行最左是<b>「📁 文件」标识 tab</b>（代表文件树）；<b>② 终端里的蓝色路径</b> → 自动展开并打开文件；
+  <b>③ 左侧切 Trace</b> → 右栏保持；<b>④ 右栏顶部「收起」</b>；<b>⑤ 「全屏」→ 铺满、变「还原」</b>。文件树固定在右栏左侧，不可拖。
+</p>
+
+<div class="app">
+  <div class="content" id="content" style="position:relative">
+
+    <!-- ===== 左半：标签行 + 终端/Trace ===== -->
+    <div class="left">
+      <div class="sub-tabs">
+        <button class="sub-tab active" data-left="terminal" onclick="switchLeft('terminal')">🖥 终端</button>
+        <button class="sub-tab" data-left="trace" onclick="switchLeft('trace')">📈 Trace</button>
+        <div class="spacer"></div>
+        <button class="expand-btn" id="expandBtn" onclick="toggleRight()" title="展开右栏">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+        </button>
+      </div>
+
+      <div class="left-pane show" id="pane-terminal">
+        <div class="terminal">
+          <div><span class="prompt">❯</span> cd G:/work/lynel-desktop && npm run dev</div>
+          <div class="dim">vite v5.4.0 dev server running at:</div>
+          <div><span class="dim">  ➜  Local:</span>   http://localhost:5180/</div>
+          <div>&nbsp;</div>
+          <div><span class="prompt">❯</span> claude 修复登录页窗口尺寸抖动</div>
+          <div class="dim">● 已读取 src/renderer/src/views/HomeView.vue</div>
+          <div class="dim">● 已修改 src/main/useWindowState.ts</div>
+          <div>  修改点在 <span class="file-link" onclick="openFromTerminal('useWindowState.ts')">src/main/useWindowState.ts:42</span></div>
+          <div>  以及 <span class="file-link" onclick="openFromTerminal('HomeView.vue')">src/renderer/src/views/HomeView.vue:216</span></div>
+          <div class="dim">● 运行 npm run test:main — 42 passed</div>
+          <div>&nbsp;</div>
+          <div><span class="prompt">❯</span> <span style="opacity:.6">_</span></div>
+        </div>
+      </div>
+
+      <div class="left-pane" id="pane-trace">
+        <div class="trace">
+          <div class="trace-list">
+            <div class="trace-item active"><span class="dot"></span> #1042 · 12.3k tok</div>
+            <div class="trace-item"><span class="dot"></span> #1041 · 4.1k tok</div>
+            <div class="trace-item"><span class="dot err"></span> #1040 · 0.8k tok</div>
+            <div class="trace-item"><span class="dot"></span> #1039 · 2.2k tok</div>
+          </div>
+          <div class="trace-detail">请求详情（RequestDetailPane）—— 左侧切 Trace 后右栏原样保持。</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 分割手柄：贯通整高 -->
+    <div class="split-handle" id="handle" onmousedown="startDrag(event)" style="display:none"></div>
+
+    <!-- ===== 右半：文件工作区（顶部行 = 文件 tabs，与左侧标签同行） ===== -->
+    <div class="right" id="right">
+      <div class="file-tabs" id="fileTabs">
+        <span class="ws-label-tab">📁 文件</span>
+        <div class="spacer"></div>
+        <button class="collapse-btn" id="fsBtn" onclick="toggleFullscreen()" title="全屏铺开">⛶ 全屏</button>
+        <button class="collapse-btn" onclick="toggleRight()" title="收起右栏">收起 ◀</button>
+      </div>
+
+      <div class="ws">
+        <div class="tree" id="tree">
+          <div class="tree-dir">▾ src/</div>
+          <div class="tree-dir" style="padding-left:14px">▾ main/</div>
+          <div class="tree-file" data-f="useWindowState.ts" onclick="openFile('useWindowState.ts')"><span class="ext-ts">TS</span> useWindowState.ts</div>
+          <div class="tree-file" data-f="app.ts" onclick="openFile('app.ts')"><span class="ext-ts">TS</span> app.ts</div>
+          <div class="tree-dir" style="padding-left:14px">▾ renderer/src/views/</div>
+          <div class="tree-file" data-f="HomeView.vue" onclick="openFile('HomeView.vue')"><span class="ext-vue">V</span> HomeView.vue</div>
+          <div class="tree-file" data-f="SettingsTab.vue" onclick="openFile('SettingsTab.vue')"><span class="ext-vue">V</span> SettingsTab.vue</div>
+          <div class="tree-dir" style="padding-left:14px">▾ styles/</div>
+          <div class="tree-file" data-f="theme.css" onclick="openFile('theme.css')"><span class="ext-css">#</span> theme.css</div>
+          <div class="tree-dir">▾ docs/</div>
+          <div class="tree-file" data-f="CLAUDE.md" onclick="openFile('CLAUDE.md')">M↓ CLAUDE.md</div>
+        </div>
+        <div class="editor-col">
+          <div class="editor" id="editor"></div>
+        </div>
+      </div>
+
+      <div class="bottom" id="bottomPanel">
+        <div class="bottom-tabs">
+          <button class="btab active" data-b="git" onclick="switchBottom('git')">Git</button>
+          <button class="btab" data-b="shell" onclick="switchBottom('shell')">终端</button>
+          <button class="bottom-toggle" id="bottomToggle" onclick="toggleBottom()" title="展开/折叠">▲</button>
+        </div>
+        <div class="bottom-body show" id="b-git">
+          <input class="git-input" placeholder="提交信息 (Ctrl+Enter 提交)" />
+          <div class="git-row"><span class="staged">M</span><span class="file">src/main/app.ts</span><span>+12 -3</span></div>
+          <div class="git-row"><span class="modified">M</span><span class="file">src/renderer/src/views/HomeView.vue</span><span>+45 -20</span></div>
+          <div class="git-row"><span style="color:#4ec9b0">A</span><span class="file">src/renderer/src/components/code/EditorSplitPane.vue</span><span>+165</span></div>
+        </div>
+        <div class="bottom-body shell" id="b-shell">
+          <div><span class="prompt">❯</span> git status</div>
+          <div style="color:#8b93a1">On branch main — 3 files changed</div>
+          <div><span class="prompt">❯</span> <span style="opacity:.6">_</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsed-note show" id="collapsedNote">右栏已收起（默认态）→ 点顶部行最右的展开/收起按钮或终端里的蓝色路径</div>  </div>
+</div>
+
+<div class="legend">
+  <span><b>对半范围</b>：从标签行开始整高对半，右栏顶部行 = 文件 tabs（与 终端/Trace 同行同高）</span>
+  <span><b>宽度</b>：默认 50% 可拖（320px ~ 容器−左区最小宽 400）；全屏铺满、可还原</span>
+  <span><b>文件树</b>：固定在右栏左侧，不可拖宽</span>
+  <span><b>底部 Git/终端面板</b>：默认折叠（只露 tab 行），点 ▲ 或点 tab 展开</span>
+  <span><b>记忆</b>：展开态 + 打开文件按会话记忆，默认收起</span>
+</div>
+
+<script>
+  let rightOpen = false;
+  const openFiles = [];
+  let activeFile = null;
+
+  const CODE = {
+    'useWindowState.ts': [
+      '<span class="c">// 窗口尺寸/最大化状态唯一管理中心</span>',
+      '<span class="k">export function</span> <span class="f">applyHomeLayout</span>() {',
+      '  <span class="k">const</span> win = <span class="f">getMainWindow</span>()',
+      '  win.<span class="f">setSize</span>(<span class="s">1280</span>, <span class="s">800</span>)',
+      '  <span class="k">if</span> (win.<span class="f">isMaximized</span>()) win.<span class="f">unmaximize</span>()',
+      '}',
+      '',
+      '<span class="k">export function</span> <span class="f">syncFromResize</span>() {',
+      '  <span class="c">// 最大化状态通过 window.resize 事件同步，不再轮询</span>',
+      '  maximized.<span class="f">value</span> = win.<span class="f">isMaximized</span>()',
+      '}',
+    ],
+    'app.ts': [
+      '<span class="k">export class</span> <span class="f">App</span> {',
+      '  <span class="k">async</span> <span class="f">createSessionInternal</span>(workDir: <span class="f">string</span>) {',
+      '    <span class="k">const</span> id = <span class="f">randomUUID</span>()',
+      '    <span class="k">await</span> <span class="k">this</span>.proxy.<span class="f">start</span>(id)',
+      '    <span class="k">return</span> id',
+      '  }',
+      '}',
+    ],
+    'HomeView.vue': [
+      '&lt;<span class="k">template</span>&gt;',
+      '  &lt;<span class="f">div</span> <span class="f">class</span>=<span class="s">"content"</span>&gt;',
+      '    &lt;<span class="f">button</span> @<span class="f">click</span>=<span class="s">"setSubTab(t)"</span>&gt;{{ t }}&lt;/<span class="f">button</span>&gt;',
+      '    <span class="c">&lt;!-- 文件 tab 已移除，右栏承载 --&gt;</span>',
+      '  &lt;/<span class="f">div</span>&gt;',
+      '&lt;/<span class="k">template</span>&gt;',
+    ],
+    'SettingsTab.vue': [
+      '&lt;<span class="k">template</span>&gt;',
+      '  &lt;<span class="f">SettingsGeneral</span> /&gt;',
+      '  &lt;<span class="f">SettingsWecom</span> /&gt;',
+      '&lt;/<span class="k">template</span>&gt;',
+    ],
+    'theme.css': [
+      '<span class="k">:root</span> {',
+      '  <span class="f">--bg</span>: <span class="s">#14161a</span>;',
+      '  <span class="f">--accent</span>: <span class="s">#4c8dff</span>;',
+      '  <span class="f">--term-bg</span>: <span class="s">#101216</span>;',
+      '}',
+    ],
+    'CLAUDE.md': [
+      '<span class="c"># CLAUDE.md</span>',
+      '',
+      '<span class="c">## 架构要点</span>',
+      '- Electron IPC：ipcMain.handle / ipcRenderer.invoke',
+      '- session.send() 自动补 \\r；控制字符用 writeInput()',
+    ],
+  };
+
+  function switchLeft(tab) {
+    document.querySelectorAll('.sub-tab').forEach(b =>
+      b.classList.toggle('active', b.dataset.left === tab));
+    document.getElementById('pane-terminal').classList.toggle('show', tab === 'terminal');
+    document.getElementById('pane-trace').classList.toggle('show', tab === 'trace');
+  }
+
+  function toggleRight() {
+    rightOpen = !rightOpen;
+    // 收起时一并退出全屏态，下次展开回到默认 50%/记忆宽度
+    if (!rightOpen && fullscreen) {
+      fullscreen = false;
+      document.getElementById('right').classList.remove('full');
+      document.getElementById('content').classList.remove('fullscreen');
+      document.getElementById('right').style.width = widthBeforeFullscreen || '';
+    }
+    document.getElementById('right').classList.toggle('open', rightOpen);
+    document.getElementById('handle').style.display = rightOpen ? 'block' : 'none';
+    // 展开按钮只在收起态显示；展开后由右栏顶部的「收起」接管
+    document.getElementById('expandBtn').style.display = rightOpen ? 'none' : 'inline-flex';
+    document.getElementById('collapsedNote').classList.toggle('show', !rightOpen);
+    if (rightOpen) { renderTabs(); renderEditor(); }
+  }
+
+  function openFromTerminal(f) {
+    if (!rightOpen) toggleRight();
+    openFile(f);
+  }
+
+  function openFile(f) {
+    if (!openFiles.includes(f)) openFiles.push(f);
+    activeFile = f;
+    renderTabs(); renderEditor(); markTree();
+  }
+  function closeFile(e, f) {
+    e.stopPropagation();
+    const i = openFiles.indexOf(f);
+    if (i >= 0) openFiles.splice(i, 1);
+    if (activeFile === f) activeFile = openFiles[openFiles.length - 1] || null;
+    renderTabs(); renderEditor(); markTree();
+  }
+  function markTree() {
+    document.querySelectorAll('.tree-file').forEach(el =>
+      el.classList.toggle('active', el.dataset.f === activeFile));
+  }
+  let fullscreen = false;
+  let widthBeforeFullscreen = null;
+
+  function renderTabs() {
+    const el = document.getElementById('fileTabs');
+    const tabs = openFiles.map(f =>
+      `<div class="file-tab ${f === activeFile ? 'active' : ''}" onclick="openFile('${f}')">
+         ${f}<span class="x" onclick="closeFile(event, '${f}')">×</span>
+       </div>`).join('');
+    el.innerHTML = '<span class="ws-label-tab">📁 文件</span>' + tabs +
+      '<div class="spacer"></div>' +
+      `<button class="collapse-btn ${fullscreen ? 'on' : ''}" onclick="toggleFullscreen()" title="全屏铺开">${fullscreen ? '⇲ 还原' : '⛶ 全屏'}</button>` +
+      `<button class="collapse-btn" onclick="toggleRight()" title="收起右栏">
+         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+       </button>`;
+  }
+
+  function toggleFullscreen() {
+    if (!rightOpen) return;
+    fullscreen = !fullscreen;
+    const right = document.getElementById('right');
+    const content = document.getElementById('content');
+    if (fullscreen) {
+      widthBeforeFullscreen = right.style.width || '';   // 记住拖出的宽度
+      right.classList.add('full');
+      content.classList.add('fullscreen');
+    } else {
+      right.classList.remove('full');
+      content.classList.remove('fullscreen');
+      right.style.width = widthBeforeFullscreen;          // 还原到全屏前宽度（默认 50%）
+    }
+    renderTabs();
+  }
+  function renderEditor() {
+    const el = document.getElementById('editor');
+    if (!activeFile) {
+      el.innerHTML = '<div style="color:#8b93a1;padding:24px;text-align:center">从左侧文件树或终端路径打开文件</div>';
+      return;
+    }
+    const rows = CODE[activeFile] || ['<span class="c">// (mock 内容)</span>'];
+    el.innerHTML = rows.map(r => `<div class="row">${r || ' '}</div>`).join('');
+  }
+
+  function switchBottom(b) {
+    document.querySelectorAll('.btab').forEach(x => x.classList.toggle('active', x.dataset.b === b));
+    document.getElementById('b-git').classList.toggle('show', b === 'git');
+    document.getElementById('b-shell').classList.toggle('show', b === 'shell');
+    // 点 tab 时若面板折叠着，顺手展开（否则点了没反应）
+    const p = document.getElementById('bottomPanel');
+    if (!p.classList.contains('open')) toggleBottom();
+  }
+
+  function toggleBottom() {
+    const p = document.getElementById('bottomPanel');
+    p.classList.toggle('open');
+    document.getElementById('bottomToggle').textContent = p.classList.contains('open') ? '▼' : '▲';
+  }
+
+  let dragging = false;
+  function startDrag(e) {    dragging = true;
+    document.getElementById('handle').classList.add('dragging');
+    document.addEventListener('mousemove', onDrag);
+    document.addEventListener('mouseup', endDrag);
+    e.preventDefault();
+  }
+  function onDrag(e) {
+    if (!dragging) return;
+    const rect = document.getElementById('content').getBoundingClientRect();
+    const max = rect.width - 400;
+    let w = rect.right - e.clientX;
+    w = Math.max(320, Math.min(w, max));
+    document.getElementById('right').style.width = w + 'px';
+  }
+  function endDrag() {
+    dragging = false;
+    document.getElementById('handle').classList.remove('dragging');
+    document.removeEventListener('mousemove', onDrag);
+    document.removeEventListener('mouseup', endDrag);
+  }
+
+  renderTabs(); renderEditor();
+</script>
+</body>
+</html>
