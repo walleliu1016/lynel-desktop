@@ -30,26 +30,6 @@
       <p class="form-hint">仅影响 xterm 终端窗口；UI 主题不受影响。</p>
     </section>
 
-    <!-- 代码编辑器 -->
-    <section class="section">
-      <div class="section-title">代码编辑器</div>
-      <div class="form-group">
-        <label class="form-label">
-          字号
-          <span class="form-value">{{ codeCfg.fontSize }}px</span>
-        </label>
-        <input
-          type="range"
-          min="10"
-          max="20"
-          step="1"
-          v-model.number="codeCfg.fontSize"
-          @input="onCodeFontSizeInput"
-        />
-        <p class="form-hint">配色跟随终端主题，切换终端配色即生效。</p>
-      </div>
-    </section>
-
     <!-- 主题 -->
     <section class="section">
       <div class="section-title">主题</div>
@@ -156,17 +136,16 @@ import { ref, watch, onMounted } from 'vue'
 import Switch from '../Switch.vue'
 import Select from '../Select.vue'
 import { useSettingsStore } from '../../stores/settings'
-import { defaultTerminalConfig, defaultCodeConfig, type TerminalConfig, type CodeConfig, type TerminalTheme, type TerminalCursorStyle } from '../../types/settings'
+import { defaultTerminalConfig, type TerminalConfig, type TerminalTheme, type TerminalCursorStyle } from '../../types/settings'
 import { getThemeMode, setThemeMode, type ThemeMode } from '../../composables/useTheme'
 
 const settings = useSettingsStore()
 /**
  * 本地 ref 镜像 store.terminal。v-model 写到本地 ref，再通过显式 sync() 同步到 store。
  * 不用双向 watch 避免循环触发。store 重新 load 时从外部重新同步到本地。
+ * 终端字号同时控制 xterm 与代码编辑器（编辑器侧读 terminal.fontSize）。
  */
 const cfg = ref<TerminalConfig>(defaultTerminalConfig())
-/** 代码编辑器配置的本地镜像，与 cfg 同机制同步 */
-const codeCfg = ref<CodeConfig>(defaultCodeConfig())
 /** 防止 watch 回环 */
 let syncing = false
 
@@ -176,18 +155,11 @@ function syncToStore() {
   settings.markDirty()
 }
 
-function syncCodeToStore() {
-  if (!settings.cfg || syncing) return
-  settings.cfg.code = { ...codeCfg.value }
-  settings.markDirty()
-}
-
 onMounted(async () => {
   if (!settings.cfg) await settings.load()
   if (settings.cfg) {
     syncing = true
     cfg.value = { ...settings.cfg.terminal }
-    codeCfg.value = { ...settings.cfg.code }
     syncing = false
   }
 })
@@ -197,14 +169,6 @@ watch(() => settings.cfg?.terminal, (t) => {
   if (!t) return
   syncing = true
   cfg.value = { ...t }
-  syncing = false
-}, { deep: true })
-
-// store 重新 load 时同步 code
-watch(() => settings.cfg?.code, (c) => {
-  if (!c) return
-  syncing = true
-  codeCfg.value = { ...c }
   syncing = false
 }, { deep: true })
 
@@ -300,14 +264,9 @@ function setCursorStyle(s: TerminalCursorStyle) {
   syncToStore()
 }
 
-/** 字号拖动时 markDirty 即可；watcher 会实时应用到 xterm */
+/** 字号拖动时 markDirty 即可；watcher 会实时应用到 xterm，CodeEditor 的 watch 同步编辑器 */
 function onFontSizeInput() {
   markDirty()
-}
-
-/** 代码字号拖动时同步到 store，CodeEditor 的 watch 实时应用 */
-function onCodeFontSizeInput() {
-  syncCodeToStore()
 }
 </script>
 

@@ -54,7 +54,8 @@ async function ensureEditor(): Promise<DiffEditor | null> {
     automaticLayout: true,
     readOnly: true,
     renderSideBySide: true,
-    fontSize: settings.cfg?.code?.fontSize ?? 12,
+    // 字号与终端共用一个设置（settings.cfg.terminal.fontSize），默认值与 defaultTerminalConfig 一致
+    fontSize: settings.cfg?.terminal.fontSize ?? 14,
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
   })

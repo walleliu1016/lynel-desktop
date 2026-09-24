@@ -3,7 +3,6 @@ import type { ScanEvent } from '../../../main/wecom-scan.js';
 // Git 面板。类型直接复用主进程的定义（仅 type import，编译期擦除，
 // 不会把主进程代码拉进渲染进程 bundle），避免两份定义漂移。
 import type {
-  GitBlameLine,
   GitBranchInfo,
   GitCommitInfo,
   GitFileChange,
@@ -170,7 +169,6 @@ export const ShellClose = (sessionId: string) =>
 // Git 面板。`export type { X } from 'mod'` 是重导出，不会把 X 带进当前作用域，
 // 所以上面的 `import type` 与这里的 `export type` 两行都要写。
 export type {
-  GitBlameLine,
   GitBranchInfo,
   GitCommitInfo,
   GitFileChange,
@@ -220,9 +218,6 @@ export const GitStashPop = (workDir: string, index?: number) =>
   api().gitStashPop(workDir, index) as Promise<GitOk<{}> | GitErr>
 export const GitStashDrop = (workDir: string, index?: number) =>
   api().gitStashDrop(workDir, index) as Promise<GitOk<{}> | GitErr>
-
-export const GitBlame = (workDir: string, relPath: string) =>
-  api().gitBlame(workDir, relPath) as Promise<GitOk<{ data: GitBlameLine[] }> | GitErr>
 
 export const GitResetTo = (
   workDir: string,

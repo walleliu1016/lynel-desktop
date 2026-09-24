@@ -55,8 +55,6 @@ export interface Settings {
   push_tool_calls: boolean
   prevent_sleep: boolean
   terminal: TerminalConfig
-  /** 代码编辑器配置 */
-  code: CodeConfig
   /** 定时任务全局并发上限（同时运行的 run 数） */
   tasks_max_concurrency: number
   /** 「任务通知机器人」：引用机器人列表里某一个的 id；空 = 不推送 */
@@ -95,13 +93,4 @@ export function defaultTerminalConfig(): TerminalConfig {
     cursorBlink: true,
     scrollback: 1000,
   }
-}
-
-export interface CodeConfig {
-  /** 代码编辑器字号 px，10-20 */
-  fontSize: number
-}
-
-export function defaultCodeConfig(): CodeConfig {
-  return { fontSize: 12 }
 }

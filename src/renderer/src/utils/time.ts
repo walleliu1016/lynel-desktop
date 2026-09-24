@@ -3,7 +3,7 @@
  *  超过 30 天改为直接显示日期：继续按天数算下去只会得到「89 天前」这种
  *  读不出时间感的值。解析失败返回空串，调用方原样渲染即可。
  *
- *  提交历史与行内 blame 共用这一份实现，避免两处口径漂移。 */
+ *  提交历史等多处共用这一份实现，避免两处口径漂移。 */
 export function formatRelTime(iso: string): string {
   const t = Date.parse(iso)
   if (!Number.isFinite(t)) return ''

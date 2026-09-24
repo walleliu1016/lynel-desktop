@@ -23,8 +23,6 @@ function onClose(relPath: string) {
 
 <template>
   <div v-if="store.openFiles.length || store.diffRequest" class="file-tabs">
-    <!-- 可滚动的 tab 区。右侧的开关按钮必须留在滚动容器之外，
-         否则 tab 一多就被推出视口、点不到了 -->
     <div class="tab-scroll">
       <div
         v-for="f in store.openFiles"
@@ -66,15 +64,6 @@ function onClose(relPath: string) {
         </button>
       </div>
     </div>
-    <!-- 行内 blame 开关：打开后当前光标行尾显示作者 / 时间 / 短 hash -->
-    <button
-      class="bar-toggle"
-      :class="{ on: store.blameEnabled }"
-      :title="store.blameEnabled ? '关闭行内 blame' : '显示行内 blame（光标所在行）'"
-      @click="store.blameEnabled = !store.blameEnabled"
-    >
-      <Icon name="history" :size="13" />
-    </button>
   </div>
 </template>
 
@@ -96,22 +85,6 @@ function onClose(relPath: string) {
   gap: 2px;
   overflow-x: auto;
 }
-.bar-toggle {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 4px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.bar-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
-.bar-toggle.on { color: var(--accent); }
 .tab {
   display: inline-flex;
   align-items: center;
