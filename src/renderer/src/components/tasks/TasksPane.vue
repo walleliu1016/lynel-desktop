@@ -112,7 +112,7 @@ function viewLatest() {
   if (latest) void store.openRun(latest.id)
 }
 
-async function onSubmit(input: { name: string; prompt: string; schedule: ScheduleDto }) {
+async function onSubmit(input: { name: string; prompt: string; schedule: ScheduleDto; timeoutMs: number | null }) {
   await store.saveTask(input, formMode.value === 'edit' ? formTask.value?.id : undefined)
   formOpen.value = false
 }
