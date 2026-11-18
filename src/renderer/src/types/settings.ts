@@ -57,6 +57,8 @@ export interface Settings {
   terminal: TerminalConfig
   /** 定时任务全局并发上限（同时运行的 run 数） */
   tasks_max_concurrency: number
+  /** 单次运行超时默认值（毫秒）。任务可用 timeoutMs 覆盖 */
+  tasks_run_timeout_ms: number
   /** 「任务通知机器人」：引用机器人列表里某一个的 id；空 = 不推送 */
   tasks_notify_bot: string
   /** 定时任务的固定工作目录，留空 = ~/.lynel-desktop/tasks/ */

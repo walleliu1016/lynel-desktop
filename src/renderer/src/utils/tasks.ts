@@ -281,7 +281,7 @@ export function runSummaryText(resultText: string | null, error: string | null, 
   if (status === 'running') return '—';
   if (status === 'skipped') return error ?? '排队超时未启动';
   if (status === 'interrupted') return error ?? '已中断';
-  if (status === 'timeout') return error ?? '超过 30 分钟上限';
+  if (status === 'timeout') return error ?? '超过运行超时上限';
   // 主进程只在「没有 result 事件」时才写 runs.error；有 result 且 is_error 时
   // （error_max_turns、API 报错）真正的原因在 result_text 里、error 为 null ——
   // 不兜这一层，这些历史行全部退化成通用的「执行失败」，真实原因被丢掉。
@@ -290,4 +290,11 @@ export function runSummaryText(resultText: string | null, error: string | null, 
     return error ?? (first ? first.slice(0, 120) : '执行失败');
   }
   return firstLine(resultText).slice(0, 120);
+}
+
+/** 超时时长的展示：整小时显示「N 小时」，否则「N 分钟」。
+ *  与主进程 schedule.ts 的 formatTimeoutLabel 各有一份 —— 主/渲染是两个 bundle，不能互 import。 */
+export function timeoutLabel(ms: number): string {
+  if (ms % 3600000 === 0) return `${ms / 3600000} 小时`
+  return `${Math.round(ms / 60000)} 分钟`
 }

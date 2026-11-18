@@ -44,6 +44,8 @@ export interface TaskDto {
   runAt: number | null;
   scheduleStartAt: number | null;
   scheduleEndAt: number | null;
+  /** 单次运行超时（毫秒）。null = 跟随全局默认 */
+  timeoutMs: number | null;
   nextRunAt: number | null;
   lastRunAt: number | null;
   lastStatus: string | null;

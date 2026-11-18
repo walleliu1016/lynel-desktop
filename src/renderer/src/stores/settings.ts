@@ -31,6 +31,8 @@ function defaultSettings(): Settings {
     prevent_sleep: false,
     terminal: defaultTerminalConfig(),
     tasks_max_concurrency: 6,
+    /** 单次运行超时默认值（毫秒）：30 分钟 */
+    tasks_run_timeout_ms: 30 * 60 * 1000,
     tasks_dir: '',
     /** 「任务通知机器人」：引用机器人列表里某一个的 id。空 = 不推送 */
     tasks_notify_bot: '',
