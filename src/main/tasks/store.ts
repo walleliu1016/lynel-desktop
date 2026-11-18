@@ -19,6 +19,8 @@ export interface TaskRow {
   runAt: number | null;
   scheduleStartAt: number | null;
   scheduleEndAt: number | null;
+  /** 单次运行超时（毫秒）。NULL = 跟随全局默认 */
+  timeoutMs: number | null;
   nextRunAt: number | null;
   lastRunAt: number | null;
   lastStatus: string | null;
@@ -35,6 +37,7 @@ export type TaskPatch = Partial<{
   runAt: number | null;
   scheduleStartAt: number | null;
   scheduleEndAt: number | null;
+  timeoutMs: number | null;
   nextRunAt: number | null;
   lastRunAt: number | null;
   lastStatus: string | null;
@@ -49,6 +52,7 @@ export interface CreateTaskInput {
   runAt: number | null;
   scheduleStartAt?: number | null;
   scheduleEndAt?: number | null;
+  timeoutMs?: number | null;
   nextRunAt: number | null;
   enabled?: boolean;
   agent?: string;
@@ -59,6 +63,7 @@ const TASK_COLUMNS = `
   session_initialized AS sessionInitialized,
   schedule_type AS scheduleType, schedule_expr AS scheduleExpr, run_at AS runAt,
   schedule_start_at AS scheduleStartAt, schedule_end_at AS scheduleEndAt,
+  timeout_ms AS timeoutMs,
   next_run_at AS nextRunAt, last_run_at AS lastRunAt, last_status AS lastStatus,
   created_at AS createdAt, updated_at AS updatedAt
 `;
@@ -74,9 +79,9 @@ export function createTask(input: CreateTaskInput): TaskRow {
     .prepare(
       `INSERT INTO tasks
        (id,name,enabled,prompt,agent,session_id,session_initialized,
-        schedule_type,schedule_expr,run_at,schedule_start_at,schedule_end_at,
+        schedule_type,schedule_expr,run_at,schedule_start_at,schedule_end_at,timeout_ms,
         next_run_at,last_run_at,last_status,created_at,updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?)`,
     )
     .run(
       id,
@@ -91,6 +96,7 @@ export function createTask(input: CreateTaskInput): TaskRow {
       input.runAt,
       input.scheduleStartAt ?? null,
       input.scheduleEndAt ?? null,
+      input.timeoutMs ?? null,
       input.nextRunAt,
       now,
       now,
@@ -121,6 +127,7 @@ const PATCH_COLUMN: Record<keyof TaskPatch, string> = {
   runAt: 'run_at',
   scheduleStartAt: 'schedule_start_at',
   scheduleEndAt: 'schedule_end_at',
+  timeoutMs: 'timeout_ms',
   nextRunAt: 'next_run_at',
   lastRunAt: 'last_run_at',
   lastStatus: 'last_status',

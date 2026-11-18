@@ -85,6 +85,29 @@ describe('db', () => {
     expect(old.schedule_start_at).toBeNull();
   });
 
+  it('v2 老库升级：补出 timeout_ms 列，老行为 NULL（跟随全局）', () => {
+    const f = tmpFile();
+    setDbFile(f);
+    // 造 v2 形状的库（有 schedule_start_at / schedule_end_at，无 timeout_ms），
+    // 再走 migrate —— CREATE TABLE IF NOT EXISTS 不会加列，必须靠 ALTER 补。
+    const raw = new DatabaseSync(f);
+    raw.exec(`CREATE TABLE tasks (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+      prompt TEXT NOT NULL, agent TEXT, session_id TEXT,
+      session_initialized INTEGER NOT NULL DEFAULT 0, schedule_type TEXT NOT NULL,
+      schedule_expr TEXT, run_at INTEGER, schedule_start_at INTEGER, schedule_end_at INTEGER,
+      next_run_at INTEGER, last_run_at INTEGER, last_status TEXT,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
+    raw.prepare("INSERT INTO tasks(id,name,prompt,schedule_type,schedule_expr,created_at,updated_at) VALUES('old','老任务','p','cron','0 9 * * *',1,1)").run();
+    raw.close();
+
+    const db = getDb();
+    const cols = (db.prepare('PRAGMA table_info(tasks)').all() as any[]).map((c) => c.name);
+    expect(cols).toContain('timeout_ms');
+    const row = db.prepare("SELECT timeout_ms FROM tasks WHERE id='old'").get() as any;
+    expect(row.timeout_ms).toBeNull();
+  });
+
   it('run_events 主键 (run_id, seq) 约束生效', () => {
     setDbFile(tmpFile());
     const db = getDb();

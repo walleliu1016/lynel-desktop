@@ -54,6 +54,22 @@ describe('tasks CRUD', () => {
     expect(getTask('nope')).toBeNull();
   });
 
+  it('createTask / updateTask 读写 timeoutMs，null = 跟随全局', () => {
+    const t = createTask({ ...base, timeoutMs: 3_600_000 });
+    expect(getTask(t.id)!.timeoutMs).toBe(3_600_000);
+
+    const u = updateTask(t.id, { timeoutMs: null });
+    expect(u.timeoutMs).toBeNull();
+
+    const u2 = updateTask(t.id, { timeoutMs: 604_800_000 });
+    expect(u2.timeoutMs).toBe(604_800_000);
+  });
+
+  it('不传 timeoutMs 时默认 NULL（跟随全局）', () => {
+    const t = createTask(base);
+    expect(getTask(t.id)!.timeoutMs).toBeNull();
+  });
+
   it('listTasks 默认按 enabled 优先、再按 next_run_at 升序，null 沉底', () => {
     const a = createTask({ ...base, name: 'A', nextRunAt: 300 });
     const b = createTask({ ...base, name: 'B', nextRunAt: 100 });

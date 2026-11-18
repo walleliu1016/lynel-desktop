@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const DEFAULT_DB_FILE = path.join(os.homedir(), '.lynel-desktop', 'tasks.db');
 
@@ -117,6 +117,9 @@ export function migrate(database: DatabaseSync): void {
   // startAt / stopAt 选项，不在 cron 表达式里表达（cron 本身没有日期边界的概念）。
   addColumn(database, 'tasks', 'schedule_start_at', 'INTEGER');
   addColumn(database, 'tasks', 'schedule_end_at', 'INTEGER');
+
+  // v3：单次运行超时可配置。NULL = 跟随全局默认（设置键 tasks_run_timeout_ms）。
+  addColumn(database, 'tasks', 'timeout_ms', 'INTEGER');
 
   database.exec('CREATE INDEX IF NOT EXISTS idx_runs_task ON runs(task_id, queued_at DESC)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_tasks_next ON tasks(next_run_at)');
