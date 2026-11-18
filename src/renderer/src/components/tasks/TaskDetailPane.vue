@@ -52,6 +52,9 @@
         <template v-if="task.lastRunAt"> · {{ formatRelTime(new Date(task.lastRunAt).toISOString()) }}</template>
       </span>
       <span v-if="lastCost" class="chip">均价 <b>${{ lastCost }}</b></span>
+      <span v-if="task.timeoutMs != null" class="chip">
+        <Icon name="alarm-clock" :size="11" />超时 {{ timeoutLabel(task.timeoutMs) }}
+      </span>
     </div>
 
     <!-- 主体：当前这一次运行的完整流水 -->
@@ -82,7 +85,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Icon from '../Icon.vue'
 import RunStreamView from './RunStreamView.vue'
 import RunHistoryList from './RunHistoryList.vue'
-import { formatNextRun, taskCostHint } from '../../utils/tasks'
+import { formatNextRun, taskCostHint, timeoutLabel } from '../../utils/tasks'
 import { formatRelTime } from '../../utils/time'
 import { statusLabel } from '../../utils/taskStatus'
 import type { RunDto, StreamItem, TaskDto } from '../../types/tasks'

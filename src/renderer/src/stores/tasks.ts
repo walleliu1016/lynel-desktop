@@ -80,7 +80,10 @@ export const useTasksStore = defineStore('tasks', () => {
     runsHasMore.value = page.length === RUN_PAGE;
   }
 
-  async function saveTask(input: { name: string; prompt: string; schedule: ScheduleDto }, id?: string) {
+  async function saveTask(
+    input: { name: string; prompt: string; schedule: ScheduleDto; timeoutMs: number | null },
+    id?: string,
+  ) {
     // 保存后必须让 runs / activeRunId / events 归属「当前选中的任务」：
     // 新建时当前选中切到新任务，更新时仍是被更新的那个任务，
     // 两种情况都要重新 select，否则会残留上一个任务的运行历史。

@@ -219,6 +219,23 @@
               </div>
             </div>
 
+            <!-- 超时时间：跟随全局默认或单独覆盖 -->
+            <div class="sec">
+              <div class="sec-hd"><span class="t">超时时间</span></div>
+              <div class="field">
+                <label>超时</label>
+                <div class="ctl">
+                  <TimeoutPicker
+                    :model-value="timeoutMs"
+                    allow-default
+                    @update:model-value="(v) => (timeoutMs = v)"
+                    @update:valid="(v) => (timeoutValid = v)"
+                  />
+                  <div class="hint">超过这个时长自动终止。选「默认」用全局设置（设置 → 定时任务）。</div>
+                </div>
+              </div>
+            </div>
+
             <!-- 3 内容 -->
             <div class="sec">
               <div class="sec-hd"><span class="t">任务内容</span></div>
@@ -261,6 +278,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import Icon from '../Icon.vue'
+import TimeoutPicker from '../TimeoutPicker.vue'
 import { useTasksStore } from '../../stores/tasks'
 import { UI_DAYS, cronDayToUi, daysLabel, uiDayLabel, uiDayToCron } from '../../utils/tasks'
 import {
@@ -274,7 +292,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'submit', input: { name: string; prompt: string; schedule: ScheduleDto }): void
+  (e: 'submit', input: { name: string; prompt: string; schedule: ScheduleDto; timeoutMs: number | null }): void
 }>()
 
 const store = useTasksStore()
@@ -330,6 +348,9 @@ const cron = ref('0 9 * * 1-5')
 const bounded = ref(false)
 const fromDate = ref('')
 const toDate = ref('')
+/** 超时覆盖：null = 跟随全局默认 */
+const timeoutMs = ref<number | null>(null)
+const timeoutValid = ref(true)
 
 const selectedTemplateId = ref<string | null>(null)
 const keyword = ref('')
@@ -465,6 +486,7 @@ function onceUnmodified(): boolean {
 }
 
 const canSubmit = computed(() => {
+  if (!timeoutValid.value) return false
   if (!name.value.trim() || !prompt.value.trim()) return false
   // 一天都没选时不能放行：主进程把空集合归一成 `*`（每天），静默存下去等于
   // 用户以为「什么都没选」而任务天天跑。宁可拦住让他明确选。
@@ -571,7 +593,12 @@ function fmtRun(ms: number): string {
 function submit() {
   const s = schedule.value
   if (!s) return
-  emit('submit', { name: name.value.trim(), prompt: prompt.value, schedule: s })
+  emit('submit', {
+    name: name.value.trim(),
+    prompt: prompt.value,
+    schedule: s,
+    timeoutMs: timeoutMs.value,
+  })
 }
 
 onMounted(() => {
@@ -579,6 +606,7 @@ onMounted(() => {
     // 复制：名称加后缀，其余（调度 + 内容）原样，用户再改
     name.value = props.mode === 'copy' ? `${props.task.name}（副本）` : props.task.name
     prompt.value = props.task.prompt
+    timeoutMs.value = props.task.timeoutMs
     applySchedule(props.task.scheduleRaw)
   } else {
     // 默认从「空白任务」开始：模板是加速器，不该替用户预设任务内容
