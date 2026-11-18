@@ -278,8 +278,33 @@ export const CATCH_UP_MS = 60 * 60 * 1000;
 /** 入队后超过这个时长仍未启动 → 标 skipped，避免「每天 9:00 的日报」拖到 11:00 才发。 */
 export const QUEUE_TIMEOUT_MS = 30 * 60 * 1000;
 
-/** 单次 run 的墙钟上限，到点 SIGTERM → 5s → SIGKILL。 */
+/** 单次 run 的默认墙钟上限（任务 timeout_ms / 全局 tasks_run_timeout_ms 可覆盖，见 resolveRunTimeout）。 */
 export const RUN_TIMEOUT_MS = 30 * 60 * 1000;
+
+/** 可配置超时的合法范围：1 分钟 ~ 7 天。7 天远小于 setTimeout 的 2^31-1 ms 溢出阈值（~24.8 天）。 */
+export const RUN_TIMEOUT_MIN_MS = 60 * 1000;
+export const RUN_TIMEOUT_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** 归一化单个超时值：非有限数 / 越界视为无效。 */
+function validTimeout(ms: unknown): number | null {
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return null;
+  const n = Math.floor(ms);
+  return n >= RUN_TIMEOUT_MIN_MS && n <= RUN_TIMEOUT_MAX_MS ? n : null;
+}
+
+/** 超时解析：任务覆盖 > 全局默认 > RUN_TIMEOUT_MS 兜底。两个入参都由调用方传入（纯函数，不读 store）。 */
+export function resolveRunTimeout(
+  taskTimeoutMs: number | null | undefined,
+  globalTimeoutMs: number | null | undefined,
+): number {
+  return validTimeout(taskTimeoutMs) ?? validTimeout(globalTimeoutMs) ?? RUN_TIMEOUT_MS;
+}
+
+/** 超时文案里的时长：整小时显示「N 小时」，否则显示「N 分钟」。 */
+export function formatTimeoutLabel(ms: number): string {
+  if (ms % 3_600_000 === 0) return `${ms / 3_600_000} 小时`;
+  return `${Math.round(ms / 60_000)} 分钟`;
+}
 
 export type DueState = 'not_due' | 'due' | 'missed';
 

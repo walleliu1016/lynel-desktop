@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   scheduleToCron, cronToSchedule, scheduleOf, computeNextRun, describeSchedule,
   isDue, isWindowClosed, ALL_DAYS, CATCH_UP_MS, QUEUE_TIMEOUT_MS, RUN_TIMEOUT_MS,
+  resolveRunTimeout, formatTimeoutLabel, RUN_TIMEOUT_MIN_MS, RUN_TIMEOUT_MAX_MS,
   type Schedule,
 } from '../../../src/main/tasks/schedule.js';
 
@@ -308,5 +309,40 @@ describe('isDue', () => {
 
   it('关了一整夜（10 小时前）→ missed', () => {
     expect(isDue(now - 10 * 60 * 60 * 1000, now, CATCH_UP_MS)).toBe('missed');
+  });
+});
+
+describe('resolveRunTimeout', () => {
+  it('任务覆盖优先于全局，全局优先于 30 分钟兜底', () => {
+    expect(resolveRunTimeout(7200000, 900000)).toBe(7200000);
+    expect(resolveRunTimeout(null, 900000)).toBe(900000);
+    expect(resolveRunTimeout(undefined, 900000)).toBe(900000);
+    expect(resolveRunTimeout(null, null)).toBe(RUN_TIMEOUT_MS);
+    expect(resolveRunTimeout(undefined, undefined)).toBe(RUN_TIMEOUT_MS);
+  });
+
+  it('脏值逐档回退：NaN / 0 / 负数 / 越界视为无效', () => {
+    expect(resolveRunTimeout(NaN, 900000)).toBe(900000);
+    expect(resolveRunTimeout(0, 900000)).toBe(900000);
+    expect(resolveRunTimeout(-1, 900000)).toBe(900000);
+    expect(resolveRunTimeout(30_000, 900000)).toBe(900000); // < 1 分钟
+    expect(resolveRunTimeout(604_800_001, 900000)).toBe(900000); // > 7 天
+    // 全局也是脏值时落兜底
+    expect(resolveRunTimeout(NaN, NaN)).toBe(RUN_TIMEOUT_MS);
+  });
+
+  it('边界：1 分钟与 7 天放行', () => {
+    expect(resolveRunTimeout(RUN_TIMEOUT_MIN_MS, null)).toBe(60_000);
+    expect(resolveRunTimeout(RUN_TIMEOUT_MAX_MS, null)).toBe(604_800_000);
+  });
+});
+
+describe('formatTimeoutLabel', () => {
+  it('整小时显示「N 小时」，否则显示「N 分钟」', () => {
+    expect(formatTimeoutLabel(3600000)).toBe('1 小时');
+    expect(formatTimeoutLabel(7200000)).toBe('2 小时');
+    expect(formatTimeoutLabel(1800000)).toBe('30 分钟');
+    expect(formatTimeoutLabel(900000)).toBe('15 分钟');
+    expect(formatTimeoutLabel(60000)).toBe('1 分钟');
   });
 });
