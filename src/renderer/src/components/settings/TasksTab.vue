@@ -26,6 +26,12 @@
     </div>
 
     <div class="form-group">
+      <label class="form-label">单次运行超时</label>
+      <TimeoutPicker :model-value="timeoutModel" @update:model-value="onTimeoutChange" />
+      <p class="hint block">单个任务最多跑多久，到点自动终止。任务编辑里可单独覆盖。</p>
+    </div>
+
+    <div class="form-group">
       <div class="label-row">
         <label class="form-label">通知机器人</label>
         <span class="chip" :class="{ on: !!boundId }">
@@ -108,6 +114,7 @@
 import { computed, onMounted, ref } from 'vue'
 import Icon from '../Icon.vue'
 import BotAddDialog from '../BotAddDialog.vue'
+import TimeoutPicker from '../TimeoutPicker.vue'
 import { useSettingsStore } from '../../stores/settings'
 import { useBotsStore } from '../../stores/bots'
 import { useSessionsStore } from '../../stores/sessions'
@@ -175,6 +182,18 @@ function pick(botId: string) {
 function bump(delta: number) {
   const cur = Number(cfg.value.tasks_max_concurrency) || 6
   cfg.value.tasks_max_concurrency = Math.min(64, Math.max(1, Math.floor(cur) + delta))
+  settings.markDirty()
+}
+
+/** 当前全局超时值（毫秒）。读不到/脏值回退 30 分钟 */
+const timeoutModel = computed(() => {
+  const n = Number(cfg.value.tasks_run_timeout_ms)
+  return Number.isFinite(n) && n > 0 ? n : 30 * 60 * 1000
+})
+
+function onTimeoutChange(ms: number | null) {
+  // 设置页没有「默认」档，ms 理论上恒为 number；null 只作防御回退
+  cfg.value.tasks_run_timeout_ms = ms ?? 30 * 60 * 1000
   settings.markDirty()
 }
 

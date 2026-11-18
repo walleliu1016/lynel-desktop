@@ -100,3 +100,26 @@ describe('TasksTab 通知机器人选择（与会话绑定互斥）', () => {
     expect((settings.cfg as any).tasks_notify_bot).toBe('bot-b')
   })
 })
+
+describe('TasksTab 单次运行超时', () => {
+  let wrapper: Awaited<ReturnType<typeof mountTab>>['wrapper'] | null = null
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = null
+  })
+
+  it('单次运行超时默认 30 分钟，选预设写入 tasks_run_timeout_ms', async () => {
+    const { wrapper: w } = await mountTab()
+    wrapper = w
+    const settings = useSettingsStore()
+
+    // 默认值合并：无键时 30 分钟，预设 30m 应为选中态
+    expect((settings.cfg as any).tasks_run_timeout_ms).toBe(1800000)
+    const preset30 = w.findAll('.radio').find((b) => b.text() === '30m')!
+    expect(preset30.classes()).toContain('on')
+
+    await w.findAll('.radio').find((b) => b.text() === '1h')!.trigger('click')
+    await flushPromises()
+    expect((settings.cfg as any).tasks_run_timeout_ms).toBe(3600000)
+  })
+})
