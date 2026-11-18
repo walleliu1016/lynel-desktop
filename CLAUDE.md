@@ -399,7 +399,7 @@ npm run dist:linux
   - `Schedule` = `daily`（`M H * * <dow>`）| `interval`（分钟 `*/N * * * <dow>`、小时 `0 */N * * <dow>`、天 `M H */N * *`、月 `M H <几号> */N *`）| `once`（`run_at`）| `cron`（原样）。
   - `scheduleToCron` / `cronToSchedule` 互转；`scheduleOf(row)` 从任务行还原（scheduler / IPC / 表单回填共用，**别再各写一份** —— 漏一处就会把生效区间抹平）；`computeNextRun` 用 `croner` 的 `nextRun()` + `startAt`/`stopAt` 选项（生效区间不进表达式，cron 没有日期边界）；`describeSchedule` 出人读摘要；`isWindowClosed` 供 scheduler 停用过期任务。
   - **两处硬约束**：①「每天 / 按间隔·分钟 / 按间隔·小时」的星期落 cron 的 dow 字段（唯一星期来源，语义精确）；「按间隔·天 / 月」的 dow 会与 日/月 字段构成 **OR** 语义（实测 croner 同样：`0 9 */2 * 1` 在「每 2 天」**或**「周一」都触发），拼不出「每 2 天的周一」，故这两档**拒绝**受限星期并抛错。② `computeNextRun` 必须吞掉 `scheduleToCron` 抛的错（空的 / 越界表达式）返回 null：它由 30s 一次的 tick 调用，抛一次整个调度器停摆。
-  - 常量：`CATCH_UP_MS`(60min) / `QUEUE_TIMEOUT_MS`(30min) / `RUN_TIMEOUT_MS`(30min)。
+  - 常量：`CATCH_UP_MS`(60min) / `QUEUE_TIMEOUT_MS`(30min) / `RUN_TIMEOUT_MS`(30min **默认值**)。单次运行超时可配置：全局设置 `tasks_run_timeout_ms` + 每任务 `tasks.timeout_ms`（NULL=跟随全局），`resolveRunTimeout(任务值, 全局值)` 无效值逐档回退（范围 1 分钟 ~ 7 天）。
 - `streamParse.ts`：**纯函数**，NDJSON 行 → 归一化事件（`parseStreamLine`）：`tool_result.content` 三态归一化、`usage` 白名单（原始 usage 含嵌套对象与字符串字段，直接 `Object.entries` 会渲染出一堆 `[object Object]`）、空 thinking block 过滤、`isResumeMissing`。**解析只在主进程做一次**（主 / 渲染是两个 bundle，不能互 import），`tasks:runEvents` IPC 返回的是归一化后的事件对象，渲染层只做折叠。
 - `runner.ts`：单次 run 的生命周期（spawn / 逐行消费 / 落库 / 推送 / 超时 kill / resume 回退）。**不建 run 记录**（调用方已建好 `queued`）。stdout 手写按 `\n` 切行（不用 `readline`：它会自作主张解析且不保序）；stderr 也进流（`type='stderr'`）并留尾部 20 行作为「无 result 事件」时的 error 文本；**成败以 `result` 事件的 `subtype` / `is_error` 判，exit code 只兜底**（存在 `subtype=success` + exit 0 但实际失败的场景）；没有 `result` 事件则无论 exit code 一律判 error。
 - `scheduler.ts`：模块级单例，30s tick + 内存队列 + 并发闸门（`tasks_max_concurrency`，默认 6）。tick 顺序：取启用任务 → `isDue`（`not_due` / `due` / `missed`；超 60min 补跑窗的 `missed` 直接推进 `nextRunAt`，`once` 类型标 `missed` 且 `enabled=0`）→ **单任务去重**（该 task 已有非终态 run 就跳过，不建 run 也不推进时间）→ 建 `queued` run + **先落库再入队**（崩溃恢复靠它）→ `drain()`。出队时 `now - enqueuedAt > 30min` 标 `skipped`；`markRunRunning` 必须**先写 running 再 start** —— 并发闸门数的是 running，不写会一口气把整个队列放出去。`nextRunAt` 为空时**只补算落库、不触发**（安全网，避免首次启动炸一堆）；正常情况下它在创建 / 编辑任务时就算好落库，表单预览和列表的「下次运行」直接可见。
@@ -484,6 +484,7 @@ npm run dist:linux
 - win32 上解析不出 claude 背后的原生 `.exe` 时**直接判失败、绝不套壳 spawn**：套壳起来后杀树 / 判活的对象是 cmd 而不是 claude，且多一层转义与输出转码。
 - 任务进程的 spawn **绝不带 `detached`**：win32 上 `DETACHED_PROCESS` 会让 `CREATE_NO_WINDOW` 失效，claude 每起一个 shell 就弹一个可见 cmd 窗口（用户报过的「频繁闪窗」）；杀进程树的 taskkill 也必须带 `windowsHide`。
 - resume 回退只允许一次，且失败 `result` 里的 `session_id`（新生成的随机 UUID）绝不能写回 `tasks.session_id`。
+- 任务运行超时解析只认 `resolveRunTimeout`（任务覆盖 > 全局 `tasks_run_timeout_ms` > 30 分钟兜底）；`QUEUE_TIMEOUT_MS` 是排队超时，与此无关。
 
 ---
 
