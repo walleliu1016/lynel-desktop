@@ -7,8 +7,9 @@ import path from 'node:path';
 import type { Readable } from 'node:stream';
 import kill from 'tree-kill';
 import { resolveBin } from '../pty.js';
+import { getStore } from '../store.js';
 import { ensureTasksDir } from './paths.js';
-import { RUN_TIMEOUT_MS } from './schedule.js';
+import { formatTimeoutLabel, resolveRunTimeout } from './schedule.js';
 import {
   appendEvent, clearRunEvents, finishRun, setTaskSession, touchTaskAfterRun,
   type FinishRunPatch, type RunRow, type RunStatus, type TaskRow,
@@ -28,6 +29,8 @@ export interface RunnerDeps {
   tasksDir(): string;
   /** 杀整棵进程树（含 claude 自己起的 shell / node 子进程）。默认 defaultKillTree；测试注入空实现。 */
   killTree(pid: number, done: () => void): void;
+  /** 全局默认超时（毫秒）。默认读设置 tasks_run_timeout_ms；测试注入固定值。 */
+  readGlobalTimeout(): number | null;
 }
 
 /**
@@ -67,6 +70,14 @@ let deps: RunnerDeps = {
   now: () => Date.now(),
   tasksDir: () => ensureTasksDir(),
   killTree: defaultKillTree,
+  readGlobalTimeout: () => {
+    try {
+      const raw = getStore('settings').get('tasks_run_timeout_ms');
+      return typeof raw === 'number' ? raw : null;
+    } catch {
+      return null;
+    }
+  },
 };
 
 export function setRunnerDeps(patch: Partial<RunnerDeps>): void {
@@ -466,10 +477,13 @@ export function startRun(run: RunRow, task: TaskRow, cb: RunnerCallbacks): void 
   };
   active.set(run.id, a);
 
+  // 超时解析：任务覆盖 > 全局 tasks_run_timeout_ms > 30 分钟兜底。只在启动时解析一次 ——
+  // 已在跑的 run 不跟随配置变化（D5）。
+  const limitMs = resolveRunTimeout(task.timeoutMs, deps.readGlobalTimeout());
   a.timer = setTimeout(() => {
     if (!active.has(run.id)) return;
-    killRun(a, 'timeout', { error: '超过 30 分钟上限，已终止' });
-  }, RUN_TIMEOUT_MS);
+    killRun(a, 'timeout', { error: `超过 ${formatTimeoutLabel(limitMs)}上限，已终止` });
+  }, limitMs);
 
   spawnOnce(a, task.sessionInitialized === 1);
 }

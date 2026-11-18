@@ -48,6 +48,8 @@ beforeEach(() => {
     tasksDir: () => dir,
     // 杀树注入空实现：默认实现会在 win32 真的 spawn taskkill（虽然对着假 pid 无害），单测不该起真进程。
     killTree: (_pid, done) => done(),
+    // 全局超时默认回退：单测不读真实设置
+    readGlobalTimeout: () => null,
   });
 });
 afterEach(async () => {
@@ -439,6 +441,44 @@ describe('resume 回退（R2 实测判据）', () => {
     await vi.waitFor(() => expect(isRunning(r.id)).toBe(false));
     expect(finished).toEqual(['done']);
     expect(getRun(r.id)!.status).toBe('done');
+  });
+});
+
+describe('超时', () => {
+  it('超时到点杀进程，文案带实际时长（任务覆盖优先于全局）', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = createTask({
+        name: 'n', prompt: '干活', sessionId: '11111111-1111-4111-8111-111111111111',
+        scheduleType: 'cron', scheduleExpr: '0 9 * * *', runAt: null, nextRunAt: null,
+        timeoutMs: 7200000, // 任务覆盖 2 小时
+      });
+      const r = createRun(t.id, 'scheduled');
+      markRunRunning(r.id);
+      setRunnerDeps({ readGlobalTimeout: () => 900000 }); // 全局 15 分钟，应被覆盖压过
+      startRun(getRun(r.id)!, getTask(t.id)!, { onEvent: () => {}, onFinish: () => {} });
+      await vi.advanceTimersByTimeAsync(7_200_001);
+      const done = getRun(r.id)!;
+      expect(done.status).toBe('timeout');
+      expect(done.error).toBe('超过 2 小时上限，已终止');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('无任务覆盖时用全局时长生成文案', async () => {
+    vi.useFakeTimers();
+    try {
+      const { task, run } = seed();
+      setRunnerDeps({ readGlobalTimeout: () => 900000 });
+      startRun(run, task, { onEvent: () => {}, onFinish: () => {} });
+      await vi.advanceTimersByTimeAsync(900_001);
+      const done = getRun(run.id)!;
+      expect(done.status).toBe('timeout');
+      expect(done.error).toBe('超过 15 分钟上限，已终止');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

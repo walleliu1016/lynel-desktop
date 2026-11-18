@@ -124,7 +124,7 @@ function outcomeText(run: RunRow): string {
   switch (run.status) {
     case 'done': return first ? first.slice(0, 120) : '执行完成';
     case 'error': return run.error ?? (first ? first.slice(0, 120) : '执行失败');
-    case 'timeout': return run.error ?? '超过 30 分钟上限，已终止';
+    case 'timeout': return run.error ?? '超过运行超时上限，已终止';
     case 'interrupted': return run.error ?? '已中断';
     case 'skipped': return run.error ?? '排队超时未启动';
     default: return run.status;
@@ -231,7 +231,7 @@ export function initTasks(getMainWindow: () => BrowserWindow | null): void {
   });
 
   ipcMain.handle('tasks:create', (_e, input: {
-    name: string; prompt: string; schedule: Schedule;
+    name: string; prompt: string; schedule: Schedule; timeoutMs?: number | null;
   }) => {
     const sessionId = randomUUID();
     const fields = scheduleFields(input.schedule);
@@ -240,6 +240,7 @@ export function initTasks(getMainWindow: () => BrowserWindow | null): void {
       prompt: input.prompt,
       sessionId,
       ...fields,
+      timeoutMs: input.timeoutMs ?? null,
       nextRunAt: computeNextRun(input.schedule, Date.now()),
     });
     send('tasks:changed', listTasks().map(toTaskDto));
@@ -247,7 +248,7 @@ export function initTasks(getMainWindow: () => BrowserWindow | null): void {
   });
 
   ipcMain.handle('tasks:update', (_e, id: string, patch: {
-    name?: string; prompt?: string; schedule?: Schedule; enabled?: boolean;
+    name?: string; prompt?: string; schedule?: Schedule; enabled?: boolean; timeoutMs?: number | null;
   }) => {
     const before = getTask(id);
     if (!before) throw new Error(`任务不存在: ${id}`);
@@ -256,6 +257,7 @@ export function initTasks(getMainWindow: () => BrowserWindow | null): void {
     if (patch.name !== undefined) fields.name = patch.name.trim();
     if (patch.prompt !== undefined) fields.prompt = patch.prompt;
     if (patch.enabled !== undefined) fields.enabled = patch.enabled;
+    if (patch.timeoutMs !== undefined) fields.timeoutMs = patch.timeoutMs;
     if (patch.schedule) {
       const s = patch.schedule;
       const changedKind = dbScheduleType(s) !== before.scheduleType;
